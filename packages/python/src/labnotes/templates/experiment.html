@@ -121,13 +121,29 @@
 
 {% if e.study %}
 <section id="runs" class="block">
-  <h2>Runs <span class="count num">{{ e.runs_list | length }}</span></h2>
-  {% if e.runs_list %}
+  {% set view = e.run_view %}
+  {% set narrowed = view.status or view.filters %}
+  <h2>Runs <span class="count num">{{ e.runs_list | length }}{% if narrowed %} of {{ e.runs }}{% endif %}</span>
+    {% if narrowed %}<a class="clear" href="{{ '?sort=' ~ (view.sort | urlencode) ~ ('&order=desc' if view.descending else '') if view.sort else '?' }}#runs">Clear filters</a>{% endif %}</h2>
+  {% if e.runs %}
   <div class="runs" style="--columns: {{ e.run_columns | length }}">
     <div class="run-head">
-      <span></span>
-      {% for column in e.run_columns %}<span>{{ column }}</span>{% endfor %}
+      {% for column in ['status'] + e.run_columns %}
+      {% set sorted = view.sort == column %}
+      <a class="sort{{ ' sorted' if sorted }}" href="{{ e.sort_hrefs[column] }}"{% if sorted %} aria-sort="{{ 'descending' if view.descending else 'ascending' }}"{% endif %} title="Sort by {{ column }}">{{ '' if column == 'status' else column }}{% if sorted %}<span class="arrow">{{ '↓' if view.descending else '↑' }}</span>{% endif %}</a>
+      {% endfor %}
     </div>
+    <form class="run-filters" method="get" action="#runs">
+      {% if view.sort %}<input type="hidden" name="sort" value="{{ view.sort }}">{% endif %}
+      {% if view.descending %}<input type="hidden" name="order" value="desc">{% endif %}
+      <select name="status" aria-label="Filter by status" onchange="this.form.requestSubmit()">
+        <option value=""{{ ' selected' if not view.status }}>all</option>
+        <option value="complete"{{ ' selected' if view.status == 'complete' }}>✓</option>
+        <option value="incomplete"{{ ' selected' if view.status == 'incomplete' }}>✕</option>
+      </select>
+      {% for column in e.run_columns %}<input type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endfor %}
+      <button type="submit" hidden>Filter</button>
+    </form>
     {% for run in e.runs_list %}
     <details class="run">
       <summary>
@@ -142,6 +158,8 @@
         {% endfor %}
       </dl>
     </details>
+    {% else %}
+    <p class="empty run-empty">No runs match these filters.</p>
     {% endfor %}
   </div>
   {% else %}

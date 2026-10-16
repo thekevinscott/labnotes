@@ -28,6 +28,11 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=[{"labnotes_completed": 1, "run_id": "r1"}],
         ) as list_runs,
+        mock.patch("labnotes.load_experiment.parse_run_view") as parse_run_view,
+        mock.patch(
+            "labnotes.load_experiment.sort_href",
+            side_effect=lambda view, column: f"?sort={column}",
+        ) as sort_href,
         mock.patch(
             "labnotes.load_experiment.render_markdown",
             side_effect=lambda text: f"<p>{text}</p>",
@@ -37,6 +42,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "run_columns": run_columns,
             "study_progress": study_progress,
             "list_runs": list_runs,
+            "parse_run_view": parse_run_view,
+            "sort_href": sort_href,
         }
 
 
@@ -56,7 +63,9 @@ def test_loads_design_notes_progress_and_runs(
     )
     runs = mock.Mock()
 
-    loaded = asyncio.run(load_experiment(experiments, runs, "it's"))
+    loaded = asyncio.run(
+        load_experiment(experiments, runs, "it's", {"sort": "x", "f.study": "s"})
+    )
 
     assert loaded is not None
     assert (loaded["name"], loaded["study"], loaded["target"]) == ("a", "s1", 4)
@@ -67,7 +76,17 @@ def test_loads_design_notes_progress_and_runs(
     first, second = experiments.query.await_args_list
     assert first.args[0].endswith("WHERE name = 'it''s'")
     assert "WHERE experiment = 'it''s' ORDER BY name" in second.args[0]
-    collaborators["list_runs"].assert_awaited_once_with(runs, "s1", "1")
+    params = {"sort": "x", "f.study": "s"}
+    view = collaborators["parse_run_view"].return_value
+    collaborators["parse_run_view"].assert_called_once_with(params, ["run_id", "x"])
+    collaborators["list_runs"].assert_awaited_once_with(runs, "s1", "1", view)
+    assert loaded["run_view"] is view
+    assert loaded["sort_hrefs"] == {
+        "status": "?sort=status",
+        "run_id": "?sort=run_id",
+        "x": "?sort=x",
+    }
+    assert collaborators["sort_href"].call_args_list[0].args == (view, "status")
     progress_args = collaborators["study_progress"].await_args.args
     assert progress_args[1] == "s1"
     assert progress_args[3] == ["run_id", "x", "study"]
@@ -78,7 +97,7 @@ def test_skips_runs_for_an_experiment_without_a_study(
 ) -> None:
     experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
 
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a"))
+    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
 
     assert loaded is not None
     assert loaded["runs_list"] == []
@@ -90,7 +109,8 @@ def test_returns_none_for_an_unknown_experiment(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     assert (
-        asyncio.run(load_experiment(make_experiments([]), mock.Mock(), "nope")) is None
+        asyncio.run(load_experiment(make_experiments([]), mock.Mock(), "nope", {}))
+        is None
     )
 
 
@@ -102,7 +122,7 @@ def test_lists_a_varies_key_that_is_the_first_column_once(
         [{"name": "a", "study": "s1", "design": json.dumps(DESIGN)}]
     )
 
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a"))
+    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
 
     assert loaded is not None
     assert loaded["run_columns"] == ["x"]

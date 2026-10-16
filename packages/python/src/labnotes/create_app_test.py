@@ -83,7 +83,11 @@ def call(app: Any, path: str, **path_params: str) -> tuple[int, str]:
     ]
     request = mock.Mock(scope={"type": "http"}, path_params=path_params)
     request.app = app
-    request.url_for = lambda route, /, **params: f"/{route}/{params.get('name', '')}"
+    request.url_for = (
+        lambda route,
+        /,
+        **params: f"/{route}/{params.get('name', params.get('path', ''))}"
+    )
     response = asyncio.run(endpoint(request))
     return response.status_code, response.body.decode()
 
@@ -116,6 +120,9 @@ def test_index_lists_experiments_with_progress(
     assert "--share: 0.5000" in text
     assert "1 experiment," in text
     assert "4 runs recorded" in text
+    assert '<table class="ledger" data-view="table">' in text
+    assert 'data-view="cards"' in text
+    assert "/static/view-toggle.js" in text
 
 
 def test_experiment_page_shows_design_grid_notes_and_runs(

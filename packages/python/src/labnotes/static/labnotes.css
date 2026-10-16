@@ -338,6 +338,49 @@ h3 {
 .record code { background: none; padding: 0; word-break: break-word; }
 .record pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 22rem; overflow: auto; font-size: 0.78rem; color: var(--ink-2); }
 
+/* Index view toggle */
+.view-toggle {
+  float: right;
+  display: inline-flex;
+  margin-top: 0.6rem;
+  border: 1px solid var(--rule-strong);
+  border-radius: 7px;
+  overflow: hidden;
+}
+.view-toggle button {
+  font: inherit;
+  font-size: 0.82rem;
+  padding: 0.3rem 0.8rem;
+  border: 0;
+  background: var(--surface);
+  color: var(--ink-2);
+  cursor: pointer;
+}
+.view-toggle button + button { border-left: 1px solid var(--rule-strong); }
+.view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+
+/* Index as cards: the same table, laid out as a grid. */
+.ledger[data-view="cards"] { display: block; background: none; border: 0; border-radius: 0; overflow: visible; }
+.ledger[data-view="cards"] thead { display: none; }
+.ledger[data-view="cards"] tbody {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(17rem, 1fr));
+  gap: 1rem;
+}
+.ledger[data-view="cards"] tbody tr {
+  display: flex;
+  flex-direction: column;
+  gap: 0.7rem;
+  padding: 1.1rem 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 10px;
+}
+.ledger[data-view="cards"] tbody tr:hover { background: var(--surface); border-color: var(--accent); }
+.ledger[data-view="cards"] td { display: block; padding: 0; border: 0; text-align: left; }
+.ledger[data-view="cards"] .progress-col { width: auto; }
+.ledger[data-view="cards"] td[data-label]::before { content: attr(data-label) " "; color: var(--ink-3); font-size: 0.82rem; }
+
 @media (max-width: 52rem) {
   main, .masthead { padding-left: 1.1rem; padding-right: 1.1rem; }
   h1 { font-size: 2rem; }

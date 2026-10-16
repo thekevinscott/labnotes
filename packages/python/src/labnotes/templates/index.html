@@ -3,13 +3,19 @@
 {% block crumbs %}<span class="crumb">{{ folder }}</span>{% endblock %}
 {% block main %}
 <section class="intro">
+  {% if experiments %}
+  <div class="view-toggle" role="group" aria-label="View">
+    <button type="button" data-view="table" aria-pressed="true">Table</button>
+    <button type="button" data-view="cards" aria-pressed="false">Cards</button>
+  </div>
+  {% endif %}
   <h1>Experiments</h1>
   <p class="lede">{{ experiments | length }} experiment{{ '' if experiments | length == 1 else 's' }},
     {{ experiments | sum(attribute='runs') }} runs recorded.</p>
 </section>
 
 {% if experiments %}
-<table class="ledger">
+<table class="ledger" data-view="table">
   <thead>
     <tr>
       <th scope="col">Experiment</th>
@@ -29,7 +35,7 @@
         {% for key, values in experiment.varies.items() %}<span class="factor">{{ key }} <b>{{ values | length }}</b>{% if not loop.last or experiment.runs_per_cell %}<span class="times">×</span>{% endif %}</span> {% endfor %}
         {% if experiment.runs_per_cell %}<span class="factor">runs <b>{{ experiment.runs_per_cell }}</b></span>{% endif %}
       </td>
-      <td class="num">{{ experiment.runs }}</td>
+      <td class="num" data-label="Runs">{{ experiment.runs }}</td>
       <td class="progress-col">
         {% if experiment.filled is not none and experiment.target %}
         <div class="progress-line">
@@ -43,6 +49,7 @@
     {% endfor %}
   </tbody>
 </table>
+<script src="{{ url_for('static', path='view-toggle.js') }}" defer></script>
 {% else %}
 <p class="empty">No experiments found. Each experiment is a folder holding a <code>design.yaml</code> and its markdown notes.</p>
 {% endif %}

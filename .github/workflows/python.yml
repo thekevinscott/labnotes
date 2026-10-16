@@ -4,7 +4,6 @@ on:
   pull_request:
     paths:
       - 'packages/python/**'
-      - 'packages/rust/**'
       - '!packages/*/changelog.d/**'
       - '!packages/*/migrations.d/**'
       - '.github/workflows/python.yml'
@@ -26,28 +25,34 @@ jobs:
       - run: uvx ruff@0.8.4 check .
       - run: uvx ruff@0.8.4 format --check .
 
-  build:
-    name: Build wheel + smoke
+  test:
+    name: Test (pytest, mypy)
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        python-version: ['3.9', '3.10', '3.11', '3.12', '3.13']
+        python-version: ['3.12', '3.13', '3.14']
+    defaults:
+      run:
+        working-directory: packages/python
     steps:
       - uses: actions/checkout@v6
-      - uses: dtolnay/rust-toolchain@stable
-      - uses: Swatinem/rust-cache@v2
         with:
-          workspaces: packages/rust
-      - uses: actions/setup-python@v6
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
         with:
           python-version: ${{ matrix.python-version }}
-      - run: pip install maturin
-      - name: Build wheel
-        run: maturin build --release -o dist
+      - run: uv run pytest
+      - run: uv run mypy src
+
+  build:
+    name: Build wheel + uvx smoke
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: astral-sh/setup-uv@v7
+      - run: uv build
         working-directory: packages/python
-      - name: Install wheel + smoke (--version)
-        run: |
-          python -m venv .venv
-          .venv/bin/pip install packages/python/dist/*.whl
-          .venv/bin/mynewproduct --version
+      - run: uvx --from packages/python/dist/*.whl labnotes --version

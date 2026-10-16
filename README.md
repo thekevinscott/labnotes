@@ -1,3 +1,7 @@
-# Template Lib
+# labnotes
 
-This is a template repository demonstrating a 3-language repository, with a Rust CLI at the core wrapped by Python and Typescript shims.
+Browse experiment designs, notes, and run data from a folder.
+
+```sh
+uvx labnotes --version
+```

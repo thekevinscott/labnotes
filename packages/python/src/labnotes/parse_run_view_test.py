@@ -14,6 +14,11 @@ EMPTY: dict[str, object] = {
 }
 
 
+def fresh(text: str) -> str:
+    """A copy that is equal but not identical, so `is` cannot stand in for `==`."""
+    return "".join(list(text))
+
+
 @pytest.fixture
 def run_view() -> Iterator[mock.MagicMock]:
     with mock.patch("labnotes.parse_run_view.RunView") as run_view:
@@ -28,7 +33,7 @@ def test_defaults_to_no_sort_status_or_filters(run_view: mock.MagicMock) -> None
 def test_reads_sort_order_status_and_filters(run_view: mock.MagicMock) -> None:
     params = {
         "sort": "model",
-        "order": "desc",
+        "order": fresh("desc"),
         "status": "complete",
         "f.model": " haiku ",
         "f.run_id": "",
@@ -42,7 +47,7 @@ def test_reads_sort_order_status_and_filters(run_view: mock.MagicMock) -> None:
 
 
 def test_sorts_by_status(run_view: mock.MagicMock) -> None:
-    parse_run_view({"sort": "status"}, COLUMNS)
+    parse_run_view({"sort": fresh("status")}, COLUMNS)
 
     assert run_view.call_args.kwargs["sort"] == "status"
 

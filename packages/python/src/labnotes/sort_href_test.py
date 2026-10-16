@@ -19,7 +19,10 @@ def test_sorts_ascending_first() -> None:
 
 
 def test_flips_to_descending_on_the_sorted_column() -> None:
-    assert sort_href(make_view(sort="model"), "model") == "?sort=model&order=desc#runs"
+    assert (
+        sort_href(make_view(sort="".join(list("model"))), "model")
+        == "?sort=model&order=desc#runs"
+    )
 
 
 def test_flips_back_to_ascending() -> None:

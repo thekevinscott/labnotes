@@ -9,7 +9,7 @@ async def list_runs(
 ) -> list[dict[str, object]]:
     where = [f"study = {quote_string(study)}"]
     if view.status:
-        negate = "" if view.status == "complete" else "NOT "
+        negate = "NOT " if view.status == "incomplete" else ""
         where.append(f"{negate}({completed_run})")
     where += [
         f"instr(lower(CAST({quote_identifier(column)} AS TEXT)),"

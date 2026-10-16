@@ -17,6 +17,11 @@ def make_view(
     )
 
 
+def fresh(text: str) -> str:
+    """A copy that is equal but not identical, so `is` cannot stand in for `==`."""
+    return "".join(list(text))
+
+
 def query(view: mock.Mock) -> str:
     runs = mock.Mock()
     runs.query = mock.AsyncMock(return_value=[])
@@ -41,7 +46,7 @@ def test_lists_a_studys_runs_newest_first_with_a_completed_flag() -> None:
     [
         (make_view(sort="model"), 'ORDER BY "model" ASC'),
         (make_view(sort="model", descending=True), 'ORDER BY "model" DESC'),
-        (make_view(sort="status"), "ORDER BY labnotes_completed ASC"),
+        (make_view(sort=fresh("status")), "ORDER BY labnotes_completed ASC"),
     ],
 )
 def test_sorts_by_the_chosen_column(view: mock.Mock, order: str) -> None:
@@ -56,7 +61,7 @@ def test_sorts_by_the_chosen_column(view: mock.Mock, order: str) -> None:
     ],
 )
 def test_filters_by_status(status: str, condition: str) -> None:
-    assert condition in query(make_view(status=status))
+    assert condition in query(make_view(status=fresh(status)))
 
 
 def test_filters_columns_by_case_insensitive_substring() -> None:

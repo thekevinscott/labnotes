@@ -27,7 +27,7 @@ Use `T | None` not `Optional[T]`. Use `list[T]` not `List[T]`. Use `dict`, `tupl
 **Mark the package typed**:
 
 ```
-mynewproduct/
+labnotes/
   py.typed         # empty file; tells type checkers the package has inline hints
 ```
 
@@ -35,8 +35,8 @@ Then `force-include` it in the wheel build (if hatchling needs hinting):
 
 ```toml
 [tool.hatch.build.targets.wheel]
-packages = ["mynewproduct"]
-include = ["mynewproduct/py.typed"]
+packages = ["labnotes"]
+include = ["labnotes/py.typed"]
 ```
 
 **dataclass for internal data, Pydantic at boundaries.**
@@ -83,7 +83,7 @@ class Loader(Protocol):
 
 ## Imports
 
-**Absolute imports only.** Every import of first-party code spells the full package path (`from mynewproduct.config import load`), never a relative one (`from .config import load`). PEP 8 recommends absolute imports: they read the same wherever the module sits, survive moves, and grep cleanly. Enforced by ruff `TID252` with `[tool.ruff.lint.flake8-tidy-imports] ban-relative-imports = "all"`; `ruff check --fix --unsafe-fixes` rewrites existing relative imports.
+**Absolute imports only.** Every import of first-party code spells the full package path (`from labnotes.config import load`), never a relative one (`from .config import load`). PEP 8 recommends absolute imports: they read the same wherever the module sits, survive moves, and grep cleanly. Enforced by ruff `TID252` with `[tool.ruff.lint.flake8-tidy-imports] ban-relative-imports = "all"`; `ruff check --fix --unsafe-fixes` rewrites existing relative imports.
 
 ---
 

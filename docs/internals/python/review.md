@@ -9,7 +9,7 @@ uv sync
 uv run pytest -x -q
 uv run ruff check .
 uv run ruff format --check .
-uv run ty check mynewproduct/    # or mypy
+uv run ty check labnotes/    # or mypy
 ```
 
 If the agent didn't run these, ask. If they fail, the agent should fix before you read.
@@ -27,8 +27,8 @@ If the agent didn't run these, ask. If they fail, the agent should fix before yo
 9. **`__init__.py`** — explicit `__all__`; heavy deps loaded through PEP 562 lazy attribute access where appropriate.
 10. **Native 3.12+ syntax** — `list[T]`, `T | None`, PEP 695 generics; `from __future__ import annotations` only where the project floor demands it.
 11. **Changelog fragment** — a `docs/changelog.d/` fragment added (plus `docs/migrations.d/` when breaking) for any consumer-observable change, or a `skip-changelog:` trailer present (philosophy in [../repo.md](../repo.md)).
-12. **`putitoutthere.toml`** — `globs` cover every source path that should cascade; CLI packages declare `depends_on` on the Rust binary crate and carry a `[package.bundle_cli]` table.
-13. **CLI shape** — if the PR adds a user-facing CLI, the binary is a Rust crate with the Python wrapper exec-ing into it; argument parsing lives in `clap`, not Python.
+12. **`putitoutthere.toml`** — `globs` cover every source path that should cascade.
+13. **CLI shape** — a user-facing CLI is declared under `[project.scripts]` and parses its own arguments; no hand-rolled `sys.argv` handling.
 
 ---
 

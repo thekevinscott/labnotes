@@ -49,8 +49,8 @@
     {% endfor %}
   </tbody>
 </table>
-<script src="{{ url_for('static', path='view-toggle.js') }}" defer></script>
-<script src="{{ url_for('static', path='row-link.js') }}" defer></script>
+<script src="{{ asset('view-toggle.js') }}" defer></script>
+<script src="{{ asset('row-link.js') }}" defer></script>
 {% else %}
 <p class="empty">No experiments found. Each experiment is a folder holding a <code>design.yaml</code> and its markdown notes.</p>
 {% endif %}

@@ -12,6 +12,7 @@ from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
+from labnotes.asset_url import asset_url
 from labnotes.drain_watch import drain_watch
 from labnotes.format_value import format_value
 from labnotes.list_experiments import list_experiments
@@ -23,6 +24,7 @@ from labnotes.pivot_cells import pivot_cells
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.filters["value"] = format_value
+templates.env.globals["asset"] = asset_url
 
 
 def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:

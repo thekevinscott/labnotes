@@ -4,10 +4,20 @@ from unittest import mock
 import pytest
 
 from labnotes.list_runs import list_runs
-from labnotes.models import RunView
 
 
-def query(view: RunView) -> str:
+def make_view(
+    sort: str | None = None,
+    descending: bool = False,
+    status: str | None = None,
+    filters: dict[str, str] | None = None,
+) -> mock.Mock:
+    return mock.Mock(
+        sort=sort, descending=descending, status=status, filters=filters or {}
+    )
+
+
+def query(view: mock.Mock) -> str:
     runs = mock.Mock()
     runs.query = mock.AsyncMock(return_value=[])
     asyncio.run(list_runs(runs, "s", "exit_code = 0", view))
@@ -18,7 +28,7 @@ def test_lists_a_studys_runs_newest_first_with_a_completed_flag() -> None:
     runs = mock.Mock()
     runs.query = mock.AsyncMock(return_value=[{"labnotes_completed": 1, "run_id": "b"}])
 
-    assert asyncio.run(list_runs(runs, "s", "exit_code = 0", RunView())) == [
+    assert asyncio.run(list_runs(runs, "s", "exit_code = 0", make_view())) == [
         {"labnotes_completed": 1, "run_id": "b"}
     ]
     sql = runs.query.await_args.args[0]
@@ -29,12 +39,12 @@ def test_lists_a_studys_runs_newest_first_with_a_completed_flag() -> None:
 @pytest.mark.parametrize(
     ("view", "order"),
     [
-        (RunView(sort="model"), 'ORDER BY "model" ASC'),
-        (RunView(sort="model", descending=True), 'ORDER BY "model" DESC'),
-        (RunView(sort="status"), "ORDER BY labnotes_completed ASC"),
+        (make_view(sort="model"), 'ORDER BY "model" ASC'),
+        (make_view(sort="model", descending=True), 'ORDER BY "model" DESC'),
+        (make_view(sort="status"), "ORDER BY labnotes_completed ASC"),
     ],
 )
-def test_sorts_by_the_chosen_column(view: RunView, order: str) -> None:
+def test_sorts_by_the_chosen_column(view: mock.Mock, order: str) -> None:
     assert query(view).endswith(order)
 
 
@@ -46,11 +56,11 @@ def test_sorts_by_the_chosen_column(view: RunView, order: str) -> None:
     ],
 )
 def test_filters_by_status(status: str, condition: str) -> None:
-    assert condition in query(RunView(status=status))
+    assert condition in query(make_view(status=status))
 
 
 def test_filters_columns_by_case_insensitive_substring() -> None:
-    sql = query(RunView(filters={"model": "it's", "effort": "hi"}))
+    sql = query(make_view(filters={"model": "it's", "effort": "hi"}))
 
     assert (
         "WHERE study = 's'"

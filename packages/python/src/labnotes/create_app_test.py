@@ -8,7 +8,18 @@ from unittest import mock
 import pytest
 
 from labnotes.create_app import create_app
-from labnotes.models import RunView
+
+
+def make_view(
+    sort: str | None = None,
+    descending: bool = False,
+    status: str | None = None,
+    filters: dict[str, str] | None = None,
+) -> mock.Mock:
+    return mock.Mock(
+        sort=sort, descending=descending, status=status, filters=filters or {}
+    )
+
 
 EXPERIMENT: dict[str, object] = {
     "name": "models-effort",
@@ -33,7 +44,7 @@ EXPERIMENT: dict[str, object] = {
         {"labnotes_completed": 1, "run_id": "r1", "model": "opus", "result": "x" * 100}
     ],
     "run_columns": ["run_id", "model"],
-    "run_view": RunView(sort="model", descending=True, filters={"model": "op"}),
+    "run_view": make_view(sort="model", descending=True, filters={"model": "op"}),
     "sort_hrefs": {
         "status": "?sort=status#runs",
         "run_id": "?sort=run_id#runs",

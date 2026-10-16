@@ -6,7 +6,6 @@ from unittest import mock
 import pytest
 
 from labnotes.load_experiment import load_experiment
-from labnotes.models import RunView
 
 DESIGN = {"study": "s1", "runs_per_cell": 2, "varies": {"x": [1, 2], "y": ["a"]}}
 
@@ -29,6 +28,11 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=[{"labnotes_completed": 1, "run_id": "r1"}],
         ) as list_runs,
+        mock.patch("labnotes.load_experiment.parse_run_view") as parse_run_view,
+        mock.patch(
+            "labnotes.load_experiment.sort_href",
+            side_effect=lambda view, column: f"?sort={column}",
+        ) as sort_href,
         mock.patch(
             "labnotes.load_experiment.render_markdown",
             side_effect=lambda text: f"<p>{text}</p>",
@@ -38,6 +42,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "run_columns": run_columns,
             "study_progress": study_progress,
             "list_runs": list_runs,
+            "parse_run_view": parse_run_view,
+            "sort_href": sort_href,
         }
 
 
@@ -70,15 +76,17 @@ def test_loads_design_notes_progress_and_runs(
     first, second = experiments.query.await_args_list
     assert first.args[0].endswith("WHERE name = 'it''s'")
     assert "WHERE experiment = 'it''s' ORDER BY name" in second.args[0]
-    collaborators["list_runs"].assert_awaited_once_with(
-        runs, "s1", "1", RunView(sort="x")
-    )
-    assert loaded["run_view"] == RunView(sort="x")
+    params = {"sort": "x", "f.study": "s"}
+    view = collaborators["parse_run_view"].return_value
+    collaborators["parse_run_view"].assert_called_once_with(params, ["run_id", "x"])
+    collaborators["list_runs"].assert_awaited_once_with(runs, "s1", "1", view)
+    assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {
-        "status": "?sort=status#runs",
-        "run_id": "?sort=run_id#runs",
-        "x": "?sort=x&order=desc#runs",
+        "status": "?sort=status",
+        "run_id": "?sort=run_id",
+        "x": "?sort=x",
     }
+    assert collaborators["sort_href"].call_args_list[0].args == (view, "status")
     progress_args = collaborators["study_progress"].await_args.args
     assert progress_args[1] == "s1"
     assert progress_args[3] == ["run_id", "x", "study"]

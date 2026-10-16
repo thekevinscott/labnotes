@@ -31,6 +31,9 @@ source = "vcs"
 root = "../.."
 local_scheme = "no-local-version"
 
+[tool.hatch.build]
+exclude = ["*_test.py"]
+
 [tool.hatch.build.targets.wheel]
 packages = ["src/labnotes"]
 

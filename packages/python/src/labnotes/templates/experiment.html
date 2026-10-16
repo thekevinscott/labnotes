@@ -111,8 +111,8 @@
 <section id="notes" class="block">
   <h2>Notes</h2>
   {% for note in e.notes %}
-  <article class="note" data-run-url="{{ url_for('run_block', name=e.name, note=note.name) }}">
-    <header class="note-name">{{ note.name }}</header>
+  <article class="note" data-run-url="{{ url_for('run_block', name=e.name, note=note.name) }}" data-restart-url="{{ url_for('restart_kernel', name=e.name, note=note.name) }}">
+    <header class="note-name">{{ note.name }}{% if note.runnable %}<button type="button" class="restart" title="Stop this note's Python kernel. The next Run starts a fresh one.">Restart</button>{% endif %}</header>
     <div class="prose">{{ note.html | safe }}</div>
   </article>
   {% endfor %}

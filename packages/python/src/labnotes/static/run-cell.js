@@ -21,3 +21,24 @@ for (const note of document.querySelectorAll(".note[data-run-url]")) {
     });
   }
 }
+
+for (const note of document.querySelectorAll(".note[data-restart-url]")) {
+  const button = note.querySelector(".restart");
+  if (!button) continue;
+  button.addEventListener("click", async () => {
+    button.disabled = true;
+    button.textContent = "Restarting";
+    try {
+      const response = await fetch(note.dataset.restartUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: "{}",
+      });
+      button.textContent = response.ok ? "Restarted" : `${response.status} ${response.statusText}`;
+      await new Promise((resolve) => setTimeout(resolve, 1500));
+    } finally {
+      button.disabled = false;
+      button.textContent = "Restart";
+    }
+  });
+}

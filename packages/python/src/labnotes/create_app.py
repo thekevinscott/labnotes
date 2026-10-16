@@ -24,6 +24,7 @@ from labnotes.pivot_cells import pivot_cells
 from labnotes.python_blocks import python_blocks
 from labnotes.saved_outputs import saved_outputs
 from labnotes.sql_quote import quote_string
+from labnotes.stop_idle_kernels import stop_idle_kernels
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
@@ -31,7 +32,9 @@ templates.env.filters["value"] = format_value
 templates.env.globals["asset"] = asset_url
 
 
-def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:
+def create_app(
+    experiments_folder: Path, data_folder: Path, kernel_idle_minutes: float
+) -> Starlette:
     kernels: dict[tuple[str, str], NotebookKernel] = {}
 
     @asynccontextmanager
@@ -43,6 +46,7 @@ def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:
         watchers = [
             asyncio.create_task(drain_watch(app.state.experiments)),
             asyncio.create_task(drain_watch(app.state.runs)),
+            asyncio.create_task(stop_idle_kernels(kernels, kernel_idle_minutes)),
         ]
         yield
         for watcher in watchers:
@@ -79,7 +83,7 @@ def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:
             {"experiment": loaded, "pivot": pivot_cells(varies, cells)},
         )
 
-    async def run_block(request: Request) -> Response:
+    async def note_content(request: Request) -> str:
         if request.headers.get("content-type") != "application/json":
             raise HTTPException(415, "Send JSON")
         name = request.path_params["name"]
@@ -91,19 +95,35 @@ def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:
         if not found:
             raise HTTPException(404, "No such note")
         [row] = found
-        blocks = python_blocks(str(row["content"]))
+        return str(row["content"])
+
+    async def run_block(request: Request) -> Response:
+        blocks = python_blocks(await note_content(request))
+        key = (request.path_params["name"], request.path_params["note"])
         block = (await request.json()).get("block")
         if not isinstance(block, int) or not 0 <= block < len(blocks):
             raise HTTPException(400, "No such block")
-        if (name, note) not in kernels:
-            kernels[(name, note)] = NotebookKernel(data_folder)
-        return HTMLResponse(await kernels[(name, note)].run(blocks[block]))
+        if key not in kernels:
+            kernels[key] = NotebookKernel(data_folder)
+        return HTMLResponse(await kernels[key].run(blocks[block]))
+
+    async def restart_kernel(request: Request) -> Response:
+        await note_content(request)
+        kernel = kernels.get((request.path_params["name"], request.path_params["note"]))
+        if kernel is not None:
+            await kernel.restart()
+        return Response(status_code=204)
 
     return Starlette(
         routes=[
             Route("/", index),
             Route("/experiments/{name}", experiment),
             Route("/experiments/{name}/notes/{note}/run", run_block, methods=["POST"]),
+            Route(
+                "/experiments/{name}/notes/{note}/restart",
+                restart_kernel,
+                methods=["POST"],
+            ),
             Mount("/static", StaticFiles(directory=HERE / "static"), name="static"),
         ],
         lifespan=lifespan,

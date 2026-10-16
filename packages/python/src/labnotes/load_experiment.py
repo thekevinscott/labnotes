@@ -6,6 +6,7 @@ from dirsql import DirSQL
 
 from labnotes.list_runs import list_runs
 from labnotes.parse_run_view import parse_run_view
+from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
 from labnotes.run_columns import run_columns
 from labnotes.sort_href import sort_href
@@ -59,6 +60,7 @@ async def load_experiment(
                     str(note["content"]),
                     outputs_for(str(note["name"]), str(note["content"])),
                 ),
+                "runnable": bool(python_blocks(str(note["content"]))),
             }
             for note in notes
         ],

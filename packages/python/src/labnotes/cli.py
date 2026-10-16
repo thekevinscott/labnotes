@@ -7,7 +7,7 @@ import click
 from uvicorn.main import main as uvicorn_main
 
 from labnotes.dump_experiments import dump_experiments
-from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER
+from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER, KERNEL_IDLE_MINUTES
 
 # labnotes owns these; the rest of uvicorn's options pass straight through.
 OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
@@ -30,6 +30,14 @@ OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
     help="Run data, with a .dirsql.toml declaring a runs table that has a study column.",
 )
 @click.option(
+    "--kernel-idle-minutes",
+    type=click.IntRange(min=1),
+    default=30,
+    show_default=True,
+    envvar=KERNEL_IDLE_MINUTES,
+    help="Stop a note's Python kernel after this long without a run.",
+)
+@click.option(
     "--json",
     "as_json",
     is_flag=True,
@@ -48,6 +56,7 @@ def main(
     ctx: click.Context,
     experiments_folder: Path,
     data_folder: Path,
+    kernel_idle_minutes: int,
     as_json: bool,
     **server_options: object,
 ) -> None:
@@ -58,6 +67,7 @@ def main(
     # Through the environment so --reload and --workers child processes see them.
     os.environ[EXPERIMENTS_FOLDER] = str(experiments_folder.resolve())
     os.environ[DATA_FOLDER] = str(data_folder.resolve())
+    os.environ[KERNEL_IDLE_MINUTES] = str(kernel_idle_minutes)
     ctx.invoke(
         uvicorn_main,
         app="labnotes.serve_app:serve_app",

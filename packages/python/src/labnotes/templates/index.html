@@ -1,0 +1,49 @@
+{% extends "base.html" %}
+{% from "macros.html" import meter, percent %}
+{% block crumbs %}<span class="crumb">{{ folder }}</span>{% endblock %}
+{% block main %}
+<section class="intro">
+  <h1>Experiments</h1>
+  <p class="lede">{{ experiments | length }} experiment{{ '' if experiments | length == 1 else 's' }},
+    {{ experiments | sum(attribute='runs') }} runs recorded.</p>
+</section>
+
+{% if experiments %}
+<table class="ledger">
+  <thead>
+    <tr>
+      <th scope="col">Experiment</th>
+      <th scope="col">Design</th>
+      <th scope="col" class="num">Runs</th>
+      <th scope="col" class="progress-col">Grid filled</th>
+    </tr>
+  </thead>
+  <tbody>
+    {% for experiment in experiments %}
+    <tr>
+      <td>
+        <a class="title-link" href="{{ url_for('experiment', name=experiment.name) }}">{{ experiment.name }}</a>
+        {% if experiment.study %}<div class="study">{{ experiment.study }}</div>{% endif %}
+      </td>
+      <td class="design">
+        {% for key, values in experiment.varies.items() %}<span class="factor">{{ key }} <b>{{ values | length }}</b>{% if not loop.last or experiment.runs_per_cell %}<span class="times">×</span>{% endif %}</span> {% endfor %}
+        {% if experiment.runs_per_cell %}<span class="factor">runs <b>{{ experiment.runs_per_cell }}</b></span>{% endif %}
+      </td>
+      <td class="num">{{ experiment.runs }}</td>
+      <td class="progress-col">
+        {% if experiment.filled is not none and experiment.target %}
+        <div class="progress-line">
+          {{ meter(experiment.filled, experiment.target) }}
+          <span class="num">{{ experiment.filled }}<span class="of">/{{ experiment.target }}</span></span>
+          <span class="pct num">{{ percent(experiment.filled, experiment.target) }}</span>
+        </div>
+        {% else %}<span class="muted">—</span>{% endif %}
+      </td>
+    </tr>
+    {% endfor %}
+  </tbody>
+</table>
+{% else %}
+<p class="empty">No experiments found. Each experiment is a folder holding a <code>design.yaml</code> and its markdown notes.</p>
+{% endif %}
+{% endblock %}

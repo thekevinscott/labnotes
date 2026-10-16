@@ -144,6 +144,7 @@ def test_index_lists_experiments_with_progress(
     assert 'data-view="cards"' in text
     assert "/static/view-toggle.js" in text
     assert "/static/row-link.js" in text
+    assert "/static/row-link.js?v=" in text
 
 
 def test_experiment_page_shows_design_grid_notes_and_runs(

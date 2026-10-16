@@ -14,6 +14,11 @@ def data_html() -> Iterator[mock.MagicMock]:
         yield patched
 
 
+def fresh(text: str) -> str:
+    """A copy that is equal but not identical, so `is` cannot stand in for `==`."""
+    return "".join(list(text))
+
+
 def test_renders_streams_escaped_with_their_name() -> None:
     html = output_html(
         [{"msg_type": "stream", "content": {"name": "stderr", "text": "<oops>\n"}}]
@@ -53,3 +58,25 @@ def test_skips_other_messages_and_joins_in_order() -> None:
     )
 
     assert html == '<pre class="stdout">a</pre>' + "<{'text/plain': 'b'}>"
+
+
+def test_matches_message_types_by_value() -> None:
+    html = output_html(
+        [
+            {"msg_type": fresh("stream"), "content": {"name": "stdout", "text": "a"}},
+            {"msg_type": fresh("error"), "content": {"traceback": ["t"]}},
+        ]
+    )
+
+    assert html == '<pre class="stdout">a</pre><pre class="error">t</pre>'
+
+
+def test_skips_message_types_that_sort_near_handled_ones() -> None:
+    html = output_html(
+        [
+            {"msg_type": "update_display_data", "content": {}},
+            {"msg_type": "clear_output", "content": {}},
+        ]
+    )
+
+    assert html == ""

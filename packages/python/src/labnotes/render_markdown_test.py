@@ -30,3 +30,13 @@ def test_numbers_cells_per_document() -> None:
     render_markdown("```python\na\n```\n")
 
     assert 'data-block="0"' in render_markdown("```python\nz\n```\n")
+
+
+def test_blocks_past_the_saved_outputs_render_empty() -> None:
+    html = render_markdown(
+        "```python\na\n```\n\n```python\nb\n```\n\n```python\nc\n```\n",
+        ["<pre>out</pre>"],
+    )
+
+    assert '<div class="cell" data-block="2">' in html
+    assert html.count('<output class="cell-output"></output>') == 2

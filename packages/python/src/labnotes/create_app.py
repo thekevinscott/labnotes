@@ -90,7 +90,8 @@ def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:
         )
         if not found:
             raise HTTPException(404, "No such note")
-        blocks = python_blocks(str(found[0]["content"]))
+        [row] = found
+        blocks = python_blocks(str(row["content"]))
         block = (await request.json()).get("block")
         if not isinstance(block, int) or not 0 <= block < len(blocks):
             raise HTTPException(400, "No such block")

@@ -278,7 +278,9 @@ def test_run_reuses_the_note_kernel(app: Any, kernel_class: mock.MagicMock) -> N
     kernel_class.assert_called_once()
 
 
-@pytest.mark.parametrize("body", [{"block": 2}, {"block": -1}, {"block": "0"}, {}])
+@pytest.mark.parametrize(
+    "body", [{"block": 2}, {"block": 3}, {"block": -1}, {"block": "0"}, {}]
+)
 def test_run_rejects_a_missing_block(
     app: Any, kernel_class: mock.MagicMock, body: object
 ) -> None:
@@ -298,11 +300,12 @@ def test_run_rejects_an_unknown_note(app: Any, kernel_class: mock.MagicMock) -> 
     assert getattr(raised.value, "status_code", None) == 404
 
 
+@pytest.mark.parametrize("content_type", ["text/plain", "application/graphql"])
 def test_run_requires_json_so_forms_on_other_sites_cannot_post(
-    app: Any, kernel_class: mock.MagicMock
+    app: Any, kernel_class: mock.MagicMock, content_type: str
 ) -> None:
     with pytest.raises(Exception) as raised:
-        post_run(app, {"block": 0}, content_type="text/plain")
+        post_run(app, {"block": 0}, content_type=content_type)
     assert getattr(raised.value, "status_code", None) == 415
 
 

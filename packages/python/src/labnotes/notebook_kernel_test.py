@@ -49,6 +49,7 @@ def test_starts_lazily_in_the_given_folder_and_runs_the_code(
     manager.return_value.start_kernel.assert_awaited_once_with(cwd="/data")
     client = manager.return_value.client.return_value
     client.start_channels.assert_called_once_with()
+    client.wait_for_ready.assert_awaited_once_with(timeout=60)
     assert client.execute_interactive.await_args.args == ("print('hi')",)
     assert client.execute_interactive.await_args.kwargs["allow_stdin"] is False
 

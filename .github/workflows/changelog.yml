@@ -1,0 +1,30 @@
+name: Changelog
+
+# Require a changelog fragment (docs/changelog.d/) on PRs that change a
+# package's public surface, plus a migrations fragment (docs/migrations.d/)
+# when a commit carries a `breaking:` trailer. A `skip-changelog:` trailer
+# bypasses the check. Runs testing-conventions' changelog gate alone; the
+# `languages` / `source` inputs only satisfy the reusable workflow's detect
+# step, the changelog gate itself diffs the whole repo against the base.
+# See docs/internals/repo.md.
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited]
+    paths:
+      - 'packages/**'
+      - 'docs/changelog.d/**'
+      - 'docs/migrations.d/**'
+      - '.github/workflows/changelog.yml'
+
+permissions:
+  contents: read
+
+jobs:
+  changelog:
+    name: Changelog
+    uses: thekevinscott/testing-conventions/.github/workflows/testing-conventions.yml@v0
+    with:
+      languages: '["python"]'
+      source: packages/python
+      gates: '["changelog"]'

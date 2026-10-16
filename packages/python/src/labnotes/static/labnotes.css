@@ -414,6 +414,8 @@ h2 .clear { font-family: var(--sans); font-size: 0.82rem; margin-left: 0.8rem; c
   position: absolute;
   top: 0.5rem;
   right: 0.5rem;
+}
+.cell .run, .note-name .restart {
   font: inherit;
   font-family: var(--sans);
   font-size: 0.75rem;
@@ -424,8 +426,9 @@ h2 .clear { font-family: var(--sans); font-size: 0.82rem; margin-left: 0.8rem; c
   color: var(--ink-2);
   cursor: pointer;
 }
-.cell .run:hover { color: var(--accent); border-color: var(--accent); }
-.cell .run:disabled { cursor: progress; opacity: 0.6; }
+.cell .run:hover, .note-name .restart:hover { color: var(--accent); border-color: var(--accent); }
+.cell .run:disabled, .note-name .restart:disabled { cursor: progress; opacity: 0.6; }
+.note-name:has(.restart) { display: flex; align-items: center; justify-content: space-between; padding-top: 0.45rem; padding-bottom: 0.45rem; }
 .cell-output { display: block; }
 .cell-output:not(:empty) { margin-top: 0.4rem; padding-left: 0.9rem; border-left: 2px solid var(--accent-soft); overflow-x: auto; }
 .cell-output pre { background: none; border: 0; padding: 0.3rem 0; }

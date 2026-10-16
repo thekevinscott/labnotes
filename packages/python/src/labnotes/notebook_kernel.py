@@ -1,6 +1,7 @@
 import asyncio
 import hashlib
 from pathlib import Path
+from time import monotonic
 
 from jupyter_client.asynchronous.client import AsyncKernelClient
 from jupyter_client.manager import AsyncKernelManager
@@ -23,6 +24,7 @@ class NotebookKernel:
         self._lock = asyncio.Lock()
         self._manager: AsyncKernelManager | None = None
         self._client: AsyncKernelClient | None = None
+        self.last_used = monotonic()
 
     async def _start(self) -> None:
         self._manager = AsyncKernelManager(kernel_name="python3")
@@ -33,27 +35,40 @@ class NotebookKernel:
 
     async def run(self, code: str) -> str:
         async with self._lock:
-            if self._client is None:
-                await self._start()
-            assert self._client is not None
-            messages: list[dict[str, object]] = []
-            await self._client.execute_interactive(
-                code,
-                output_hook=lambda message: messages.append(message),
-                allow_stdin=False,
-            )
-            html = output_html(
-                [
-                    {"msg_type": message["msg_type"], "content": message["content"]}
-                    for message in messages
-                    if message["msg_type"] not in QUIET
-                ]
-            )
-            self.outputs[block_key(code)] = html
-            return html
+            try:
+                if self._client is None:
+                    await self._start()
+                assert self._client is not None
+                messages: list[dict[str, object]] = []
+                await self._client.execute_interactive(
+                    code,
+                    output_hook=lambda message: messages.append(message),
+                    allow_stdin=False,
+                )
+                html = output_html(
+                    [
+                        {"msg_type": message["msg_type"], "content": message["content"]}
+                        for message in messages
+                        if message["msg_type"] not in QUIET
+                    ]
+                )
+                self.outputs[block_key(code)] = html
+                return html
+            finally:
+                self.last_used = monotonic()
 
     async def stop(self) -> None:
-        if self._client is not None:
-            self._client.stop_channels()
-        if self._manager is not None:
-            await self._manager.shutdown_kernel(now=True)
+        client, manager = self._client, self._manager
+        self._client = self._manager = None
+        if client is not None:
+            client.stop_channels()
+        if manager is not None:
+            await manager.shutdown_kernel(now=True)
+
+    async def restart(self) -> None:
+        async with self._lock:
+            await self.stop()
+
+    async def stop_if_idle(self, idle_seconds: float) -> None:
+        if not self._lock.locked() and monotonic() - self.last_used > idle_seconds:
+            await self.stop()

@@ -39,7 +39,10 @@ EXPERIMENT: dict[str, object] = {
         {"values": {"model": "haiku"}, "runs": 1, "completed": 0},
     ],
     "missing_columns": [],
-    "notes": [{"name": "PLAN.md", "html": "<h1>The plan</h1>"}],
+    "notes": [
+        {"name": "PLAN.md", "html": "<h1>The plan</h1>", "runnable": True},
+        {"name": "READ.md", "html": "<p>Prose</p>", "runnable": False},
+    ],
     "runs_list": [
         {"labnotes_completed": 1, "run_id": "r1", "model": "opus", "result": "x" * 100}
     ],
@@ -62,6 +65,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.create_app.drain_watch", new_callable=mock.AsyncMock
         ) as drain,
         mock.patch(
+            "labnotes.create_app.stop_idle_kernels", new_callable=mock.AsyncMock
+        ) as stop_idle_kernels,
+        mock.patch(
             "labnotes.create_app.list_experiments",
             new_callable=mock.AsyncMock,
             return_value=[EXPERIMENT],
@@ -78,6 +84,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "open_experiments": open_experiments,
             "open_runs": open_runs,
             "drain_watch": drain,
+            "stop_idle_kernels": stop_idle_kernels,
             "list_experiments": list_experiments,
             "load_experiment": load_experiment,
         }
@@ -85,7 +92,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
 
 @pytest.fixture
 def app(collaborators: dict[str, mock.MagicMock]) -> Iterator[Any]:
-    app = create_app(Path("exp"), Path("data"))
+    app = create_app(Path("exp"), Path("data"), 30)
 
     async def run_lifespan() -> None:
         async with app.router.lifespan_context(app):
@@ -164,6 +171,8 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
     assert "<code>exit_code = 0</code>" in text
     assert "<h1>The plan</h1>" in text
     assert 'data-run-url="/run_block/models-effort"' in text
+    assert 'data-restart-url="/restart_kernel/models-effort"' in text
+    assert text.count('class="restart"') == 1
     assert "/static/run-cell.js" in text
     assert '<td class="cell done"' in text
     assert '<td class="cell"' in text
@@ -201,7 +210,7 @@ def test_builds_without_deprecation_warnings(
 ) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        create_app(Path("exp"), Path("data"))
+        create_app(Path("exp"), Path("data"), 30)
 
 
 def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) -> None:
@@ -215,7 +224,7 @@ def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) ->
             raise
 
     collaborators["drain_watch"].side_effect = watch_forever
-    app = create_app(Path("exp"), Path("data"))
+    app = create_app(Path("exp"), Path("data"), 30)
 
     async def run_lifespan() -> list[object]:
         async with app.router.lifespan_context(app):
@@ -230,12 +239,17 @@ NOTE = "# Plan\n\n```python\na = 1\n```\n\n```python\na + 1\n```\n"
 
 
 def post_run(
-    app: Any, body: object, content_type: str = "application/json", **params: str
+    app: Any,
+    body: object,
+    content_type: str = "application/json",
+    action: str = "run",
+    **params: str,
 ) -> Any:
     [endpoint] = [
         route.endpoint
         for route in app.routes
-        if getattr(route, "path", None) == "/experiments/{name}/notes/{note}/run"
+        if getattr(route, "path", None)
+        == f"/experiments/{{name}}/notes/{{note}}/{action}"
     ]
     request = mock.Mock(
         path_params={"name": "models-effort", "note": "PLAN.md", **params},
@@ -329,7 +343,7 @@ def test_experiment_page_shows_outputs_of_blocks_already_run(
 def test_stops_kernels_on_shutdown(
     collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app = create_app(Path("exp"), Path("data"))
+    app = create_app(Path("exp"), Path("data"), 30)
 
     async def lifecycle() -> None:
         async with app.router.lifespan_context(app):
@@ -352,3 +366,75 @@ def test_stops_kernels_on_shutdown(
     asyncio.run(lifecycle())
 
     kernel_class.return_value.stop.assert_awaited_once()
+
+
+def test_stops_idle_kernels_in_the_background(
+    collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
+) -> None:
+    app = create_app(Path("exp"), Path("data"), 7)
+
+    async def lifecycle() -> None:
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(0)
+
+    asyncio.run(lifecycle())
+    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
+    post_run(app, {"block": 0})
+
+    kernels, idle_minutes = collaborators["stop_idle_kernels"].await_args.args
+    assert idle_minutes == 7
+    assert kernels == {("models-effort", "PLAN.md"): kernel_class.return_value}
+
+
+def test_restart_stops_the_note_kernel_and_keeps_it(
+    app: Any, kernel_class: mock.MagicMock
+) -> None:
+    kernel_class.return_value.restart = mock.AsyncMock()
+    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
+    post_run(app, {"block": 0})
+
+    response = post_run(app, {}, action="restart")
+
+    assert response.status_code == 204
+    kernel_class.return_value.restart.assert_awaited_once_with()
+    post_run(app, {"block": 1})
+    kernel_class.assert_called_once()
+
+
+def test_restart_before_any_run_starts_nothing(
+    app: Any, kernel_class: mock.MagicMock
+) -> None:
+    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
+
+    response = post_run(app, {}, action="restart")
+
+    assert response.status_code == 204
+    kernel_class.assert_not_called()
+
+
+def test_restart_only_touches_its_own_note(
+    app: Any, kernel_class: mock.MagicMock
+) -> None:
+    kernel_class.return_value.restart = mock.AsyncMock()
+    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
+    post_run(app, {"block": 0})
+
+    post_run(app, {}, action="restart", note="OTHER.md")
+
+    kernel_class.return_value.restart.assert_not_awaited()
+
+
+def test_restart_rejects_an_unknown_note(
+    app: Any, kernel_class: mock.MagicMock
+) -> None:
+    app.state.experiments.query = mock.AsyncMock(return_value=[])
+
+    with pytest.raises(Exception) as raised:
+        post_run(app, {}, action="restart")
+    assert getattr(raised.value, "status_code", None) == 404
+
+
+def test_restart_requires_json(app: Any, kernel_class: mock.MagicMock) -> None:
+    with pytest.raises(Exception) as raised:
+        post_run(app, {}, content_type="text/plain", action="restart")
+    assert getattr(raised.value, "status_code", None) == 415

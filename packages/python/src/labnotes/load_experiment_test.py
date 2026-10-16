@@ -1,6 +1,7 @@
 import asyncio
 import json
 from collections.abc import Iterator
+from typing import cast
 from unittest import mock
 
 import pytest
@@ -37,6 +38,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.load_experiment.render_markdown",
             side_effect=lambda text, outputs: f"<p>{text}{''.join(outputs)}</p>",
         ),
+        mock.patch(
+            "labnotes.load_experiment.python_blocks", return_value=["a = 1\n"]
+        ) as python_blocks,
     ):
         yield {
             "run_columns": run_columns,
@@ -44,6 +48,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "list_runs": list_runs,
             "parse_run_view": parse_run_view,
             "sort_href": sort_href,
+            "python_blocks": python_blocks,
         }
 
 
@@ -70,7 +75,9 @@ def test_loads_design_notes_progress_and_runs(
     assert loaded is not None
     assert (loaded["name"], loaded["study"], loaded["target"]) == ("a", "s1", 4)
     assert (loaded["runs"], loaded["filled"]) == (3, 2)
-    assert loaded["notes"] == [{"name": "PLAN.md", "html": "<p>plan</p>"}]
+    assert loaded["notes"] == [
+        {"name": "PLAN.md", "html": "<p>plan</p>", "runnable": True}
+    ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "run_id": "r1"}]
     assert loaded["run_columns"] == ["run_id", "x"]
     first, second = experiments.query.await_args_list
@@ -143,5 +150,21 @@ def test_renders_notes_with_their_saved_outputs(
     )
 
     assert loaded is not None
-    assert loaded["notes"] == [{"name": "PLAN.md", "html": "<p>plan<out></p>"}]
+    assert loaded["notes"] == [
+        {"name": "PLAN.md", "html": "<p>plan<out></p>", "runnable": True}
+    ]
     assert seen == [("PLAN.md", "plan")]
+
+
+def test_marks_notes_without_python_blocks_as_not_runnable(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["python_blocks"].return_value = []
+    experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
+
+    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
+
+    assert loaded is not None
+    notes = cast(list[dict[str, object]], loaded["notes"])
+    assert notes[0]["runnable"] is False
+    collaborators["python_blocks"].assert_called_once_with("plan")

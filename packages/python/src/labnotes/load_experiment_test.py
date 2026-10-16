@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 
 from labnotes.load_experiment import load_experiment
+from labnotes.models import RunView
 
 DESIGN = {"study": "s1", "runs_per_cell": 2, "varies": {"x": [1, 2], "y": ["a"]}}
 
@@ -56,7 +57,9 @@ def test_loads_design_notes_progress_and_runs(
     )
     runs = mock.Mock()
 
-    loaded = asyncio.run(load_experiment(experiments, runs, "it's"))
+    loaded = asyncio.run(
+        load_experiment(experiments, runs, "it's", {"sort": "x", "f.study": "s"})
+    )
 
     assert loaded is not None
     assert (loaded["name"], loaded["study"], loaded["target"]) == ("a", "s1", 4)
@@ -67,7 +70,15 @@ def test_loads_design_notes_progress_and_runs(
     first, second = experiments.query.await_args_list
     assert first.args[0].endswith("WHERE name = 'it''s'")
     assert "WHERE experiment = 'it''s' ORDER BY name" in second.args[0]
-    collaborators["list_runs"].assert_awaited_once_with(runs, "s1", "1")
+    collaborators["list_runs"].assert_awaited_once_with(
+        runs, "s1", "1", RunView(sort="x")
+    )
+    assert loaded["run_view"] == RunView(sort="x")
+    assert loaded["sort_hrefs"] == {
+        "status": "?sort=status#runs",
+        "run_id": "?sort=run_id#runs",
+        "x": "?sort=x&order=desc#runs",
+    }
     progress_args = collaborators["study_progress"].await_args.args
     assert progress_args[1] == "s1"
     assert progress_args[3] == ["run_id", "x", "study"]
@@ -78,7 +89,7 @@ def test_skips_runs_for_an_experiment_without_a_study(
 ) -> None:
     experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
 
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a"))
+    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
 
     assert loaded is not None
     assert loaded["runs_list"] == []
@@ -90,7 +101,8 @@ def test_returns_none_for_an_unknown_experiment(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     assert (
-        asyncio.run(load_experiment(make_experiments([]), mock.Mock(), "nope")) is None
+        asyncio.run(load_experiment(make_experiments([]), mock.Mock(), "nope", {}))
+        is None
     )
 
 
@@ -102,7 +114,7 @@ def test_lists_a_varies_key_that_is_the_first_column_once(
         [{"name": "a", "study": "s1", "design": json.dumps(DESIGN)}]
     )
 
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a"))
+    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
 
     assert loaded is not None
     assert loaded["run_columns"] == ["x"]

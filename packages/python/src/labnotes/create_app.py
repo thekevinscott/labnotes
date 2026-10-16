@@ -52,7 +52,10 @@ def create_app(experiments_folder: Path, data_folder: Path) -> Starlette:
     async def experiment(request: Request) -> Response:
         state = request.app.state
         loaded = await load_experiment(
-            state.experiments, state.runs, request.path_params["name"]
+            state.experiments,
+            state.runs,
+            request.path_params["name"],
+            request.query_params,
         )
         if loaded is None:
             raise HTTPException(404, "No such experiment")

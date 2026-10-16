@@ -1,18 +1,21 @@
 import json
+from collections.abc import Mapping
 from typing import cast
 
 from dirsql import DirSQL
 
 from labnotes.list_runs import list_runs
+from labnotes.parse_run_view import parse_run_view
 from labnotes.render_markdown import render_markdown
 from labnotes.run_columns import run_columns
+from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
 from labnotes.study_progress import study_progress
 from labnotes.summarize_design import summarize_design
 
 
 async def load_experiment(
-    experiments: DirSQL, runs: DirSQL, name: str
+    experiments: DirSQL, runs: DirSQL, name: str, params: Mapping[str, str]
 ) -> dict[str, object] | None:
     found = await experiments.query(
         f"SELECT name, study, design FROM experiments WHERE name = {quote_string(name)}"
@@ -29,10 +32,12 @@ async def load_experiment(
     study = None if row["study"] is None else str(row["study"])
     columns = await run_columns(runs)
     progress = await study_progress(runs, study, summary, columns)
+    shown = columns[:1] + [key for key in varies if key in columns[1:]]
+    view = parse_run_view(params, shown)
     listed = (
         []
         if study is None
-        else await list_runs(runs, study, str(summary["completed_run"]))
+        else await list_runs(runs, study, str(summary["completed_run"]), view)
     )
     return {
         "name": row["name"],
@@ -44,5 +49,9 @@ async def load_experiment(
             for note in notes
         ],
         "runs_list": listed,
-        "run_columns": columns[:1] + [key for key in varies if key in columns[1:]],
+        "run_columns": shown,
+        "run_view": view,
+        "sort_hrefs": {
+            column: sort_href(view, column) for column in ["status", *shown]
+        },
     }

@@ -8,6 +8,7 @@ from unittest import mock
 import pytest
 
 from labnotes.create_app import create_app
+from labnotes.models import RunView
 
 EXPERIMENT: dict[str, object] = {
     "name": "models-effort",
@@ -32,6 +33,12 @@ EXPERIMENT: dict[str, object] = {
         {"labnotes_completed": 1, "run_id": "r1", "model": "opus", "result": "x" * 100}
     ],
     "run_columns": ["run_id", "model"],
+    "run_view": RunView(sort="model", descending=True, filters={"model": "op"}),
+    "sort_hrefs": {
+        "status": "?sort=status#runs",
+        "run_id": "?sort=run_id#runs",
+        "model": "?sort=model#runs",
+    },
 }
 
 
@@ -81,7 +88,9 @@ def call(app: Any, path: str, **path_params: str) -> tuple[int, str]:
     [endpoint] = [
         route.endpoint for route in app.routes if getattr(route, "path", None) == path
     ]
-    request = mock.Mock(scope={"type": "http"}, path_params=path_params)
+    request = mock.Mock(
+        scope={"type": "http"}, path_params=path_params, query_params={"sort": "model"}
+    )
     request.app = app
     request.url_for = (
         lambda route,
@@ -132,7 +141,7 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
 
     assert status == 200
     collaborators["load_experiment"].assert_awaited_once_with(
-        app.state.experiments, app.state.runs, "models-effort"
+        app.state.experiments, app.state.runs, "models-effort", {"sort": "model"}
     )
     assert '<span class="chip">haiku</span>' in text
     assert '<span class="chip quiet">true</span>' in text
@@ -142,6 +151,14 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
     assert '<td class="cell"' in text
     assert "<pre>" + "x" * 100 + "</pre>" in text
     assert '<span class="status good"' in text
+    assert 'aria-sort="descending"' in text
+    assert '<span class="arrow">↓</span>' in text
+    assert 'href="?sort=run_id#runs"' in text
+    assert '<input type="hidden" name="sort" value="model">' in text
+    assert '<input type="hidden" name="order" value="desc">' in text
+    assert 'name="f.model" value="op"' in text
+    assert "1 of 4" in text
+    assert 'href="?sort=model&amp;order=desc#runs">Clear filters' in text
 
 
 def test_unknown_experiment_is_not_found(

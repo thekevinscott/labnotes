@@ -1,51 +1,69 @@
-import argparse
 import asyncio
 import json
-import sys
-from importlib.metadata import version
+import os
 from pathlib import Path
 
-import uvicorn
+import click
+from uvicorn.main import main as uvicorn_main
 
-from labnotes.create_app import create_app
 from labnotes.dump_experiments import dump_experiments
+from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER
+
+# labnotes owns these; the rest of uvicorn's options pass straight through.
+OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 
 
-def main(argv: list[str] | None = None) -> None:
-    parser = argparse.ArgumentParser(
-        prog="labnotes", description="Browse experiments and their run data."
-    )
-    parser.add_argument("--version", action="version", version=version("labnotes"))
-    parser.add_argument(
-        "--experiments-folder",
-        type=Path,
-        required=True,
-        help="one subfolder per experiment, each with a design.yaml and markdown notes",
-    )
-    parser.add_argument(
-        "--data-folder",
-        type=Path,
-        required=True,
-        help="run data, with a .dirsql.toml declaring a runs table that has a study column",
-    )
-    parser.add_argument("--host", default="127.0.0.1")
-    parser.add_argument("--port", type=int, default=8000)
-    parser.add_argument(
-        "--json",
-        action="store_true",
-        help="print experiments as JSON instead of serving",
-    )
-    args = parser.parse_args(argv)
-    if args.json:
-        experiments = asyncio.run(
-            dump_experiments(args.experiments_folder, args.data_folder)
-        )
-        print(json.dumps(experiments, indent=2))
+@click.command(help="Browse experiments and their run data.")
+@click.version_option(package_name="labnotes")
+@click.option(
+    "--experiments-folder",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar=EXPERIMENTS_FOLDER,
+    help="One subfolder per experiment, each with a design.yaml and markdown notes.",
+)
+@click.option(
+    "--data-folder",
+    type=click.Path(path_type=Path),
+    required=True,
+    envvar=DATA_FOLDER,
+    help="Run data, with a .dirsql.toml declaring a runs table that has a study column.",
+)
+@click.option(
+    "--json",
+    "as_json",
+    is_flag=True,
+    help="Print experiments as JSON instead of serving.",
+)
+@click.option(
+    "-h",
+    "--host",
+    default="127.0.0.1",
+    show_default=True,
+    help="Bind to this host. 0.0.0.0 or a Tailscale IP serves beyond localhost.",
+)
+@click.option("-p", "--port", type=int, default=8000, show_default=True)
+@click.pass_context
+def main(
+    ctx: click.Context,
+    experiments_folder: Path,
+    data_folder: Path,
+    as_json: bool,
+    **server_options: object,
+) -> None:
+    if as_json:
+        experiments = asyncio.run(dump_experiments(experiments_folder, data_folder))
+        click.echo(json.dumps(experiments, indent=2))
         return
-    print(f"labnotes at http://{args.host}:{args.port}", file=sys.stderr)
-    uvicorn.run(
-        create_app(args.experiments_folder, args.data_folder),
-        host=args.host,
-        port=args.port,
-        log_level="warning",
+    # Through the environment so --reload and --workers child processes see them.
+    os.environ[EXPERIMENTS_FOLDER] = str(experiments_folder.resolve())
+    os.environ[DATA_FOLDER] = str(data_folder.resolve())
+    ctx.invoke(
+        uvicorn_main,
+        app="labnotes.serve_app:serve_app",
+        factory=True,
+        **server_options,
     )
+
+
+main.params += [p for p in uvicorn_main.params if p.name not in OWN_OPTIONS]

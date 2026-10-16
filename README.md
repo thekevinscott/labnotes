@@ -21,5 +21,9 @@ shows new runs and edited notes.
 of values), `runs_per_cell`, and `completed_run`, a SQL condition over the
 `runs` table that marks a run as complete. Anything else shows up as-is.
 
-`--host` and `--port` change where it listens. `--json` prints the experiments
-as JSON and exits.
+`-h`/`--host` and `-p`/`--port` change where it listens; `-h 0.0.0.0` (or a
+Tailscale IP) serves beyond localhost. Every other uvicorn option passes
+through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
+`--ssl-*` set, and the rest. `labnotes --help` lists them. The folders can also
+come from `LABNOTES_EXPERIMENTS_FOLDER` and `LABNOTES_DATA_FOLDER`. `--json`
+prints the experiments as JSON and exits.

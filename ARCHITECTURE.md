@@ -1,33 +1,27 @@
 # Architecture
 
-A single Rust binary is the source of truth. Python and Node wrappers
-exist only to put that binary on `PATH` under their respective package
-manager.
+A pure-Python CLI, built with hatchling and run with `uvx labnotes`.
 
 ## Packages
 
 ```
 packages/
-  rust/      crate — the CLI + library. clap for parsing.
-  python/    maturin-built wheel that bundles the rust binary.
-  node/      thin wrapper, resolves a per-platform optional dep
-             whose payload is the rust binary.
+  python/    the labnotes package. Source and colocated tests in src/labnotes/.
 docs/        VitePress site (published to GitHub Pages).
   internals/ contributor + agent conventions (not published).
 ```
 
 ## Release flow
 
-`putitoutthere.toml` declares the three artifacts and their dependency
-cascade. The `Release` workflow (`.github/workflows/release.yml`) calls
-the reusable workflow at `thekevinscott/putitoutthere`. Rust package changes
-retrigger PyPI and npm builds via the cascade. Release globs exclude each
-package's `testing-conventions.toml`, `changelog.d/`, `migrations.d/`, and
-`e2e-attestations/` bookkeeping, including the Rust paths watched by its wrappers.
+`putitoutthere.toml` declares one PyPI package. The `Release` workflow
+(`.github/workflows/release.yml`) calls the reusable workflow at
+`thekevinscott/putitoutthere`. The version comes from git tags via
+`hatch-vcs`. Release globs exclude `testing-conventions.toml`,
+`changelog.d/`, `migrations.d/`, and `e2e-attestations/` bookkeeping.
 
 ## CI gates
 
-- Per-language workflow (`rust.yml`, `python.yml`, `node.yml`) runs lint + test + build with path filters.
+- `python.yml` runs lint, test, type-check, and a wheel build with a `uvx` smoke test.
 - [`conventions.yml`](.github/workflows/conventions.yml) calls the upstream [testing-conventions workflow](https://github.com/thekevinscott/testing-conventions/blob/v0/.github/workflows/testing-conventions.yml) at `v0`; its current coverage is described below.
 - `changelog.yml` runs the upstream testing-conventions `changelog` gate: a fragment under `docs/changelog.d/` on PRs that touch package code, plus `docs/migrations.d/` when a commit carries a `breaking:` trailer.
 - `workflow-lint.yml` runs the upstream testing-conventions `workflow-lint` gate, which fails on logic inlined in workflow YAML.
@@ -40,14 +34,10 @@ coverage, mutation testing on changed lines, integration-test layout, exclusion
 of tests from built distributions, and E2E attestation freshness. Gates run
 when applicable to the detected sources, distributions, and attestations.
 
-The Python lane scans `packages/python` with upstream defaults; this binary-only
-wrapper currently has no Python source files. The TypeScript lane scans
-`packages/node/src` with upstream defaults.
-There is no Rust conventions lane yet; Rust's separate lint/test/build workflow
-does not replace those checks.
+The Python lane scans `packages/python` with upstream defaults.
 
-The intended template policy is upstream defaults on every lane, with no custom
-`testing-conventions.toml` or exemptions, so clones inherit the full standard.
+The policy is upstream defaults, with no custom `testing-conventions.toml` or
+exemptions.
 
 ## Public-API surface
 

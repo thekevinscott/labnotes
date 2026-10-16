@@ -1,24 +1,45 @@
 [build-system]
-# maturin 1.15.0 rejects a bare `--interpreter 3.14` for bin bindings, which
-# putitoutthere passes. Lift the cap once either side is fixed.
-requires = ["maturin>=1.7,<1.15"]
-build-backend = "maturin"
+requires = ["hatchling", "hatch-vcs"]
+build-backend = "hatchling.build"
 
 [project]
-name = "mynewproduct"
+name = "labnotes"
 dynamic = ["version"]
-description = "A short, one-line description of your project."
+description = "Browse experiment designs, notes, and run data from a folder."
 readme = "README.md"
-requires-python = ">=3.9"
-license = { text = "MIT" }
+requires-python = ">=3.12"
+license = "MIT"
 authors = [{ name = "Kevin Scott", email = "me@thekevinscott.com" }]
 
 [project.urls]
-Repository = "https://github.com/thekevinscott/template-lib"
+Repository = "https://github.com/thekevinscott/labnotes"
 
-[tool.maturin]
-manifest-path = "../rust/Cargo.toml"
-bindings = "bin"
+[project.scripts]
+labnotes = "labnotes.cli:main"
+
+[dependency-groups]
+dev = [
+    "mypy>=2.4.0",
+    "pytest>=8.0",
+    "ruff==0.8.4",
+]
+
+[tool.hatch.version]
+source = "vcs"
+
+[tool.hatch.version.raw-options]
+root = "../.."
+local_scheme = "no-local-version"
+
+[tool.hatch.build]
+exclude = ["*_test.py"]
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/labnotes"]
+
+[tool.pytest.ini_options]
+testpaths = ["src/labnotes"]
+python_files = "*_test.py"
 
 [tool.ruff.lint]
 # Ruff's defaults (E4, E7, E9, F) plus TID252: imports are absolute, never

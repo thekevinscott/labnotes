@@ -165,7 +165,10 @@ def test_records_when_a_failed_run_finishes(manager: mock.MagicMock) -> None:
     assert kernel.last_used == 9.0
 
 
-@pytest.mark.parametrize(("now", "stopped"), [(160.0, False), (160.5, True)])
+@pytest.mark.parametrize(
+    ("now", "stopped"),
+    [(120.0, False), (160.0, False), (160.5, True), (1000.0, True)],
+)
 def test_stops_a_kernel_idle_longer_than_the_limit(
     manager: mock.MagicMock, now: float, stopped: bool
 ) -> None:

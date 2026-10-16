@@ -137,6 +137,7 @@ def test_help_shows_the_bind_defaults_and_uvicorn_options(
     assert "[default: 127.0.0.1]" in out
     assert "[default: 8000]" in out
     assert "--kernel-idle-minutes INTEGER RANGE" in out
+    assert "[default: 30;" in out
     assert "Stop a note's Python kernel after this long without a run." in out
     assert "--proxy-headers" in out
 

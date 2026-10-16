@@ -1,5 +1,5 @@
 import json
-from collections.abc import Mapping
+from collections.abc import Callable, Mapping, Sequence
 from typing import cast
 
 from dirsql import DirSQL
@@ -14,8 +14,16 @@ from labnotes.study_progress import study_progress
 from labnotes.summarize_design import summarize_design
 
 
+def _no_outputs(note: str, content: str) -> Sequence[str]:
+    return ()
+
+
 async def load_experiment(
-    experiments: DirSQL, runs: DirSQL, name: str, params: Mapping[str, str]
+    experiments: DirSQL,
+    runs: DirSQL,
+    name: str,
+    params: Mapping[str, str],
+    outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
 ) -> dict[str, object] | None:
     found = await experiments.query(
         f"SELECT name, study, design FROM experiments WHERE name = {quote_string(name)}"
@@ -45,7 +53,13 @@ async def load_experiment(
         **summary,
         **progress,
         "notes": [
-            {"name": note["name"], "html": render_markdown(str(note["content"]))}
+            {
+                "name": note["name"],
+                "html": render_markdown(
+                    str(note["content"]),
+                    outputs_for(str(note["name"]), str(note["content"])),
+                ),
+            }
             for note in notes
         ],
         "runs_list": listed,

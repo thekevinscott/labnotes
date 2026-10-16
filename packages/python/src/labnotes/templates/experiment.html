@@ -111,12 +111,13 @@
 <section id="notes" class="block">
   <h2>Notes</h2>
   {% for note in e.notes %}
-  <article class="note">
+  <article class="note" data-run-url="{{ url_for('run_block', name=e.name, note=note.name) }}">
     <header class="note-name">{{ note.name }}</header>
     <div class="prose">{{ note.html | safe }}</div>
   </article>
   {% endfor %}
 </section>
+<script src="{{ asset('run-cell.js') }}" defer></script>
 {% endif %}
 
 {% if e.study %}

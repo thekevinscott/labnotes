@@ -35,7 +35,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as sort_href,
         mock.patch(
             "labnotes.load_experiment.render_markdown",
-            side_effect=lambda text: f"<p>{text}</p>",
+            side_effect=lambda text, outputs: f"<p>{text}{''.join(outputs)}</p>",
         ),
     ):
         yield {
@@ -126,3 +126,22 @@ def test_lists_a_varies_key_that_is_the_first_column_once(
 
     assert loaded is not None
     assert loaded["run_columns"] == ["x"]
+
+
+def test_renders_notes_with_their_saved_outputs(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
+    seen: list[tuple[str, str]] = []
+
+    def outputs_for(note: str, content: str) -> list[str]:
+        seen.append((note, content))
+        return ["<out>"]
+
+    loaded = asyncio.run(
+        load_experiment(experiments, mock.Mock(), "a", {}, outputs_for)
+    )
+
+    assert loaded is not None
+    assert loaded["notes"] == [{"name": "PLAN.md", "html": "<p>plan<out></p>"}]
+    assert seen == [("PLAN.md", "plan")]

@@ -126,3 +126,14 @@ def test_requires_both_folders(
 ) -> None:
     assert run(argv) == 2
     collaborators["uvicorn_main"].assert_not_called()
+
+
+def test_help_shows_the_bind_defaults_and_uvicorn_options(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["--help"]) == 0
+
+    out = " ".join(capsys.readouterr().out.split())
+    assert "[default: 127.0.0.1]" in out
+    assert "[default: 8000]" in out
+    assert "--proxy-headers" in out

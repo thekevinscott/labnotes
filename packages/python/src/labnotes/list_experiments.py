@@ -1,17 +1,23 @@
-from pathlib import Path
+import json
 
-from labnotes.open_experiments import open_experiments
-from labnotes.open_runs import open_runs
+from dirsql import DirSQL
+
+from labnotes.run_columns import run_columns
+from labnotes.study_progress import study_progress
+from labnotes.summarize_design import summarize_design
 
 
 async def list_experiments(
-    experiments_folder: Path, data_folder: Path
+    experiments: DirSQL, runs: DirSQL
 ) -> list[dict[str, object]]:
-    experiments = open_experiments(experiments_folder)
-    runs = open_runs(data_folder)
-    await experiments.ready()
-    await runs.ready()
-    rows = await experiments.query("SELECT name, study FROM experiments ORDER BY name")
-    counts = await runs.query("SELECT study, COUNT(*) AS n FROM runs GROUP BY study")
-    runs_by_study = {count["study"]: count["n"] for count in counts}
-    return [{**row, "runs": runs_by_study.get(row["study"], 0)} for row in rows]
+    rows = await experiments.query(
+        "SELECT name, study, design FROM experiments ORDER BY name"
+    )
+    columns = await run_columns(runs)
+    listed = []
+    for row in rows:
+        summary = summarize_design(json.loads(str(row["design"])))
+        study = None if row["study"] is None else str(row["study"])
+        progress = await study_progress(runs, study, summary, columns)
+        listed.append({"name": row["name"], "study": study, **summary, **progress})
+    return listed

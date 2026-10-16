@@ -1,0 +1,19 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>{% block title %}labnotes{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', path='labnotes.css') }}">
+</head>
+<body>
+  <header class="masthead">
+    <a class="wordmark" href="{{ url_for('index') }}">lab<em>notes</em></a>
+    {% block crumbs %}{% endblock %}
+  </header>
+  <main>
+    {% block main %}{% endblock %}
+  </main>
+</body>
+</html>

@@ -1,0 +1,10 @@
+{% macro meter(value, total) -%}
+{%- set share = [value / total, 1] | min if total else 0 -%}
+<span class="meter" role="meter" aria-valuemin="0" aria-valuemax="{{ total }}" aria-valuenow="{{ value }}">
+  <span class="meter-fill" style="--share: {{ '%.4f' | format(share) }}"></span>
+</span>
+{%- endmacro %}
+
+{% macro percent(value, total) -%}
+{{ '%.0f' | format(100 * value / total) if total else '—' }}%
+{%- endmacro %}

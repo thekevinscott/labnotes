@@ -35,11 +35,16 @@ def test_prints_experiments_as_json(
     main(["--experiments-folder", "exp", "--data-folder", "data"])
 
     list_experiments.assert_awaited_once_with(Path("exp"), Path("data"))
-    assert json.loads(capsys.readouterr().out) == ROWS
+    assert capsys.readouterr().out == json.dumps(ROWS, indent=2) + "\n"
 
 
-def test_requires_both_folders(list_experiments: mock.AsyncMock) -> None:
+@pytest.mark.parametrize(
+    "argv", [["--experiments-folder", "exp"], ["--data-folder", "data"]]
+)
+def test_requires_both_folders(
+    argv: list[str], list_experiments: mock.AsyncMock
+) -> None:
     with pytest.raises(SystemExit) as exit_info:
-        main(["--experiments-folder", "exp"])
+        main(argv)
     assert exit_info.value.code == 2
     list_experiments.assert_not_awaited()

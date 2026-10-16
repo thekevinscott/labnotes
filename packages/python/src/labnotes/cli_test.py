@@ -52,7 +52,7 @@ def test_serves_the_app_on_localhost_by_default(
         port=8000,
         log_level="warning",
     )
-    assert capsys.readouterr().out == "labnotes at http://127.0.0.1:8000\n"
+    assert capsys.readouterr().err == "labnotes at http://127.0.0.1:8000\n"
     collaborators["dump_experiments"].assert_not_awaited()
 
 

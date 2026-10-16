@@ -1,4 +1,5 @@
 import asyncio
+import warnings
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -151,3 +152,33 @@ def test_mounts_the_stylesheet_folder(app: Any) -> None:
         route for route in app.routes if getattr(route, "name", None) == "static"
     ]
     assert static.app.directory == Path(__file__).parent / "static"
+
+
+def test_builds_without_deprecation_warnings(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    with warnings.catch_warnings():
+        warnings.simplefilter("error")
+        create_app(Path("exp"), Path("data"))
+
+
+def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) -> None:
+    cancelled: list[object] = []
+
+    async def watch_forever(db: object) -> None:
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            cancelled.append(db)
+            raise
+
+    collaborators["drain_watch"].side_effect = watch_forever
+    app = create_app(Path("exp"), Path("data"))
+
+    async def run_lifespan() -> list[object]:
+        async with app.router.lifespan_context(app):
+            await asyncio.sleep(0)
+        await asyncio.sleep(0)
+        return list(cancelled)
+
+    assert asyncio.run(run_lifespan()) == [app.state.experiments, app.state.runs]

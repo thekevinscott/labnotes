@@ -14,7 +14,7 @@ def cell_progress(
         row = by_cell.get(tuple(_key(value) for value in values), {})
         cells.append(
             {
-                "values": dict(zip(varies, values, strict=True)),
+                "values": dict(zip(varies, values)),
                 "runs": row.get("runs", 0),
                 "completed": row.get("completed", 0),
             }

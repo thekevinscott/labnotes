@@ -1,6 +1,7 @@
 import argparse
 import asyncio
 import json
+import sys
 from importlib.metadata import version
 from pathlib import Path
 
@@ -41,7 +42,7 @@ def main(argv: list[str] | None = None) -> None:
         )
         print(json.dumps(experiments, indent=2))
         return
-    print(f"labnotes at http://{args.host}:{args.port}", flush=True)
+    print(f"labnotes at http://{args.host}:{args.port}", file=sys.stderr)
     uvicorn.run(
         create_app(args.experiments_folder, args.data_folder),
         host=args.host,

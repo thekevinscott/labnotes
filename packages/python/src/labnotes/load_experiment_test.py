@@ -16,7 +16,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.load_experiment.run_columns",
             new_callable=mock.AsyncMock,
-            return_value=["run_id", "study", "x"],
+            return_value=["run_id", "x", "study"],
         ) as run_columns,
         mock.patch(
             "labnotes.load_experiment.study_progress",
@@ -70,7 +70,7 @@ def test_loads_design_notes_progress_and_runs(
     collaborators["list_runs"].assert_awaited_once_with(runs, "s1", "1")
     progress_args = collaborators["study_progress"].await_args.args
     assert progress_args[1] == "s1"
-    assert progress_args[3] == ["run_id", "study", "x"]
+    assert progress_args[3] == ["run_id", "x", "study"]
 
 
 def test_skips_runs_for_an_experiment_without_a_study(
@@ -92,3 +92,17 @@ def test_returns_none_for_an_unknown_experiment(
     assert (
         asyncio.run(load_experiment(make_experiments([]), mock.Mock(), "nope")) is None
     )
+
+
+def test_lists_a_varies_key_that_is_the_first_column_once(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["run_columns"].return_value = ["x", "study"]
+    experiments = make_experiments(
+        [{"name": "a", "study": "s1", "design": json.dumps(DESIGN)}]
+    )
+
+    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a"))
+
+    assert loaded is not None
+    assert loaded["run_columns"] == ["x"]

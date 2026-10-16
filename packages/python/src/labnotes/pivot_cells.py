@@ -1,3 +1,6 @@
+from itertools import product
+
+
 def pivot_cells(
     varies: dict[str, list[object]], cells: list[dict[str, object]]
 ) -> dict[str, object] | None:
@@ -5,12 +8,11 @@ def pivot_cells(
         return None
     *row_keys, column_key = varies
     width = len(varies[column_key])
-    rows = []
-    for start in range(0, len(cells), width):
-        chunk = cells[start : start + width]
-        values = chunk[0]["values"]
-        assert isinstance(values, dict)
-        rows.append({"labels": [values[key] for key in row_keys], "cells": chunk})
+    labels = product(*(varies[key] for key in row_keys))
+    rows = [
+        {"labels": list(label), "cells": cells[start : start + width]}
+        for label, start in zip(labels, range(0, len(cells), width))
+    ]
     return {
         "row_keys": row_keys,
         "column_key": column_key,

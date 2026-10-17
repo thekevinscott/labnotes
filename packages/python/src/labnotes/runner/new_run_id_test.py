@@ -18,7 +18,13 @@ def test_names_a_run_like_a_haiku(haikunator: mock.MagicMock) -> None:
     haikunator.return_value.haikunate.assert_called_once_with(token_length=0)
 
 
-def test_adds_a_suffix_on_a_clash() -> None:
-    taken = {"brave-fox", "brave-fox-2"}
+def test_counts_up_a_suffix_on_a_clash() -> None:
+    taken = mock.Mock(side_effect=[True, True, True, False])
 
-    assert new_run_id(taken.__contains__) == "brave-fox-3"
+    assert new_run_id(taken) == "brave-fox-4"
+    assert [c.args[0] for c in taken.call_args_list] == [
+        "brave-fox",
+        "brave-fox-2",
+        "brave-fox-3",
+        "brave-fox-4",
+    ]

@@ -150,3 +150,31 @@ def test_reports_an_experiment_that_cannot_run(
     assert run(["a", "run"]) == 1
 
     assert "a is already running" in capsys.readouterr().err
+
+
+def test_help_shows_the_default_concurrency(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["--help"]) == 0
+
+    assert "[default: 1;" in capsys.readouterr().out
+
+
+def test_needs_a_concurrency_of_at_least_one(
+    collaborators: dict[str, mock.MagicMock], start_experiment: mock.MagicMock
+) -> None:
+    assert run(["a", "run", "--concurrency", "0"]) == 2
+
+    start_experiment.assert_not_called()
+
+
+@pytest.mark.parametrize("path", ["missing.toml", "."])
+def test_needs_an_experiment_config_file(
+    tmp_path: Path,
+    path: str,
+    collaborators: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    assert run(["a", "run", "-e", str(tmp_path / path)]) == 2
+
+    start_experiment.assert_not_called()

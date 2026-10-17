@@ -47,16 +47,17 @@ def experiments(
         raise click.ClickException(
             f"No {CONFIG_FILE} here. Run labnotes init, or pass -c PATH."
         )
-    if name is not None and action == "run":
-        try:
-            results = start_experiment(
-                config, name, experiment_config, concurrency, click.echo
-            )
-        except ValueError as error:
-            raise click.ClickException(str(error)) from error
-        failed = sum(result["exit_code"] != 0 for result in results)
-        click.echo(f"{len(results) - failed} passed, {failed} failed.")
-        ctx.exit(1 if failed else 0)
+    match name, action:
+        case str(), "run":
+            try:
+                results = start_experiment(
+                    config, name, experiment_config, concurrency, click.echo
+                )
+            except ValueError as error:
+                raise click.ClickException(str(error)) from error
+            failed = sum(result["exit_code"] != 0 for result in results)
+            click.echo(f"{len(results) - failed} passed, {failed} failed.")
+            ctx.exit(1 if failed else 0)
     rows = asyncio.run(experiment_rows(config, name, action))
     if rows is None:
         raise click.ClickException(f"No experiment named {name}.")

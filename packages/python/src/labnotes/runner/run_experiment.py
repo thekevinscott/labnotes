@@ -29,21 +29,23 @@ async def run_experiment(
     report(f"{len(plan)} runs to go, {concurrency} at a time.")
     running: set[asyncio.subprocess.Process] = set()
     results: list[dict[str, object]] = []
-    interrupts = 0
+    stopping = False
 
-    def interrupt() -> None:
-        nonlocal interrupts
-        interrupts += 1
-        plan.clear()
-        if interrupts == 1:
-            report("Stopping runs. Ctrl-C again to kill them.")
+    def signal_runs(signal_number: int) -> None:
         for process in running:
             with contextlib.suppress(ProcessLookupError):
-                os.killpg(
-                    process.pid, signal.SIGTERM if interrupts == 1 else signal.SIGKILL
-                )
-        if interrupts > 1:
+                os.killpg(process.pid, signal_number)
+
+    def interrupt() -> None:
+        nonlocal stopping
+        plan.clear()
+        if stopping:
+            signal_runs(signal.SIGKILL)
             os._exit(130)
+        else:
+            stopping = True
+            report("Stopping runs. Ctrl-C again to kill them.")
+            signal_runs(signal.SIGTERM)
 
     async def work() -> None:
         while plan:

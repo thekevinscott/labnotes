@@ -28,6 +28,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
                 return_value=[
                     {"params": '{"m": "a"}', "exit_code": 0},
                     {"params": '{"m": "b"}', "exit_code": 1},
+                    {"params": '{"m": "b"}', "exit_code": -15},
                 ]
             ),
         ) as list_runs,
@@ -191,14 +192,18 @@ def test_second_ctrl_c_kills_runs_and_exits(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["execute_run"].side_effect = interrupting(2)
+    report = mock.Mock()
 
-    run(tmp_path, mock.Mock())
+    run(tmp_path, report)
 
     assert collaborators["killpg"].call_args_list == [
         mock.call(42, SIGTERM),
         mock.call(42, SIGKILL),
     ]
     collaborators["exit"].assert_called_once_with(130)
+    assert [c.args[0] for c in report.call_args_list].count(
+        "Stopping runs. Ctrl-C again to kill them."
+    ) == 1
 
 
 def test_ignores_a_run_that_already_exited(

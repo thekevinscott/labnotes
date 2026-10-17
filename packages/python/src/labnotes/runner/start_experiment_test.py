@@ -16,7 +16,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch(
             "labnotes.runner.start_experiment.lock_path",
-            return_value=tmp_path / "runs" / ".labnotes.lock",
+            return_value=tmp_path / "runs" / "exp" / ".labnotes.lock",
         ) as lock_path,
         mock.patch(
             "labnotes.runner.start_experiment.read_experiment_config"
@@ -56,9 +56,9 @@ def test_runs_the_experiment_under_a_lock(
     collaborators["read_experiment_config"].assert_called_once_with(path)
     collaborators["lock_path"].assert_called_once_with(tmp_path, config.runs, "exp")
     collaborators["FileLock"].assert_called_once_with(
-        tmp_path / "runs" / ".labnotes.lock", blocking=False
+        tmp_path / "runs" / "exp" / ".labnotes.lock", blocking=False
     )
-    assert (tmp_path / "runs").is_dir()
+    assert (tmp_path / "runs" / "exp").is_dir()
     collaborators["run_experiment"].assert_awaited_once_with(
         config, "exp", collaborators["read_experiment_config"].return_value, 2, report
     )

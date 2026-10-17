@@ -1,6 +1,6 @@
 ## Usage
 
-labnotes reads two folders. The experiments folder has one subfolder per experiment, each with a `design.yaml` and markdown notes. The data folder holds run data and a `.dirsql.toml` declaring a `runs` table with a `study` column. A project that uses labnotes has a `.labnotes.toml` at its root; labnotes finds it from the working folder or any parent. The lines above this guide name the one found and the folders it resolves to, or say there is none. Its keys are optional:
+labnotes reads two folders. The experiments folder has one subfolder per experiment, each with a `design.yaml` and markdown notes. The data folder holds run data and a `.dirsql.toml` declaring a `runs` table with a `study` column. A project that uses labnotes has a `.labnotes.toml` at its root; labnotes reads it from the working folder, so run labnotes from the project root, or pass `-c PATH`. The lines above this guide name the one found and the folders it resolves to, or say there is none. Its keys are optional:
 
 ```toml
 experiments = "experiments"  # the default

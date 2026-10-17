@@ -14,8 +14,8 @@ data = "data"
 ```
 
 Both keys are optional and default to the values above. Paths are relative to
-`.labnotes.toml`, or absolute, or start with `~`. labnotes looks for the file in
-the working folder and then each parent.
+`.labnotes.toml`, or absolute, or start with `~`. labnotes reads the file from
+the working folder, or from the path given with `-c`.
 
 - `experiments` holds one subfolder per experiment, each with a
   `design.yaml` (with a `study` key) and any number of markdown notes.

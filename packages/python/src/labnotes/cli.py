@@ -8,8 +8,8 @@ from uvicorn.main import main as uvicorn_main
 
 from labnotes.context_guide import context_guide
 from labnotes.dump_experiments import dump_experiments
-from labnotes.find_config import CONFIG_FILE, find_config
 from labnotes.query_experiment import query_experiment
+from labnotes.read_config import CONFIG_FILE, read_config
 from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER, KERNEL_IDLE_MINUTES
 
 # labnotes owns these; the rest of uvicorn's options pass straight through.
@@ -24,6 +24,13 @@ OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 @click.version_option(package_name="labnotes")
 @click.argument("experiment", required=False)
 @click.argument("sql", required=False)
+@click.option(
+    "-c",
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path, dir_okay=False, exists=True),
+    help=f"Project config. Default: {CONFIG_FILE} in the working folder, if there.",
+)
 @click.option(
     "--experiments-folder",
     type=click.Path(path_type=Path),
@@ -63,6 +70,7 @@ def main(
     ctx: click.Context,
     experiment: str | None,
     sql: str | None,
+    config_path: Path | None,
     experiments_folder: Path | None,
     data_folder: Path | None,
     kernel_idle_minutes: int,
@@ -70,8 +78,9 @@ def main(
     **server_options: object,
 ) -> None:
     cwd = Path.cwd()
+    config_path = config_path or cwd / CONFIG_FILE
     try:
-        config = find_config(cwd)
+        config = read_config(config_path) if config_path.is_file() else None
     except ValueError as error:
         raise click.ClickException(str(error)) from error
     if experiment == "context" and sql is None:

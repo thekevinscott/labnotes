@@ -28,8 +28,8 @@ def test_names_the_config_and_its_folders_before_the_guide() -> None:
 def test_says_when_the_project_does_not_use_labnotes() -> None:
     assert context_guide(None, Path("/p/a")) == (
         f"labnotes {version('labnotes')}\n\n"
-        "No .labnotes.toml in /p/a or any parent folder,"
-        " so this project does not use labnotes.\n\n"
+        "No .labnotes.toml in /p/a. If this project uses labnotes, run it"
+        " from the folder that holds .labnotes.toml, or pass -c PATH.\n\n"
         f"{GUIDE}"
     )
 

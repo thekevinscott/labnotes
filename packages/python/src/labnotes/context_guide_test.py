@@ -8,8 +8,10 @@ from labnotes.context_guide import context_guide
 GUIDE = files("labnotes").joinpath("context.md").read_text(encoding="utf-8")
 CONFIG = mock.Mock(
     path=Path("/p/.labnotes.toml"),
-    experiments_folder=Path("/p/experiments"),
-    data_folder=Path("/d"),
+    root=Path("/p"),
+    experiments="{experiment}",
+    files="{experiment}/files/",
+    runs="{experiment}/runs/{run}",
 )
 
 
@@ -19,12 +21,14 @@ def test_the_first_line_names_the_installed_version() -> None:
     )
 
 
-def test_names_the_config_and_its_folders_before_the_guide() -> None:
+def test_names_the_config_and_its_paths_before_the_guide() -> None:
     assert context_guide(CONFIG, Path("/p/a")) == (
         f"labnotes {version('labnotes')}\n\n"
         "Config: /p/.labnotes.toml\n"
-        "Experiments folder: /p/experiments\n"
-        "Data folder: /d\n\n"
+        "Root: /p\n"
+        "Experiments: {experiment}\n"
+        "Files: {experiment}/files/\n"
+        "Runs: {experiment}/runs/{run}\n\n"
         f"{GUIDE}"
     )
 

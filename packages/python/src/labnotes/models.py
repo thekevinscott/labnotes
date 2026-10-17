@@ -13,5 +13,7 @@ class RunView:
 @dataclass(frozen=True)
 class LabnotesConfig:
     path: Path
-    experiments_folder: Path
-    data_folder: Path
+    root: Path
+    experiments: str
+    files: str
+    runs: str

@@ -17,11 +17,10 @@ def collaborators(
 ) -> Iterator[dict[str, mock.MagicMock]]:
     monkeypatch.chdir(tmp_path)
     with (
-        mock.patch("labnotes.server.load_config", return_value=None) as load_config,
         mock.patch("labnotes.server.uvicorn_main") as uvicorn_main,
         mock.patch.dict("os.environ", clear=True),
     ):
-        yield {"uvicorn_main": uvicorn_main, "load_config": load_config}
+        yield {"uvicorn_main": uvicorn_main}
 
 
 def run(argv: list[str]) -> int | str | None:
@@ -109,9 +108,7 @@ def test_requires_both_folders(
 ) -> None:
     assert run(argv) == 2
 
-    assert "--experiments-folder and --data-folder are required without a" in (
-        capsys.readouterr().err
-    )
+    assert "Missing option" in capsys.readouterr().err
     collaborators["uvicorn_main"].assert_not_called()
 
 
@@ -158,45 +155,3 @@ def test_rejects_a_kernel_idle_limit_under_a_minute(
 ) -> None:
     assert run([*SERVER, "--kernel-idle-minutes", "0"]) == 2
     collaborators["uvicorn_main"].assert_not_called()
-
-
-def configure(load_config: mock.MagicMock) -> None:
-    load_config.return_value = mock.Mock(
-        experiments_folder=Path("/p/exp"), data_folder=Path("/p/data")
-    )
-
-
-def test_serves_the_folders_from_the_config(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    configure(collaborators["load_config"])
-
-    assert run([]) == 0
-
-    assert served_folders(collaborators["uvicorn_main"]) == ["/p/exp", "/p/data"]
-
-
-def test_flags_override_the_config(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    configure(collaborators["load_config"])
-
-    assert run(["--data-folder", "data"]) == 0
-
-    assert served_folders(collaborators["uvicorn_main"]) == [
-        "/p/exp",
-        str(Path("data").resolve()),
-    ]
-
-
-def test_the_environment_overrides_the_config(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    configure(collaborators["load_config"])
-
-    with mock.patch.dict("os.environ", {ENV[0]: "exp"}):
-        assert run([]) == 0
-        assert served_folders(collaborators["uvicorn_main"]) == [
-            str(Path("exp").resolve()),
-            "/p/data",
-        ]

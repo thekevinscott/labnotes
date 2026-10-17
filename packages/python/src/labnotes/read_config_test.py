@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
@@ -6,66 +7,61 @@ import pytest
 from labnotes.read_config import read_config
 
 
+@pytest.fixture
+def read_path() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.read_config.read_path", side_effect=lambda _, table, __: table
+    ) as read_path:
+        yield read_path
+
+
 def write(folder: Path, text: str) -> Path:
     path = folder / ".labnotes.toml"
     path.write_text(text, encoding="utf-8")
     return path
 
 
-def test_an_empty_config_uses_the_default_folders(tmp_path: Path) -> None:
-    path = write(tmp_path, "")
+def test_reads_each_table_path(tmp_path: Path, read_path: mock.MagicMock) -> None:
+    path = write(tmp_path, '[runs]\npath = "x"\n')
 
-    with mock.patch("labnotes.read_config.LabnotesConfig") as labnotes_config:
-        assert read_config(path) == labnotes_config.return_value
+    config = read_config(path)
 
-    labnotes_config.assert_called_once_with(
-        path, tmp_path / "experiments", tmp_path / "data"
+    assert (config.experiments, config.files, config.runs) == (
+        "experiments",
+        "files",
+        "runs",
     )
+    assert read_path.call_args_list == [
+        mock.call(path, "experiments", {}),
+        mock.call(path, "files", {}),
+        mock.call(path, "runs", {"path": "x"}),
+    ]
 
 
-def test_resolves_relative_folders_against_the_config(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+def test_the_root_is_the_config_folder(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, read_path: mock.MagicMock
 ) -> None:
-    write(tmp_path, 'experiments = "notes/exp"\ndata = "../runs"\n')
+    write(tmp_path, "")
     monkeypatch.chdir(tmp_path)
 
     config = read_config(Path(".labnotes.toml"))
 
-    assert config.path == tmp_path / ".labnotes.toml"
-    assert config.experiments_folder == tmp_path / "notes" / "exp"
-    assert config.data_folder == tmp_path / "../runs"
+    assert (config.path, config.root) == (tmp_path / ".labnotes.toml", tmp_path)
 
 
-def test_keeps_absolute_folders(tmp_path: Path) -> None:
-    config = read_config(write(tmp_path, 'data = "/srv/runs"\n'))
-
-    assert config.data_folder == Path("/srv/runs")
-
-
-def test_expands_the_home_folder(tmp_path: Path) -> None:
-    config = read_config(write(tmp_path, 'data = "~/runs"\n'))
-
-    assert config.data_folder == Path.home() / "runs"
-
-
-def test_rejects_unknown_keys(tmp_path: Path) -> None:
-    path = write(tmp_path, 'data = "d"\nexperiment = "e"\nzz = 1\n')
+def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
+    path = write(tmp_path, "zz = 1\n[data]\n")
 
     with pytest.raises(ValueError) as error:
         read_config(path)
 
-    assert str(error.value) == f"{path}: unknown keys experiment, zz"
+    assert str(error.value) == f"{path}: unknown tables data, zz"
 
 
-def test_rejects_a_folder_that_is_not_a_string(tmp_path: Path) -> None:
-    path = write(tmp_path, "experiments = 1\n")
+def test_rejects_invalid_toml(tmp_path: Path, read_path: mock.MagicMock) -> None:
+    path = write(tmp_path, "[runs]\npath = \n")
 
     with pytest.raises(ValueError) as error:
         read_config(path)
 
-    assert str(error.value) == f"{path}: experiments must be a string"
-
-
-def test_rejects_invalid_toml(tmp_path: Path) -> None:
-    with pytest.raises(ValueError):
-        read_config(write(tmp_path, "data = \n"))
+    assert str(error.value).startswith(f"{path}: ")

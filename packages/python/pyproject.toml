@@ -18,6 +18,7 @@ dependencies = [
     "jupyter-client>=8.10.0",
     "markdown-it-py>=4.2.0",
     "pyyaml>=6.0.3",
+    "rich>=14",
     "starlette>=1.8.0",
     "uvicorn>=0.54.0",
 ]
@@ -51,7 +52,7 @@ exclude = ["*_test.py"]
 packages = ["src/labnotes"]
 
 [tool.pytest.ini_options]
-testpaths = ["src/labnotes"]
+testpaths = ["src/labnotes", "tests"]
 python_files = "*_test.py"
 
 [tool.ruff.lint]

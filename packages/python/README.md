@@ -25,6 +25,27 @@ names: the experiments path must use `{experiment}`, and the runs path both.
 labnotes reads the file from the working folder, or from the path given with
 `-c`.
 
+`labnotes experiments` reads three tables from those paths:
+
+- `experiments`: `name`, and `config`, the experiment's `experiment.toml` as
+  JSON. An experiment is a folder matching the experiments path that holds an
+  `experiment.toml`, files or runs.
+- `files`: `experiment`, `filename`, `path`, `ctime`, `mtime`.
+- `runs`: `experiment`, `id`, `folder`, `created`, `ended`, `exit_code`,
+  `error`, `stdout`, `stderr`, and `params` as JSON, read from each run
+  folder's `run.json`.
+
+Keys come from folder names, so renaming a folder renames its rows on the next
+read. Paths are relative to the root, and times are UTC ISO 8601.
+
+```sh
+labnotes experiments            # name, last_run, created, files, runs
+labnotes experiments foo        # the same, plus config
+labnotes experiments foo runs   # foo's runs, oldest first
+```
+
+Each takes `--format table` (the default) or `--format json`.
+
 `labnotes server` doesn't read `.labnotes.toml` yet. Give it the two folders
 it uses with `--experiments-folder` and `--data-folder`:
 

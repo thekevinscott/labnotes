@@ -51,6 +51,7 @@ def test_prints_help_without_a_command(
     assert "server" in out
     assert "context" in out
     assert "init" in out
+    assert "experiments" in out
     collaborators["load_config"].assert_not_called()
 
 

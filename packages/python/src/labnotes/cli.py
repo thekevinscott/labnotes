@@ -3,6 +3,7 @@ from pathlib import Path
 import click
 
 from labnotes.context_guide import context_guide
+from labnotes.experiments import experiments
 from labnotes.init import init
 from labnotes.load_config import load_config
 from labnotes.read_config import CONFIG_FILE
@@ -36,5 +37,6 @@ def context(ctx: click.Context) -> None:
     click.echo(context_guide(load_config(ctx), Path.cwd()), nl=False)
 
 
+main.add_command(experiments)
 main.add_command(init)
 main.add_command(server)

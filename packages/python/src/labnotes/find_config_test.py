@@ -7,7 +7,7 @@ from labnotes.models import LabnotesConfig
 
 
 def write(folder: Path, text: str) -> Path:
-    path = folder / "labnotes.toml"
+    path = folder / ".labnotes.toml"
     path.write_text(text, encoding="utf-8")
     return path
 
@@ -49,7 +49,7 @@ def test_the_nearest_config_wins(tmp_path: Path) -> None:
 
 
 def test_ignores_a_folder_named_like_the_config(tmp_path: Path) -> None:
-    (tmp_path / "labnotes.toml").mkdir()
+    (tmp_path / ".labnotes.toml").mkdir()
 
     assert find_config(tmp_path) is None
 

@@ -3,7 +3,7 @@ from pathlib import Path
 
 from labnotes.models import LabnotesConfig
 
-CONFIG_FILE = "labnotes.toml"
+CONFIG_FILE = ".labnotes.toml"
 DEFAULTS = {"experiments": "experiments", "data": "data"}
 
 

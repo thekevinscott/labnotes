@@ -6,7 +6,7 @@ Browse experiment designs, notes, and run data from a folder.
 uvx labnotes
 ```
 
-labnotes reads two folders, named in a `labnotes.toml` at the project root:
+labnotes reads two folders, named in a `.labnotes.toml` at the project root:
 
 ```toml
 experiments = "experiments"
@@ -14,7 +14,7 @@ data = "data"
 ```
 
 Both keys are optional and default to the values above. Paths are relative to
-`labnotes.toml`, or absolute, or start with `~`. labnotes looks for the file in
+`.labnotes.toml`, or absolute, or start with `~`. labnotes looks for the file in
 the working folder and then each parent.
 
 - `experiments` holds one subfolder per experiment, each with a
@@ -37,7 +37,7 @@ Tailscale IP) serves beyond localhost. Every other uvicorn option passes
 through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
 `--ssl-*` set, and the rest. `labnotes --help` lists them. `--experiments-folder`
 and `--data-folder`, or `LABNOTES_EXPERIMENTS_FOLDER` and
-`LABNOTES_DATA_FOLDER`, override `labnotes.toml`. `--json`
+`LABNOTES_DATA_FOLDER`, override `.labnotes.toml`. `--json`
 prints the experiments as JSON and exits.
 
 ## From the command line

@@ -13,7 +13,7 @@ from labnotes.models import LabnotesConfig
 ROWS = [{"name": "a", "study": "s1", "runs": 3}]
 FOLDERS = ["--experiments-folder", "exp", "--data-folder", "data"]
 ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
-CONFIG = LabnotesConfig(Path("/p/labnotes.toml"), Path("/p/exp"), Path("/p/data"))
+CONFIG = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p/exp"), Path("/p/data"))
 
 
 @pytest.fixture
@@ -319,9 +319,9 @@ def test_the_environment_overrides_the_config(
 def test_reports_a_broken_config_on_stderr(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["find_config"].side_effect = ValueError("bad labnotes.toml")
+    collaborators["find_config"].side_effect = ValueError("bad .labnotes.toml")
 
     assert run(["--json"]) == 1
 
-    assert "Error: bad labnotes.toml" in capsys.readouterr().err
+    assert "Error: bad .labnotes.toml" in capsys.readouterr().err
     collaborators["dump_experiments"].assert_not_awaited()

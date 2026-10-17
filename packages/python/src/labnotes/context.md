@@ -36,6 +36,33 @@ labnotes experiments foo runs   # foo's runs, oldest first
 
 Each takes `--format table` (the default) or `--format json`; use `--format json` when you parse the output.
 
+`labnotes experiments foo run` runs `foo` from its `experiment.toml`, in the
+experiments folder:
+
+```toml
+command = "uv run run-study"
+repeats = 5
+
+[params]
+model = ["opus", "sonnet"]
+effort = ["low", "high"]
+```
+
+Each combination of `[params]` runs `repeats` times, round-robin. Only runs
+that exit 0 count, so running again fills in what failed or never ran.
+`command` runs in a shell, inside a new run folder, so give it absolute paths
+or commands on `PATH`. Each param is appended as `--name value`, with
+underscores in the name as dashes, booleans as 0 or 1, and lists and tables as
+JSON. labnotes writes `run.json` (params, created, ended, exit code) and
+captures `stdout.log` and `stderr.log` there.
+
+- `--concurrency N` runs N at a time (default 1).
+- `-e PATH` reads another file instead of `experiment.toml`.
+- Ctrl-C stops the running scripts and records their end. A second Ctrl-C
+  kills them.
+- A second `run` of the same experiment fails while the first holds the lock.
+- It exits 1 if any run failed.
+
 `labnotes server` doesn't read `.labnotes.toml` yet: pass `--experiments-folder` and `--data-folder`, or set `LABNOTES_EXPERIMENTS_FOLDER` and `LABNOTES_DATA_FOLDER`. The experiments folder has one subfolder per experiment, each with a `design.yaml` and markdown notes. The data folder holds run data and a `.dirsql.toml` declaring a `runs` table with a `study` column.
 
 The run data lives in the data folder. Query it with [dirsql](https://dirsql.dev) and the data folder's `.dirsql.toml`, which declares the `runs` table:

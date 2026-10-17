@@ -1,4 +1,5 @@
 from collections.abc import Iterator
+from pathlib import Path
 from unittest import mock
 
 import pytest
@@ -85,3 +86,67 @@ def test_help_shows_the_default_format(
     assert run(["--help"]) == 0
 
     assert "[default: table]" in capsys.readouterr().out
+
+
+@pytest.fixture
+def start_experiment() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.experiments.start_experiment",
+        return_value=[{"exit_code": 0}, {"exit_code": 0}],
+    ) as start_experiment:
+        yield start_experiment
+
+
+def test_runs_an_experiment(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    assert run(["a", "run", "--concurrency", "3"]) == 0
+
+    start_experiment.assert_called_once_with(
+        collaborators["load_config"].return_value, "a", None, 3, mock.ANY
+    )
+    assert capsys.readouterr().out == "2 passed, 0 failed.\n"
+    collaborators["experiment_rows"].assert_not_awaited()
+
+
+def test_runs_an_experiment_from_a_named_config(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    path = tmp_path / "other.toml"
+    path.touch()
+
+    assert run(["a", "run", "-e", str(path)]) == 0
+
+    assert start_experiment.call_args.args[1:4] == ("a", path, 1)
+
+
+def test_exits_one_when_a_run_fails(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    start_experiment.return_value = [
+        {"exit_code": 0},
+        {"exit_code": 2},
+        {"exit_code": None},
+    ]
+
+    assert run(["a", "run"]) == 1
+
+    assert capsys.readouterr().out == "1 passed, 2 failed.\n"
+
+
+def test_reports_an_experiment_that_cannot_run(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    start_experiment.side_effect = ValueError("a is already running")
+
+    assert run(["a", "run"]) == 1
+
+    assert "a is already running" in capsys.readouterr().err

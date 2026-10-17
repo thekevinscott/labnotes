@@ -17,3 +17,10 @@ class LabnotesConfig:
     experiments: str
     files: str
     runs: str
+
+
+@dataclass(frozen=True)
+class ExperimentConfig:
+    command: str
+    repeats: int
+    params: dict[str, list[object]]

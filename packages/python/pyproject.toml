@@ -13,6 +13,8 @@ authors = [{ name = "Kevin Scott", email = "me@thekevinscott.com" }]
 dependencies = [
     "click>=8.5.0",
     "dirsql>=0.4.110",
+    "filelock>=4.2.0",
+    "haikunator>=2.1.0",
     "ipykernel>=7.4.0",
     "jinja2>=3.1.6",
     "jupyter-client>=8.10.0",
@@ -62,3 +64,8 @@ select = ["E4", "E7", "E9", "F", "TID252"]
 
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
+
+# haikunator ships no type hints.
+[[tool.mypy.overrides]]
+module = ["haikunator"]
+ignore_missing_imports = true

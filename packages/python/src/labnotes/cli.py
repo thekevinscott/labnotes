@@ -6,26 +6,32 @@ from pathlib import Path
 import click
 from uvicorn.main import main as uvicorn_main
 
+from labnotes.context_guide import context_guide
 from labnotes.dump_experiments import dump_experiments
+from labnotes.query_experiment import query_experiment
 from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER, KERNEL_IDLE_MINUTES
 
 # labnotes owns these; the rest of uvicorn's options pass straight through.
 OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 
 
-@click.command(help="Browse experiments and their run data.")
+@click.command(
+    help="Browse experiments and their run data. With EXPERIMENT, print what has"
+    " run as JSON; with SQL too, query that experiment's runs. `labnotes context`"
+    " prints a guide for coding agents."
+)
 @click.version_option(package_name="labnotes")
+@click.argument("experiment", required=False)
+@click.argument("sql", required=False)
 @click.option(
     "--experiments-folder",
     type=click.Path(path_type=Path),
-    required=True,
     envvar=EXPERIMENTS_FOLDER,
     help="One subfolder per experiment, each with a design.yaml and markdown notes.",
 )
 @click.option(
     "--data-folder",
     type=click.Path(path_type=Path),
-    required=True,
     envvar=DATA_FOLDER,
     help="Run data, with a .dirsql.toml declaring a runs table that has a study column.",
 )
@@ -54,12 +60,28 @@ OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 @click.pass_context
 def main(
     ctx: click.Context,
-    experiments_folder: Path,
-    data_folder: Path,
+    experiment: str | None,
+    sql: str | None,
+    experiments_folder: Path | None,
+    data_folder: Path | None,
     kernel_idle_minutes: int,
     as_json: bool,
     **server_options: object,
 ) -> None:
+    if experiment == "context" and sql is None:
+        click.echo(context_guide(), nl=False)
+        return
+    if experiments_folder is None or data_folder is None:
+        raise click.UsageError("--experiments-folder and --data-folder are required.")
+    if experiment is not None:
+        try:
+            result = asyncio.run(
+                query_experiment(experiments_folder, data_folder, experiment, sql)
+            )
+        except (LookupError, RuntimeError) as error:
+            raise click.ClickException(str(error)) from error
+        click.echo(json.dumps(result, indent=2))
+        return
     if as_json:
         experiments = asyncio.run(dump_experiments(experiments_folder, data_folder))
         click.echo(json.dumps(experiments, indent=2))

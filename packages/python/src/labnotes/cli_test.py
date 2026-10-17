@@ -22,10 +22,20 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=ROWS,
         ) as dump_experiments,
+        mock.patch(
+            "labnotes.cli.query_experiment",
+            new_callable=mock.AsyncMock,
+            return_value=ROWS,
+        ) as query_experiment,
+        mock.patch("labnotes.cli.context_guide", return_value="GUIDE\n"),
         mock.patch("labnotes.cli.uvicorn_main") as uvicorn_main,
         mock.patch.dict("os.environ", clear=True),
     ):
-        yield {"dump_experiments": dump_experiments, "uvicorn_main": uvicorn_main}
+        yield {
+            "dump_experiments": dump_experiments,
+            "query_experiment": query_experiment,
+            "uvicorn_main": uvicorn_main,
+        }
 
 
 def run(argv: list[str]) -> int | str | None:
@@ -171,3 +181,73 @@ def test_rejects_a_kernel_idle_limit_under_a_minute(
 ) -> None:
     assert run([*FOLDERS, "--kernel-idle-minutes", "0"]) == 2
     collaborators["uvicorn_main"].assert_not_called()
+
+
+def test_context_prints_the_agent_guide_without_folders(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["context"]) == 0
+
+    assert capsys.readouterr().out == "GUIDE\n"
+    collaborators["query_experiment"].assert_not_awaited()
+    collaborators["uvicorn_main"].assert_not_called()
+
+
+def test_prints_what_has_run_for_an_experiment(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["a", *FOLDERS]) == 0
+
+    collaborators["query_experiment"].assert_awaited_once_with(
+        Path("exp"), Path("data"), "a", None
+    )
+    assert capsys.readouterr().out == json.dumps(ROWS, indent=2) + "\n"
+    collaborators["uvicorn_main"].assert_not_called()
+
+
+def test_queries_an_experiments_runs(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "SELECT 1", *FOLDERS]) == 0
+
+    collaborators["query_experiment"].assert_awaited_once_with(
+        Path("exp"), Path("data"), "a", "SELECT 1"
+    )
+
+
+def test_queries_an_experiment_named_context_when_given_sql(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["context", "SELECT 1", *FOLDERS]) == 0
+
+    collaborators["query_experiment"].assert_awaited_once_with(
+        Path("exp"), Path("data"), "context", "SELECT 1"
+    )
+
+
+@pytest.mark.parametrize(
+    "error", [LookupError("no experiment named 'a'"), RuntimeError("no such column")]
+)
+def test_reports_a_failed_query_on_stderr(
+    error: Exception,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["query_experiment"].side_effect = error
+
+    assert run(["a", "SELECT 1", *FOLDERS]) == 1
+
+    captured = capsys.readouterr()
+    assert captured.out == ""
+    assert f"Error: {error}" in captured.err
+
+
+def test_an_experiment_needs_both_folders(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["a", "--data-folder", "data"]) == 2
+
+    assert "--experiments-folder and --data-folder are required." in (
+        capsys.readouterr().err
+    )
+    collaborators["query_experiment"].assert_not_awaited()

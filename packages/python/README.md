@@ -27,3 +27,22 @@ through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
 `--ssl-*` set, and the rest. `labnotes --help` lists them. The folders can also
 come from `LABNOTES_EXPERIMENTS_FOLDER` and `LABNOTES_DATA_FOLDER`. `--json`
 prints the experiments as JSON and exits.
+
+## From the command line
+
+Name an experiment to print what has run for it as JSON. Add SQL to query
+that experiment's runs: `runs` holds only its runs, `main.runs` every run.
+
+```sh
+uvx labnotes models-effort "SELECT model, COUNT(*) AS n FROM runs GROUP BY 1" \
+  --experiments-folder experiments --data-folder data
+```
+
+## Agent skill
+
+```sh
+npx skills add thekevinscott/labnotes
+```
+
+The skill tells a coding agent to run `labnotes context`, which prints a usage
+guide for the installed version.

@@ -8,10 +8,12 @@ from unittest import mock
 import pytest
 
 from labnotes.cli import main
+from labnotes.models import LabnotesConfig
 
 ROWS = [{"name": "a", "study": "s1", "runs": 3}]
 FOLDERS = ["--experiments-folder", "exp", "--data-folder", "data"]
 ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
+CONFIG = LabnotesConfig(Path("/p/labnotes.toml"), Path("/p/exp"), Path("/p/data"))
 
 
 @pytest.fixture
@@ -27,7 +29,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=ROWS,
         ) as query_experiment,
-        mock.patch("labnotes.cli.context_guide", return_value="GUIDE\n"),
+        mock.patch(
+            "labnotes.cli.context_guide", return_value="GUIDE\n"
+        ) as context_guide,
+        mock.patch("labnotes.cli.find_config", return_value=None) as find_config,
         mock.patch("labnotes.cli.uvicorn_main") as uvicorn_main,
         mock.patch.dict("os.environ", clear=True),
     ):
@@ -35,6 +40,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "dump_experiments": dump_experiments,
             "query_experiment": query_experiment,
             "uvicorn_main": uvicorn_main,
+            "context_guide": context_guide,
+            "find_config": find_config,
         }
 
 
@@ -189,6 +196,7 @@ def test_context_prints_the_agent_guide_without_folders(
     assert run(["".join(["con", "text"])]) == 0
 
     assert capsys.readouterr().out == "GUIDE\n"
+    collaborators["context_guide"].assert_called_once_with(None, Path.cwd())
     collaborators["query_experiment"].assert_not_awaited()
     collaborators["uvicorn_main"].assert_not_called()
 
@@ -247,7 +255,73 @@ def test_an_experiment_needs_both_folders(
 ) -> None:
     assert run(["a", "--data-folder", "data"]) == 2
 
-    assert "--experiments-folder and --data-folder are required." in (
+    assert "--experiments-folder and --data-folder are required without a" in (
         capsys.readouterr().err
     )
     collaborators["query_experiment"].assert_not_awaited()
+
+
+def test_looks_for_the_config_from_the_working_folder(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    run(FOLDERS)
+
+    collaborators["find_config"].assert_called_once_with(Path.cwd())
+
+
+def test_context_names_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["find_config"].return_value = CONFIG
+
+    assert run(["".join(["con", "text"])]) == 0
+
+    collaborators["context_guide"].assert_called_once_with(CONFIG, Path.cwd())
+
+
+def test_reads_the_folders_from_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["find_config"].return_value = CONFIG
+
+    assert run(["a"]) == 0
+
+    collaborators["query_experiment"].assert_awaited_once_with(
+        Path("/p/exp"), Path("/p/data"), "a", None
+    )
+
+
+def test_flags_override_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["find_config"].return_value = CONFIG
+
+    assert run(["--json", "--data-folder", "data"]) == 0
+
+    collaborators["dump_experiments"].assert_awaited_once_with(
+        Path("/p/exp"), Path("data")
+    )
+
+
+def test_the_environment_overrides_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["find_config"].return_value = CONFIG
+
+    with mock.patch.dict("os.environ", {ENV[0]: "exp"}):
+        assert run(["--json"]) == 0
+
+    collaborators["dump_experiments"].assert_awaited_once_with(
+        Path("exp"), Path("/p/data")
+    )
+
+
+def test_reports_a_broken_config_on_stderr(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["find_config"].side_effect = ValueError("bad labnotes.toml")
+
+    assert run(["--json"]) == 1
+
+    assert "Error: bad labnotes.toml" in capsys.readouterr().err
+    collaborators["dump_experiments"].assert_not_awaited()

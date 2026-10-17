@@ -8,6 +8,7 @@ from uvicorn.main import main as uvicorn_main
 
 from labnotes.context_guide import context_guide
 from labnotes.dump_experiments import dump_experiments
+from labnotes.find_config import CONFIG_FILE, find_config
 from labnotes.query_experiment import query_experiment
 from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER, KERNEL_IDLE_MINUTES
 
@@ -68,11 +69,21 @@ def main(
     as_json: bool,
     **server_options: object,
 ) -> None:
+    cwd = Path.cwd()
+    try:
+        config = find_config(cwd)
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
     if experiment == "context" and sql is None:
-        click.echo(context_guide(), nl=False)
+        click.echo(context_guide(config, cwd), nl=False)
         return
+    if config is not None:
+        experiments_folder = experiments_folder or config.experiments_folder
+        data_folder = data_folder or config.data_folder
     if experiments_folder is None or data_folder is None:
-        raise click.UsageError("--experiments-folder and --data-folder are required.")
+        raise click.UsageError(
+            f"--experiments-folder and --data-folder are required without a {CONFIG_FILE}."
+        )
     if experiment is not None:
         try:
             result = asyncio.run(

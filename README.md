@@ -1,5 +1,25 @@
 # labnotes
 
+`labnotes` helps you manage your experiments.
+
+## Getting Started
+
+You can use `labnotes` without installation:
+
+```
+uvx labnotes
+```
+
+## Config
+
+`labnotes` can create and maintain a TOML file:
+
+```bash
+uvx labnotes init
+```
+
+## Quick Start
+
 Browse experiment designs, notes, and run data from a folder.
 
 ```sh

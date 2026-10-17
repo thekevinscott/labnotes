@@ -8,14 +8,12 @@ from unittest import mock
 import pytest
 
 from labnotes.cli import main
-from labnotes.models import LabnotesConfig
 
 CONFIG_TEXT = 'experiments = "/p/exp"\ndata = "/p/data"\n'
 
 ROWS = [{"name": "a", "study": "s1", "runs": 3}]
 FOLDERS = ["--experiments-folder", "exp", "--data-folder", "data"]
 ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
-CONFIG = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p/exp"), Path("/p/data"))
 
 
 @pytest.fixture
@@ -276,9 +274,13 @@ def test_context_names_the_config_in_the_working_folder(
 
     assert run(["".join(["con", "text"])]) == 0
 
-    collaborators["context_guide"].assert_called_once_with(
-        LabnotesConfig(path, Path("/p/exp"), Path("/p/data")), Path.cwd()
+    config, cwd = collaborators["context_guide"].call_args.args
+    assert (config.path, config.experiments_folder, config.data_folder) == (
+        path,
+        Path("/p/exp"),
+        Path("/p/data"),
     )
+    assert cwd == Path.cwd()
 
 
 def test_ignores_a_config_in_a_parent_folder(

@@ -1,8 +1,8 @@
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
-from labnotes.models import LabnotesConfig
 from labnotes.read_config import read_config
 
 
@@ -15,7 +15,10 @@ def write(folder: Path, text: str) -> Path:
 def test_an_empty_config_uses_the_default_folders(tmp_path: Path) -> None:
     path = write(tmp_path, "")
 
-    assert read_config(path) == LabnotesConfig(
+    with mock.patch("labnotes.read_config.LabnotesConfig") as labnotes_config:
+        assert read_config(path) == labnotes_config.return_value
+
+    labnotes_config.assert_called_once_with(
         path, tmp_path / "experiments", tmp_path / "data"
     )
 

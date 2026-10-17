@@ -1,12 +1,16 @@
 from importlib.metadata import version
 from importlib.resources import files
 from pathlib import Path
+from unittest import mock
 
 from labnotes.context_guide import context_guide
-from labnotes.models import LabnotesConfig
 
 GUIDE = files("labnotes").joinpath("context.md").read_text(encoding="utf-8")
-CONFIG = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p/experiments"), Path("/d"))
+CONFIG = mock.Mock(
+    path=Path("/p/.labnotes.toml"),
+    experiments_folder=Path("/p/experiments"),
+    data_folder=Path("/d"),
+)
 
 
 def test_the_first_line_names_the_installed_version() -> None:

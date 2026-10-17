@@ -6,9 +6,10 @@ from rich.table import Table
 
 
 def print_rows(rows: list[dict[str, object]], output_format: str) -> None:
-    if output_format == "json":
-        click.echo(json.dumps(rows, indent=2))
-        return
+    match output_format:
+        case "json":
+            click.echo(json.dumps(rows, indent=2))
+            return
     if not rows:
         click.echo("No rows.")
         return

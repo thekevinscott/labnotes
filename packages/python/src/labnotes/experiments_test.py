@@ -77,3 +77,11 @@ def test_reports_an_unknown_experiment(
 
 def test_rejects_an_unknown_action(collaborators: dict[str, mock.MagicMock]) -> None:
     assert run(["a", "jump"]) == 2
+
+
+def test_help_shows_the_default_format(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["--help"]) == 0
+
+    assert "[default: table]" in capsys.readouterr().out

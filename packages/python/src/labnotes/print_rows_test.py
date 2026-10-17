@@ -23,7 +23,7 @@ def test_prints_json(
 ) -> None:
     print_rows(ROWS, "json")
 
-    assert json.loads(capsys.readouterr().out) == ROWS
+    assert capsys.readouterr().out == json.dumps(ROWS, indent=2) + "\n"
     rich["Console"].assert_not_called()
 
 
@@ -43,3 +43,9 @@ def test_says_when_there_are_no_rows(
     print_rows([], "table")
 
     assert capsys.readouterr().out == "No rows.\n"
+
+
+def test_takes_the_columns_from_the_first_row(rich: dict[str, mock.MagicMock]) -> None:
+    print_rows([{"a": 1}, {"b": 2}], "table")
+
+    rich["Table"].assert_called_once_with("a")

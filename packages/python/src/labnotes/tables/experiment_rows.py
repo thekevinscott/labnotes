@@ -11,6 +11,7 @@ async def experiment_rows(
     rows = await summarize_experiments(tables, name)
     if name is not None and not rows:
         return None
-    if name is not None and action == "runs":
-        return await list_experiment_runs(tables, name)
+    match name, action:
+        case str(), "runs":
+            return await list_experiment_runs(tables, name)
     return rows

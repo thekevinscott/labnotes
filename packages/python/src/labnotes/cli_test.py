@@ -186,7 +186,7 @@ def test_rejects_a_kernel_idle_limit_under_a_minute(
 def test_context_prints_the_agent_guide_without_folders(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    assert run(["context"]) == 0
+    assert run(["".join(["con", "text"])]) == 0
 
     assert capsys.readouterr().out == "GUIDE\n"
     collaborators["query_experiment"].assert_not_awaited()

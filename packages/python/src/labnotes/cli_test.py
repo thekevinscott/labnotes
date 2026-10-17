@@ -321,9 +321,22 @@ def test_reads_the_config_named_by_the_flag(
 
 
 def test_rejects_a_missing_config_named_by_the_flag(
-    collaborators: dict[str, mock.MagicMock],
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["a", "-c", "missing.toml"]) == 2
+
+    assert "'missing.toml' does not exist" in capsys.readouterr().err
+    collaborators["query_experiment"].assert_not_awaited()
+
+
+def test_rejects_a_folder_named_by_the_flag(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    Path("folder").mkdir()
+
+    assert run(["a", "-c", "folder"]) == 2
+
+    assert "'folder' is a directory" in capsys.readouterr().err
     collaborators["query_experiment"].assert_not_awaited()
 
 

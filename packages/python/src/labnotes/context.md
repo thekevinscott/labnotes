@@ -51,9 +51,9 @@ effort = ["low", "high"]
 Each combination of `[params]` runs `repeats` times, round-robin. Only runs
 that exit 0 count, so running again fills in what failed or never ran.
 `command` runs in a shell, inside a new run folder, so give it absolute paths
-or commands on `PATH`. Each param is appended as `--name value`, with
-underscores in the name as dashes, booleans as 0 or 1, and lists and tables as
-JSON. labnotes writes `run.json` (params, created, ended, exit code) and
+or commands on `PATH`. Each param is appended as `--name value`, with the
+name as written (use `source-language` for a `--source-language` flag),
+booleans as 0 or 1, and lists and tables as JSON. labnotes writes `run.json` (params, created, ended, exit code) and
 captures `stdout.log` and `stderr.log` there.
 
 - `--concurrency N` runs N at a time (default 1).

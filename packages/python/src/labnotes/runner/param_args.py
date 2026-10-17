@@ -12,5 +12,5 @@ def param_args(params: dict[str, object]) -> list[str]:
             text = json.dumps(value)
         else:
             text = str(value)
-        args += [f"--{name.replace('_', '-')}", text]
+        args += [f"--{name}", text]
     return args

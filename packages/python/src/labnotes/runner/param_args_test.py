@@ -15,5 +15,10 @@ def test_passes_each_param_as_a_flag() -> None:
     ]  # fmt: skip
 
 
-def test_dashes_underscored_names() -> None:
-    assert param_args({"source_language": "python"}) == ["--source-language", "python"]
+def test_passes_names_as_written() -> None:
+    assert param_args({"source-language": "python", "a_b": 1}) == [
+        "--source-language",
+        "python",
+        "--a_b",
+        "1",
+    ]

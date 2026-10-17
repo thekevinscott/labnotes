@@ -9,13 +9,18 @@ import pytest
 
 from labnotes.cli import main
 
+CONFIG_TEXT = 'experiments = "/p/exp"\ndata = "/p/data"\n'
+
 ROWS = [{"name": "a", "study": "s1", "runs": 3}]
 FOLDERS = ["--experiments-folder", "exp", "--data-folder", "data"]
 ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
 
 
 @pytest.fixture
-def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
+def collaborators(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> Iterator[dict[str, mock.MagicMock]]:
+    monkeypatch.chdir(tmp_path)
     with (
         mock.patch(
             "labnotes.cli.dump_experiments",
@@ -27,7 +32,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=ROWS,
         ) as query_experiment,
-        mock.patch("labnotes.cli.context_guide", return_value="GUIDE\n"),
+        mock.patch(
+            "labnotes.cli.context_guide", return_value="GUIDE\n"
+        ) as context_guide,
         mock.patch("labnotes.cli.uvicorn_main") as uvicorn_main,
         mock.patch.dict("os.environ", clear=True),
     ):
@@ -35,6 +42,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "dump_experiments": dump_experiments,
             "query_experiment": query_experiment,
             "uvicorn_main": uvicorn_main,
+            "context_guide": context_guide,
         }
 
 
@@ -189,6 +197,7 @@ def test_context_prints_the_agent_guide_without_folders(
     assert run(["".join(["con", "text"])]) == 0
 
     assert capsys.readouterr().out == "GUIDE\n"
+    collaborators["context_guide"].assert_called_once_with(None, Path.cwd())
     collaborators["query_experiment"].assert_not_awaited()
     collaborators["uvicorn_main"].assert_not_called()
 
@@ -247,7 +256,121 @@ def test_an_experiment_needs_both_folders(
 ) -> None:
     assert run(["a", "--data-folder", "data"]) == 2
 
-    assert "--experiments-folder and --data-folder are required." in (
+    assert "--experiments-folder and --data-folder are required without a" in (
         capsys.readouterr().err
     )
     collaborators["query_experiment"].assert_not_awaited()
+
+
+def write_config(path: Path) -> Path:
+    path.write_text(CONFIG_TEXT, encoding="utf-8")
+    return path.resolve()
+
+
+def test_context_names_the_config_in_the_working_folder(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    path = write_config(Path(".labnotes.toml"))
+
+    assert run(["".join(["con", "text"])]) == 0
+
+    config, cwd = collaborators["context_guide"].call_args.args
+    assert (config.path, config.experiments_folder, config.data_folder) == (
+        path,
+        Path("/p/exp"),
+        Path("/p/data"),
+    )
+    assert cwd == Path.cwd()
+
+
+def test_ignores_a_config_in_a_parent_folder(
+    collaborators: dict[str, mock.MagicMock], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_config(Path(".labnotes.toml"))
+    Path("sub").mkdir()
+    monkeypatch.chdir("sub")
+
+    assert run(["a"]) == 2
+    collaborators["query_experiment"].assert_not_awaited()
+
+
+def test_reads_the_folders_from_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    write_config(Path(".labnotes.toml"))
+
+    assert run(["a"]) == 0
+
+    collaborators["query_experiment"].assert_awaited_once_with(
+        Path("/p/exp"), Path("/p/data"), "a", None
+    )
+
+
+@pytest.mark.parametrize("flag", ["-c", "--config"])
+def test_reads_the_config_named_by_the_flag(
+    flag: str, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    Path("elsewhere").mkdir()
+    write_config(Path("elsewhere/project.toml"))
+
+    assert run(["a", flag, "elsewhere/project.toml"]) == 0
+
+    collaborators["query_experiment"].assert_awaited_once_with(
+        Path("/p/exp"), Path("/p/data"), "a", None
+    )
+
+
+def test_rejects_a_missing_config_named_by_the_flag(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["a", "-c", "missing.toml"]) == 2
+
+    assert "'missing.toml' does not exist" in capsys.readouterr().err
+    collaborators["query_experiment"].assert_not_awaited()
+
+
+def test_rejects_a_folder_named_by_the_flag(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    Path("folder").mkdir()
+
+    assert run(["a", "-c", "folder"]) == 2
+
+    assert "'folder' is a directory" in capsys.readouterr().err
+    collaborators["query_experiment"].assert_not_awaited()
+
+
+def test_flags_override_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    write_config(Path(".labnotes.toml"))
+
+    assert run(["--json", "--data-folder", "data"]) == 0
+
+    collaborators["dump_experiments"].assert_awaited_once_with(
+        Path("/p/exp"), Path("data")
+    )
+
+
+def test_the_environment_overrides_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    write_config(Path(".labnotes.toml"))
+
+    with mock.patch.dict("os.environ", {ENV[0]: "exp"}):
+        assert run(["--json"]) == 0
+
+    collaborators["dump_experiments"].assert_awaited_once_with(
+        Path("exp"), Path("/p/data")
+    )
+
+
+def test_reports_a_broken_config_on_stderr(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    Path(".labnotes.toml").write_text("zz = 1\n", encoding="utf-8")
+
+    assert run(["--json"]) == 1
+
+    assert "unknown keys zz" in capsys.readouterr().err
+    collaborators["dump_experiments"].assert_not_awaited()

@@ -9,6 +9,7 @@ from uvicorn.main import main as uvicorn_main
 from labnotes.context_guide import context_guide
 from labnotes.dump_experiments import dump_experiments
 from labnotes.query_experiment import query_experiment
+from labnotes.read_config import CONFIG_FILE, read_config
 from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER, KERNEL_IDLE_MINUTES
 
 # labnotes owns these; the rest of uvicorn's options pass straight through.
@@ -23,6 +24,13 @@ OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 @click.version_option(package_name="labnotes")
 @click.argument("experiment", required=False)
 @click.argument("sql", required=False)
+@click.option(
+    "-c",
+    "--config",
+    "config_path",
+    type=click.Path(path_type=Path, dir_okay=False, exists=True),
+    help=f"Project config. Default: {CONFIG_FILE} in the working folder, if there.",
+)
 @click.option(
     "--experiments-folder",
     type=click.Path(path_type=Path),
@@ -62,17 +70,29 @@ def main(
     ctx: click.Context,
     experiment: str | None,
     sql: str | None,
+    config_path: Path | None,
     experiments_folder: Path | None,
     data_folder: Path | None,
     kernel_idle_minutes: int,
     as_json: bool,
     **server_options: object,
 ) -> None:
+    cwd = Path.cwd()
+    config_path = config_path or cwd / CONFIG_FILE
+    try:
+        config = read_config(config_path) if config_path.is_file() else None
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
     if experiment == "context" and sql is None:
-        click.echo(context_guide(), nl=False)
+        click.echo(context_guide(config, cwd), nl=False)
         return
+    if config is not None:
+        experiments_folder = experiments_folder or config.experiments_folder
+        data_folder = data_folder or config.data_folder
     if experiments_folder is None or data_folder is None:
-        raise click.UsageError("--experiments-folder and --data-folder are required.")
+        raise click.UsageError(
+            f"--experiments-folder and --data-folder are required without a {CONFIG_FILE}."
+        )
     if experiment is not None:
         try:
             result = asyncio.run(

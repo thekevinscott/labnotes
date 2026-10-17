@@ -3,12 +3,23 @@
 Browse experiment designs, notes, and run data from a folder.
 
 ```sh
-uvx labnotes --experiments-folder experiments --data-folder data
+uvx labnotes
 ```
 
-- `--experiments-folder` holds one subfolder per experiment, each with a
+labnotes reads two folders, named in a `.labnotes.toml` at the project root:
+
+```toml
+experiments = "experiments"
+data = "data"
+```
+
+Both keys are optional and default to the values above. Paths are relative to
+`.labnotes.toml`, or absolute, or start with `~`. labnotes reads the file from
+the working folder, or from the path given with `-c`.
+
+- `experiments` holds one subfolder per experiment, each with a
   `design.yaml` (with a `study` key) and any number of markdown notes.
-- `--data-folder` holds the run data and a `.dirsql.toml` that declares a
+- `data` holds the run data and a `.dirsql.toml` that declares a
   `runs` table with a `study` column. An experiment's runs are the rows whose
   `study` matches its design's.
 
@@ -24,8 +35,9 @@ of values), `runs_per_cell`, and `completed_run`, a SQL condition over the
 `-h`/`--host` and `-p`/`--port` change where it listens; `-h 0.0.0.0` (or a
 Tailscale IP) serves beyond localhost. Every other uvicorn option passes
 through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
-`--ssl-*` set, and the rest. `labnotes --help` lists them. The folders can also
-come from `LABNOTES_EXPERIMENTS_FOLDER` and `LABNOTES_DATA_FOLDER`. `--json`
+`--ssl-*` set, and the rest. `labnotes --help` lists them. `--experiments-folder`
+and `--data-folder`, or `LABNOTES_EXPERIMENTS_FOLDER` and
+`LABNOTES_DATA_FOLDER`, override `.labnotes.toml`. `--json`
 prints the experiments as JSON and exits.
 
 ## From the command line
@@ -34,8 +46,7 @@ Name an experiment to print what has run for it as JSON. Add SQL to query
 that experiment's runs: `runs` holds only its runs, `main.runs` every run.
 
 ```sh
-uvx labnotes models-effort "SELECT model, COUNT(*) AS n FROM runs GROUP BY 1" \
-  --experiments-folder experiments --data-folder data
+uvx labnotes models-effort "SELECT model, COUNT(*) AS n FROM runs GROUP BY 1"
 ```
 
 ## Agent skill

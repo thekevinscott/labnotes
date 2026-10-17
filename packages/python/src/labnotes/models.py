@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from pathlib import Path
 
 
 @dataclass(frozen=True)
@@ -7,3 +8,10 @@ class RunView:
     descending: bool = False
     status: str | None = None
     filters: dict[str, str] = field(default_factory=dict)
+
+
+@dataclass(frozen=True)
+class LabnotesConfig:
+    path: Path
+    experiments_folder: Path
+    data_folder: Path

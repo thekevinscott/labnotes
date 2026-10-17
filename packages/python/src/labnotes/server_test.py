@@ -5,11 +5,9 @@ from unittest import mock
 
 import pytest
 
-from labnotes.cli import main
+from labnotes.server import server
 
-CONFIG_TEXT = 'experiments = "/p/exp"\ndata = "/p/data"\n'
-
-SERVER = ["server", "--experiments-folder", "exp", "--data-folder", "data"]
+SERVER = ["--experiments-folder", "exp", "--data-folder", "data"]
 ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
 
 
@@ -19,18 +17,16 @@ def collaborators(
 ) -> Iterator[dict[str, mock.MagicMock]]:
     monkeypatch.chdir(tmp_path)
     with (
-        mock.patch(
-            "labnotes.cli.context_guide", return_value="GUIDE\n"
-        ) as context_guide,
+        mock.patch("labnotes.server.load_config", return_value=None) as load_config,
         mock.patch("labnotes.server.uvicorn_main") as uvicorn_main,
         mock.patch.dict("os.environ", clear=True),
     ):
-        yield {"uvicorn_main": uvicorn_main, "context_guide": context_guide}
+        yield {"uvicorn_main": uvicorn_main, "load_config": load_config}
 
 
 def run(argv: list[str]) -> int | str | None:
     with pytest.raises(SystemExit) as exit_info:
-        main(argv)
+        server.main(argv, prog_name="server")
     return exit_info.value.code
 
 
@@ -96,7 +92,7 @@ def test_reads_the_folders_from_the_environment(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     with mock.patch.dict("os.environ", dict(zip(ENV, ["exp", "data"], strict=True))):
-        assert run(["server"]) == 0
+        assert run([]) == 0
         assert served_folders(collaborators["uvicorn_main"]) == [
             str(Path("exp").resolve()),
             str(Path("data").resolve()),
@@ -111,7 +107,7 @@ def test_requires_both_folders(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(["server", *argv]) == 2
+    assert run(argv) == 2
 
     assert "--experiments-folder and --data-folder are required without a" in (
         capsys.readouterr().err
@@ -122,7 +118,7 @@ def test_requires_both_folders(
 def test_server_help_shows_the_bind_defaults_and_uvicorn_options(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    assert run(["server", "--help"]) == 0
+    assert run(["--help"]) == 0
 
     out = " ".join(capsys.readouterr().out.split())
     assert "[default: 127.0.0.1]" in out
@@ -164,70 +160,28 @@ def test_rejects_a_kernel_idle_limit_under_a_minute(
     collaborators["uvicorn_main"].assert_not_called()
 
 
-def write_config(path: Path) -> Path:
-    path.write_text(CONFIG_TEXT, encoding="utf-8")
-    return path.resolve()
-
-
-def test_ignores_a_config_in_a_parent_folder(
-    collaborators: dict[str, mock.MagicMock], monkeypatch: pytest.MonkeyPatch
-) -> None:
-    write_config(Path(".labnotes.toml"))
-    Path("sub").mkdir()
-    monkeypatch.chdir("sub")
-
-    assert run(["server"]) == 2
-    collaborators["uvicorn_main"].assert_not_called()
+def configure(load_config: mock.MagicMock) -> None:
+    load_config.return_value = mock.Mock(
+        experiments_folder=Path("/p/exp"), data_folder=Path("/p/data")
+    )
 
 
 def test_serves_the_folders_from_the_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    write_config(Path(".labnotes.toml"))
+    configure(collaborators["load_config"])
 
-    assert run(["server"]) == 0
-
-    assert served_folders(collaborators["uvicorn_main"]) == ["/p/exp", "/p/data"]
-
-
-@pytest.mark.parametrize("flag", ["-c", "--config"])
-def test_reads_the_config_named_by_the_flag(
-    flag: str, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    Path("elsewhere").mkdir()
-    write_config(Path("elsewhere/project.toml"))
-
-    assert run([flag, "elsewhere/project.toml", "server"]) == 0
+    assert run([]) == 0
 
     assert served_folders(collaborators["uvicorn_main"]) == ["/p/exp", "/p/data"]
-
-
-def test_rejects_a_missing_config_named_by_the_flag(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
-) -> None:
-    assert run(["-c", "missing.toml", "server"]) == 2
-
-    assert "'missing.toml' does not exist" in capsys.readouterr().err
-    collaborators["uvicorn_main"].assert_not_called()
-
-
-def test_rejects_a_folder_named_by_the_flag(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
-) -> None:
-    Path("folder").mkdir()
-
-    assert run(["-c", "folder", "server"]) == 2
-
-    assert "'folder' is a directory" in capsys.readouterr().err
-    collaborators["uvicorn_main"].assert_not_called()
 
 
 def test_flags_override_the_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    write_config(Path(".labnotes.toml"))
+    configure(collaborators["load_config"])
 
-    assert run(["server", "--data-folder", "data"]) == 0
+    assert run(["--data-folder", "data"]) == 0
 
     assert served_folders(collaborators["uvicorn_main"]) == [
         "/p/exp",
@@ -238,10 +192,10 @@ def test_flags_override_the_config(
 def test_the_environment_overrides_the_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    write_config(Path(".labnotes.toml"))
+    configure(collaborators["load_config"])
 
     with mock.patch.dict("os.environ", {ENV[0]: "exp"}):
-        assert run(["server"]) == 0
+        assert run([]) == 0
         assert served_folders(collaborators["uvicorn_main"]) == [
             str(Path("exp").resolve()),
             "/p/data",

@@ -7,11 +7,6 @@ import pytest
 
 from labnotes.cli import main
 
-CONFIG_TEXT = 'experiments = "/p/exp"\ndata = "/p/data"\n'
-
-SERVER = ["server", "--experiments-folder", "exp", "--data-folder", "data"]
-ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
-
 
 @pytest.fixture
 def collaborators(
@@ -22,10 +17,9 @@ def collaborators(
         mock.patch(
             "labnotes.cli.context_guide", return_value="GUIDE\n"
         ) as context_guide,
-        mock.patch("labnotes.server.uvicorn_main") as uvicorn_main,
-        mock.patch.dict("os.environ", clear=True),
+        mock.patch("labnotes.cli.load_config") as load_config,
     ):
-        yield {"uvicorn_main": uvicorn_main, "context_guide": context_guide}
+        yield {"context_guide": context_guide, "load_config": load_config}
 
 
 def run(argv: list[str]) -> int | str | None:
@@ -34,12 +28,17 @@ def run(argv: list[str]) -> int | str | None:
     return exit_info.value.code
 
 
+def config_path(load_config: mock.MagicMock) -> Path:
+    load_config.assert_called_once()
+    path: Path = load_config.call_args.args[0].obj
+    return path
+
+
 def test_version_prints_installed_version(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["--version"]) == 0
     assert capsys.readouterr().out.strip().endswith(version("labnotes"))
-    collaborators["uvicorn_main"].assert_not_called()
 
 
 def test_prints_help_without_a_command(
@@ -51,49 +50,54 @@ def test_prints_help_without_a_command(
     assert "Usage:" in out
     assert "server" in out
     assert "context" in out
-    collaborators["uvicorn_main"].assert_not_called()
+    collaborators["load_config"].assert_not_called()
 
 
-def test_context_prints_the_agent_guide_without_a_config(
+def test_context_prints_the_agent_guide_for_the_config(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["context"]) == 0
 
     assert capsys.readouterr().out == "GUIDE\n"
-    collaborators["context_guide"].assert_called_once_with(None, Path.cwd())
-    collaborators["uvicorn_main"].assert_not_called()
+    collaborators["context_guide"].assert_called_once_with(
+        collaborators["load_config"].return_value, Path.cwd()
+    )
 
 
-def write_config(path: Path) -> Path:
-    path.write_text(CONFIG_TEXT, encoding="utf-8")
-    return path.resolve()
-
-
-def test_context_names_the_config_in_the_working_folder(
+def test_reads_the_config_in_the_working_folder(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    path = write_config(Path(".labnotes.toml"))
-
     assert run(["context"]) == 0
 
-    config, cwd = collaborators["context_guide"].call_args.args
-    assert (config.path, config.experiments_folder, config.data_folder) == (
-        path,
-        Path("/p/exp"),
-        Path("/p/data"),
-    )
-    assert cwd == Path.cwd()
+    assert config_path(collaborators["load_config"]) == Path.cwd() / ".labnotes.toml"
 
 
-@pytest.mark.parametrize("command", ["server", "context"])
-def test_reports_a_broken_config_on_stderr(
-    command: str,
-    capsys: pytest.CaptureFixture[str],
-    collaborators: dict[str, mock.MagicMock],
+@pytest.mark.parametrize("flag", ["-c", "--config"])
+def test_reads_the_config_named_by_the_flag(
+    flag: str, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    Path(".labnotes.toml").write_text("zz = 1\n", encoding="utf-8")
+    Path("project.toml").write_text("", encoding="utf-8")
 
-    assert run([command]) == 1
+    assert run([flag, "project.toml", "context"]) == 0
 
-    assert "unknown keys zz" in capsys.readouterr().err
-    collaborators["uvicorn_main"].assert_not_called()
+    assert config_path(collaborators["load_config"]) == Path("project.toml")
+
+
+def test_rejects_a_missing_config_named_by_the_flag(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["-c", "missing.toml", "context"]) == 2
+
+    assert "'missing.toml' does not exist" in capsys.readouterr().err
+    collaborators["load_config"].assert_not_called()
+
+
+def test_rejects_a_folder_named_by_the_flag(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    Path("folder").mkdir()
+
+    assert run(["-c", "folder", "context"]) == 2
+
+    assert "'folder' is a directory" in capsys.readouterr().err
+    collaborators["load_config"].assert_not_called()

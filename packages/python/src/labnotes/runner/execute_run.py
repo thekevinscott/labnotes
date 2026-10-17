@@ -1,14 +1,14 @@
 import asyncio
-import shlex
 import time
 from pathlib import Path
 
-from labnotes.runner.param_args import param_args
+from labnotes.runner.shell_command import shell_command
 from labnotes.runner.write_run_json import write_run_json
 from labnotes.tables.iso_time import iso_time
 
 
 async def execute_run(
+    root: Path,
     folder: Path,
     command: str,
     params: dict[str, object],
@@ -28,8 +28,8 @@ async def execute_run(
     ):
         try:
             process = await asyncio.create_subprocess_shell(
-                f"{command} {shlex.join(param_args(params))}".rstrip(),
-                cwd=folder,
+                shell_command(command, folder, params),
+                cwd=root,
                 stdout=stdout,
                 stderr=stderr,
                 # Own process group, so Ctrl-C reaches labnotes first and the

@@ -56,7 +56,9 @@ async def run_experiment(
             folder = run_folder(config.root, config.runs, name, run)
             folder.mkdir(parents=True)
             report(f"{run} started {' '.join(param_args(params))}".rstrip())
-            result = await execute_run(folder, experiment.command, params, running)
+            result = await execute_run(
+                config.root, folder, experiment.command, params, running
+            )
             outcome = result["error"] or f"exited {result['exit_code']}"
             report(f"{run} {outcome}")
             results.append(result)

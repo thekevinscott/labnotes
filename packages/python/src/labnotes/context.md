@@ -40,7 +40,7 @@ Each takes `--format table` (the default) or `--format json`; use `--format json
 experiments folder:
 
 ```toml
-command = "uv run run-study"
+command = "uv run scripts/study.py --output {run_dir}"
 repeats = 5
 
 [params]
@@ -50,11 +50,13 @@ effort = ["low", "high"]
 
 Each combination of `[params]` runs `repeats` times, round-robin. Only runs
 that exit 0 count, so running again fills in what failed or never ran.
-`command` runs in a shell, inside a new run folder, so give it absolute paths
-or commands on `PATH`. Each param is appended as `--name value`, with the
-name as written (use `source-language` for a `--source-language` flag),
-booleans as 0 or 1, and lists and tables as JSON. labnotes writes `run.json` (params, created, ended, exit code) and
-captures `stdout.log` and `stderr.log` there.
+Each run gets a new run folder. `command` runs in a shell from the root, with
+`{run_dir}` replaced by the run folder's absolute path. Pass it to the
+script so it writes its outputs there.
+Each param is appended as `--name value`, with the name as written (use
+`source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
+and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
+code), `stdout.log` and `stderr.log` to the run folder.
 
 - `--concurrency N` runs N at a time (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.

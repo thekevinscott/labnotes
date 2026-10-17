@@ -16,8 +16,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     process.wait = mock.AsyncMock(return_value=3)
     with (
         mock.patch(
-            "labnotes.runner.execute_run.param_args", return_value=["--m", "a b"]
-        ),
+            "labnotes.runner.execute_run.shell_command", return_value="study"
+        ) as shell_command,
         mock.patch("labnotes.runner.execute_run.write_run_json") as write_run_json,
         mock.patch(
             "labnotes.runner.execute_run.iso_time", side_effect=["start", "end"]
@@ -27,12 +27,18 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new=mock.AsyncMock(return_value=process),
         ) as spawn,
     ):
-        yield {"write_run_json": write_run_json, "spawn": spawn, "process": process}
+        yield {
+            "shell_command": shell_command,
+            "write_run_json": write_run_json,
+            "spawn": spawn,
+            "process": process,
+        }
 
 
 def run(tmp_path: Path, running: set[object] | None = None) -> dict[str, object]:
     return asyncio.run(
         execute_run(
+            tmp_path / "root",
             tmp_path,
             "uv run x.py",
             PARAMS,
@@ -41,15 +47,18 @@ def run(tmp_path: Path, running: set[object] | None = None) -> dict[str, object]
     )
 
 
-def test_runs_the_command_with_its_params_in_the_run_folder(
+def test_runs_the_command_from_the_root(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     run(tmp_path)
 
+    collaborators["shell_command"].assert_called_once_with(
+        "uv run x.py", tmp_path, PARAMS
+    )
     spawn = collaborators["spawn"]
-    assert spawn.await_args.args == ("uv run x.py --m 'a b'",)
+    assert spawn.await_args.args == ("study",)
     kwargs = spawn.await_args.kwargs
-    assert (kwargs["cwd"], kwargs["start_new_session"]) == (tmp_path, True)
+    assert (kwargs["cwd"], kwargs["start_new_session"]) == (tmp_path / "root", True)
     assert kwargs["stdout"].name == str(tmp_path / "stdout.log")
     assert kwargs["stderr"].name == str(tmp_path / "stderr.log")
 

@@ -101,9 +101,9 @@ def test_runs_each_planned_run_in_a_new_folder(
 
     assert results == [{"exit_code": 0, "error": None}] * 2
     calls = collaborators["execute_run"].await_args_list
-    assert [c.args[:3] for c in calls] == [
-        (tmp_path / "exp" / "r1", "run", A),
-        (tmp_path / "exp" / "r2", "run", B),
+    assert [c.args[:4] for c in calls] == [
+        (tmp_path, tmp_path / "exp" / "r1", "run", A),
+        (tmp_path, tmp_path / "exp" / "r2", "run", B),
     ]
     assert (tmp_path / "exp" / "r1").is_dir()
     assert [c.args[0] for c in report.call_args_list] == [
@@ -160,7 +160,7 @@ def test_runs_up_to_the_concurrency_at_once(
 
 def interrupting(times: int) -> object:
     async def execute(
-        folder: Path, command: str, params: object, running: set[object]
+        root: Path, folder: Path, command: str, params: object, running: set[object]
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         for _ in range(times):

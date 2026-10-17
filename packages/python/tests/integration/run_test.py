@@ -12,7 +12,10 @@ import sys
 from pathlib import Path
 
 args = sys.argv[1:]
-Path("out.txt").write_text(" ".join(args))
+out = Path(args.pop(args.index("--out") + 1))
+args.remove("--out")
+(out / "out.txt").write_text(" ".join(args))
+Path("cwd.txt").write_text("root")
 print("ran", *args)
 sys.exit(1 if "b" in args else 0)
 """
@@ -29,7 +32,7 @@ def project(tmp_path: Path) -> Path:
     write(tmp_path / "script.py", SCRIPT)
     write(
         tmp_path / "exp" / "experiment.toml",
-        f'command = "{sys.executable} {tmp_path}/script.py"\n'
+        f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
         'repeats = 2\n[params]\nm = ["a", "b"]\n',
     )
     return tmp_path
@@ -61,6 +64,7 @@ def test_runs_every_param_combination_repeats_times(
         assert run["created"] <= run["ended"]
         assert (run["folder"] / "out.txt").read_text() == f"--m {m}"
         assert (run["folder"] / "stdout.log").read_text() == f"ran --m {m}\n"
+    assert (project / "cwd.txt").read_text() == "root"
     assert capsys.readouterr().out.endswith("2 passed, 2 failed.\n")
 
 

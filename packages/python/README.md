@@ -6,20 +6,31 @@ Browse experiment designs, notes, and run data from a folder.
 uvx labnotes server
 ```
 
-labnotes reads two folders, named in a `.labnotes.toml` at the project root:
+A project's root is the folder holding its `.labnotes.toml`. `labnotes init`
+writes one with the default layout:
 
 ```toml
-experiments = "experiments"
-data = "data"
+[experiments]
+path = "{experiment}"
+
+[files]
+path = "{experiment}/files/"
+
+[runs]
+path = "{experiment}/runs/{run}"
 ```
 
-Both keys are optional and default to the values above. Paths are relative to
-`.labnotes.toml`, or absolute, or start with `~`. labnotes reads the file from
-the working folder, or from the path given with `-c`.
+Each path is relative to the root. `{experiment}` and `{run}` stand for folder
+names: the experiments path must use `{experiment}`, and the runs path both.
+labnotes reads the file from the working folder, or from the path given with
+`-c`.
 
-- `experiments` holds one subfolder per experiment, each with a
+`labnotes server` doesn't read `.labnotes.toml` yet. Give it the two folders
+it uses with `--experiments-folder` and `--data-folder`:
+
+- `--experiments-folder` holds one subfolder per experiment, each with a
   `design.yaml` (with a `study` key) and any number of markdown notes.
-- `data` holds the run data and a `.dirsql.toml` that declares a
+- `--data-folder` holds the run data and a `.dirsql.toml` that declares a
   `runs` table with a `study` column. An experiment's runs are the rows whose
   `study` matches its design's.
 
@@ -35,9 +46,8 @@ of values), `runs_per_cell`, and `completed_run`, a SQL condition over the
 `-h`/`--host` and `-p`/`--port` change where it listens; `-h 0.0.0.0` (or a
 Tailscale IP) serves beyond localhost. Every other uvicorn option passes
 through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
-`--ssl-*` set, and the rest. `labnotes server --help` lists them. `--experiments-folder`
-and `--data-folder`, or `LABNOTES_EXPERIMENTS_FOLDER` and
-`LABNOTES_DATA_FOLDER`, override `.labnotes.toml`.
+`--ssl-*` set, and the rest. `labnotes server --help` lists them. `LABNOTES_EXPERIMENTS_FOLDER` and
+`LABNOTES_DATA_FOLDER` can stand in for the folder flags.
 
 ## Agent skill
 

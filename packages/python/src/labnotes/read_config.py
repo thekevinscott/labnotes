@@ -2,22 +2,26 @@ import tomllib
 from pathlib import Path
 
 from labnotes.models import LabnotesConfig
+from labnotes.read_path import DEFAULT_PATHS, read_path
 
 CONFIG_FILE = ".labnotes.toml"
-DEFAULTS = {"experiments": "experiments", "data": "data"}
 
 
 def read_config(path: Path) -> LabnotesConfig:
-    with path.open("rb") as file:
-        values = tomllib.load(file)
-    unknown = sorted(values.keys() - DEFAULTS.keys())
+    try:
+        with path.open("rb") as file:
+            values = tomllib.load(file)
+    except tomllib.TOMLDecodeError as error:
+        raise ValueError(f"{path}: {error}") from error
+    unknown = sorted(values.keys() - DEFAULT_PATHS.keys())
     if unknown:
-        raise ValueError(f"{path}: unknown keys {', '.join(unknown)}")
-    folder = path.resolve().parent
-    folders = {}
-    for key, default in DEFAULTS.items():
-        value = values.get(key, default)
-        if not isinstance(value, str):
-            raise ValueError(f"{path}: {key} must be a string")
-        folders[key] = folder / Path(value).expanduser()
-    return LabnotesConfig(path.resolve(), folders["experiments"], folders["data"])
+        raise ValueError(f"{path}: unknown tables {', '.join(unknown)}")
+    path = path.resolve()
+    return LabnotesConfig(
+        path,
+        path.parent,
+        **{
+            table: read_path(path, table, values.get(table, {}))
+            for table in DEFAULT_PATHS
+        },
+    )

@@ -3,7 +3,7 @@
 Browse experiment designs, notes, and run data from a folder.
 
 ```sh
-uvx labnotes
+uvx labnotes server
 ```
 
 labnotes reads two folders, named in a `.labnotes.toml` at the project root:
@@ -35,19 +35,9 @@ of values), `runs_per_cell`, and `completed_run`, a SQL condition over the
 `-h`/`--host` and `-p`/`--port` change where it listens; `-h 0.0.0.0` (or a
 Tailscale IP) serves beyond localhost. Every other uvicorn option passes
 through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
-`--ssl-*` set, and the rest. `labnotes --help` lists them. `--experiments-folder`
+`--ssl-*` set, and the rest. `labnotes server --help` lists them. `--experiments-folder`
 and `--data-folder`, or `LABNOTES_EXPERIMENTS_FOLDER` and
-`LABNOTES_DATA_FOLDER`, override `.labnotes.toml`. `--json`
-prints the experiments as JSON and exits.
-
-## From the command line
-
-Name an experiment to print what has run for it as JSON. Add SQL to query
-that experiment's runs: `runs` holds only its runs, `main.runs` every run.
-
-```sh
-uvx labnotes models-effort "SELECT model, COUNT(*) AS n FROM runs GROUP BY 1"
-```
+`LABNOTES_DATA_FOLDER`, override `.labnotes.toml`.
 
 ## Agent skill
 

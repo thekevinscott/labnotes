@@ -10,7 +10,10 @@ from labnotes.models import Start
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.stop_then_kill import stop_then_kill
 from labnotes.runner.param_args import param_args
+from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
+
+COLUMNS = ("run", "params", "status", "time")
 
 
 class RunApp(App[None]):
@@ -27,6 +30,7 @@ class RunApp(App[None]):
         self.interrupt: Callable[[], None] = lambda: None
         self.done = False
         self.started: dict[str, float] = {}
+        self.pending: set[str] = set()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -36,7 +40,7 @@ class RunApp(App[None]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        for column in ("run", "params", "status", "time"):
+        for column in COLUMNS:
             table.add_column(column, key=column)
 
     def on_ready(self) -> None:
@@ -58,15 +62,29 @@ class RunApp(App[None]):
         table = self.query_one(DataTable)
         run = str(event.get("run"))
         match event["event"]:
+            case "planned":
+                for planned in event["runs"]:  # type: ignore[attr-defined]
+                    args = " ".join(param_args(planned["params"]))
+                    cells = (planned["run"], args, "pending", "")
+                    table.add_row(*map(dim, cells), key=planned["run"])
+                    self.pending.add(planned["run"])
+                self.show(describe_event(event))
             case "started":
+                self.pending.discard(run)
                 self.started[run] = time.monotonic()
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                table.add_row(run, args, "running", "0s", key=run)
+                cells = (run, args, "running", format_elapsed(0))
+                for column, cell in zip(COLUMNS, cells, strict=True):
+                    table.update_cell(run, column, cell, update_width=True)
             case "ended":
                 outcome = event["error"] or f"exited {event['exit_code']}"
                 table.update_cell(run, "status", outcome, update_width=True)
                 self.tick()
                 del self.started[run]
+            case "stopping":
+                for pending in self.pending:
+                    table.update_cell(pending, "status", dim("skipped"))
+                self.show(describe_event(event))
             case _:
                 self.show(describe_event(event))
 

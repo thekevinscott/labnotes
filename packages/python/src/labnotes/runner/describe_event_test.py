@@ -18,7 +18,7 @@ def param_args() -> Iterator[mock.MagicMock]:
     ("event", "line"),
     [
         (
-            {"event": "planned", "runs": 4, "concurrency": 2},
+            {"event": "planned", "runs": [{}] * 4, "concurrency": 2},
             "4 runs to go, 2 at a time.",
         ),
         (

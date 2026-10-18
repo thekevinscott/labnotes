@@ -22,10 +22,24 @@ async def run_experiment(
     report: Report,
     listen: Listen,
 ) -> list[dict[str, object]]:
-    runs = await list_experiment_runs(open_tables(config), name, experiment.counts)
-    finished = [json.loads(str(run["params"])) for run in runs if run["counted"]]
-    plan = plan_runs(param_grid(experiment.params), experiment.repeats, finished)
-    report({"event": "planned", "runs": len(plan), "concurrency": concurrency})
+    existing = await list_experiment_runs(open_tables(config), name, experiment.counts)
+    finished = [json.loads(str(run["params"])) for run in existing if run["counted"]]
+    planned: set[str] = set()
+
+    def taken(run: str) -> bool:
+        return (
+            run in planned or run_folder(config.root, config.runs, name, run).exists()
+        )
+
+    plan: list[tuple[str, dict[str, object]]] = []
+    for params in plan_runs(
+        param_grid(experiment.params), experiment.repeats, finished
+    ):
+        run = new_run_id(taken)
+        planned.add(run)
+        plan.append((run, params))
+    runs = [{"run": run, "params": params} for run, params in plan]
+    report({"event": "planned", "runs": runs, "concurrency": concurrency})
     running: set[asyncio.subprocess.Process] = set()
     results: list[dict[str, object]] = []
     stopping = asyncio.Event()
@@ -47,10 +61,7 @@ async def run_experiment(
 
     async def work() -> None:
         while plan:
-            params = plan.pop(0)
-            run = new_run_id(
-                lambda id_: run_folder(config.root, config.runs, name, id_).exists()
-            )
+            run, params = plan.pop(0)
             folder = run_folder(config.root, config.runs, name, run)
             folder.mkdir(parents=True)
             report({"event": "started", "run": run, "params": params})

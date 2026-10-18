@@ -4,7 +4,8 @@ from labnotes.runner.param_args import param_args
 def describe_event(event: dict[str, object]) -> str:
     match event["event"]:
         case "planned":
-            return f"{event['runs']} runs to go, {event['concurrency']} at a time."
+            runs = len(event["runs"])  # type: ignore[arg-type]
+            return f"{runs} runs to go, {event['concurrency']} at a time."
         case "started":
             args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
             return f"{event['run']} started {args}".rstrip()

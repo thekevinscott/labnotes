@@ -112,7 +112,11 @@ def test_runs_each_planned_run_in_a_new_folder(
     assert (tmp_path / "exp" / "r1").is_dir()
     ended = {"exit_code": 0, "error": None}
     assert [c.args[0] for c in report.call_args_list] == [
-        {"event": "planned", "runs": 2, "concurrency": 1},
+        {
+            "event": "planned",
+            "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
+            "concurrency": 1,
+        },
         {"event": "started", "run": "r1", "params": A},
         {"event": "ended", "run": "r1", **ended},
         {"event": "started", "run": "r2", "params": B},
@@ -129,6 +133,22 @@ def test_checks_new_run_ids_against_existing_folders(
 
     taken = collaborators["new_run_id"].call_args.args[0]
     assert (taken("taken"), taken("free")) == (True, False)
+
+
+def test_names_every_run_before_the_first_starts(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    def started(taken: object) -> str:
+        assert not collaborators["execute_run"].await_count
+        return next(ids)
+
+    ids = iter(["r1", "r2"])
+    collaborators["new_run_id"].side_effect = started
+
+    run(tmp_path, mock.Mock())
+
+    taken = collaborators["new_run_id"].call_args.args[0]
+    assert (taken("r1"), taken("r2")) == (True, True)
 
 
 def test_runs_up_to_the_concurrency_at_once(

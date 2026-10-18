@@ -86,7 +86,8 @@ A script run by labnotes should:
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
+open when they finish. Runs not started yet show grayed as `pending`, and as
+`skipped` once stopped; `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 
 - `--concurrency N` runs N at a time (default 1).

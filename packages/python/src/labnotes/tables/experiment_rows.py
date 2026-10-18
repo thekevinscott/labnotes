@@ -16,7 +16,8 @@ async def experiment_rows(
         return None
     match name, action:
         case str(), "runs":
-            stored = rows[0]["config"]
+            [row] = rows
+            stored = row["config"]
             summary = summarize_config(json.loads(str(stored)) if stored else None)
             return await list_experiment_runs(
                 tables, name, str(summary["completed_run"])

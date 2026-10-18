@@ -89,7 +89,19 @@ def test_help_shows_the_default_format(
 
 
 @pytest.fixture
-def start_experiment() -> Iterator[mock.MagicMock]:
+def drivers() -> Iterator[dict[str, mock.MagicMock]]:
+    with (
+        mock.patch("labnotes.experiments.run_headless") as run_headless,
+        mock.patch("labnotes.experiments.run_tui") as run_tui,
+        mock.patch("labnotes.experiments.sys") as sys,
+    ):
+        sys.stdout.isatty.return_value = False
+        sys.stderr.isatty.return_value = True
+        yield {"run_headless": run_headless, "run_tui": run_tui, "sys": sys}
+
+
+@pytest.fixture
+def start_experiment(drivers: dict[str, mock.MagicMock]) -> Iterator[mock.MagicMock]:
     with mock.patch(
         "labnotes.experiments.start_experiment",
         return_value=[{"exit_code": 0}, {"exit_code": 0}],
@@ -178,3 +190,51 @@ def test_needs_an_experiment_config_file(
     assert run(["a", "run", "-e", str(tmp_path / path)]) == 2
 
     start_experiment.assert_not_called()
+
+
+def test_prints_events_when_not_in_a_terminal(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    run(["a", "run"])
+
+    assert start_experiment.call_args.args[4] is drivers["run_headless"]
+
+
+def test_prints_events_when_stderr_is_not_a_terminal(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+    drivers["sys"].stderr.isatty.return_value = False
+
+    run(["a", "run"])
+
+    assert start_experiment.call_args.args[4] is drivers["run_headless"]
+
+
+def test_shows_the_live_view_in_a_terminal(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+
+    run(["a", "run"])
+
+    drive = start_experiment.call_args.args[4]
+    assert (drive.func, drive.keywords) == (drivers["run_tui"], {"title": "a"})
+
+
+def test_prints_events_with_no_tui(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    start_experiment: mock.MagicMock,
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+
+    run(["a", "run", "--no-tui"])
+
+    assert start_experiment.call_args.args[4] is drivers["run_headless"]

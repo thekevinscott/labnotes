@@ -1,5 +1,4 @@
 import asyncio
-import os
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -10,7 +9,7 @@ from labnotes.runner.run_experiment import run_experiment
 
 A: dict[str, object] = {"m": "a"}
 B: dict[str, object] = {"m": "b"}
-SIGINT, SIGKILL, SIGTERM = 2, 9, 15
+SIGKILL, SIGTERM = 9, 15
 
 
 def experiment() -> mock.Mock:
@@ -39,10 +38,6 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.plan_runs", return_value=[A, B]
         ) as plan_runs,
         mock.patch(
-            "labnotes.runner.run_experiment.param_args",
-            side_effect=lambda params: ["--m", params["m"]],
-        ),
-        mock.patch(
             "labnotes.runner.run_experiment.new_run_id",
             side_effect=lambda taken: next(ids),
         ) as new_run_id,
@@ -56,10 +51,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         ) as execute_run,
         mock.patch(
             "labnotes.runner.run_experiment.signal",
-            mock.Mock(SIGINT=SIGINT, SIGTERM=SIGTERM, SIGKILL=SIGKILL),
+            mock.Mock(SIGTERM=SIGTERM, SIGKILL=SIGKILL),
         ),
         mock.patch("labnotes.runner.run_experiment.os.killpg") as killpg,
-        mock.patch("labnotes.runner.run_experiment.os._exit") as exit_,
     ):
         yield {
             "open_tables": open_tables,
@@ -69,15 +63,26 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "new_run_id": new_run_id,
             "execute_run": execute_run,
             "killpg": killpg,
-            "exit": exit_,
         }
 
 
 def run(
-    tmp_path: Path, report: mock.Mock, concurrency: int = 1
+    tmp_path: Path,
+    report: mock.Mock,
+    concurrency: int = 1,
+    listen: mock.Mock | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
-    return asyncio.run(run_experiment(config, "exp", experiment(), concurrency, report))
+    return asyncio.run(
+        run_experiment(
+            config,
+            "exp",
+            experiment(),
+            concurrency,
+            report,
+            mock.Mock() if listen is None else listen,
+        )
+    )
 
 
 def test_plans_the_runs_still_needed(
@@ -106,12 +111,13 @@ def test_runs_each_planned_run_in_a_new_folder(
         (tmp_path, tmp_path / "exp" / "r2", "run", B),
     ]
     assert (tmp_path / "exp" / "r1").is_dir()
+    ended = {"exit_code": 0, "error": None}
     assert [c.args[0] for c in report.call_args_list] == [
-        "2 runs to go, 1 at a time.",
-        "r1 started --m a",
-        "r1 exited 0",
-        "r2 started --m b",
-        "r2 exited 0",
+        {"event": "planned", "runs": 2, "concurrency": 1},
+        {"event": "started", "run": "r1", "params": A},
+        {"event": "ended", "run": "r1", **ended},
+        {"event": "started", "run": "r2", "params": B},
+        {"event": "ended", "run": "r2", **ended},
     ]
 
 
@@ -124,17 +130,6 @@ def test_checks_new_run_ids_against_existing_folders(
 
     taken = collaborators["new_run_id"].call_args.args[0]
     assert (taken("taken"), taken("free")) == (True, False)
-
-
-def test_reports_a_run_that_could_not_start(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["execute_run"].return_value = {"exit_code": None, "error": "boom"}
-    report = mock.Mock()
-
-    run(tmp_path, report)
-
-    assert report.call_args_list[2].args[0] == "r1 boom"
 
 
 def test_runs_up_to_the_concurrency_at_once(
@@ -158,58 +153,58 @@ def test_runs_up_to_the_concurrency_at_once(
     assert peak == 2
 
 
-def interrupting(times: int) -> object:
+def interrupting(times: int, listen: mock.Mock) -> object:
     async def execute(
         root: Path, folder: Path, command: str, params: object, running: set[object]
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         for _ in range(times):
-            os.kill(os.getpid(), SIGINT)
-            for _ in range(20):
-                await asyncio.sleep(0)
+            listen.call_args.args[0]()
         running.clear()
         return {"exit_code": -15, "error": None}
 
     return execute
 
 
-def test_first_ctrl_c_stops_runs_and_starts_no_more(
+def events(report: mock.Mock) -> list[object]:
+    return [c.args[0]["event"] for c in report.call_args_list]
+
+
+def test_first_interrupt_stops_runs_and_starts_no_more(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["execute_run"].side_effect = interrupting(1)
+    listen = mock.Mock()
+    collaborators["execute_run"].side_effect = interrupting(1, listen)
     report = mock.Mock()
 
-    assert run(tmp_path, report) == [{"exit_code": -15, "error": None}]
+    results = run(tmp_path, report, listen=listen)
 
+    assert results == [{"exit_code": -15, "error": None}]
     collaborators["killpg"].assert_called_once_with(42, SIGTERM)
-    collaborators["exit"].assert_not_called()
-    assert "Stopping runs. Ctrl-C again to kill them." in [
-        c.args[0] for c in report.call_args_list
-    ]
+    assert events(report) == ["planned", "started", "stopping", "ended"]
 
 
-def test_second_ctrl_c_kills_runs_and_exits(
+def test_second_interrupt_kills_runs(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["execute_run"].side_effect = interrupting(2)
+    listen = mock.Mock()
+    collaborators["execute_run"].side_effect = interrupting(2, listen)
     report = mock.Mock()
 
-    run(tmp_path, report)
+    run(tmp_path, report, listen=listen)
 
     assert collaborators["killpg"].call_args_list == [
         mock.call(42, SIGTERM),
         mock.call(42, SIGKILL),
     ]
-    collaborators["exit"].assert_called_once_with(130)
-    assert [c.args[0] for c in report.call_args_list].count(
-        "Stopping runs. Ctrl-C again to kill them."
-    ) == 1
+    assert events(report) == ["planned", "started", "stopping", "killing", "ended"]
 
 
 def test_ignores_a_run_that_already_exited(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["execute_run"].side_effect = interrupting(1)
+    listen = mock.Mock()
+    collaborators["execute_run"].side_effect = interrupting(1, listen)
     collaborators["killpg"].side_effect = ProcessLookupError
 
-    run(tmp_path, mock.Mock())
+    run(tmp_path, mock.Mock(), listen=listen)

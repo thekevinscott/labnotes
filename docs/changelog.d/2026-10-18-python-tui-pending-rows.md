@@ -1,0 +1,1 @@
+**Added** — the `labnotes experiments NAME run` live view lists every planned run from the start, grayed as `pending` until it starts and marked `skipped` if the runs are stopped first. Run ids are now chosen when the runs are planned, and the `planned` event lists them.

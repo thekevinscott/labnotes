@@ -36,7 +36,22 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
 
 def rows(app: RunApp) -> list[list[object]]:
     table: Any = app.query_one("#runs")
-    return [table.get_row(key) for key in table.rows]
+    return [[str(cell) for cell in table.get_row(key)] for key in table.rows]
+
+
+def styles(app: RunApp) -> list[list[object]]:
+    table: Any = app.query_one("#runs")
+    return [
+        [getattr(cell, "style", None) for cell in table.get_row(key)]
+        for key in table.rows
+    ]
+
+
+def planned(*runs: str) -> dict[str, object]:
+    return {
+        "event": "planned",
+        "runs": [{"run": run, "params": {"m": run}} for run in runs],
+    }
 
 
 def status(app: RunApp) -> str:
@@ -48,7 +63,7 @@ def test_shows_each_run_and_the_outcome(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report({"event": "planned"})
+        report(planned("r1", "r2"))
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         report({"event": "started", "run": "r2", "params": {"m": "b"}})
         collaborators["time"].monotonic.return_value = 34.0
@@ -78,8 +93,37 @@ def test_shows_each_run_and_the_outcome(
     asyncio.run(drive())
 
 
-def test_shows_other_events_as_status() -> None:
+def test_shows_planned_runs_as_dim_pending_rows() -> None:
+    rendered = asyncio.Event()
+
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        await rendered.wait()
+        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            rendered.set()
+            await pilot.pause()
+            assert rows(app) == [
+                ["r1", "--m a", "running", "0 seconds"],
+                ["r2", "--m r2", "pending", ""],
+            ]
+            assert styles(app) == [[None] * 4, ["dim"] * 4]
+            table: Any = app.query_one("#runs")
+            assert table.columns["time"].content_width == len("0 seconds")
+            assert status(app) == "said planned"
+
+    asyncio.run(drive())
+
+
+def test_skips_pending_runs_when_stopping() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        report({"event": "started", "run": "r1", "params": {"m": "a"}})
         report({"event": "stopping"})
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
@@ -87,7 +131,23 @@ def test_shows_other_events_as_status() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
+            assert [row[2] for row in rows(app)] == ["running", "skipped", "skipped"]
+            assert styles(app)[1][2] == "dim"
             assert status(app) == "said stopping"
+
+    asyncio.run(drive())
+
+
+def test_shows_other_events_as_status() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report({"event": "killing"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert status(app) == "said killing"
 
     asyncio.run(drive())
 
@@ -96,6 +156,7 @@ def test_ticks_the_time_of_running_runs(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
@@ -175,6 +236,7 @@ def test_widens_columns_as_cells_grow(
     rendered = asyncio.Event()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         await rendered.wait()
         collaborators["time"].monotonic.return_value = 1234.0

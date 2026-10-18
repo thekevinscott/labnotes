@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -36,6 +37,10 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         }
 
 
+def drive() -> mock.Mock:
+    return mock.Mock(side_effect=lambda start: asyncio.run(start("report", "listen")))
+
+
 def make_config(root: Path) -> mock.Mock:
     return mock.Mock(
         root=root, experiments="notes/{experiment}", runs="data/{experiment}/{run}"
@@ -49,9 +54,8 @@ def test_runs_the_experiment_under_a_lock(
     path.parent.mkdir(parents=True)
     path.touch()
     config = make_config(tmp_path)
-    report = mock.Mock()
 
-    assert start_experiment(config, "exp", None, 2, report) == [{"exit_code": 0}]
+    assert start_experiment(config, "exp", None, 2, drive()) == [{"exit_code": 0}]
 
     collaborators["read_experiment_config"].assert_called_once_with(path)
     collaborators["lock_path"].assert_called_once_with(tmp_path, config.runs, "exp")
@@ -60,7 +64,12 @@ def test_runs_the_experiment_under_a_lock(
     )
     assert (tmp_path / "runs" / "exp").is_dir()
     collaborators["run_experiment"].assert_awaited_once_with(
-        config, "exp", collaborators["read_experiment_config"].return_value, 2, report
+        config,
+        "exp",
+        collaborators["read_experiment_config"].return_value,
+        2,
+        "report",
+        "listen",
     )
 
 
@@ -70,7 +79,7 @@ def test_reads_the_named_experiment_config(
     path = tmp_path / "other.toml"
     path.touch()
 
-    start_experiment(make_config(tmp_path), "exp", path, 1, mock.Mock())
+    start_experiment(make_config(tmp_path), "exp", path, 1, drive())
 
     collaborators["read_experiment_config"].assert_called_once_with(path)
 
@@ -79,7 +88,7 @@ def test_needs_an_experiment_config(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     with pytest.raises(ValueError, match="No experiment.toml for exp at "):
-        start_experiment(make_config(tmp_path), "exp", None, 1, mock.Mock())
+        start_experiment(make_config(tmp_path), "exp", None, 1, drive())
 
     collaborators["run_experiment"].assert_not_awaited()
 
@@ -92,6 +101,6 @@ def test_refuses_to_run_twice(
     collaborators["FileLock"].return_value.__enter__.side_effect = FakeTimeout()
 
     with pytest.raises(ValueError, match="exp is already running"):
-        start_experiment(make_config(tmp_path), "exp", path, 1, mock.Mock())
+        start_experiment(make_config(tmp_path), "exp", path, 1, drive())
 
     collaborators["run_experiment"].assert_not_awaited()

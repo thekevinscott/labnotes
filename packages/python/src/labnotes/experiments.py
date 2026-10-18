@@ -1,4 +1,6 @@
 import asyncio
+import sys
+from functools import partial
 from pathlib import Path
 
 import click
@@ -6,8 +8,10 @@ import click
 from labnotes.load_config import load_config
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
+from labnotes.runner.run_headless import run_headless
 from labnotes.runner.start_experiment import start_experiment
 from labnotes.tables.experiment_rows import experiment_rows
+from labnotes.tui.run_tui import run_tui
 
 
 @click.command(help="List experiments, show one, list its runs, or run it.")
@@ -33,6 +37,11 @@ from labnotes.tables.experiment_rows import experiment_rows
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="With run: read this file instead of the experiment's experiment.toml.",
 )
+@click.option(
+    "--no-tui",
+    is_flag=True,
+    help="With run: print a line per event instead of the live view.",
+)
 @click.pass_context
 def experiments(
     ctx: click.Context,
@@ -41,6 +50,7 @@ def experiments(
     output_format: str,
     concurrency: int,
     experiment_config: Path | None,
+    no_tui: bool,
 ) -> None:
     config = load_config(ctx)
     if config is None:
@@ -49,9 +59,11 @@ def experiments(
         )
     match name, action:
         case str(), "run":
+            live = sys.stdout.isatty() and sys.stderr.isatty() and not no_tui
+            drive = partial(run_tui, title=name) if live else run_headless
             try:
                 results = start_experiment(
-                    config, name, experiment_config, concurrency, click.echo
+                    config, name, experiment_config, concurrency, drive
                 )
             except ValueError as error:
                 raise click.ClickException(str(error)) from error

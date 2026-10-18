@@ -73,7 +73,7 @@ A script run by labnotes should:
 
 - take each param as a `--name value` flag, parsing lists and tables from JSON;
 - take its output folder as an argument, passed in `command` as `{run_dir}`, and write everything it produces there;
-- exit non-zero when it fails, so the run counts as failed and runs again next time.
+- exit non-zero when it fails, so the run counts as failed and runs again next time;
 - stop any background process it starts before it exits; the run ends when `command` exits.
 
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.

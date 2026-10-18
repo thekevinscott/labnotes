@@ -52,7 +52,7 @@ class RunApp(App[None]):
 
     def listen(self, interrupt: Callable[[], None]) -> None:
         self.interrupt = interrupt
-        stop_then_kill(interrupt, signal.SIGTERM, signal.SIGHUP)
+        stop_then_kill(self.action_interrupt, signal.SIGTERM, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
         table = self.query_one(DataTable)

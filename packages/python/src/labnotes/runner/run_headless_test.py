@@ -1,4 +1,3 @@
-import asyncio
 from collections.abc import Callable, Iterator
 from unittest import mock
 
@@ -15,9 +14,13 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             side_effect=lambda event: f"line {event['n']}",
         ),
         mock.patch("labnotes.runner.run_headless.click") as click,
-        mock.patch("labnotes.runner.run_headless.signal", mock.Mock(SIGINT=2)),
+        mock.patch(
+            "labnotes.runner.run_headless.signal",
+            mock.Mock(SIGINT=2, SIGTERM=15, SIGHUP=1),
+        ),
+        mock.patch("labnotes.runner.run_headless.handle_signals") as handle_signals,
     ):
-        yield {"click": click}
+        yield {"click": click, "handle_signals": handle_signals}
 
 
 def test_prints_each_event_and_returns_the_results(
@@ -33,20 +36,17 @@ def test_prints_each_event_and_returns_the_results(
     collaborators["click"].echo.assert_called_once_with("line 1")
 
 
-def test_interrupts_on_sigint(collaborators: dict[str, mock.MagicMock]) -> None:
+def test_interrupts_on_ctrl_c_terminate_and_hang_up(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
     interrupt = mock.Mock()
-    handlers: list[tuple[object, ...]] = []
 
     async def start(
         report: object, listen: Callable[[Callable[[], None]], None]
     ) -> list[dict[str, object]]:
-        loop = asyncio.get_running_loop()
-        with mock.patch.object(
-            loop, "add_signal_handler", side_effect=lambda *a: handlers.append(a)
-        ):
-            listen(interrupt)
+        listen(interrupt)
         return []
 
     run_headless(start)  # type: ignore[arg-type]
 
-    assert handlers == [(2, interrupt)]
+    collaborators["handle_signals"].assert_called_once_with(interrupt, 2, 15, 1)

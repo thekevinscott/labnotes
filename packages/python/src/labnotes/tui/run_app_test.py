@@ -27,9 +27,11 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             side_effect=lambda seconds: f"{seconds:g} seconds",
         ),
         mock.patch("labnotes.tui.run_app.time") as time,
+        mock.patch("labnotes.tui.run_app.signal", mock.Mock(SIGTERM=15, SIGHUP=1)),
+        mock.patch("labnotes.tui.run_app.handle_signals") as handle_signals,
     ):
         time.monotonic.return_value = 10.0
-        yield {"time": time}
+        yield {"time": time, "handle_signals": handle_signals}
 
 
 def rows(app: RunApp) -> list[list[object]]:
@@ -108,7 +110,9 @@ def test_ticks_the_time_of_running_runs(
     asyncio.run(drive())
 
 
-def test_ctrl_c_interrupts_the_runs_until_they_finish() -> None:
+def test_ctrl_c_interrupts_the_runs_until_they_finish(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
     interrupt = mock.Mock()
     finish = asyncio.Event()
 
@@ -130,6 +134,7 @@ def test_ctrl_c_interrupts_the_runs_until_they_finish() -> None:
             await pilot.press("ctrl+c")
             assert not app.is_running
             assert interrupt.call_count == 2
+            collaborators["handle_signals"].assert_called_once_with(interrupt, 15, 1)
 
     asyncio.run(drive())
 

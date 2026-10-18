@@ -75,7 +75,7 @@ line per event instead.
 - `--concurrency N` runs N at a time (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
-  kills them.
+  kills them. Closing the terminal or sending SIGTERM stops them the same way.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 

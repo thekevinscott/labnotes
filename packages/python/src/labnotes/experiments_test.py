@@ -76,8 +76,13 @@ def test_reports_an_unknown_experiment(
     collaborators["print_rows"].assert_not_called()
 
 
-def test_rejects_an_unknown_action(collaborators: dict[str, mock.MagicMock]) -> None:
+def test_rejects_an_unknown_action(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
     assert run(["a", "jump"]) == 2
+
+    assert "Unknown action jump. Use runs or run." in capsys.readouterr().err
+    collaborators["experiment_rows"].assert_not_called()
 
 
 def test_help_shows_the_default_format(
@@ -245,3 +250,36 @@ def test_prints_events_with_no_tui(
     run(["a", "run", "--no-tui"])
 
     assert_headless(start_experiment, drivers)
+
+
+@pytest.mark.parametrize(
+    ("argv", "name"), [(["new"], None), (["new", "study"], "study")]
+)
+def test_creates_an_experiment(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    argv: list[str],
+    name: str | None,
+) -> None:
+    with mock.patch(
+        "labnotes.experiments.create_experiment", return_value=Path("notes/study")
+    ) as create_experiment:
+        assert run(argv) == 0
+
+    create_experiment.assert_called_once_with(
+        collaborators["load_config"].return_value, name
+    )
+    assert capsys.readouterr().out == "Created notes/study/experiment.toml\n"
+    collaborators["experiment_rows"].assert_not_called()
+
+
+def test_reports_an_experiment_that_cannot_be_created(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch(
+        "labnotes.experiments.create_experiment",
+        side_effect=ValueError("study already exists"),
+    ):
+        assert run(["new", "study"]) == 1
+
+    assert "study already exists" in capsys.readouterr().err

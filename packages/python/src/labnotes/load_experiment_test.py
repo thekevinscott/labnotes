@@ -1,6 +1,7 @@
 import asyncio
 import json
 from collections.abc import Iterator
+from pathlib import Path
 from typing import cast
 from unittest import mock
 
@@ -8,26 +9,27 @@ import pytest
 
 from labnotes.load_experiment import load_experiment
 
-DESIGN = {"study": "s1", "runs_per_cell": 2, "varies": {"x": [1, 2], "y": ["a"]}}
+CONFIG = {"command": "go", "repeats": 2, "params": {"x": [1, 2], "y": ["a"]}}
+ROOT = Path("/p")
 
 
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch(
-            "labnotes.load_experiment.run_columns",
-            new_callable=mock.AsyncMock,
-            return_value=["run_id", "x", "study"],
-        ) as run_columns,
-        mock.patch(
-            "labnotes.load_experiment.study_progress",
+            "labnotes.load_experiment.experiment_progress",
             new_callable=mock.AsyncMock,
             return_value={"runs": 3, "filled": 2},
-        ) as study_progress,
+        ) as experiment_progress,
+        mock.patch(
+            "labnotes.load_experiment.experiment_notes",
+            new_callable=mock.AsyncMock,
+            return_value=[{"name": "PLAN.md", "content": "plan"}],
+        ) as experiment_notes,
         mock.patch(
             "labnotes.load_experiment.list_runs",
             new_callable=mock.AsyncMock,
-            return_value=[{"labnotes_completed": 1, "run_id": "r1"}],
+            return_value=[{"labnotes_completed": 1, "id": "r1"}],
         ) as list_runs,
         mock.patch("labnotes.load_experiment.parse_run_view") as parse_run_view,
         mock.patch(
@@ -43,8 +45,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as python_blocks,
     ):
         yield {
-            "run_columns": run_columns,
-            "study_progress": study_progress,
+            "experiment_progress": experiment_progress,
+            "experiment_notes": experiment_notes,
             "list_runs": list_runs,
             "parse_run_view": parse_run_view,
             "sort_href": sort_href,
@@ -52,95 +54,94 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         }
 
 
-def make_experiments(found: list[dict[str, object]]) -> mock.Mock:
-    experiments = mock.Mock()
-    experiments.query = mock.AsyncMock(
-        side_effect=[found, [{"name": "PLAN.md", "content": "plan"}]]
-    )
-    return experiments
+def make_tables(found: list[dict[str, object]]) -> mock.Mock:
+    tables = mock.Mock()
+    tables.query = mock.AsyncMock(return_value=found)
+    return tables
 
 
-def test_loads_design_notes_progress_and_runs(
+def experiment(config: dict[str, object] | None = CONFIG) -> list[dict[str, object]]:
+    text = None if config is None else json.dumps(config)
+    return [{"name": "a", "display_name": "Alpha", "config": text}]
+
+
+def test_loads_config_notes_progress_and_runs(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    experiments = make_experiments(
-        [{"name": "a", "study": "s1", "design": json.dumps(DESIGN)}]
-    )
-    runs = mock.Mock()
+    tables = make_tables(experiment())
+    params = {"sort": "x", "f.x": "1"}
 
-    loaded = asyncio.run(
-        load_experiment(experiments, runs, "it's", {"sort": "x", "f.study": "s"})
-    )
+    loaded = asyncio.run(load_experiment(tables, ROOT, "it's", params))
 
     assert loaded is not None
-    assert (loaded["name"], loaded["study"], loaded["target"]) == ("a", "s1", 4)
+    assert (loaded["name"], loaded["display_name"], loaded["target"]) == (
+        "a",
+        "Alpha",
+        4,
+    )
     assert (loaded["runs"], loaded["filled"]) == (3, 2)
     assert loaded["notes"] == [
         {"name": "PLAN.md", "html": "<p>plan</p>", "runnable": True}
     ]
-    assert loaded["runs_list"] == [{"labnotes_completed": 1, "run_id": "r1"}]
-    assert loaded["run_columns"] == ["run_id", "x"]
-    first, second = experiments.query.await_args_list
-    assert first.args[0].endswith("WHERE name = 'it''s'")
-    assert "WHERE experiment = 'it''s' ORDER BY name" in second.args[0]
-    params = {"sort": "x", "f.study": "s"}
+    assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
+    assert loaded["run_columns"] == ["id", "x", "y"]
+    assert tables.query.await_args.args[0] == (
+        "SELECT name, display_name, config FROM experiments WHERE name = 'it''s'"
+    )
+    collaborators["experiment_notes"].assert_awaited_once_with(tables, ROOT, "it's")
     view = collaborators["parse_run_view"].return_value
-    collaborators["parse_run_view"].assert_called_once_with(params, ["run_id", "x"])
+    collaborators["parse_run_view"].assert_called_once_with(params, ["id", "x", "y"])
+    source = collaborators["list_runs"].await_args.args[1]
+    assert source.endswith("FROM runs WHERE experiment = 'it''s')")
+    assert '"x", params' in source
     collaborators["list_runs"].assert_awaited_once_with(
-        runs, "(SELECT * FROM runs WHERE study = 's1')", "1", view
+        tables, source, "exit_code = 0 AND NOT coalesce(excluded, 0)", view
     )
     assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {
         "status": "?sort=status",
-        "run_id": "?sort=run_id",
+        "id": "?sort=id",
         "x": "?sort=x",
+        "y": "?sort=y",
     }
     assert collaborators["sort_href"].call_args_list[0].args == (view, "status")
-    progress_args = collaborators["study_progress"].await_args.args
-    assert progress_args[1] == "s1"
-    assert progress_args[3] == ["run_id", "x", "study"]
+    progress_args = collaborators["experiment_progress"].await_args.args
+    assert progress_args[0] is tables
+    assert progress_args[1] == source
+    assert progress_args[2]["target"] == 4
 
 
-def test_skips_runs_for_an_experiment_without_a_study(
+def test_shows_only_id_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
-
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
+    loaded = asyncio.run(load_experiment(make_tables(experiment(None)), ROOT, "a", {}))
 
     assert loaded is not None
-    assert loaded["runs_list"] == []
-    assert collaborators["study_progress"].await_args.args[1] is None
-    collaborators["list_runs"].assert_not_awaited()
+    assert (loaded["run_columns"], loaded["target"]) == (["id"], None)
 
 
 def test_returns_none_for_an_unknown_experiment(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    assert (
-        asyncio.run(load_experiment(make_experiments([]), mock.Mock(), "nope", {}))
-        is None
-    )
+    assert asyncio.run(load_experiment(make_tables([]), ROOT, "nope", {})) is None
 
 
-def test_lists_a_varies_key_that_is_the_first_column_once(
+def test_lists_a_param_named_id_once(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    collaborators["run_columns"].return_value = ["x", "study"]
-    experiments = make_experiments(
-        [{"name": "a", "study": "s1", "design": json.dumps(DESIGN)}]
+    config = {**CONFIG, "params": {"id": [1], "a": [2]}}
+
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(config)), ROOT, "a", {})
     )
 
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
-
     assert loaded is not None
-    assert loaded["run_columns"] == ["x"]
+    assert loaded["run_columns"] == ["id", "a"]
 
 
 def test_renders_notes_with_their_saved_outputs(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
     seen: list[tuple[str, str]] = []
 
     def outputs_for(note: str, content: str) -> list[str]:
@@ -148,7 +149,7 @@ def test_renders_notes_with_their_saved_outputs(
         return ["<out>"]
 
     loaded = asyncio.run(
-        load_experiment(experiments, mock.Mock(), "a", {}, outputs_for)
+        load_experiment(make_tables(experiment()), ROOT, "a", {}, outputs_for)
     )
 
     assert loaded is not None
@@ -162,9 +163,8 @@ def test_marks_notes_without_python_blocks_as_not_runnable(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     collaborators["python_blocks"].return_value = []
-    experiments = make_experiments([{"name": "a", "study": None, "design": "{}"}])
 
-    loaded = asyncio.run(load_experiment(experiments, mock.Mock(), "a", {}))
+    loaded = asyncio.run(load_experiment(make_tables(experiment()), ROOT, "a", {}))
 
     assert loaded is not None
     notes = cast(list[dict[str, object]], loaded["notes"])

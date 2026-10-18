@@ -23,7 +23,7 @@ async def list_runs(
     elif view.sort:
         order = f"{quote_identifier(view.sort)} {direction}"
     else:
-        order = "2 DESC"
+        order = "created DESC, id DESC"
     return await runs.query(
         f"SELECT ({completed_run}) AS labnotes_completed, * FROM {source}"
         f"{filtered} ORDER BY {order}"

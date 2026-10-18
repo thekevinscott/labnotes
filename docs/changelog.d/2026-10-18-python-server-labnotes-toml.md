@@ -1,0 +1,1 @@
+`labnotes server` reads `.labnotes.toml` and the `experiments`, `files` and `runs` tables, like the other commands. Progress comes from `experiment.toml`: its params make the grid and `repeats` the runs per cell. Excluded runs show in the runs table but don't fill cells.

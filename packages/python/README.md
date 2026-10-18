@@ -91,29 +91,18 @@ line per event instead.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 
-`labnotes server` doesn't read `.labnotes.toml` yet. Give it the two folders
-it uses with `--experiments-folder` and `--data-folder`:
-
-- `--experiments-folder` holds one subfolder per experiment, each with a
-  `design.yaml` (with a `study` key) and any number of markdown notes.
-- `--data-folder` holds the run data and a `.dirsql.toml` that declares a
-  `runs` table with a `study` column. An experiment's runs are the rows whose
-  `study` matches its design's.
-
-That serves a local site at http://127.0.0.1:8000: a table of experiments,
-and a page per experiment with its parameters, its notes, progress per cell of
-the design grid, and every run so far. Both folders are watched, so a reload
-shows new runs and edited notes.
-
-`design.yaml` keys the site reads: `study`, `fixed`, `varies` (each key a list
-of values), `runs_per_cell`, and `completed_run`, a SQL condition over the
-`runs` table that marks a run as complete. Anything else shows up as-is.
+`labnotes server` serves a local site at http://127.0.0.1:8000 from the same
+`.labnotes.toml`: a table of experiments, and a page per experiment with its
+params, its markdown files, progress per cell of the params grid, and every
+run so far. A cell is full once it has `repeats` runs that exited 0 and aren't
+excluded, the same count `run` uses. The project is watched, so a reload shows
+new runs and edited notes. Python blocks in a note run with the root as the
+working folder.
 
 `-h`/`--host` and `-p`/`--port` change where it listens; `-h 0.0.0.0` (or a
 Tailscale IP) serves beyond localhost. Every other uvicorn option passes
 through: `--reload`, `--workers`, `--proxy-headers`, `--root-path`, the
-`--ssl-*` set, and the rest. `labnotes server --help` lists them. `LABNOTES_EXPERIMENTS_FOLDER` and
-`LABNOTES_DATA_FOLDER` can stand in for the folder flags.
+`--ssl-*` set, and the rest. `labnotes server --help` lists them.
 
 ## Agent skill
 

@@ -28,8 +28,8 @@
     {% for experiment in experiments %}
     <tr>
       <td>
-        <a class="title-link" href="{{ url_for('experiment', name=experiment.name) }}">{{ experiment.name }}</a>
-        {% if experiment.study %}<div class="study">{{ experiment.study }}</div>{% endif %}
+        <a class="title-link" href="{{ url_for('experiment', name=experiment.name) }}">{{ experiment.display_name }}</a>
+        {% if experiment.display_name != experiment.name %}<div class="study">{{ experiment.name }}</div>{% endif %}
       </td>
       <td class="design">
         {% for key, values in experiment.varies.items() %}<span class="factor">{{ key }} <b>{{ values | length }}</b>{% if not loop.last or experiment.runs_per_cell %}<span class="times">×</span>{% endif %}</span> {% endfor %}
@@ -52,6 +52,6 @@
 <script src="{{ asset('view-toggle.js') }}" defer></script>
 <script src="{{ asset('row-link.js') }}" defer></script>
 {% else %}
-<p class="empty">No experiments found. Each experiment is a folder holding a <code>design.yaml</code> and its markdown notes.</p>
+<p class="empty">No experiments found. Create one with <code>labnotes experiments new</code>.</p>
 {% endif %}
 {% endblock %}

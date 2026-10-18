@@ -12,6 +12,8 @@ def describe_event(event: dict[str, object]) -> str:
         case "ended":
             outcome = event["error"] or f"exited {event['exit_code']}"
             return f"{event['run']} {outcome}"
+        case "queued":
+            return f"{event['run']} runs next."
         case "stopping":
             return "Stopping runs. Ctrl-C again to kill them."
         case _:

@@ -4,7 +4,13 @@ import json
 import os
 import signal
 
-from labnotes.models import ExperimentConfig, LabnotesConfig, Listen, Report
+from labnotes.models import (
+    Controls,
+    ExperimentConfig,
+    LabnotesConfig,
+    Listen,
+    Report,
+)
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.new_run_id import new_run_id
 from labnotes.runner.param_grid import param_grid
@@ -59,6 +65,14 @@ async def run_experiment(
             report({"event": "killing"})
             signal_runs(signal.SIGKILL)
 
+    def run_next(run: str) -> None:
+        entry = next((entry for entry in plan if entry[0] == run), None)
+        if entry is not None:
+            plan.remove(entry)
+            plan.insert(0, entry)
+            pending = [id_ for id_, _ in plan]
+            report({"event": "queued", "run": run, "pending": pending})
+
     async def work() -> None:
         while plan:
             run, params = plan.pop(0)
@@ -71,6 +85,6 @@ async def run_experiment(
             report({"event": "ended", "run": run, **result})
             results.append(result)
 
-    listen(interrupt)
+    listen(Controls(interrupt, run_next))
     await asyncio.gather(*(work() for _ in range(concurrency)))
     return results

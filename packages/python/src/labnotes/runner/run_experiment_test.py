@@ -156,11 +156,18 @@ def test_runs_up_to_the_concurrency_at_once(
 
 def interrupting(times: int, listen: mock.Mock) -> object:
     async def execute(
-        root: Path, folder: Path, command: str, params: object, running: set[object]
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        stopping: asyncio.Event,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
+        assert not stopping.is_set()
         for _ in range(times):
             listen.call_args.args[0]()
+        assert stopping.is_set()
         running.clear()
         return {"exit_code": -15, "error": None}
 

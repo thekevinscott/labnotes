@@ -32,7 +32,7 @@ async def run_experiment(
     report({"event": "planned", "runs": len(plan), "concurrency": concurrency})
     running: set[asyncio.subprocess.Process] = set()
     results: list[dict[str, object]] = []
-    stopping = False
+    stopping = asyncio.Event()
 
     def signal_runs(signal_number: int) -> None:
         for process in running:
@@ -40,10 +40,9 @@ async def run_experiment(
                 os.killpg(process.pid, signal_number)
 
     def interrupt() -> None:
-        nonlocal stopping
         plan.clear()
-        if not stopping:
-            stopping = True
+        if not stopping.is_set():
+            stopping.set()
             report({"event": "stopping"})
             signal_runs(signal.SIGTERM)
         elif running:
@@ -60,7 +59,7 @@ async def run_experiment(
             folder.mkdir(parents=True)
             report({"event": "started", "run": run, "params": params})
             result = await execute_run(
-                config.root, folder, experiment.command, params, running
+                config.root, folder, experiment.command, params, running, stopping
             )
             report({"event": "ended", "run": run, **result})
             results.append(result)

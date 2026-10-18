@@ -86,3 +86,16 @@ def test_lists_an_experiments_runs(
     assert run["id"] == "brave-fox"
     assert run["folder"] == "data/alpha/brave-fox"
     assert json.loads(run["params"]) == {"m": "a"}
+
+
+def test_creates_a_new_experiment(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    with pytest.raises(SystemExit) as exit_info:
+        main(["-c", str(project / ".labnotes.toml"), "experiments", "new", "delta"])
+    assert exit_info.value.code == 0
+    capsys.readouterr()
+
+    [row] = labnotes(project, ["experiments", "delta"], capsys)
+
+    assert json.loads(row["config"])["repeats"] == 1

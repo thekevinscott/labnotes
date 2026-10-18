@@ -36,6 +36,10 @@ labnotes experiments foo runs   # foo's runs, oldest first
 
 Each takes `--format table` (the default) or `--format json`; use `--format json` when you parse the output.
 
+`labnotes experiments new [NAME]` creates an experiment folder with a starter
+`experiment.toml`, picking a random name if you give none. `new` itself can't
+be an experiment name.
+
 `labnotes experiments foo run` runs `foo` from its `experiment.toml`, in the
 experiments folder:
 

@@ -1,0 +1,1 @@
+**Fixed** — the `labnotes experiments NAME run` live view now exits on SIGTERM or SIGHUP once its runs are done. Before, a live view whose terminal closed after the last run stayed alive with no terminal.

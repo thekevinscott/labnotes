@@ -94,7 +94,8 @@ line per event instead.
 - `-e PATH` reads another file instead of `experiment.toml`.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
   kills them. Closing the terminal or sending SIGTERM stops them the same way,
-  then kills any still going 5 seconds later.
+  then kills any still going 5 seconds later. Once the runs are done, either
+  one closes the live view.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 

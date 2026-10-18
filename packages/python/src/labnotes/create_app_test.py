@@ -8,6 +8,15 @@ from unittest import mock
 import pytest
 
 from labnotes.create_app import create_app
+from labnotes.models import LabnotesConfig
+
+CONFIG = LabnotesConfig(
+    path=Path("/p/.labnotes.toml"),
+    root=Path("/p/project"),
+    experiments="{experiment}",
+    files="{experiment}/files/",
+    runs="{experiment}/runs/{run}",
+)
 
 
 def make_view(
@@ -23,14 +32,14 @@ def make_view(
 
 EXPERIMENT: dict[str, object] = {
     "name": "models-effort",
-    "study": "v2-model-effort",
+    "display_name": "Models by effort",
     "fixed": {"tests": True},
     "varies": {"model": ["opus", "haiku"]},
     "cell_count": 2,
     "runs_per_cell": 3,
     "target": 6,
     "completed_run": "exit_code = 0",
-    "other": {"script": "run.py"},
+    "other": {"command": "uv run run.py"},
     "runs": 4,
     "completed": 3,
     "filled": 3,
@@ -38,29 +47,35 @@ EXPERIMENT: dict[str, object] = {
         {"values": {"model": "opus"}, "runs": 3, "completed": 3},
         {"values": {"model": "haiku"}, "runs": 1, "completed": 0},
     ],
-    "missing_columns": [],
     "notes": [
         {"name": "PLAN.md", "html": "<h1>The plan</h1>", "runnable": True},
         {"name": "READ.md", "html": "<p>Prose</p>", "runnable": False},
     ],
     "runs_list": [
-        {"labnotes_completed": 1, "run_id": "r1", "model": "opus", "result": "x" * 100}
+        {"labnotes_completed": 1, "id": "r1", "model": "opus", "stdout": "x" * 100}
     ],
-    "run_columns": ["run_id", "model"],
+    "run_columns": ["id", "model"],
     "run_view": make_view(sort="model", descending=True, filters={"model": "op"}),
     "sort_hrefs": {
         "status": "?sort=status#runs",
-        "run_id": "?sort=run_id#runs",
+        "id": "?sort=id#runs",
         "model": "?sort=model#runs",
     },
 }
 
 
+NOTE = "# Plan\n\n```python\na = 1\n```\n\n```python\na + 1\n```\n"
+
+
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
-        mock.patch("labnotes.create_app.open_experiments") as open_experiments,
-        mock.patch("labnotes.create_app.open_runs") as open_runs,
+        mock.patch("labnotes.create_app.open_tables") as open_tables,
+        mock.patch(
+            "labnotes.create_app.experiment_notes",
+            new_callable=mock.AsyncMock,
+            return_value=[{"name": "PLAN.md", "content": NOTE}],
+        ) as experiment_notes,
         mock.patch(
             "labnotes.create_app.drain_watch", new_callable=mock.AsyncMock
         ) as drain,
@@ -78,11 +93,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             return_value=EXPERIMENT,
         ) as load_experiment,
     ):
-        for opener in (open_experiments, open_runs):
-            opener.return_value.ready = mock.AsyncMock()
+        open_tables.return_value.ready = mock.AsyncMock()
         yield {
-            "open_experiments": open_experiments,
-            "open_runs": open_runs,
+            "open_tables": open_tables,
+            "experiment_notes": experiment_notes,
             "drain_watch": drain,
             "stop_idle_kernels": stop_idle_kernels,
             "list_experiments": list_experiments,
@@ -92,7 +106,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
 
 @pytest.fixture
 def app(collaborators: dict[str, mock.MagicMock]) -> Iterator[Any]:
-    app = create_app(Path("exp"), Path("data"), 30)
+    app = create_app(CONFIG, 30)
 
     async def run_lifespan() -> None:
         async with app.router.lifespan_context(app):
@@ -119,17 +133,14 @@ def call(app: Any, path: str, **path_params: str) -> tuple[int, str]:
     return response.status_code, response.body.decode()
 
 
-def test_opens_both_folders_and_watches_them(
+def test_opens_the_tables_and_watches_them(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    experiments = collaborators["open_experiments"].return_value
-    runs = collaborators["open_runs"].return_value
-    collaborators["open_experiments"].assert_called_once_with(Path("exp"))
-    collaborators["open_runs"].assert_called_once_with(Path("data"))
-    experiments.ready.assert_awaited_once()
-    runs.ready.assert_awaited_once()
+    tables = collaborators["open_tables"].return_value
+    collaborators["open_tables"].assert_called_once_with(CONFIG)
+    tables.ready.assert_awaited_once()
     watched = [call.args[0] for call in collaborators["drain_watch"].await_args_list]
-    assert watched == [experiments, runs]
+    assert watched == [tables]
 
 
 def test_index_lists_experiments_with_progress(
@@ -138,11 +149,9 @@ def test_index_lists_experiments_with_progress(
     status, text = call(app, "/")
 
     assert status == 200
-    collaborators["list_experiments"].assert_awaited_once_with(
-        app.state.experiments, app.state.runs
-    )
-    assert 'href="/experiment/models-effort"' in text
-    assert "v2-model-effort" in text
+    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables)
+    assert 'href="/experiment/models-effort">Models by effort</a>' in text
+    assert '<span class="crumb">project</span>' in text
     assert "50%" in text
     assert "--share: 0.5000" in text
     assert "1 experiment," in text
@@ -161,14 +170,16 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
 
     assert status == 200
     assert collaborators["load_experiment"].await_args.args[:4] == (
-        app.state.experiments,
-        app.state.runs,
+        app.state.tables,
+        Path("/p/project"),
         "models-effort",
         {"sort": "model"},
     )
     assert '<span class="chip">haiku</span>' in text
     assert '<span class="chip quiet">true</span>' in text
     assert "<code>exit_code = 0</code>" in text
+    assert "<code>uv run run.py</code>" in text
+    assert "<h1>Models by effort</h1>" in text
     assert "<h1>The plan</h1>" in text
     assert 'data-run-url="/run_block/models-effort"' in text
     assert 'data-restart-url="/restart_kernel/models-effort"' in text
@@ -180,7 +191,7 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
     assert '<span class="status good"' in text
     assert 'aria-sort="descending"' in text
     assert '<span class="arrow">↓</span>' in text
-    assert 'href="?sort=run_id#runs"' in text
+    assert 'href="?sort=id#runs"' in text
     assert '<input type="hidden" name="sort" value="model">' in text
     assert '<input type="hidden" name="order" value="desc">' in text
     assert 'name="f.model" value="op"' in text
@@ -210,7 +221,7 @@ def test_builds_without_deprecation_warnings(
 ) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        create_app(Path("exp"), Path("data"), 30)
+        create_app(CONFIG, 30)
 
 
 def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) -> None:
@@ -224,7 +235,7 @@ def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) ->
             raise
 
     collaborators["drain_watch"].side_effect = watch_forever
-    app = create_app(Path("exp"), Path("data"), 30)
+    app = create_app(CONFIG, 30)
 
     async def run_lifespan() -> list[object]:
         async with app.router.lifespan_context(app):
@@ -232,10 +243,7 @@ def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) ->
         await asyncio.sleep(0)
         return list(cancelled)
 
-    assert asyncio.run(run_lifespan()) == [app.state.experiments, app.state.runs]
-
-
-NOTE = "# Plan\n\n```python\na = 1\n```\n\n```python\na + 1\n```\n"
+    assert asyncio.run(run_lifespan()) == [app.state.tables]
 
 
 def post_run(
@@ -249,7 +257,7 @@ def post_run(
         route.endpoint
         for route in app.routes
         if getattr(route, "path", None)
-        == f"/experiments/{{name}}/notes/{{note}}/{action}"
+        == f"/experiments/{{name}}/notes/{{note:path}}/{action}"
     ]
     request = mock.Mock(
         path_params={"name": "models-effort", "note": "PLAN.md", **params},
@@ -269,23 +277,20 @@ def kernel_class() -> Iterator[mock.MagicMock]:
         yield cls
 
 
-def test_run_executes_one_block_in_a_kernel_in_the_data_folder(
-    app: Any, kernel_class: mock.MagicMock
+def test_run_executes_one_block_in_a_kernel_at_the_root(
+    app: Any, collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
-
     response = post_run(app, {"block": 1})
 
     assert response.body == b"<pre>2</pre>"
-    kernel_class.assert_called_once_with(Path("data"))
+    kernel_class.assert_called_once_with(Path("/p/project"))
     kernel_class.return_value.run.assert_awaited_once_with("a + 1\n")
-    sql = app.state.experiments.query.await_args.args[0]
-    assert "experiment = 'models-effort' AND name = 'PLAN.md'" in sql
+    collaborators["experiment_notes"].assert_awaited_with(
+        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md"
+    )
 
 
 def test_run_reuses_the_note_kernel(app: Any, kernel_class: mock.MagicMock) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
-
     post_run(app, {"block": 0})
     post_run(app, {"block": 1})
 
@@ -298,16 +303,16 @@ def test_run_reuses_the_note_kernel(app: Any, kernel_class: mock.MagicMock) -> N
 def test_run_rejects_a_missing_block(
     app: Any, kernel_class: mock.MagicMock, body: object
 ) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
-
     with pytest.raises(Exception) as raised:
         post_run(app, body)
     assert getattr(raised.value, "status_code", None) == 400
     kernel_class.assert_not_called()
 
 
-def test_run_rejects_an_unknown_note(app: Any, kernel_class: mock.MagicMock) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[])
+def test_run_rejects_an_unknown_note(
+    app: Any, collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
+) -> None:
+    collaborators["experiment_notes"].return_value = []
 
     with pytest.raises(Exception) as raised:
         post_run(app, {"block": 0})
@@ -326,7 +331,6 @@ def test_run_requires_json_so_forms_on_other_sites_cannot_post(
 def test_experiment_page_shows_outputs_of_blocks_already_run(
     app: Any, collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
     post_run(app, {"block": 0})
     call(app, "/experiments/{name}", name="models-effort")
 
@@ -343,13 +347,10 @@ def test_experiment_page_shows_outputs_of_blocks_already_run(
 def test_stops_kernels_on_shutdown(
     collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app = create_app(Path("exp"), Path("data"), 30)
+    app = create_app(CONFIG, 30)
 
     async def lifecycle() -> None:
         async with app.router.lifespan_context(app):
-            app.state.experiments.query = mock.AsyncMock(
-                return_value=[{"content": NOTE}]
-            )
             [endpoint] = [
                 getattr(route, "endpoint")
                 for route in app.routes
@@ -371,14 +372,13 @@ def test_stops_kernels_on_shutdown(
 def test_stops_idle_kernels_in_the_background(
     collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app = create_app(Path("exp"), Path("data"), 7)
+    app = create_app(CONFIG, 7)
 
     async def lifecycle() -> None:
         async with app.router.lifespan_context(app):
             await asyncio.sleep(0)
 
     asyncio.run(lifecycle())
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
     post_run(app, {"block": 0})
 
     kernels, idle_minutes = collaborators["stop_idle_kernels"].await_args.args
@@ -390,7 +390,6 @@ def test_restart_stops_the_note_kernel_and_keeps_it(
     app: Any, kernel_class: mock.MagicMock
 ) -> None:
     kernel_class.return_value.restart = mock.AsyncMock()
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
     post_run(app, {"block": 0})
 
     response = post_run(app, {}, action="restart")
@@ -404,8 +403,6 @@ def test_restart_stops_the_note_kernel_and_keeps_it(
 def test_restart_before_any_run_starts_nothing(
     app: Any, kernel_class: mock.MagicMock
 ) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
-
     response = post_run(app, {}, action="restart")
 
     assert response.status_code == 204
@@ -416,7 +413,6 @@ def test_restart_only_touches_its_own_note(
     app: Any, kernel_class: mock.MagicMock
 ) -> None:
     kernel_class.return_value.restart = mock.AsyncMock()
-    app.state.experiments.query = mock.AsyncMock(return_value=[{"content": NOTE}])
     post_run(app, {"block": 0})
 
     post_run(app, {}, action="restart", note="OTHER.md")
@@ -425,9 +421,9 @@ def test_restart_only_touches_its_own_note(
 
 
 def test_restart_rejects_an_unknown_note(
-    app: Any, kernel_class: mock.MagicMock
+    app: Any, collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app.state.experiments.query = mock.AsyncMock(return_value=[])
+    collaborators["experiment_notes"].return_value = []
 
     with pytest.raises(Exception) as raised:
         post_run(app, {}, action="restart")

@@ -7,8 +7,7 @@ import pytest
 
 from labnotes.server import server
 
-SERVER = ["--experiments-folder", "exp", "--data-folder", "data"]
-ENV = ("LABNOTES_EXPERIMENTS_FOLDER", "LABNOTES_DATA_FOLDER")
+SERVER: list[str] = []
 
 
 @pytest.fixture
@@ -18,20 +17,17 @@ def collaborators(
     monkeypatch.chdir(tmp_path)
     with (
         mock.patch("labnotes.server.uvicorn_main") as uvicorn_main,
+        mock.patch("labnotes.server.load_config") as load_config,
         mock.patch.dict("os.environ", clear=True),
     ):
-        yield {"uvicorn_main": uvicorn_main}
+        load_config.return_value.path = Path("p/.labnotes.toml")
+        yield {"uvicorn_main": uvicorn_main, "load_config": load_config}
 
 
 def run(argv: list[str]) -> int | str | None:
     with pytest.raises(SystemExit) as exit_info:
         server.main(argv, prog_name="server")
     return exit_info.value.code
-
-
-def served_folders(uvicorn_main: mock.MagicMock) -> list[str]:
-    uvicorn_main.assert_called_once()
-    return [os.environ[name] for name in ENV]
 
 
 def test_serves_the_app_factory_on_localhost_by_default(
@@ -45,15 +41,24 @@ def test_serves_the_app_factory_on_localhost_by_default(
     assert (kwargs["host"], kwargs["port"]) == ("127.0.0.1", 8000)
 
 
-def test_passes_the_folders_to_the_factory_as_absolute_paths(
+def test_passes_the_config_to_the_factory_as_an_absolute_path(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     run(SERVER)
 
-    assert served_folders(collaborators["uvicorn_main"]) == [
-        str(Path("exp").resolve()),
-        str(Path("data").resolve()),
-    ]
+    collaborators["uvicorn_main"].assert_called_once()
+    assert os.environ["LABNOTES_CONFIG"] == str(Path("p/.labnotes.toml").resolve())
+
+
+def test_requires_a_config(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["load_config"].return_value = None
+
+    assert run(SERVER) == 1
+
+    assert "No .labnotes.toml here." in capsys.readouterr().err
+    collaborators["uvicorn_main"].assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -84,31 +89,6 @@ def test_hides_uvicorn_options_labnotes_owns(
     flag: str, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run([*SERVER, flag, "x"]) == 2
-    collaborators["uvicorn_main"].assert_not_called()
-
-
-def test_reads_the_folders_from_the_environment(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    with mock.patch.dict("os.environ", dict(zip(ENV, ["exp", "data"], strict=True))):
-        assert run([]) == 0
-        assert served_folders(collaborators["uvicorn_main"]) == [
-            str(Path("exp").resolve()),
-            str(Path("data").resolve()),
-        ]
-
-
-@pytest.mark.parametrize(
-    "argv", [["--experiments-folder", "exp"], ["--data-folder", "data"]]
-)
-def test_requires_both_folders(
-    argv: list[str],
-    capsys: pytest.CaptureFixture[str],
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    assert run(argv) == 2
-
-    assert "Missing option" in capsys.readouterr().err
     collaborators["uvicorn_main"].assert_not_called()
 
 

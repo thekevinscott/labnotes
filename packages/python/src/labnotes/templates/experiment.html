@@ -1,17 +1,17 @@
 {% extends "base.html" %}
 {% from "macros.html" import meter, percent %}
 {% set e = experiment %}
-{% block title %}{{ e.name }} · labnotes{% endblock %}
-{% block crumbs %}<span class="crumb"><a href="{{ url_for('index') }}">Experiments</a></span><span class="crumb">{{ e.name }}</span>{% endblock %}
+{% block title %}{{ e.display_name }} · labnotes{% endblock %}
+{% block crumbs %}<span class="crumb"><a href="{{ url_for('index') }}">Experiments</a></span><span class="crumb">{{ e.display_name }}</span>{% endblock %}
 {% block main %}
 <section class="intro">
-  <h1>{{ e.name }}</h1>
-  {% if e.study %}<p class="study">{{ e.study }}</p>{% endif %}
+  <h1>{{ e.display_name }}</h1>
+  {% if e.display_name != e.name %}<p class="study">{{ e.name }}</p>{% endif %}
   <nav class="toc">
     <a href="#design">Design</a>
     {% if pivot %}<a href="#progress">Progress</a>{% endif %}
     {% if e.notes %}<a href="#notes">Notes</a>{% endif %}
-    {% if e.study %}<a href="#runs">Runs</a>{% endif %}
+    <a href="#runs">Runs</a>
   </nav>
 </section>
 
@@ -32,7 +32,7 @@
   <div class="figure">
     <div class="figure-label">Cells</div>
     <div class="figure-value">{{ e.cell_count }}</div>
-    <div class="figure-note">{% if e.runs_per_cell %}<span class="num">{{ e.runs_per_cell }}</span> runs each{% else %}no runs_per_cell set{% endif %}</div>
+    <div class="figure-note">{% if e.runs_per_cell %}<span class="num">{{ e.runs_per_cell }}</span> runs each{% else %}no experiment.toml{% endif %}</div>
   </div>
 </section>
 
@@ -68,9 +68,6 @@
     {% endfor %}
     <dt>complete when</dt><dd><code>{{ e.completed_run }}</code></dd>
   </dl>
-  {% if e.missing_columns %}
-  <p class="notice">The runs table has no column for {{ e.missing_columns | join(', ') }}, so progress per cell can't be shown.</p>
-  {% endif %}
 </section>
 
 {% if pivot %}
@@ -120,7 +117,6 @@
 <script src="{{ asset('run-cell.js') }}" defer></script>
 {% endif %}
 
-{% if e.study %}
 <section id="runs" class="block">
   {% set view = e.run_view %}
   {% set narrowed = view.status or view.filters %}
@@ -164,8 +160,7 @@
     {% endfor %}
   </div>
   {% else %}
-  <p class="empty">No runs recorded for <code>{{ e.study }}</code> yet.</p>
+  <p class="empty">No runs recorded yet.</p>
   {% endif %}
 </section>
-{% endif %}
 {% endblock %}

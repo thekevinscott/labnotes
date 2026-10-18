@@ -89,12 +89,4 @@ line per event instead.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 
-`labnotes server` doesn't read `.labnotes.toml` yet: pass `--experiments-folder` and `--data-folder`, or set `LABNOTES_EXPERIMENTS_FOLDER` and `LABNOTES_DATA_FOLDER`. The experiments folder has one subfolder per experiment, each with a `design.yaml` and markdown notes. The data folder holds run data and a `.dirsql.toml` declaring a `runs` table with a `study` column.
-
-The run data lives in the data folder. Query it with [dirsql](https://dirsql.dev) and the data folder's `.dirsql.toml`, which declares the `runs` table:
-
-```sh
-uvx dirsql -c data/.dirsql.toml "SELECT * FROM runs LIMIT 1" --format json
-```
-
-`uvx labnotes server` serves the experiments and their runs as a local site.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. A grid cell is full once it has `repeats` runs that exited 0 and aren't excluded.

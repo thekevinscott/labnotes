@@ -1,29 +1,18 @@
 import os
-from pathlib import Path
 
 import click
 from uvicorn.main import main as uvicorn_main
 
-from labnotes.serve_app import DATA_FOLDER, EXPERIMENTS_FOLDER, KERNEL_IDLE_MINUTES
+from labnotes.load_config import load_config
+from labnotes.read_config import CONFIG_FILE
+from labnotes.serve_app import CONFIG, KERNEL_IDLE_MINUTES
 
 # labnotes owns these; the rest of uvicorn's options pass straight through.
 OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 
 
-@click.command(help="Serve the experiments and their run data as a local site.")
-@click.option(
-    "--experiments-folder",
-    type=click.Path(path_type=Path),
-    envvar=EXPERIMENTS_FOLDER,
-    required=True,
-    help="One subfolder per experiment, each with a design.yaml and markdown notes.",
-)
-@click.option(
-    "--data-folder",
-    type=click.Path(path_type=Path),
-    envvar=DATA_FOLDER,
-    required=True,
-    help="Run data, with a .dirsql.toml declaring a runs table that has a study column.",
+@click.command(
+    help="Serve the experiments, their notes and their runs as a local site."
 )
 @click.option(
     "--kernel-idle-minutes",
@@ -44,14 +33,16 @@ OWN_OPTIONS = {"app", "factory", "app_dir", "version", "host", "port"}
 @click.pass_context
 def server(
     ctx: click.Context,
-    experiments_folder: Path,
-    data_folder: Path,
     kernel_idle_minutes: int,
     **server_options: object,
 ) -> None:
+    config = load_config(ctx)
+    if config is None:
+        raise click.ClickException(
+            f"No {CONFIG_FILE} here. Run labnotes init, or pass -c PATH."
+        )
     # Through the environment so --reload and --workers child processes see them.
-    os.environ[EXPERIMENTS_FOLDER] = str(experiments_folder.resolve())
-    os.environ[DATA_FOLDER] = str(data_folder.resolve())
+    os.environ[CONFIG] = str(config.path.resolve())
     os.environ[KERNEL_IDLE_MINUTES] = str(kernel_idle_minutes)
     ctx.invoke(
         uvicorn_main,

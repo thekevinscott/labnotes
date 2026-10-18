@@ -1,19 +1,20 @@
 import json
 from collections.abc import Callable, Mapping, Sequence
+from pathlib import Path
 from typing import cast
 
 from dirsql import DirSQL
 
+from labnotes.experiment_notes import experiment_notes
+from labnotes.experiment_progress import experiment_progress
+from labnotes.experiment_runs import experiment_runs
 from labnotes.list_runs import list_runs
 from labnotes.parse_run_view import parse_run_view
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
-from labnotes.run_columns import run_columns
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
-from labnotes.study_progress import study_progress
-from labnotes.study_runs import study_runs
-from labnotes.summarize_design import summarize_design
+from labnotes.summarize_config import summarize_config
 
 
 def _no_outputs(note: str, content: str) -> Sequence[str]:
@@ -21,53 +22,45 @@ def _no_outputs(note: str, content: str) -> Sequence[str]:
 
 
 async def load_experiment(
-    experiments: DirSQL,
-    runs: DirSQL,
+    tables: DirSQL,
+    root: Path,
     name: str,
     params: Mapping[str, str],
     outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
 ) -> dict[str, object] | None:
-    found = await experiments.query(
-        f"SELECT name, study, design FROM experiments WHERE name = {quote_string(name)}"
+    found = await tables.query(
+        "SELECT name, display_name, config FROM experiments"
+        f" WHERE name = {quote_string(name)}"
     )
     if not found:
         return None
     [row] = found
-    notes = await experiments.query(
-        "SELECT name, content FROM notes"
-        f" WHERE experiment = {quote_string(name)} ORDER BY name"
-    )
-    summary = summarize_design(json.loads(str(row["design"])))
+    config = None if row["config"] is None else json.loads(str(row["config"]))
+    summary = summarize_config(config)
     varies = cast(dict[str, list[object]], summary["varies"])
-    study = None if row["study"] is None else str(row["study"])
-    columns = await run_columns(runs)
-    progress = await study_progress(runs, study, summary, columns)
-    shown = columns[:1] + [key for key in varies if key in columns[1:]]
+    source = experiment_runs(name, list(varies))
+    progress = await experiment_progress(tables, source, summary)
+    shown = ["id", *(key for key in varies if key != "id")]
     view = parse_run_view(params, shown)
-    listed = (
-        []
-        if study is None
-        else await list_runs(
-            runs, study_runs(study), str(summary["completed_run"]), view
-        )
-    )
+    notes = await experiment_notes(tables, root, name)
     return {
         "name": row["name"],
-        "study": study,
+        "display_name": row["display_name"],
         **summary,
         **progress,
         "notes": [
             {
                 "name": note["name"],
                 "html": render_markdown(
-                    str(note["content"]),
-                    outputs_for(str(note["name"]), str(note["content"])),
+                    note["content"], outputs_for(note["name"], note["content"])
                 ),
-                "runnable": bool(python_blocks(str(note["content"]))),
+                "runnable": bool(python_blocks(note["content"])),
             }
             for note in notes
         ],
-        "runs_list": listed,
+        "runs_list": await list_runs(
+            tables, source, str(summary["completed_run"]), view
+        ),
         "run_columns": shown,
         "run_view": view,
         "sort_hrefs": {

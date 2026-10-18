@@ -58,7 +58,7 @@ def test_leaves_missing_fields_empty(tmp_path: Path) -> None:
 
 
 def test_excludes_only_on_true(tmp_path: Path) -> None:
-    path = write_run(tmp_path / "data" / "exp" / "r1", {"excluded": "yes"})
+    path = write_run(tmp_path / "data" / "exp" / "r1", {"excluded": 1})
 
     [row] = read_run(tmp_path, "data/{experiment}/{run}", path)
 

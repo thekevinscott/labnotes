@@ -13,7 +13,7 @@ from labnotes.tui.format_elapsed import format_elapsed
 
 class RunApp(App[None]):
     BINDINGS = [
-        Binding("ctrl+c", "interrupt", "Stop runs", priority=True),
+        Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("q", "quit", "Quit"),
     ]
 

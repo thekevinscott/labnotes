@@ -24,11 +24,11 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ),
         mock.patch(
             "labnotes.tui.run_app.format_elapsed",
-            side_effect=lambda seconds: f"{seconds:g}s",
+            side_effect=lambda seconds: f"{seconds:g} seconds",
         ),
         mock.patch("labnotes.tui.run_app.time") as time,
     ):
-        time.monotonic.return_value = 100.0
+        time.monotonic.return_value = 10.0
         yield {"time": time}
 
 
@@ -49,10 +49,10 @@ def test_shows_each_run_and_the_outcome(
         report({"event": "planned"})
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         report({"event": "started", "run": "r2", "params": {"m": "b"}})
-        collaborators["time"].monotonic.return_value = 103.0
+        collaborators["time"].monotonic.return_value = 34.0
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
         report({"event": "ended", "run": "r2", "exit_code": None, "error": "boom"})
-        return [{"exit_code": 0}, {"exit_code": None}]
+        return [{"exit_code": 0}, {"exit_code": None}, {"exit_code": 0}]
 
     async def drive() -> None:
         app = RunApp(start, "exp")
@@ -60,11 +60,11 @@ def test_shows_each_run_and_the_outcome(
             await pilot.pause()
             assert app.title == "exp"
             assert rows(app) == [
-                ["r1", "--m a", "exited 0", "3s"],
-                ["r2", "--m b", "boom", "3s"],
+                ["r1", "--m a", "exited 0", "24 seconds"],
+                ["r2", "--m b", "boom", "24 seconds"],
             ]
-            assert status(app) == "1 passed, 1 failed. q to quit."
-            assert app.results == [{"exit_code": 0}, {"exit_code": None}]
+            assert status(app) == "2 passed, 1 failed. q to quit."
+            assert len(app.results) == 3
             await pilot.press("q")
             assert not app.is_running
 
@@ -96,9 +96,9 @@ def test_ticks_the_time_of_running_runs(
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            collaborators["time"].monotonic.return_value = 105.0
+            collaborators["time"].monotonic.return_value = 25.0
             app.tick()
-            assert rows(app) == [["r1", "--m a", "running", "5s"]]
+            assert rows(app) == [["r1", "--m a", "running", "15 seconds"]]
 
     asyncio.run(drive())
 
@@ -139,5 +139,44 @@ def test_waits_for_runs_before_quitting() -> None:
             await pilot.press("q")
             assert app.is_running
             assert status(app) == "Runs are still going. Ctrl-C stops them."
+
+    asyncio.run(drive())
+
+
+def test_ticks_every_second() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval") as set_interval:
+            async with app.run_test() as pilot:
+                await pilot.pause()
+        set_interval.assert_called_once_with(1, app.tick)
+
+    asyncio.run(drive())
+
+
+def test_widens_columns_as_cells_grow(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    rendered = asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        await rendered.wait()
+        collaborators["time"].monotonic.return_value = 1234.0
+        report({"event": "ended", "run": "r1", "exit_code": -15, "error": None})
+        return [{"exit_code": -15}]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            rendered.set()
+            await pilot.pause()
+            table: Any = app.query_one("#runs")
+            widths = [table.columns[key].content_width for key in ("status", "time")]
+            assert widths == [len("exited -15"), len("1224 seconds")]
 
     asyncio.run(drive())

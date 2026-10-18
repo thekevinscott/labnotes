@@ -25,9 +25,10 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.list_experiment_runs",
             new=mock.AsyncMock(
                 return_value=[
-                    {"params": '{"m": "a"}', "exit_code": 0},
-                    {"params": '{"m": "b"}', "exit_code": 1},
-                    {"params": '{"m": "b"}', "exit_code": -15},
+                    {"params": '{"m": "a"}', "exit_code": 0, "excluded": 0},
+                    {"params": '{"m": "b"}', "exit_code": 1, "excluded": 0},
+                    {"params": '{"m": "b"}', "exit_code": -15, "excluded": 0},
+                    {"params": '{"m": "b"}', "exit_code": 0, "excluded": 1},
                 ]
             ),
         ) as list_runs,

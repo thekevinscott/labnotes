@@ -65,6 +65,9 @@ Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
 code), `stdout.log` and `stderr.log` to the run folder.
+To exclude a run, add `"excluded": true` and an optional `"reason"` to its
+`run.json`. An excluded run doesn't count toward `repeats`, so the next `run`
+replaces it; both show as columns in `runs`.
 
 A script run by labnotes should:
 

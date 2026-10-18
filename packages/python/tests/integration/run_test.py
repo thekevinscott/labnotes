@@ -76,3 +76,25 @@ def test_reruns_only_the_runs_that_failed(
 
     recorded = runs(project)
     assert sorted(run["params"]["m"] for run in recorded) == ["a", "a"] + ["b"] * 4
+
+
+def test_reruns_an_excluded_run(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    labnotes(project, ["experiments", "exp", "run"])
+    [excluded, _] = [run for run in runs(project) if run["params"]["m"] == "a"]
+    run_json = excluded["folder"] / "run.json"
+    recorded = json.loads(run_json.read_text(encoding="utf-8"))
+    run_json.write_text(json.dumps(recorded | {"excluded": True, "reason": "bad"}))
+    labnotes(project, ["experiments", "exp", "run"])
+    capsys.readouterr()
+
+    labnotes(project, ["experiments", "exp", "runs", "--format", "json"])
+
+    listed = json.loads(capsys.readouterr().out)
+    a_runs = [run for run in listed if json.loads(run["params"]) == {"m": "a"}]
+    assert sorted((run["excluded"], run["reason"]) for run in a_runs) == [
+        (0, None),
+        (0, None),
+        (1, "bad"),
+    ]

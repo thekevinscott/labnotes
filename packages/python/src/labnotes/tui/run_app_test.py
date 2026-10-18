@@ -52,7 +52,12 @@ def test_shows_each_run_and_the_outcome(
         collaborators["time"].monotonic.return_value = 34.0
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
         report({"event": "ended", "run": "r2", "exit_code": None, "error": "boom"})
-        return [{"exit_code": 0}, {"exit_code": None}, {"exit_code": 0}]
+        return [
+            {"exit_code": 0},
+            {"exit_code": None},
+            {"exit_code": 0},
+            {"exit_code": 0},
+        ]
 
     async def drive() -> None:
         app = RunApp(start, "exp")
@@ -63,8 +68,8 @@ def test_shows_each_run_and_the_outcome(
                 ["r1", "--m a", "exited 0", "24 seconds"],
                 ["r2", "--m b", "boom", "24 seconds"],
             ]
-            assert status(app) == "2 passed, 1 failed. q to quit."
-            assert len(app.results) == 3
+            assert status(app) == "3 passed, 1 failed. q to quit."
+            assert len(app.results) == 4
             await pilot.press("q")
             assert not app.is_running
 

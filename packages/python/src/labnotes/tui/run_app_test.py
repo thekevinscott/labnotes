@@ -94,8 +94,11 @@ def test_shows_each_run_and_the_outcome(
 
 
 def test_shows_planned_runs_as_dim_pending_rows() -> None:
+    rendered = asyncio.Event()
+
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2"))
+        await rendered.wait()
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
@@ -103,11 +106,15 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
+            rendered.set()
+            await pilot.pause()
             assert rows(app) == [
                 ["r1", "--m a", "running", "0 seconds"],
                 ["r2", "--m r2", "pending", ""],
             ]
             assert styles(app) == [[None] * 4, ["dim"] * 4]
+            table: Any = app.query_one("#runs")
+            assert table.columns["time"].content_width == len("0 seconds")
             assert status(app) == "said planned"
 
     asyncio.run(drive())

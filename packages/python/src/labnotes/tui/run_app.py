@@ -74,7 +74,7 @@ class RunApp(App[None]):
                 self.started[run] = time.monotonic()
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 cells = (run, args, "running", format_elapsed(0))
-                for column, cell in zip(COLUMNS, cells, strict=True):
+                for column, cell in zip(COLUMNS, cells):
                     table.update_cell(run, column, cell, update_width=True)
             case "ended":
                 outcome = event["error"] or f"exited {event['exit_code']}"

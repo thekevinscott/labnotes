@@ -15,7 +15,7 @@ def start_experiment(
     name: str,
     experiment_config: Path | None,
     concurrency: int,
-    drive: Callable[[Start], list[dict[str, object]]],
+    drive: Callable[[Start, str], list[dict[str, object]]],
 ) -> list[dict[str, object]]:
     if experiment_config is None:
         folder = config.experiments.replace("{experiment}", name)
@@ -27,6 +27,7 @@ def start_experiment(
     lock.parent.mkdir(parents=True, exist_ok=True)
     try:
         with FileLock(lock, blocking=False):
-            return drive(partial(run_experiment, config, name, experiment, concurrency))
+            start = partial(run_experiment, config, name, experiment, concurrency)
+            return drive(start, experiment.name or name)
     except Timeout as error:
         raise ValueError(f"{name} is already running ({lock} is held).") from error

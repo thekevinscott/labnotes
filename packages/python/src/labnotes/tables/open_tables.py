@@ -12,7 +12,10 @@ from labnotes.tables.read_run import read_run
 EXPERIMENTS = """
 CREATE TABLE experiment_configs (experiment TEXT PRIMARY KEY, config TEXT);
 CREATE VIEW experiments AS
-  SELECT names.name, experiment_configs.config
+  SELECT
+    names.name,
+    coalesce(experiment_configs.config ->> 'name', names.name) AS display_name,
+    experiment_configs.config
   FROM (
     SELECT experiment AS name FROM experiment_configs
     UNION SELECT experiment FROM files

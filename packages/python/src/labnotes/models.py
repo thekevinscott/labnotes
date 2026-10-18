@@ -30,3 +30,4 @@ class ExperimentConfig:
     command: str
     repeats: int
     params: dict[str, list[object]]
+    name: str | None = None

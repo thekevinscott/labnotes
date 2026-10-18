@@ -1,6 +1,5 @@
 import asyncio
 import sys
-from functools import partial
 from pathlib import Path
 
 import click
@@ -60,7 +59,7 @@ def experiments(
     match name, action:
         case str(), "run":
             live = sys.stdout.isatty() and sys.stderr.isatty() and not no_tui
-            drive = partial(run_tui, title=name) if live else run_headless
+            drive = run_tui if live else lambda start, title: run_headless(start)
             try:
                 results = start_experiment(
                     config, name, experiment_config, concurrency, drive

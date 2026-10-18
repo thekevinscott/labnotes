@@ -50,6 +50,7 @@ Each takes `--format table` (the default) or `--format json`.
 experiments folder:
 
 ```toml
+name = "Model and effort"
 command = "uv run scripts/study.py --output {run_dir}"
 repeats = 5
 
@@ -58,6 +59,9 @@ model = ["opus", "sonnet"]
 effort = ["low", "high"]
 ```
 
+`name` is optional: a display name for the experiment, shown in the live view
+and as `display_name` in `experiments`. The folder name stays the key, so
+renaming the experiment means editing `name`.
 Each combination of `[params]` runs `repeats` times, round-robin. Only runs
 that exit 0 count, so running again fills in what failed or never ran.
 Each run gets a new run folder. `command` runs in a shell from the root, with

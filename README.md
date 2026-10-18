@@ -88,7 +88,7 @@ To run an experiment needs a script and parameters defined. This should be defin
 The TOML file defines the dynamic parameters along with the script to run:
 
 ```toml
-command = "uv run python run.py"
+command = "uv run python run.py --output {run_dir}"
 repeats = 5
 
 [params]
@@ -96,7 +96,7 @@ model = ["opus", "sonnet"]
 effort = ["low", "high"]
 ```
 
-The script can be any command. Each combination of parameters runs `repeats` times. Dynamic parameters will be passed as arguments to the script (`--model opus --effort low`). The script runs inside its own run folder, and writes its output there.
+The script can be any command. Each combination of parameters runs `repeats` times. Dynamic parameters will be passed as arguments to the script (`--model opus --effort low`). The script runs from the project root. Each run gets its own run folder; `{run_dir}` in the command becomes that folder's absolute path, so the script knows where to write its output.
 
 Dynamic parameters get recorded for a particular run in a run.json file in the run folder, along with when it started, when it ended, and its exit code. The script's stdout and stderr are saved alongside.
 

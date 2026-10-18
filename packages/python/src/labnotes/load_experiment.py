@@ -12,6 +12,7 @@ from labnotes.run_columns import run_columns
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
 from labnotes.study_progress import study_progress
+from labnotes.study_runs import study_runs
 from labnotes.summarize_design import summarize_design
 
 
@@ -46,7 +47,9 @@ async def load_experiment(
     listed = (
         []
         if study is None
-        else await list_runs(runs, study, str(summary["completed_run"]), view)
+        else await list_runs(
+            runs, study_runs(study), str(summary["completed_run"]), view
+        )
     )
     return {
         "name": row["name"],

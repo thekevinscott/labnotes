@@ -36,7 +36,9 @@ def test_caps_each_cell_at_its_target_when_filling(count_runs: mock.AsyncMock) -
         {"values": {"x": 1}, "runs": 6, "completed": 5},
         {"values": {"x": 2}, "runs": 0, "completed": 0},
     ]
-    count_runs.assert_awaited_with(runs, "s", "exit_code = 0", group_by=["x"])
+    count_runs.assert_awaited_with(
+        runs, "(SELECT * FROM runs WHERE study = 's')", "exit_code = 0", group_by=["x"]
+    )
 
 
 def test_skips_the_grid_when_runs_lack_a_varies_column(

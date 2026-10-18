@@ -5,9 +5,9 @@ from labnotes.sql_quote import quote_identifier, quote_string
 
 
 async def list_runs(
-    runs: DirSQL, study: str, completed_run: str, view: RunView
+    runs: DirSQL, source: str, completed_run: str, view: RunView
 ) -> list[dict[str, object]]:
-    where = [f"study = {quote_string(study)}"]
+    where = []
     if view.status:
         negate = {"complete": "", "incomplete": "NOT "}[view.status]
         where.append(f"{negate}({completed_run})")
@@ -16,6 +16,7 @@ async def list_runs(
         f" lower({quote_string(value)})) > 0"
         for column, value in view.filters.items()
     ]
+    filtered = f" WHERE {' AND '.join(where)}" if where else ""
     direction = "DESC" if view.descending else "ASC"
     if view.sort == "status":
         order = f"labnotes_completed {direction}"
@@ -24,6 +25,6 @@ async def list_runs(
     else:
         order = "2 DESC"
     return await runs.query(
-        f"SELECT ({completed_run}) AS labnotes_completed, * FROM runs"
-        f" WHERE {' AND '.join(where)} ORDER BY {order}"
+        f"SELECT ({completed_run}) AS labnotes_completed, * FROM {source}"
+        f"{filtered} ORDER BY {order}"
     )

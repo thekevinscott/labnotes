@@ -25,20 +25,22 @@ def fresh(text: str) -> str:
 def query(view: mock.Mock) -> str:
     runs = mock.Mock()
     runs.query = mock.AsyncMock(return_value=[])
-    asyncio.run(list_runs(runs, "s", "exit_code = 0", view))
+    asyncio.run(list_runs(runs, "(source)", "exit_code = 0", view))
     return str(runs.query.await_args.args[0])
 
 
-def test_lists_a_studys_runs_newest_first_with_a_completed_flag() -> None:
+def test_lists_runs_newest_first_with_a_completed_flag() -> None:
     runs = mock.Mock()
     runs.query = mock.AsyncMock(return_value=[{"labnotes_completed": 1, "run_id": "b"}])
 
-    assert asyncio.run(list_runs(runs, "s", "exit_code = 0", make_view())) == [
+    assert asyncio.run(list_runs(runs, "(source)", "exit_code = 0", make_view())) == [
         {"labnotes_completed": 1, "run_id": "b"}
     ]
     sql = runs.query.await_args.args[0]
-    assert sql.startswith("SELECT (exit_code = 0) AS labnotes_completed, * FROM runs")
-    assert sql.endswith("WHERE study = 's' ORDER BY 2 DESC")
+    assert (
+        sql
+        == "SELECT (exit_code = 0) AS labnotes_completed, * FROM (source) ORDER BY 2 DESC"
+    )
 
 
 @pytest.mark.parametrize(
@@ -56,8 +58,8 @@ def test_sorts_by_the_chosen_column(view: mock.Mock, order: str) -> None:
 @pytest.mark.parametrize(
     ("status", "condition"),
     [
-        ("complete", " AND (exit_code = 0) "),
-        ("incomplete", " AND NOT (exit_code = 0) "),
+        ("complete", "(source) WHERE (exit_code = 0) "),
+        ("incomplete", "(source) WHERE NOT (exit_code = 0) "),
     ],
 )
 def test_filters_by_status(status: str, condition: str) -> None:
@@ -68,8 +70,7 @@ def test_filters_columns_by_case_insensitive_substring() -> None:
     sql = query(make_view(filters={"model": "it's", "effort": "hi"}))
 
     assert (
-        "WHERE study = 's'"
-        " AND instr(lower(CAST(\"model\" AS TEXT)), lower('it''s')) > 0"
+        "(source) WHERE instr(lower(CAST(\"model\" AS TEXT)), lower('it''s')) > 0"
         " AND instr(lower(CAST(\"effort\" AS TEXT)), lower('hi')) > 0"
         " ORDER BY"
     ) in sql

@@ -38,7 +38,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
 
 
 def drive() -> mock.Mock:
-    return mock.Mock(side_effect=lambda start: asyncio.run(start("report", "listen")))
+    return mock.Mock(
+        side_effect=lambda start, title: asyncio.run(start("report", "listen"))
+    )
 
 
 def make_config(root: Path) -> mock.Mock:
@@ -71,6 +73,24 @@ def test_runs_the_experiment_under_a_lock(
         "report",
         "listen",
     )
+
+
+@pytest.mark.parametrize(("display_name", "title"), [("Study", "Study"), (None, "exp")])
+def test_titles_the_run_with_the_display_name(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    display_name: str | None,
+    title: str,
+) -> None:
+    path = tmp_path / "notes" / "exp" / "experiment.toml"
+    path.parent.mkdir(parents=True)
+    path.touch()
+    collaborators["read_experiment_config"].return_value.name = display_name
+    driver = drive()
+
+    start_experiment(make_config(tmp_path), "exp", None, 1, driver)
+
+    assert driver.call_args.args[1] == title
 
 
 def test_reads_the_named_experiment_config(

@@ -13,10 +13,14 @@ def write(tmp_path: Path, text: str) -> Path:
 
 def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
     config = read_experiment_config(
-        write(tmp_path, 'command = "run"\nrepeats = 3\n[params]\nm = ["a", "b"]\n')
+        write(
+            tmp_path,
+            'name = "Study"\ncommand = "run"\nrepeats = 3\n[params]\nm = ["a", "b"]\n',
+        )
     )
 
-    assert (config.command, config.repeats, config.params) == (
+    assert (config.name, config.command, config.repeats, config.params) == (
+        "Study",
         "run",
         3,
         {"m": ["a", "b"]},
@@ -26,7 +30,7 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
 def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
     config = read_experiment_config(write(tmp_path, 'command = "run"\n'))
 
-    assert (config.repeats, config.params) == (1, {})
+    assert (config.name, config.repeats, config.params) == (None, 1, {})
 
 
 @pytest.mark.parametrize(
@@ -35,6 +39,8 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
         ("command = ", "Invalid"),
         ('command = "run"\nn = 2\n', "unknown keys n"),
         ("repeats = 2\n", "command must be a string"),
+        ('name = 1\ncommand = "run"\n', "name must be a string"),
+        ('name = " "\ncommand = "run"\n', "name must be a string"),
         ('command = " "\n', "command must be a string"),
         ('command = "run"\nrepeats = 0\n', "repeats must be a positive integer"),
         ('command = "run"\nrepeats = true\n', "repeats must be a positive integer"),

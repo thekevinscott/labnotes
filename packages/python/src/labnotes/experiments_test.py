@@ -192,6 +192,14 @@ def test_needs_an_experiment_config_file(
     start_experiment.assert_not_called()
 
 
+def assert_headless(
+    start_experiment: mock.MagicMock, drivers: dict[str, mock.MagicMock]
+) -> None:
+    drive = start_experiment.call_args.args[4]
+    assert drive("start", "title") is drivers["run_headless"].return_value
+    drivers["run_headless"].assert_called_once_with("start")
+
+
 def test_prints_events_when_not_in_a_terminal(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
@@ -199,7 +207,7 @@ def test_prints_events_when_not_in_a_terminal(
 ) -> None:
     run(["a", "run"])
 
-    assert start_experiment.call_args.args[4] is drivers["run_headless"]
+    assert_headless(start_experiment, drivers)
 
 
 def test_prints_events_when_stderr_is_not_a_terminal(
@@ -212,7 +220,7 @@ def test_prints_events_when_stderr_is_not_a_terminal(
 
     run(["a", "run"])
 
-    assert start_experiment.call_args.args[4] is drivers["run_headless"]
+    assert_headless(start_experiment, drivers)
 
 
 def test_shows_the_live_view_in_a_terminal(
@@ -224,8 +232,7 @@ def test_shows_the_live_view_in_a_terminal(
 
     run(["a", "run"])
 
-    drive = start_experiment.call_args.args[4]
-    assert (drive.func, drive.keywords) == (drivers["run_tui"], {"title": "a"})
+    assert start_experiment.call_args.args[4] is drivers["run_tui"]
 
 
 def test_prints_events_with_no_tui(
@@ -237,4 +244,4 @@ def test_prints_events_with_no_tui(
 
     run(["a", "run", "--no-tui"])
 
-    assert start_experiment.call_args.args[4] is drivers["run_headless"]
+    assert_headless(start_experiment, drivers)

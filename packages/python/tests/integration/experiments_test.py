@@ -31,7 +31,10 @@ def project(tmp_path: Path) -> Path:
         '[runs]\npath = "data/{experiment}/{run}"\n',
     )
     write(tmp_path / "notes/alpha/plan.md", "plan")
-    write(tmp_path / "notes/alpha/experiment.toml", '[params]\nm = ["a", "b"]\n')
+    write(
+        tmp_path / "notes/alpha/experiment.toml",
+        'name = "Alpha study"\n[params]\nm = ["a", "b"]\n',
+    )
     write(tmp_path / "notes/beta/readme.md", "readme")
     write(
         tmp_path / "data/alpha/brave-fox/run.json",
@@ -56,10 +59,10 @@ def test_lists_experiments_from_their_files_runs_and_configs(
 ) -> None:
     rows = labnotes(project, ["experiments"], capsys)
 
-    assert [(r["name"], r["files"], r["runs"]) for r in rows] == [
-        ("alpha", 1, 1),
-        ("beta", 1, 0),
-        ("gamma", 0, 1),
+    assert [(r["name"], r["display_name"], r["files"], r["runs"]) for r in rows] == [
+        ("alpha", "Alpha study", 1, 1),
+        ("beta", "beta", 1, 0),
+        ("gamma", "gamma", 0, 1),
     ]
 
 
@@ -68,7 +71,10 @@ def test_shows_one_experiment_with_its_config(
 ) -> None:
     [row] = labnotes(project, ["experiments", "alpha"], capsys)
 
-    assert json.loads(row["config"]) == {"params": {"m": ["a", "b"]}}
+    assert json.loads(row["config"]) == {
+        "name": "Alpha study",
+        "params": {"m": ["a", "b"]},
+    }
     assert row["last_run"] == "2026-10-17T00:00:00Z"
 
 

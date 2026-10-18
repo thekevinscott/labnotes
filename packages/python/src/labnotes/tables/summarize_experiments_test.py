@@ -28,4 +28,4 @@ def test_summarizes_one_experiment() -> None:
 
     sql = tables.query.await_args.args[0]
     assert sql.endswith("WHERE e.name = 'it''s'")
-    assert "e.name, e.config," in sql
+    assert "e.display_name, e.config," in sql

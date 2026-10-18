@@ -4,7 +4,8 @@ from labnotes.sql_quote import quote_string
 
 SUMMARY = """
 SELECT
-  e.name,{config}
+  e.name,
+  e.display_name,{config}
   (SELECT max(created) FROM runs WHERE runs.experiment = e.name) AS last_run,
   (
     SELECT min(t) FROM (

@@ -69,3 +69,12 @@ def test_declares_the_experiments_view_after_files_and_runs(
     names = list(tables(dirsql))
     assert names.index("experiment_configs") > names.index("runs")
     assert "CREATE VIEW experiments" in str(tables(dirsql)["experiment_configs"]["ddl"])
+
+
+def test_experiments_fall_back_to_the_folder_for_a_display_name(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
+    open_tables(CONFIG)
+
+    ddl = str(tables(dirsql)["experiment_configs"]["ddl"])
+    assert "coalesce(experiment_configs.config ->> 'name', names.name)" in ddl

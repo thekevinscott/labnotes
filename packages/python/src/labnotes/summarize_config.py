@@ -1,7 +1,6 @@
 from math import prod
 
-# What the runner counts toward repeats.
-COMPLETED_RUN = "exit_code = 0 AND NOT coalesce(excluded, 0)"
+from labnotes.default_counts import DEFAULT_COUNTS
 
 
 def summarize_config(config: dict[str, object] | None) -> dict[str, object]:
@@ -15,12 +14,13 @@ def summarize_config(config: dict[str, object] | None) -> dict[str, object]:
     repeats = repeats if isinstance(repeats, int) else None
     cells = prod(len(values) for values in varies.values())
     command = config.get("command")
+    counts = config.get("counts")
     return {
         "fixed": {},
         "varies": varies,
         "cell_count": cells,
         "runs_per_cell": repeats,
         "target": cells * repeats if repeats is not None else None,
-        "completed_run": COMPLETED_RUN,
+        "completed_run": counts if isinstance(counts, str) else DEFAULT_COUNTS,
         "other": {} if command is None else {"command": command},
     }

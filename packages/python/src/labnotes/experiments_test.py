@@ -76,6 +76,17 @@ def test_reports_an_unknown_experiment(
     collaborators["print_rows"].assert_not_called()
 
 
+def test_reports_a_query_that_fails(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["experiment_rows"].side_effect = ValueError("a: counts broke")
+
+    assert run(["a", "runs"]) == 1
+
+    assert "Error: a: counts broke" in capsys.readouterr().err
+    collaborators["print_rows"].assert_not_called()
+
+
 def test_rejects_an_unknown_action(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:

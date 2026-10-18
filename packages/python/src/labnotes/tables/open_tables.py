@@ -31,8 +31,8 @@ CREATE TABLE files (
 RUNS = """
 CREATE TABLE runs (
   experiment TEXT, id TEXT, folder TEXT, created TEXT, ended TEXT,
-  exit_code INTEGER, error TEXT, excluded INTEGER, reason TEXT,
-  stdout TEXT, stderr TEXT, params TEXT,
+  exit_code INTEGER, error TEXT,
+  stdout TEXT, stderr TEXT, params TEXT, run TEXT,
   PRIMARY KEY (experiment, id)
 )
 """

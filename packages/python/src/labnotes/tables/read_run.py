@@ -20,10 +20,9 @@ def read_run(root: Path, template: str, path: str) -> list[dict[str, object]]:
             "ended": run.get("ended"),
             "exit_code": run.get("exit_code"),
             "error": run.get("error"),
-            "excluded": run.get("excluded") is True,
-            "reason": run.get("reason"),
             "stdout": f"{folder}/stdout.log",
             "stderr": f"{folder}/stderr.log",
             "params": json.dumps(run.get("params", {})),
+            "run": json.dumps(run),
         }
     ]

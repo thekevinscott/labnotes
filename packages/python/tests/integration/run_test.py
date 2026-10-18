@@ -85,7 +85,7 @@ def test_reruns_an_excluded_run(
     [excluded, _] = [run for run in runs(project) if run["params"]["m"] == "a"]
     run_json = excluded["folder"] / "run.json"
     recorded = json.loads(run_json.read_text(encoding="utf-8"))
-    run_json.write_text(json.dumps(recorded | {"excluded": True, "reason": "bad"}))
+    run_json.write_text(json.dumps(recorded | {"excluded": True}))
     labnotes(project, ["experiments", "exp", "run"])
     capsys.readouterr()
 
@@ -93,8 +93,18 @@ def test_reruns_an_excluded_run(
 
     listed = json.loads(capsys.readouterr().out)
     a_runs = [run for run in listed if json.loads(run["params"]) == {"m": "a"}]
-    assert sorted((run["excluded"], run["reason"]) for run in a_runs) == [
-        (0, None),
-        (0, None),
-        (1, "bad"),
-    ]
+    assert sorted(run["counted"] for run in a_runs) == [0, 1, 1]
+
+
+def test_counts_runs_by_the_experiments_rule(
+    project: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    toml = project / "exp" / "experiment.toml"
+    toml.write_text('counts = "true"\n' + toml.read_text(encoding="utf-8"))
+    labnotes(project, ["experiments", "exp", "run"])
+    capsys.readouterr()
+
+    labnotes(project, ["experiments", "exp", "run"])
+
+    assert len(runs(project)) == 4
+    assert capsys.readouterr().out.endswith("0 passed, 0 failed.\n")

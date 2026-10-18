@@ -13,7 +13,7 @@ SIGKILL, SIGTERM = 9, 15
 
 
 def experiment() -> mock.Mock:
-    return mock.Mock(command="run", params={"m": ["a", "b"]}, repeats=2)
+    return mock.Mock(command="run", params={"m": ["a", "b"]}, repeats=2, counts="c")
 
 
 @pytest.fixture
@@ -25,10 +25,8 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.list_experiment_runs",
             new=mock.AsyncMock(
                 return_value=[
-                    {"params": '{"m": "a"}', "exit_code": 0, "excluded": 0},
-                    {"params": '{"m": "b"}', "exit_code": 1, "excluded": 0},
-                    {"params": '{"m": "b"}', "exit_code": -15, "excluded": 0},
-                    {"params": '{"m": "b"}', "exit_code": 0, "excluded": 1},
+                    {"params": '{"m": "a"}', "counted": 1},
+                    {"params": '{"m": "b"}', "counted": 0},
                 ]
             ),
         ) as list_runs,
@@ -92,7 +90,7 @@ def test_plans_the_runs_still_needed(
     run(tmp_path, mock.Mock())
 
     collaborators["list_runs"].assert_awaited_once_with(
-        collaborators["open_tables"].return_value, "exp"
+        collaborators["open_tables"].return_value, "exp", "c"
     )
     collaborators["param_grid"].assert_called_once_with({"m": ["a", "b"]})
     collaborators["plan_runs"].assert_called_once_with([A, B], 2, [A])

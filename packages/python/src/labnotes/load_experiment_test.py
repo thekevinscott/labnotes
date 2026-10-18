@@ -7,6 +7,7 @@ from unittest import mock
 
 import pytest
 
+from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.load_experiment import load_experiment
 
 CONFIG = {"command": "go", "repeats": 2, "params": {"x": [1, 2], "y": ["a"]}}
@@ -95,7 +96,7 @@ def test_loads_config_notes_progress_and_runs(
     assert source.endswith("FROM runs WHERE experiment = 'it''s')")
     assert '"x", params' in source
     collaborators["list_runs"].assert_awaited_once_with(
-        tables, source, "exit_code = 0 AND NOT coalesce(excluded, 0)", view
+        tables, source, DEFAULT_COUNTS, view
     )
     assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {

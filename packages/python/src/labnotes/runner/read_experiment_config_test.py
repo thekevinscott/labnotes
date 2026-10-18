@@ -2,6 +2,7 @@ from pathlib import Path
 
 import pytest
 
+from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.runner.read_experiment_config import read_experiment_config
 
 
@@ -30,7 +31,20 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
 def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
     config = read_experiment_config(write(tmp_path, 'command = "run"\n'))
 
-    assert (config.name, config.repeats, config.params) == (None, 1, {})
+    assert (config.name, config.repeats, config.params, config.counts) == (
+        None,
+        1,
+        {},
+        DEFAULT_COUNTS,
+    )
+
+
+def test_reads_counts(tmp_path: Path) -> None:
+    config = read_experiment_config(
+        write(tmp_path, 'command = "run"\ncounts = "exit_code = 0"\n')
+    )
+
+    assert config.counts == "exit_code = 0"
 
 
 @pytest.mark.parametrize(
@@ -48,6 +62,8 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
         ('command = "run"\n[params]\nm = "a"\n', "params.m must be a non-empty list"),
         ('command = "run"\n[params]\nm = []\n', "params.m must be a non-empty list"),
         ('command = "run"\n[params]\nd = [1979-05-27]\n', "dates or times"),
+        ('command = "run"\ncounts = 1\n', "counts must be a SQL condition"),
+        ('command = "run"\ncounts = " "\n', "counts must be a SQL condition"),
     ],
 )
 def test_rejects_a_bad_config(tmp_path: Path, text: str, message: str) -> None:

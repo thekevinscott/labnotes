@@ -2,9 +2,10 @@ import json
 import tomllib
 from pathlib import Path
 
+from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.models import ExperimentConfig
 
-SETTINGS = {"name", "command", "repeats", "params"}
+SETTINGS = {"name", "command", "repeats", "params", "counts"}
 
 
 def read_experiment_config(path: Path) -> ExperimentConfig:
@@ -35,4 +36,7 @@ def read_experiment_config(path: Path) -> ExperimentConfig:
         json.dumps(params)
     except TypeError as error:
         raise ValueError(f"{path}: params can't hold dates or times") from error
-    return ExperimentConfig(command, repeats, params, name)
+    counts = values.get("counts", DEFAULT_COUNTS)
+    if not isinstance(counts, str) or not counts.strip():
+        raise ValueError(f"{path}: counts must be a SQL condition")
+    return ExperimentConfig(command, repeats, params, name, counts)

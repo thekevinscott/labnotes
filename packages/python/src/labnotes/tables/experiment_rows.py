@@ -1,4 +1,7 @@
+import json
+
 from labnotes.models import LabnotesConfig
+from labnotes.summarize_config import summarize_config
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.open_tables import open_tables
 from labnotes.tables.summarize_experiments import summarize_experiments
@@ -13,5 +16,9 @@ async def experiment_rows(
         return None
     match name, action:
         case str(), "runs":
-            return await list_experiment_runs(tables, name)
+            stored = rows[0]["config"]
+            summary = summarize_config(json.loads(str(stored)) if stored else None)
+            return await list_experiment_runs(
+                tables, name, str(summary["completed_run"])
+            )
     return rows

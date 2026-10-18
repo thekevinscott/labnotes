@@ -4,6 +4,7 @@ from unittest import mock
 
 import pytest
 
+from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.tables.experiment_rows import experiment_rows
 
 CONFIG = mock.Mock()
@@ -44,11 +45,23 @@ def test_summarizes_one_experiment(queries: dict[str, mock.MagicMock]) -> None:
 
 
 def test_lists_one_experiments_runs(queries: dict[str, mock.MagicMock]) -> None:
+    queries["summarize"].return_value = [{"name": "a", "config": '{"counts": "c"}'}]
+
     assert asyncio.run(experiment_rows(CONFIG, "a", "runs")) == [{"id": "r"}]
 
     queries["list_runs"].assert_awaited_once_with(
-        queries["open_tables"].return_value, "a"
+        queries["open_tables"].return_value, "a", "c"
     )
+
+
+def test_counts_by_default_without_a_config(
+    queries: dict[str, mock.MagicMock],
+) -> None:
+    queries["summarize"].return_value = [{"name": "a", "config": None}]
+
+    asyncio.run(experiment_rows(CONFIG, "a", "runs"))
+
+    assert queries["list_runs"].await_args.args[2] == DEFAULT_COUNTS
 
 
 def test_returns_none_for_an_unknown_experiment(

@@ -26,8 +26,12 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.execute_run.asyncio.create_subprocess_shell",
             new=mock.AsyncMock(return_value=process),
         ) as spawn,
+        mock.patch(
+            "labnotes.runner.execute_run.wait_for_group", new=mock.AsyncMock()
+        ) as wait_for_group,
     ):
         yield {
+            "wait_for_group": wait_for_group,
             "shell_command": shell_command,
             "write_run_json": write_run_json,
             "spawn": spawn,
@@ -35,16 +39,23 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         }
 
 
-def run(tmp_path: Path, running: set[object] | None = None) -> dict[str, object]:
-    return asyncio.run(
-        execute_run(
+def run(
+    tmp_path: Path, running: set[object] | None = None, stopping: bool = False
+) -> dict[str, object]:
+    async def go() -> dict[str, object]:
+        event = asyncio.Event()
+        if stopping:
+            event.set()
+        return await execute_run(
             tmp_path / "root",
             tmp_path,
             "uv run x.py",
             PARAMS,
             set() if running is None else running,  # type: ignore[arg-type]
+            event,
         )
-    )
+
+    return asyncio.run(go())
 
 
 def test_runs_the_command_from_the_root(
@@ -95,12 +106,25 @@ def test_tracks_the_process_while_it_runs(
         seen.append(collaborators["process"] in running)
         return 0
 
+    async def wait_for_group(group: int) -> None:
+        seen.append(collaborators["process"] in running and group == 42)
+
     collaborators["process"].wait = wait
+    collaborators["wait_for_group"].side_effect = wait_for_group
 
-    run(tmp_path, running)
+    run(tmp_path, running, stopping=True)
 
-    assert seen == [True]
+    assert seen == [True, True]
     assert running == set()
+
+
+def test_ends_a_normal_exit_without_waiting_for_leftovers(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    result = run(tmp_path)
+
+    collaborators["wait_for_group"].assert_not_awaited()
+    assert result["exit_code"] == 3
 
 
 def test_records_a_command_that_cannot_start(

@@ -74,8 +74,7 @@ def test_shows_each_run_and_the_outcome(
 def test_shows_other_events_as_status() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report({"event": "stopping"})
-        await asyncio.Event().wait()
-        return []
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
         app = RunApp(start, "exp")
@@ -91,8 +90,7 @@ def test_ticks_the_time_of_running_runs(
 ) -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
-        await asyncio.Event().wait()
-        return []
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
         app = RunApp(start, "exp")
@@ -133,8 +131,7 @@ def test_ctrl_c_interrupts_the_runs_until_they_finish() -> None:
 
 def test_waits_for_runs_before_quitting() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        await asyncio.Event().wait()
-        return []
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
         app = RunApp(start, "exp")

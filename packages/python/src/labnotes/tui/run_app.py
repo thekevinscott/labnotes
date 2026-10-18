@@ -22,7 +22,7 @@ class RunApp(App[None]):
         self.start = start
         self.title = title
         self.results: list[dict[str, object]] = []
-        self.interrupt: Callable[[], None] | None = None
+        self.interrupt: Callable[[], None] = lambda: None
         self.done = False
         self.started: dict[str, float] = {}
 
@@ -80,7 +80,7 @@ class RunApp(App[None]):
     def action_interrupt(self) -> None:
         if self.done:
             self.exit()
-        elif self.interrupt is not None:
+        else:
             self.interrupt()
 
     async def action_quit(self) -> None:

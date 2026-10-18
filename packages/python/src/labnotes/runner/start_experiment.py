@@ -1,10 +1,10 @@
-import asyncio
 from collections.abc import Callable
+from functools import partial
 from pathlib import Path
 
 from filelock import FileLock, Timeout
 
-from labnotes.models import LabnotesConfig
+from labnotes.models import LabnotesConfig, Start
 from labnotes.runner.lock_path import lock_path
 from labnotes.runner.read_experiment_config import read_experiment_config
 from labnotes.runner.run_experiment import run_experiment
@@ -15,7 +15,7 @@ def start_experiment(
     name: str,
     experiment_config: Path | None,
     concurrency: int,
-    report: Callable[[str], None],
+    drive: Callable[[Start], list[dict[str, object]]],
 ) -> list[dict[str, object]]:
     if experiment_config is None:
         folder = config.experiments.replace("{experiment}", name)
@@ -27,8 +27,6 @@ def start_experiment(
     lock.parent.mkdir(parents=True, exist_ok=True)
     try:
         with FileLock(lock, blocking=False):
-            return asyncio.run(
-                run_experiment(config, name, experiment, concurrency, report)
-            )
+            return drive(partial(run_experiment, config, name, experiment, concurrency))
     except Timeout as error:
         raise ValueError(f"{name} is already running ({lock} is held).") from error

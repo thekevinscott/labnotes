@@ -1,5 +1,11 @@
+from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Any
+
+Report = Callable[[dict[str, object]], None]
+Listen = Callable[[Callable[[], None]], None]
+Start = Callable[[Report, Listen], Coroutine[Any, Any, list[dict[str, object]]]]
 
 
 @dataclass(frozen=True)

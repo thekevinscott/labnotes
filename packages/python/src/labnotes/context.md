@@ -58,6 +58,10 @@ Each param is appended as `--name value`, with the name as written (use
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
 code), `stdout.log` and `stderr.log` to the run folder.
 
+In a terminal, `run` shows a live table of runs (status and time) and stays
+open when they finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
+line per event instead.
+
 - `--concurrency N` runs N at a time (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C

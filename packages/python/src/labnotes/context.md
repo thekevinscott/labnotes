@@ -58,6 +58,14 @@ Each param is appended as `--name value`, with the name as written (use
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
 code), `stdout.log` and `stderr.log` to the run folder.
 
+A script run by labnotes should:
+
+- take each param as a `--name value` flag, parsing lists and tables from JSON;
+- take its output folder as an argument, passed in `command` as `{run_dir}`, and write everything it produces there;
+- exit non-zero when it fails, so the run counts as failed and runs again next time.
+
+Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
+
 In a terminal, `run` shows a live table of runs (status and time) and stays
 open when they finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.

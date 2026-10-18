@@ -1,0 +1,1 @@
+**Fixed** — A run now lasts until every process its command started has exited, not just the shell. Before, a script that ignored SIGTERM outlived its shell after Ctrl-C, and the second Ctrl-C could no longer reach it.

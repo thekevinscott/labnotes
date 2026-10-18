@@ -3,6 +3,7 @@ import time
 from pathlib import Path
 
 from labnotes.runner.shell_command import shell_command
+from labnotes.runner.wait_for_group import wait_for_group
 from labnotes.runner.write_run_json import write_run_json
 from labnotes.tables.iso_time import iso_time
 
@@ -42,6 +43,9 @@ async def execute_run(
             running.add(process)
             try:
                 run["exit_code"] = await process.wait()
+                # The shell can exit before what it started, e.g. on SIGTERM.
+                # The run stays stoppable until its whole group is gone.
+                await wait_for_group(process.pid)
             finally:
                 running.discard(process)
     run["ended"] = iso_time(time.time())

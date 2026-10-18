@@ -26,8 +26,12 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.execute_run.asyncio.create_subprocess_shell",
             new=mock.AsyncMock(return_value=process),
         ) as spawn,
+        mock.patch(
+            "labnotes.runner.execute_run.wait_for_group", new=mock.AsyncMock()
+        ) as wait_for_group,
     ):
         yield {
+            "wait_for_group": wait_for_group,
             "shell_command": shell_command,
             "write_run_json": write_run_json,
             "spawn": spawn,
@@ -95,11 +99,15 @@ def test_tracks_the_process_while_it_runs(
         seen.append(collaborators["process"] in running)
         return 0
 
+    async def wait_for_group(group: int) -> None:
+        seen.append(collaborators["process"] in running and group == 42)
+
     collaborators["process"].wait = wait
+    collaborators["wait_for_group"].side_effect = wait_for_group
 
     run(tmp_path, running)
 
-    assert seen == [True]
+    assert seen == [True, True]
     assert running == set()
 
 

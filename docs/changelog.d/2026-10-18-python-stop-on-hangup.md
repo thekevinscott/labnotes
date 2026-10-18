@@ -1,1 +1,1 @@
-**Fixed** — `labnotes experiments NAME run` now stops and records its runs on SIGTERM or SIGHUP, as it does on Ctrl-C. Before, closing the terminal left the runs going untracked.
+**Fixed** — `labnotes experiments NAME run` now stops and records its runs on SIGTERM or SIGHUP, as it does on Ctrl-C, and kills any still going 5 seconds later. Before, closing the terminal left the runs going untracked.

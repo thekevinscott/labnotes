@@ -86,7 +86,9 @@ def test_loads_design_notes_progress_and_runs(
     params = {"sort": "x", "f.study": "s"}
     view = collaborators["parse_run_view"].return_value
     collaborators["parse_run_view"].assert_called_once_with(params, ["run_id", "x"])
-    collaborators["list_runs"].assert_awaited_once_with(runs, "s1", "1", view)
+    collaborators["list_runs"].assert_awaited_once_with(
+        runs, "(SELECT * FROM runs WHERE study = 's1')", "1", view
+    )
     assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {
         "status": "?sort=status",

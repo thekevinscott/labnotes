@@ -10,14 +10,14 @@ def make_runs() -> mock.Mock:
     return runs
 
 
-def test_counts_runs_and_completed_runs_for_a_study() -> None:
+def test_counts_runs_and_completed_runs_from_a_source() -> None:
     runs = make_runs()
 
-    assert asyncio.run(count_runs(runs, "it's", "exit_code = 0")) == [
+    assert asyncio.run(count_runs(runs, "(source)", "exit_code = 0")) == [
         {"runs": 3, "completed": 2}
     ]
     sql = runs.query.await_args.args[0]
-    assert "WHERE study = 'it''s'" in sql
+    assert sql.endswith("FROM (source)")
     assert "WHEN (exit_code = 0)" in sql
     assert "GROUP BY" not in sql
 

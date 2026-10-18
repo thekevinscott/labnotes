@@ -84,4 +84,4 @@ def test_runs_carry_exclusion(dirsql: dict[str, mock.MagicMock]) -> None:
     open_tables(CONFIG)
 
     ddl = str(tables(dirsql)["runs"]["ddl"])
-    assert "excluded INTEGER, reason TEXT" in ddl
+    assert "params TEXT, run TEXT" in ddl

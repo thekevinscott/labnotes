@@ -1,0 +1,1 @@
+**Changed** — `counts` in `experiment.toml` sets which runs count toward `repeats`, as a SQL condition over `runs`. The default counts runs that exited 0 without `"excluded": true` in their `run.json`. `runs` gains a `run` column holding the whole `run.json`, and `experiments NAME runs` shows each run's `counted`; the `excluded` and `reason` columns are gone.

@@ -95,7 +95,10 @@ def test_loads_config_notes_progress_and_runs(
     assert source.endswith("FROM runs WHERE experiment = 'it''s')")
     assert '"x", params' in source
     collaborators["list_runs"].assert_awaited_once_with(
-        tables, source, "exit_code = 0 AND NOT coalesce(excluded, 0)", view
+        tables,
+        source,
+        "exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)",
+        view,
     )
     assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {

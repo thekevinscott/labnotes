@@ -22,8 +22,8 @@ Paths are relative to the root. `{experiment}` and `{run}` stand for folder name
   `experiment.toml`, files or runs.
 - `files`: `experiment`, `filename`, `path`, `ctime`, `mtime`.
 - `runs`: `experiment`, `id`, `folder`, `created`, `ended`, `exit_code`,
-  `error`, `stdout`, `stderr`, and `params` as JSON, read from each run
-  folder's `run.json`.
+  `error`, `stdout`, `stderr`, `params` as JSON, and `run`, the whole
+  `run.json` as JSON, read from each run folder's `run.json`.
 
 Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
@@ -57,7 +57,8 @@ effort = ["low", "high"]
 and as `display_name` in `experiments`. The folder name stays the key, so
 renaming the experiment means editing `name`.
 Each combination of `[params]` runs `repeats` times, round-robin. Only runs
-that exit 0 count, so running again fills in what failed or never ran.
+that count fill a combination, so running again fills in what failed or never
+ran.
 Each run gets a new run folder. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.
@@ -65,9 +66,15 @@ Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
 code), `stdout.log` and `stderr.log` to the run folder.
-To exclude a run, add `"excluded": true` and an optional `"reason"` to its
-`run.json`. An excluded run doesn't count toward `repeats`, so the next `run`
-replaces it; both show as columns in `runs`.
+A run counts when it exited 0 and its `run.json` doesn't hold
+`"excluded": true`, so excluding a run by hand means adding that key; the next
+`run` replaces it. Other keys you add to `run.json` are kept and show in `run`.
+`counts` in `experiment.toml` replaces the rule with a SQL condition over
+`runs`, for example `counts = "exit_code = 0 AND created > '2026-10-01'"` to
+drop runs from before a script change. The default is
+`exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)`.
+`experiments foo runs` shows the rule's result as `counted`; queries over
+`runs` itself see every run, so apply the rule there too.
 
 A script run by labnotes should:
 
@@ -90,4 +97,4 @@ line per event instead.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 
-`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. A grid cell is full once it has `repeats` runs that exited 0 and aren't excluded.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. A grid cell is full once it has `repeats` runs that count.

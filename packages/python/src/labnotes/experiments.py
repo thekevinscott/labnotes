@@ -82,7 +82,10 @@ def experiments(
             ctx.exit(1 if failed else 0)
     if action not in (None, "runs"):
         raise click.UsageError(f"Unknown action {action}. Use runs or run.")
-    rows = asyncio.run(experiment_rows(config, name, action))
+    try:
+        rows = asyncio.run(experiment_rows(config, name, action))
+    except ValueError as error:
+        raise click.ClickException(str(error)) from error
     if rows is None:
         raise click.ClickException(f"No experiment named {name}.")
     print_rows(rows, output_format)

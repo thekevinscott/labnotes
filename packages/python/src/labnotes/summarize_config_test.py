@@ -1,6 +1,15 @@
+from collections.abc import Iterator
+from unittest import mock
+
 import pytest
 
-from labnotes.summarize_config import COMPLETED_RUN, summarize_config
+from labnotes.summarize_config import summarize_config
+
+
+@pytest.fixture(autouse=True)
+def default_counts() -> Iterator[None]:
+    with mock.patch("labnotes.summarize_config.DEFAULT_COUNTS", "default"):
+        yield
 
 
 def test_summarizes_the_grid_from_params_and_repeats() -> None:
@@ -14,7 +23,7 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
         "cell_count": 2,
         "runs_per_cell": 3,
         "target": 6,
-        "completed_run": COMPLETED_RUN,
+        "completed_run": "default",
         "other": {"command": "go"},
     }
 
@@ -37,5 +46,11 @@ def test_has_no_grid_without_a_usable_config(config: dict[str, object] | None) -
     assert summary["other"] == {}
 
 
-def test_counts_runs_the_runner_counts() -> None:
-    assert COMPLETED_RUN == "exit_code = 0 AND NOT coalesce(excluded, 0)"
+def test_takes_counts_from_the_config() -> None:
+    summary = summarize_config({"command": "go", "counts": "exit_code = 0"})
+
+    assert summary["completed_run"] == "exit_code = 0"
+
+
+def test_ignores_counts_that_is_not_a_string() -> None:
+    assert summarize_config({"counts": 1})["completed_run"] == "default"

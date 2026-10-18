@@ -3,6 +3,8 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
+from labnotes.default_counts import DEFAULT_COUNTS
+
 Report = Callable[[dict[str, object]], None]
 Listen = Callable[[Callable[[], None]], None]
 Start = Callable[[Report, Listen], Coroutine[Any, Any, list[dict[str, object]]]]
@@ -31,3 +33,4 @@ class ExperimentConfig:
     repeats: int
     params: dict[str, list[object]]
     name: str | None = None
+    counts: str = DEFAULT_COUNTS

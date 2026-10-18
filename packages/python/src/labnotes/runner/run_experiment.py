@@ -23,7 +23,11 @@ async def run_experiment(
     listen: Listen,
 ) -> list[dict[str, object]]:
     runs = await list_experiment_runs(open_tables(config), name)
-    finished = [json.loads(str(run["params"])) for run in runs if run["exit_code"] == 0]
+    finished = [
+        json.loads(str(run["params"]))
+        for run in runs
+        if run["exit_code"] == 0 and not run["excluded"]
+    ]
     plan = plan_runs(param_grid(experiment.params), experiment.repeats, finished)
     report({"event": "planned", "runs": len(plan), "concurrency": concurrency})
     running: set[asyncio.subprocess.Process] = set()

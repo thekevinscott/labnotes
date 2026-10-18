@@ -129,14 +129,14 @@ def test_returns_none_for_an_unknown_experiment(
 def test_lists_a_param_named_id_once(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    config = {**CONFIG, "params": {"id": [1], "x": [2]}}
+    config = {**CONFIG, "params": {"id": [1], "a": [2]}}
 
     loaded = asyncio.run(
         load_experiment(make_tables(experiment(config)), ROOT, "a", {})
     )
 
     assert loaded is not None
-    assert loaded["run_columns"] == ["id", "x"]
+    assert loaded["run_columns"] == ["id", "a"]
 
 
 def test_renders_notes_with_their_saved_outputs(

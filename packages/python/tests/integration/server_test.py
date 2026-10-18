@@ -55,7 +55,9 @@ def test_shows_an_experiments_grid_notes_and_runs(client: TestClient) -> None:
     assert '<span class="chip">fr</span>' in text
     assert "<code>go</code>" in text
     assert "<h1>The plan</h1>" in text
-    assert 'data-run-url="http://testserver/experiments/alpha/notes/plan.md/run"' in text
+    assert (
+        'data-run-url="http://testserver/experiments/alpha/notes/plan.md/run"' in text
+    )
     assert text.count('<span class="status good"') == 2
     assert text.index(">run4<") < text.index(">run1<")
 

@@ -8,15 +8,8 @@ from unittest import mock
 import pytest
 
 from labnotes.create_app import create_app
-from labnotes.models import LabnotesConfig
 
-CONFIG = LabnotesConfig(
-    path=Path("/p/.labnotes.toml"),
-    root=Path("/p/project"),
-    experiments="{experiment}",
-    files="{experiment}/files/",
-    runs="{experiment}/runs/{run}",
-)
+CONFIG = mock.Mock(root=Path("/p/project"))
 
 
 def make_view(

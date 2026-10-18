@@ -86,7 +86,8 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
         )
         if not found:
             raise HTTPException(404, "No such note")
-        return found[0]["content"]
+        [note] = found
+        return note["content"]
 
     async def run_block(request: Request) -> Response:
         blocks = python_blocks(await note_content(request))

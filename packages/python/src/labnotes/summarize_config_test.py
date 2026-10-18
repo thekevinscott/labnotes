@@ -1,7 +1,15 @@
+from collections.abc import Iterator
+from unittest import mock
+
 import pytest
 
-from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.summarize_config import summarize_config
+
+
+@pytest.fixture(autouse=True)
+def default_counts() -> Iterator[None]:
+    with mock.patch("labnotes.summarize_config.DEFAULT_COUNTS", "default"):
+        yield
 
 
 def test_summarizes_the_grid_from_params_and_repeats() -> None:
@@ -15,7 +23,7 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
         "cell_count": 2,
         "runs_per_cell": 3,
         "target": 6,
-        "completed_run": DEFAULT_COUNTS,
+        "completed_run": "default",
         "other": {"command": "go"},
     }
 
@@ -45,4 +53,4 @@ def test_takes_counts_from_the_config() -> None:
 
 
 def test_ignores_counts_that_is_not_a_string() -> None:
-    assert summarize_config({"counts": 1})["completed_run"] == DEFAULT_COUNTS
+    assert summarize_config({"counts": 1})["completed_run"] == "default"

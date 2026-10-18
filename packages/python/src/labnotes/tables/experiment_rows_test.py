@@ -4,7 +4,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.tables.experiment_rows import experiment_rows
 
 CONFIG = mock.Mock()
@@ -19,6 +18,10 @@ def queries() -> Iterator[dict[str, mock.MagicMock]]:
             new=mock.AsyncMock(return_value=[{"name": "a"}]),
         ) as summarize,
         mock.patch(
+            "labnotes.tables.experiment_rows.summarize_config",
+            return_value={"completed_run": "c"},
+        ) as summarize_config,
+        mock.patch(
             "labnotes.tables.experiment_rows.list_experiment_runs",
             new=mock.AsyncMock(return_value=[{"id": "r"}]),
         ) as list_runs,
@@ -27,6 +30,7 @@ def queries() -> Iterator[dict[str, mock.MagicMock]]:
             "open_tables": open_tables,
             "summarize": summarize,
             "list_runs": list_runs,
+            "summarize_config": summarize_config,
         }
 
 
@@ -45,23 +49,24 @@ def test_summarizes_one_experiment(queries: dict[str, mock.MagicMock]) -> None:
 
 
 def test_lists_one_experiments_runs(queries: dict[str, mock.MagicMock]) -> None:
-    queries["summarize"].return_value = [{"name": "a", "config": '{"counts": "c"}'}]
+    queries["summarize"].return_value = [{"name": "a", "config": '{"counts": "x"}'}]
 
     assert asyncio.run(experiment_rows(CONFIG, "a", "runs")) == [{"id": "r"}]
 
+    queries["summarize_config"].assert_called_once_with({"counts": "x"})
     queries["list_runs"].assert_awaited_once_with(
         queries["open_tables"].return_value, "a", "c"
     )
 
 
-def test_counts_by_default_without_a_config(
+def test_summarizes_a_missing_config_as_none(
     queries: dict[str, mock.MagicMock],
 ) -> None:
     queries["summarize"].return_value = [{"name": "a", "config": None}]
 
     asyncio.run(experiment_rows(CONFIG, "a", "runs"))
 
-    assert queries["list_runs"].await_args.args[2] == DEFAULT_COUNTS
+    queries["summarize_config"].assert_called_once_with(None)
 
 
 def test_returns_none_for_an_unknown_experiment(

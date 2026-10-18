@@ -1,9 +1,17 @@
+from collections.abc import Iterator
 from pathlib import Path
+
+from unittest import mock
 
 import pytest
 
-from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.runner.read_experiment_config import read_experiment_config
+
+
+@pytest.fixture(autouse=True)
+def default_counts() -> Iterator[None]:
+    with mock.patch("labnotes.runner.read_experiment_config.DEFAULT_COUNTS", "default"):
+        yield
 
 
 def write(tmp_path: Path, text: str) -> Path:
@@ -35,7 +43,7 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
         None,
         1,
         {},
-        DEFAULT_COUNTS,
+        "default",
     )
 
 

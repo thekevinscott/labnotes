@@ -32,7 +32,8 @@ def test_names_it_when_no_name_is_given(tmp_path: Path) -> None:
 @pytest.mark.parametrize(
     ("name", "message"),
     [
-        ("new", "new is reserved"),
+        # Built at runtime like argv, so an identity check can't pass.
+        ("".join(["ne", "w"]), "new is reserved"),
         ("a/b", "a/b can't be an experiment name"),
         (".hidden", ".hidden can't be an experiment name"),
     ],

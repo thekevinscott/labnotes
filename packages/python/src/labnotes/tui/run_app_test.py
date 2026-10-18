@@ -134,7 +134,9 @@ def test_ctrl_c_interrupts_the_runs_until_they_finish(
             await pilot.press("ctrl+c")
             assert not app.is_running
             assert interrupt.call_count == 2
-            collaborators["stop_then_kill"].assert_called_once_with(interrupt, 15, 1)
+            collaborators["stop_then_kill"].assert_called_once_with(
+                app.action_interrupt, 15, 1
+            )
 
     asyncio.run(drive())
 

@@ -28,10 +28,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ),
         mock.patch("labnotes.tui.run_app.time") as time,
         mock.patch("labnotes.tui.run_app.signal", mock.Mock(SIGTERM=15, SIGHUP=1)),
-        mock.patch("labnotes.tui.run_app.handle_signals") as handle_signals,
+        mock.patch("labnotes.tui.run_app.stop_then_kill") as stop_then_kill,
     ):
         time.monotonic.return_value = 10.0
-        yield {"time": time, "handle_signals": handle_signals}
+        yield {"time": time, "stop_then_kill": stop_then_kill}
 
 
 def rows(app: RunApp) -> list[list[object]]:
@@ -134,7 +134,7 @@ def test_ctrl_c_interrupts_the_runs_until_they_finish(
             await pilot.press("ctrl+c")
             assert not app.is_running
             assert interrupt.call_count == 2
-            collaborators["handle_signals"].assert_called_once_with(interrupt, 15, 1)
+            collaborators["stop_then_kill"].assert_called_once_with(interrupt, 15, 1)
 
     asyncio.run(drive())
 

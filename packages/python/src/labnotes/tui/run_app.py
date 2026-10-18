@@ -8,7 +8,7 @@ from textual.widgets import DataTable, Footer, Header, Static
 
 from labnotes.models import Start
 from labnotes.runner.describe_event import describe_event
-from labnotes.runner.handle_signals import handle_signals
+from labnotes.runner.stop_then_kill import stop_then_kill
 from labnotes.runner.param_args import param_args
 from labnotes.tui.format_elapsed import format_elapsed
 
@@ -52,7 +52,7 @@ class RunApp(App[None]):
 
     def listen(self, interrupt: Callable[[], None]) -> None:
         self.interrupt = interrupt
-        handle_signals(interrupt, signal.SIGTERM, signal.SIGHUP)
+        stop_then_kill(interrupt, signal.SIGTERM, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
         table = self.query_one(DataTable)

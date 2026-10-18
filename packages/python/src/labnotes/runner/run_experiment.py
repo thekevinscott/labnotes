@@ -38,13 +38,13 @@ async def run_experiment(
     def interrupt() -> None:
         nonlocal stopping
         plan.clear()
-        if stopping:
-            report({"event": "killing"})
-            signal_runs(signal.SIGKILL)
-        else:
+        if not stopping:
             stopping = True
             report({"event": "stopping"})
             signal_runs(signal.SIGTERM)
+        elif running:
+            report({"event": "killing"})
+            signal_runs(signal.SIGKILL)
 
     async def work() -> None:
         while plan:

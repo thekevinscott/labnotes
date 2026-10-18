@@ -200,6 +200,20 @@ def test_second_interrupt_kills_runs(
     assert events(report) == ["planned", "started", "stopping", "killing", "ended"]
 
 
+def test_a_late_interrupt_after_the_runs_end_does_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen = mock.Mock()
+    collaborators["execute_run"].side_effect = interrupting(1, listen)
+    report = mock.Mock()
+
+    run(tmp_path, report, listen=listen)
+    listen.call_args.args[0]()
+
+    collaborators["killpg"].assert_called_once_with(42, SIGTERM)
+    assert events(report) == ["planned", "started", "stopping", "ended"]
+
+
 def test_ignores_a_run_that_already_exited(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

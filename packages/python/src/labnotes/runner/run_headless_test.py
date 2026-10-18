@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable, Iterator
 from unittest import mock
 
@@ -18,9 +19,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_headless.signal",
             mock.Mock(SIGINT=2, SIGTERM=15, SIGHUP=1),
         ),
-        mock.patch("labnotes.runner.run_headless.handle_signals") as handle_signals,
+        mock.patch("labnotes.runner.run_headless.stop_then_kill") as stop_then_kill,
     ):
-        yield {"click": click, "handle_signals": handle_signals}
+        yield {"click": click, "stop_then_kill": stop_then_kill}
 
 
 def test_prints_each_event_and_returns_the_results(
@@ -47,6 +48,10 @@ def test_interrupts_on_ctrl_c_terminate_and_hang_up(
         listen(interrupt)
         return []
 
-    run_headless(start)  # type: ignore[arg-type]
+    with mock.patch("labnotes.runner.run_headless.asyncio") as fake_asyncio:
+        fake_asyncio.run.side_effect = asyncio.run
+        run_headless(start)  # type: ignore[arg-type]
 
-    collaborators["handle_signals"].assert_called_once_with(interrupt, 2, 15, 1)
+    loop = fake_asyncio.get_running_loop.return_value
+    loop.add_signal_handler.assert_called_once_with(2, interrupt)
+    collaborators["stop_then_kill"].assert_called_once_with(interrupt, 15, 1)

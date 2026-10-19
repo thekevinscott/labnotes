@@ -16,6 +16,7 @@ from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
 
 COLUMNS = ("run", "params", "status", "time")
+OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
 
 
 class RunApp(App[None]):
@@ -62,7 +63,7 @@ class RunApp(App[None]):
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
         self.stream = "stdout"
-        self.offset = 0
+        self.offset: int
         self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
     def compose(self) -> ComposeResult:
@@ -282,7 +283,7 @@ class RunApp(App[None]):
 
     def action_switch_output(self) -> None:
         if self.viewing is not None:
-            self.view(self.viewing, "stderr" if self.stream == "stdout" else "stdout")
+            self.view(self.viewing, OTHER_STREAM[self.stream])
 
     def action_leave(self) -> None:
         if self.viewing is not None:

@@ -897,6 +897,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
+                assert not app.query_one("#output").display
                 await pilot.press("down", "enter")
                 assert app.query_one("#output").display
                 assert not app.query_one("#runs").display

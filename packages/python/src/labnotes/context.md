@@ -65,7 +65,9 @@ script so it writes its outputs there.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
-code), `stdout.log` and `stderr.log` to the run folder.
+code, and `invocation_id`, shared by every run one `run` command started;
+query it as `run ->> 'invocation_id'`), `stdout.log` and `stderr.log` to the
+run folder.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.

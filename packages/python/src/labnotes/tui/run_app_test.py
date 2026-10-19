@@ -174,6 +174,41 @@ def test_moves_queued_runs_up_the_pending_rows() -> None:
     asyncio.run(drive())
 
 
+def test_clears_the_next_run_note_once_it_starts() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        report({"event": "queued", "run": "r3", "pending": ["r3", "r2"], "held": []})
+        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert status(app) == "said queued"
+            app.show_event({"event": "started", "run": "r3", "params": {"m": "c"}})
+            assert status(app) == ""
+
+    asyncio.run(drive())
+
+
+def test_keeps_later_notes_when_the_next_run_starts() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        report({"event": "queued", "run": "r2", "pending": ["r2"], "held": []})
+        report({"event": "concurrency", "concurrency": 3})
+        report({"event": "started", "run": "r2", "params": {"m": "b"}})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert status(app) == "said concurrency"
+
+    asyncio.run(drive())
+
+
 def test_moves_deselected_runs_to_the_bottom() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3", "r4"))

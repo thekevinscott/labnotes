@@ -20,6 +20,7 @@ class RunApp(App[None]):
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
         Binding("d", "toggle_run", "Deselect"),
+        Binding("D", "deselect_shown", "Deselect shown"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "clear_filter", "Clear filter"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
@@ -176,6 +177,12 @@ class RunApp(App[None]):
     def action_toggle_run(self) -> None:
         if (run := self.cursor_run()) is not None:
             self.controls.toggle(run)
+
+    def action_deselect_shown(self) -> None:
+        shown = [str(key.value) for key in self.query_one(DataTable).rows]
+        for run in shown:
+            if run in self.pending:
+                self.controls.toggle(run)
 
     def action_concurrency(self, change: int) -> None:
         self.controls.set_concurrency(self.concurrency + change)

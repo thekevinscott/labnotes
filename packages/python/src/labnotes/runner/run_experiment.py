@@ -30,8 +30,11 @@ async def run_experiment(
     report: Report,
     listen: Listen,
 ) -> list[dict[str, object]]:
-    existing = await list_experiment_runs(open_tables(config), name, experiment.counts)
-    finished = [json.loads(str(run["params"])) for run in existing if run["counted"]]
+    finished: list[dict[str, object]] = []
+    if experiment.mode == "fill":
+        tables = open_tables(config)
+        existing = await list_experiment_runs(tables, name, experiment.counts)
+        finished = [json.loads(str(r["params"])) for r in existing if r["counted"]]
     planned: set[str] = set()
 
     def taken(run: str) -> bool:

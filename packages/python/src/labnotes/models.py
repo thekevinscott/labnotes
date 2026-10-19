@@ -14,6 +14,7 @@ class Controls:
     run_next: Callable[[str], None]
     set_concurrency: Callable[[int], None]
     toggle: Callable[[str], None]
+    kill: Callable[[str], None]
 
 
 Listen = Callable[[Controls], None]

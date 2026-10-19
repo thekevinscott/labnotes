@@ -17,7 +17,8 @@ from labnotes.tui.format_elapsed import format_elapsed
 
 COLUMNS = ("run", "params", "status", "time")
 OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
-PENDING, RUNNING, PASSED, FAILED, SKIPPED = "○", "◐", "✓", "✗", "–"
+PENDING, RUNNING, PASSED, FAILED = "○", "◐", "✓", "✗"
+SKIPPED, DESELECTED = "–", "⊘"
 
 
 class RunApp(App[None]):
@@ -142,7 +143,7 @@ class RunApp(App[None]):
                 self.next_run = run
             case "deselected":
                 self.pending.discard(run)
-                self.set_cell(run, "status", dim(SKIPPED))
+                self.set_cell(run, "status", dim(DESELECTED))
                 self.reorder(event, table.cursor_row)
                 self.show(describe_event(event))
             case "reselected":

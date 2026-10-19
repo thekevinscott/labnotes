@@ -305,7 +305,7 @@ def test_moves_deselected_runs_to_the_bottom() -> None:
                 ["r1", "◐"],
                 ["r3", "–"],
                 ["r4", "–"],
-                ["r2", "–"],
+                ["r2", "⊘"],
             ]
             assert styles(app)[3][2] == "dim"
 

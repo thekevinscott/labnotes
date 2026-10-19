@@ -17,6 +17,7 @@ from labnotes.tui.format_elapsed import format_elapsed
 
 COLUMNS = ("run", "params", "status", "time")
 OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
+PENDING, RUNNING, PASSED, FAILED, SKIPPED = "○", "◐", "✓", "✗", "–"
 
 
 class RunApp(App[None]):
@@ -101,7 +102,7 @@ class RunApp(App[None]):
             case "planned":
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
-                    cells = (planned["run"], args, "pending", "")
+                    cells = (planned["run"], args, PENDING, "")
                     self.cells[planned["run"]] = [*map(dim, cells)]
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
@@ -118,13 +119,16 @@ class RunApp(App[None]):
                 if run == self.next_run:
                     self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                cells = (run, args, "running", format_elapsed(0))
+                cells = (run, args, RUNNING, format_elapsed(0))
                 for column, cell in zip(COLUMNS, cells):
                     self.set_cell(run, column, cell)
             case "ended":
-                outcome = event["error"] or f"exited {event['exit_code']}"
-                style = "red" if event["error"] or event["exit_code"] else ""
-                if style:
+                outcome = PASSED
+                style = ""
+                if event["error"] or event["exit_code"]:
+                    reason = event["error"] or f"exited {event['exit_code']}"
+                    outcome = f"{FAILED} {reason}"
+                    style = "red"
                     self.failed.add(run)
                 self.ended.add(run)
                 self.set_cell(run, "status", Text(str(outcome), style=style))
@@ -138,18 +142,18 @@ class RunApp(App[None]):
                 self.next_run = run
             case "deselected":
                 self.pending.discard(run)
-                self.set_cell(run, "status", dim("deselected"))
+                self.set_cell(run, "status", dim(SKIPPED))
                 self.reorder(event, table.cursor_row)
                 self.show(describe_event(event))
             case "reselected":
                 self.pending.add(run)
-                self.set_cell(run, "status", dim("pending"))
+                self.set_cell(run, "status", dim(PENDING))
                 self.reorder(event, table.cursor_row)
                 self.show(describe_event(event))
             case "retried":
                 again = str(event["retry"])
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                self.cells[again] = [*map(dim, (again, args, "pending", ""))]
+                self.cells[again] = [*map(dim, (again, args, PENDING, ""))]
                 self.pending.add(again)
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
@@ -161,7 +165,7 @@ class RunApp(App[None]):
                 self.show(describe_event(event))
             case "stopping":
                 for pending in self.pending:
-                    self.set_cell(pending, "status", dim("skipped"))
+                    self.set_cell(pending, "status", dim(SKIPPED))
                 self.show(describe_event(event))
             case _:
                 self.show(describe_event(event))

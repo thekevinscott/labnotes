@@ -186,7 +186,8 @@ def test_clears_the_next_run_note_once_it_starts() -> None:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert status(app) == "said queued"
-            app.show_event({"event": "started", "run": "r3", "params": {"m": "c"}})
+            run = "".join(["r", "3"])
+            app.show_event({"event": "started", "run": run, "params": {"m": "c"}})
             assert status(app) == ""
 
     asyncio.run(drive())

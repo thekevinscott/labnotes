@@ -1,0 +1,1 @@
+**Added** — `mode = "adhoc"` in `experiment.toml` makes every `labnotes experiments NAME run` run the whole grid `repeats` times again, ignoring runs already on disk. The default, `mode = "fill"`, keeps the old behavior: run only what's missing.

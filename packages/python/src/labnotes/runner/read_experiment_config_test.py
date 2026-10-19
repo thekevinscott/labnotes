@@ -39,12 +39,13 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
 def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
     config = read_experiment_config(write(tmp_path, 'command = "run"\n'))
 
-    assert (config.name, config.repeats, config.params, config.counts) == (
-        None,
-        1,
-        {},
-        "default",
-    )
+    assert (
+        config.name,
+        config.repeats,
+        config.params,
+        config.counts,
+        config.mode,
+    ) == (None, 1, {}, "default", "fill")
 
 
 def test_reads_counts(tmp_path: Path) -> None:
@@ -53,6 +54,15 @@ def test_reads_counts(tmp_path: Path) -> None:
     )
 
     assert config.counts == "exit_code = 0"
+
+
+@pytest.mark.parametrize("mode", ["fill", "adhoc"])
+def test_reads_mode(tmp_path: Path, mode: str) -> None:
+    config = read_experiment_config(
+        write(tmp_path, f'command = "run"\nmode = "{mode}"\n')
+    )
+
+    assert config.mode == mode
 
 
 @pytest.mark.parametrize(
@@ -72,6 +82,7 @@ def test_reads_counts(tmp_path: Path) -> None:
         ('command = "run"\n[params]\nd = [1979-05-27]\n', "dates or times"),
         ('command = "run"\ncounts = 1\n', "counts must be a SQL condition"),
         ('command = "run"\ncounts = " "\n', "counts must be a SQL condition"),
+        ('command = "run"\nmode = "once"\n', "mode must be fill or adhoc"),
     ],
 )
 def test_rejects_a_bad_config(tmp_path: Path, text: str, message: str) -> None:

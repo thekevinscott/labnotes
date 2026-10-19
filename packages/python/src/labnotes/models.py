@@ -47,3 +47,4 @@ class ExperimentConfig:
     params: dict[str, list[object]]
     name: str | None = None
     counts: str = DEFAULT_COUNTS
+    mode: str = "fill"

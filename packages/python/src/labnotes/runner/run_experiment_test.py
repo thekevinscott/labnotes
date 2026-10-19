@@ -13,8 +13,10 @@ B: dict[str, object] = {"m": "b"}
 SIGKILL, SIGTERM = 9, 15
 
 
-def experiment() -> mock.Mock:
-    return mock.Mock(command="run", params={"m": ["a", "b"]}, repeats=2, counts="c")
+def experiment(mode: str = "fill") -> mock.Mock:
+    return mock.Mock(
+        command="run", params={"m": ["a", "b"]}, repeats=2, counts="c", mode=mode
+    )
 
 
 @pytest.fixture
@@ -74,6 +76,7 @@ def run(
     report: mock.Mock,
     concurrency: int = 1,
     listen: mock.Mock | None = None,
+    mode: str = "fill",
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
@@ -86,7 +89,7 @@ def run(
         run_experiment(
             config,
             "exp",
-            experiment(),
+            experiment(mode),
             concurrency,
             report,
             listening,
@@ -104,6 +107,15 @@ def test_plans_the_runs_still_needed(
     )
     collaborators["param_grid"].assert_called_once_with({"m": ["a", "b"]})
     collaborators["plan_runs"].assert_called_once_with([A, B], 2, [A])
+
+
+def test_adhoc_plans_every_run_again(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock(), mode="adhoc")
+
+    collaborators["list_runs"].assert_not_awaited()
+    collaborators["plan_runs"].assert_called_once_with([A, B], 2, [])
 
 
 def test_runs_each_planned_run_in_a_new_folder(

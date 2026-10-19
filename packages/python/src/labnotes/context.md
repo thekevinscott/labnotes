@@ -59,6 +59,8 @@ renaming the experiment means editing `name`.
 Each combination of `[params]` runs `repeats` times, round-robin. Only runs
 that count fill a combination, so running again fills in what failed or never
 ran.
+`mode = "adhoc"` skips that: every `run` runs each combination `repeats` times
+again, whatever is already on disk. The default is `mode = "fill"`.
 Each run gets a new run folder. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.

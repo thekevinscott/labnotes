@@ -32,7 +32,7 @@
   <div class="figure">
     <div class="figure-label">Cells</div>
     <div class="figure-value">{{ e.cell_count }}</div>
-    <div class="figure-note">{% if e.runs_per_cell %}<span class="num">{{ e.runs_per_cell }}</span> runs each{% else %}no experiment.toml{% endif %}</div>
+    <div class="figure-note">{% if e.mode == "adhoc" %}ad-hoc, <span class="num">{{ e.runs_per_cell }}</span> runs each time{% elif e.runs_per_cell %}<span class="num">{{ e.runs_per_cell }}</span> runs each{% else %}no experiment.toml{% endif %}</div>
   </div>
 </section>
 
@@ -90,10 +90,11 @@
       <tr>
         {% for label in row.labels %}<th scope="row" class="label">{{ label | value }}</th>{% endfor %}
         {% for cell in row.cells %}
-        {% set done = e.runs_per_cell and cell.completed >= e.runs_per_cell %}
+        {% set goal = e.runs_per_cell if e.mode == "fill" %}
+        {% set done = goal and cell.completed >= goal %}
         <td class="cell{{ ' done' if done }}{{ ' empty' if not cell.runs }}" title="{{ cell['values'].items() | map('join', ' = ') | join(', ') }}: {{ cell.completed }} complete of {{ cell.runs }} recorded">
-          <span class="num">{{ cell.completed }}{% if e.runs_per_cell %}<span class="of">/{{ e.runs_per_cell }}</span>{% endif %}</span>
-          {% if e.runs_per_cell %}{{ meter(cell.completed, e.runs_per_cell) }}{% endif %}
+          <span class="num">{{ cell.completed }}{% if goal %}<span class="of">/{{ goal }}</span>{% endif %}</span>
+          {% if goal %}{{ meter(cell.completed, goal) }}{% endif %}
         </td>
         {% endfor %}
       </tr>

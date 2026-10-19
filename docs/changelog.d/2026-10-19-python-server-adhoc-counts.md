@@ -1,0 +1,1 @@
+**Changed** — for an experiment with `mode = "adhoc"`, the server shows plain run counts per cell. It no longer shows grid-filled progress or marks cells full, since every ad-hoc invocation runs the whole grid again.

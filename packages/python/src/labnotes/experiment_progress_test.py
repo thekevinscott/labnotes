@@ -10,6 +10,7 @@ SUMMARY: dict[str, object] = {
     "varies": {"x": [1, 2]},
     "completed_run": "exit_code = 0",
     "runs_per_cell": 2,
+    "target": 4,
 }
 
 
@@ -49,3 +50,12 @@ def test_counts_only_totals_without_a_config(count_runs: mock.AsyncMock) -> None
 
     assert (progress["runs"], progress["filled"], progress["cells"]) == (6, None, [])
     assert count_runs.await_count == 1
+
+
+def test_counts_cells_without_filling_an_adhoc_grid(count_runs: mock.AsyncMock) -> None:
+    summary = {**SUMMARY, "target": None}
+
+    progress = asyncio.run(experiment_progress(mock.Mock(), "(source)", summary))
+
+    assert progress["filled"] is None
+    assert [cell["completed"] for cell in progress["cells"]] == [5, 0]  # type: ignore[attr-defined]

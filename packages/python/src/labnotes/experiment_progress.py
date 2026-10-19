@@ -19,6 +19,8 @@ async def experiment_progress(
     grouped = await count_runs(tables, source, completed_run, group_by=list(varies))
     cells = cell_progress(varies, grouped)
     progress["cells"] = cells
+    if summary["target"] is None:
+        return progress
     progress["filled"] = sum(
         min(cast(int, cell["completed"]), cast(int, runs_per_cell)) for cell in cells
     )

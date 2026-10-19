@@ -2,12 +2,11 @@ from collections.abc import Callable
 from functools import partial
 from pathlib import Path
 
-from filelock import FileLock, Timeout
-
 from labnotes.models import LabnotesConfig, Start
-from labnotes.runner.lock_path import lock_path
+from labnotes.runner.hold_folder import hold_folder
 from labnotes.runner.read_experiment_config import read_experiment_config
 from labnotes.runner.run_experiment import run_experiment
+from labnotes.runner.runs_parent import runs_parent
 
 
 def start_experiment(
@@ -23,11 +22,11 @@ def start_experiment(
     if not experiment_config.is_file():
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")
     experiment = read_experiment_config(experiment_config)
-    lock = lock_path(config.root, config.runs, name)
-    lock.parent.mkdir(parents=True, exist_ok=True)
+    runs = runs_parent(config.root, config.runs, name)
+    runs.mkdir(parents=True, exist_ok=True)
     try:
-        with FileLock(lock, blocking=False):
+        with hold_folder(runs):
             start = partial(run_experiment, config, name, experiment, concurrency)
             return drive(start, experiment.name or name)
-    except Timeout as error:
-        raise ValueError(f"{name} is already running ({lock} is held).") from error
+    except BlockingIOError as error:
+        raise ValueError(f"{name} is already running ({runs} is held).") from error

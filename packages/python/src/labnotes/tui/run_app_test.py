@@ -674,6 +674,7 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
+            assert status(app) == "1 passed, 1 failed. q to quit."
             await pilot.press("r", "down", "r")
             retry.assert_called_once_with("r2")
             again = {"event": "retried", "run": "r2", "retry": "r3"}

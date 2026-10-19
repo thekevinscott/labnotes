@@ -22,6 +22,10 @@ def describe_event(event: dict[str, object]) -> str:
             return f"Stopping {event['run']}."
         case "killing run":
             return f"Killing {event['run']}."
+        case "retried":
+            return f"{event['run']} retried as {event['retry']}."
+        case "idle":
+            return "No runs left."
         case "concurrency":
             return f"{event['concurrency']} at a time."
         case "stopping":

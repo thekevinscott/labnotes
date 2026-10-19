@@ -13,5 +13,6 @@ def run_headless(start: Start) -> list[dict[str, object]]:
         loop = asyncio.get_running_loop()
         loop.add_signal_handler(signal.SIGINT, controls.interrupt)
         stop_then_kill(controls.interrupt, signal.SIGTERM, signal.SIGHUP)
+        controls.finish()
 
     return asyncio.run(start(lambda event: click.echo(describe_event(event)), listen))

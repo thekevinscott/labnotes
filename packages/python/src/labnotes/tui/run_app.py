@@ -24,6 +24,7 @@ class RunApp(App[None]):
         Binding("D", "deselect_shown", "Deselect shown"),
         Binding("k", "kill_run", "Stop run"),
         Binding("h", "hide_failed", "Hide failed"),
+        Binding("r", "retry", "Retry"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "clear_filter", "Clear filter"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
@@ -42,9 +43,12 @@ class RunApp(App[None]):
             lambda count: None,
             lambda run: None,
             lambda run: None,
+            lambda run: None,
+            lambda: None,
         )
         self.concurrency = 1
-        self.done = False
+        self.idle = False
+        self.ended: set[str] = set()
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
         self.cells: dict[str, list[object]] = {}
@@ -71,10 +75,7 @@ class RunApp(App[None]):
 
     async def drive(self) -> None:
         self.results = await self.start(self.show_event, self.listen)
-        self.done = True
-        failed = sum(result["exit_code"] != 0 for result in self.results)
-        passed = len(self.results) - failed
-        self.show(f"{passed} passed, {failed} failed. q to quit.")
+        self.exit()
 
     def listen(self, controls: Controls) -> None:
         self.controls = controls
@@ -94,6 +95,7 @@ class RunApp(App[None]):
                 self.show_concurrency(event)
                 self.show(describe_event(event))
             case "started":
+                self.idle = False
                 self.pending.discard(run)
                 self.started[run] = time.monotonic()
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
@@ -105,6 +107,7 @@ class RunApp(App[None]):
                 style = "red" if event["error"] or event["exit_code"] else ""
                 if style:
                     self.failed.add(run)
+                self.ended.add(run)
                 self.set_cell(run, "status", Text(str(outcome), style=style))
                 self.tick()
                 del self.started[run]
@@ -123,6 +126,18 @@ class RunApp(App[None]):
                 self.set_cell(run, "status", dim("pending"))
                 self.reorder(event, table.cursor_row)
                 self.show(describe_event(event))
+            case "retried":
+                again = str(event["retry"])
+                args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
+                self.cells[again] = [*map(dim, (again, args, "pending", ""))]
+                self.pending.add(again)
+                self.redraw(table.cursor_row)
+                self.show(describe_event(event))
+            case "idle":
+                self.idle = True
+                failed = len(self.failed)
+                passed = len(self.ended) - failed
+                self.show(f"{passed} passed, {failed} failed. q to quit.")
             case "concurrency":
                 self.show_concurrency(event)
                 self.show(describe_event(event))
@@ -166,14 +181,14 @@ class RunApp(App[None]):
         self.query_one("#status", Static).update(text)
 
     def action_interrupt(self) -> None:
-        if self.done:
-            self.exit()
+        if self.idle:
+            self.controls.finish()
         else:
             self.controls.interrupt()
 
     async def action_quit(self) -> None:
-        if self.done:
-            self.exit()
+        if self.idle:
+            self.controls.finish()
         else:
             self.show("Runs are still going. Ctrl-C stops them.")
 
@@ -196,6 +211,10 @@ class RunApp(App[None]):
         self.hiding = not self.hiding
         self.redraw(self.query_one(DataTable).cursor_row)
         self.show("Failed runs hidden." if self.hiding else "Failed runs shown.")
+
+    def action_retry(self) -> None:
+        if (run := self.cursor_run()) is not None and run in self.failed:
+            self.controls.retry(run)
 
     def action_kill_run(self) -> None:
         if (run := self.cursor_run()) is not None:

@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -72,6 +73,12 @@ def run(
     listen: mock.Mock | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+    hear = mock.Mock() if listen is None else listen
+
+    def listening(controls: object) -> None:
+        hear(controls)
+        controls.finish()  # type: ignore[attr-defined]
+
     return asyncio.run(
         run_experiment(
             config,
@@ -79,7 +86,7 @@ def run(
             experiment(),
             concurrency,
             report,
-            mock.Mock() if listen is None else listen,
+            listening,
         )
     )
 
@@ -121,6 +128,7 @@ def test_runs_each_planned_run_in_a_new_folder(
         {"event": "ended", "run": "r1", **ended},
         {"event": "started", "run": "r2", "params": B},
         {"event": "ended", "run": "r2", **ended},
+        {"event": "idle"},
     ]
 
 
@@ -207,7 +215,7 @@ def test_first_interrupt_stops_runs_and_starts_no_more(
 
     assert results == [{"exit_code": -15, "error": None}]
     collaborators["killpg"].assert_called_once_with(42, SIGTERM)
-    assert events(report) == ["planned", "started", "stopping", "ended"]
+    assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 
 
 def test_second_interrupt_kills_runs(
@@ -223,7 +231,14 @@ def test_second_interrupt_kills_runs(
         mock.call(42, SIGTERM),
         mock.call(42, SIGKILL),
     ]
-    assert events(report) == ["planned", "started", "stopping", "killing", "ended"]
+    assert events(report) == [
+        "planned",
+        "started",
+        "stopping",
+        "killing",
+        "ended",
+        "idle",
+    ]
 
 
 def test_a_late_interrupt_after_the_runs_end_does_nothing(
@@ -237,7 +252,7 @@ def test_a_late_interrupt_after_the_runs_end_does_nothing(
     listen.call_args.args[0].interrupt()
 
     collaborators["killpg"].assert_called_once_with(42, SIGTERM)
-    assert events(report) == ["planned", "started", "stopping", "ended"]
+    assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 
 
 def test_ignores_a_run_that_already_exited(
@@ -437,7 +452,7 @@ def test_toggling_a_run_that_is_not_waiting_does_nothing(
 
     run(tmp_path, report, listen=listen)
 
-    assert events(report) == ["planned", "started", "ended", "started", "ended"]
+    assert events(report) == ["planned", "started", "ended", "started", "ended", "idle"]
 
 
 def test_toggling_after_stopping_does_nothing(
@@ -516,6 +531,7 @@ def test_a_second_kill_sends_sigkill(
         "stopping run",
         "killing run",
         "ended",
+        "idle",
     ]
 
 
@@ -530,7 +546,7 @@ def test_killing_a_run_that_is_not_running_does_nothing(
     listen.call_args.args[0].kill("r1")
 
     collaborators["killpg"].assert_not_called()
-    assert events(report) == ["planned", "started", "ended", "started", "ended"]
+    assert events(report) == ["planned", "started", "ended", "started", "ended", "idle"]
 
 
 def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
@@ -557,4 +573,84 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
     run(tmp_path, report, listen=listen)
 
     collaborators["killpg"].assert_called_once_with(42, SIGTERM)
-    assert events(report) == ["planned", "started", "stopping", "ended"]
+    assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
+
+
+def test_waits_for_finish_once_idle(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    heard: list[Any] = []
+
+    async def go() -> None:
+        config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+        report = mock.Mock()
+        task = asyncio.create_task(
+            run_experiment(config, "exp", experiment(), 1, report, heard.append)
+        )
+        while {"event": "idle"} not in reported(report):
+            await asyncio.sleep(0.001)
+        await asyncio.sleep(0.01)
+        assert not task.done()
+        heard[0].finish()
+        assert len(await task) == 2
+
+    asyncio.run(go())
+
+
+def test_retry_runs_an_ended_run_again_under_a_new_id(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        if folder.name == "r2":
+            listen.call_args.args[0].retry("r1")
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    results = run(tmp_path, report, listen=listen)
+
+    assert len(results) == 3
+    assert started_runs(report) == ["r1", "r2", "r3"]
+    retried = {"event": "retried", "run": "r1", "retry": "r3", "params": A}
+    assert retried in reported(report)
+    assert collaborators["execute_run"].await_args_list[2].args[3] == A
+    assert collaborators["new_run_id"].call_args_list[2].args[0]("r3")
+
+
+def test_retry_ignores_runs_that_have_not_ended(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        listen.call_args.args[0].retry(folder.name)
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == ["r1", "r2"]
+
+
+def test_retry_does_nothing_after_stopping(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        if folder.name == "r2":
+            controls = listen.call_args.args[0]
+            controls.interrupt()
+            controls.retry("r1")
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+    collaborators["plan_runs"].return_value = [A, B, A]
+
+    run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == ["r1", "r2"]
+    assert "retried" not in events(report)

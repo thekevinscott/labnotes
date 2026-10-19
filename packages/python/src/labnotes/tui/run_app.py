@@ -48,6 +48,7 @@ class RunApp(App[None]):
         )
         self.concurrency = 1
         self.idle = False
+        self.next_run: str | None = None
         self.ended: set[str] = set()
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
@@ -98,6 +99,8 @@ class RunApp(App[None]):
                 self.idle = False
                 self.pending.discard(run)
                 self.started[run] = time.monotonic()
+                if run == self.next_run:
+                    self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 cells = (run, args, "running", format_elapsed(0))
                 for column, cell in zip(COLUMNS, cells):
@@ -116,6 +119,7 @@ class RunApp(App[None]):
                 self.reorder(event, table.cursor_row)
                 table.move_cursor(row=table.get_row_index(run))
                 self.show(describe_event(event))
+                self.next_run = run
             case "deselected":
                 self.pending.discard(run)
                 self.set_cell(run, "status", dim("deselected"))
@@ -178,6 +182,7 @@ class RunApp(App[None]):
             self.set_cell(run, "time", format_elapsed(time.monotonic() - began))
 
     def show(self, text: str) -> None:
+        self.next_run = None
         self.query_one("#status", Static).update(text)
 
     def action_interrupt(self) -> None:

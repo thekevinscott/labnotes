@@ -107,6 +107,9 @@ class RunApp(App[None]):
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
                 self.show(describe_event(event))
+                match event["mode"], event["runs"]:
+                    case "adhoc", [only]:
+                        self.view(only["run"], "stdout")  # type: ignore[index]
             case "started":
                 self.idle = False
                 self.pending.discard(run)

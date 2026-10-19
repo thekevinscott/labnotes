@@ -100,7 +100,8 @@ Escape clears it. `D` deselects every pending run the filter shows. `k` stops th
 running run under the cursor; `k` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log`; `e` switches to
-`stderr.log` and back, and Escape returns to the table. `q` quits. Elsewhere, or with `--no-tui`, it prints a
+`stderr.log` and back, and Escape returns to the table. An `adhoc` experiment that
+plans a single run opens straight on its output. `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 
 - `--concurrency N` runs N at a time to start with (default 1).

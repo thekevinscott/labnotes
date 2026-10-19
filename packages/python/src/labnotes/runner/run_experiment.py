@@ -166,7 +166,7 @@ async def run_experiment(
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True)
-        report({"event": "started", "run": run, "params": params})
+        report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
         result = await execute_run(
             config.root,

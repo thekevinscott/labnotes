@@ -48,11 +48,12 @@ def styles(app: RunApp) -> list[list[object]]:
     ]
 
 
-def planned(*runs: str) -> dict[str, object]:
+def planned(*runs: str, mode: str = "fill") -> dict[str, object]:
     return {
         "event": "planned",
         "runs": [{"run": run, "params": {"m": run}} for run in runs],
         "concurrency": 2,
+        "mode": mode,
     }
 
 
@@ -972,5 +973,49 @@ def test_escape_brings_back_the_summary_once_idle() -> None:
                 await pilot.pause()
                 await pilot.press("enter", "escape")
                 assert status(app) == "0 passed, 1 failed. q to quit."
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize(
+    ("runs", "mode", "viewing"),
+    [
+        (("r1",), "adhoc", "r1"),
+        (("r1", "r2"), "adhoc", None),
+        (("r1",), "fill", None),
+    ],
+)
+def test_opens_a_lone_adhoc_run_in_its_output(
+    tmp_path: Path, runs: tuple[str, ...], mode: str, viewing: str | None
+) -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        report(planned(*runs, mode=mode))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert app.viewing == viewing
+                assert app.query_one("#output").display is (viewing is not None)
+                if viewing is None:
+                    return
+                (tmp_path / "stdout.log").write_text("hi\n")
+                reports[0](
+                    {
+                        "event": "started",
+                        "run": "r1",
+                        "params": {"m": "r1"},
+                        "folder": tmp_path,
+                    }
+                )
+                app.follow()
+                assert output(app)[0] == "hi"
+                await pilot.press("escape")
+                assert [row[0] for row in rows(app)] == ["r1"]
 
     asyncio.run(drive())

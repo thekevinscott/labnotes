@@ -53,7 +53,14 @@ async def run_experiment(
         planned.add(run)
         plan.append((run, params))
     runs = [{"run": run, "params": params} for run, params in plan]
-    report({"event": "planned", "runs": runs, "concurrency": concurrency})
+    report(
+        {
+            "event": "planned",
+            "runs": runs,
+            "concurrency": concurrency,
+            "mode": experiment.mode,
+        }
+    )
     running: dict[str, set[asyncio.subprocess.Process]] = {}
     stopped: set[str] = set()
     results: list[dict[str, object]] = []

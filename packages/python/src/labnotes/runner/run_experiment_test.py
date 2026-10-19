@@ -139,6 +139,7 @@ def test_runs_each_planned_run_in_a_new_folder(
             "event": "planned",
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
+            "mode": "fill",
         },
         {
             "event": "started",

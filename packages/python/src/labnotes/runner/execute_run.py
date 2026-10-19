@@ -15,9 +15,11 @@ async def execute_run(
     params: dict[str, object],
     running: set[asyncio.subprocess.Process],
     stopping: asyncio.Event,
+    invocation: str,
 ) -> dict[str, object]:
     run: dict[str, object] = {
         "params": params,
+        "invocation_id": invocation,
         "created": iso_time(time.time()),
         "ended": None,
         "exit_code": None,

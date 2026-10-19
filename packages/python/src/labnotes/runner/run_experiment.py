@@ -12,6 +12,7 @@ from labnotes.models import (
     Report,
 )
 from labnotes.runner.execute_run import execute_run
+from labnotes.runner.new_invocation_id import new_invocation_id
 from labnotes.runner.new_run_id import new_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
@@ -39,6 +40,7 @@ async def run_experiment(
             run in planned or run_folder(config.root, config.runs, name, run).exists()
         )
 
+    invocation = new_invocation_id()
     plan: list[Entry] = []
     for params in plan_runs(
         param_grid(experiment.params), experiment.repeats, finished
@@ -163,7 +165,13 @@ async def run_experiment(
         report({"event": "started", "run": run, "params": params})
         running[run] = set()
         result = await execute_run(
-            config.root, folder, experiment.command, params, running[run], stopping
+            config.root,
+            folder,
+            experiment.command,
+            params,
+            running[run],
+            stopping,
+            invocation,
         )
         del running[run]
         report({"event": "ended", "run": run, **result})

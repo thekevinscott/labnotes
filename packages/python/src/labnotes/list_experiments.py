@@ -3,6 +3,7 @@ from typing import cast
 
 from dirsql import DirSQL
 
+from labnotes.check_counts import check_counts
 from labnotes.experiment_progress import experiment_progress
 from labnotes.experiment_runs import experiment_runs
 from labnotes.summarize_config import summarize_config
@@ -19,6 +20,7 @@ async def list_experiments(tables: DirSQL) -> list[dict[str, object]]:
         summary = summarize_config(config)
         varies = cast(dict[str, list[object]], summary["varies"])
         source = experiment_runs(name, list(varies))
+        summary = await check_counts(tables, source, summary)
         progress = await experiment_progress(tables, source, summary)
         listed.append(
             {"name": name, "display_name": row["display_name"], **summary, **progress}

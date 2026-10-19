@@ -80,3 +80,21 @@ def test_restart_rejects_an_unknown_note(client: TestClient) -> None:
     response = client.post("/experiments/alpha/notes/nope.md/restart", json={})
 
     assert response.status_code == 404
+
+
+def test_shows_a_broken_counts_rule_instead_of_failing(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(
+        tmp_path / "alpha/experiment.toml",
+        'command = "go"\ncounts = "nope ="\n[params]\nm = ["a"]\n',
+    )
+    run(tmp_path, "run1", {"m": "a"}, exit_code=0)
+    app = create_app(read_config(tmp_path / ".labnotes.toml"), 30)
+
+    with TestClient(app) as client:
+        index = client.get("/")
+        page = client.get("/experiments/alpha")
+
+    assert index.status_code == page.status_code == 200
+    assert "counts rule doesn't work" in index.text
+    assert "nope = doesn&#39;t work: SQLite error" in page.text

@@ -31,6 +31,14 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=[{"labnotes_completed": 1, "id": "r1"}],
         ) as list_runs,
+        mock.patch(
+            "labnotes.load_experiment.check_counts",
+            new_callable=mock.AsyncMock,
+            side_effect=lambda tables, source, summary: {
+                **summary,
+                "completed_run": "checked",
+            },
+        ) as check_counts,
         mock.patch("labnotes.load_experiment.parse_run_view") as parse_run_view,
         mock.patch(
             "labnotes.load_experiment.sort_href",
@@ -49,6 +57,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "experiment_notes": experiment_notes,
             "list_runs": list_runs,
             "parse_run_view": parse_run_view,
+            "check_counts": check_counts,
             "sort_href": sort_href,
             "python_blocks": python_blocks,
         }
@@ -94,11 +103,14 @@ def test_loads_config_notes_progress_and_runs(
     source = collaborators["list_runs"].await_args.args[1]
     assert source.endswith("FROM runs WHERE experiment = 'it''s')")
     assert '"x", params' in source
-    collaborators["list_runs"].assert_awaited_once_with(
-        tables,
-        source,
-        "exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)",
-        view,
+    collaborators["list_runs"].assert_awaited_once_with(tables, source, "checked", view)
+    checked = collaborators["check_counts"].await_args.args
+    assert checked[:2] == (tables, source)
+    assert checked[2]["completed_run"] == (
+        "exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)"
+    )
+    assert collaborators["experiment_progress"].await_args.args[2]["completed_run"] == (
+        "checked"
     )
     assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {

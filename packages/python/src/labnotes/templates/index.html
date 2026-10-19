@@ -37,7 +37,9 @@
       </td>
       <td class="num" data-label="Runs">{{ experiment.runs }}</td>
       <td class="progress-col">
-        {% if experiment.filled is not none and experiment.target %}
+        {% if experiment.counts_error %}
+        <span class="counts-error" title="{{ experiment.counts_error }}">counts rule doesn't work</span>
+        {% elif experiment.filled is not none and experiment.target %}
         <div class="progress-line">
           {{ meter(experiment.filled, experiment.target) }}
           <span class="num">{{ experiment.filled }}<span class="of">/{{ experiment.target }}</span></span>

@@ -6,6 +6,7 @@ from typing import cast
 from dirsql import DirSQL
 
 from labnotes.experiment_notes import experiment_notes
+from labnotes.check_counts import check_counts
 from labnotes.experiment_progress import experiment_progress
 from labnotes.experiment_runs import experiment_runs
 from labnotes.list_runs import list_runs
@@ -39,6 +40,7 @@ async def load_experiment(
     summary = summarize_config(config)
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
+    summary = await check_counts(tables, source, summary)
     progress = await experiment_progress(tables, source, summary)
     shown = ["id", *(key for key in varies if key != "id")]
     view = parse_run_view(params, shown)

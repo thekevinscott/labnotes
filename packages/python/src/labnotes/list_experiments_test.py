@@ -18,6 +18,16 @@ def experiment_progress() -> Iterator[mock.AsyncMock]:
         yield patched
 
 
+@pytest.fixture(autouse=True)
+def check_counts() -> Iterator[mock.AsyncMock]:
+    with mock.patch(
+        "labnotes.list_experiments.check_counts",
+        new_callable=mock.AsyncMock,
+        side_effect=lambda tables, source, summary: {**summary, "checked": True},
+    ) as patched:
+        yield patched
+
+
 def test_lists_each_experiment_with_its_config_summary_and_progress(
     experiment_progress: mock.AsyncMock,
 ) -> None:
@@ -49,4 +59,6 @@ def test_lists_each_experiment_with_its_config_summary_and_progress(
         "(SELECT *, params ->> '$.\"x\"' AS \"x\" FROM runs WHERE experiment = 'a')"
     )
     assert first.args[2]["target"] == 4
+    assert first.args[2]["checked"]
+    assert a["checked"]
     assert second.args[1] == "(SELECT * FROM runs WHERE experiment = 'b')"

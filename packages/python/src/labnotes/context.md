@@ -89,7 +89,8 @@ In a terminal, `run` shows a live table of runs (status and time) and stays
 open when they finish. Runs not started yet show grayed as `pending`, and as
 `skipped` once stopped. Move the cursor to a pending run and press `n` to run it
 next. `d` deselects a pending run so it won't run; `d` again puts it back at
-the end of the queue. `+` and `-` change how many run at once; lowering it lets running runs
+the end of the queue. `/` filters rows by params text; Enter keeps the filter,
+Escape clears it. `+` and `-` change how many run at once; lowering it lets running runs
 finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 

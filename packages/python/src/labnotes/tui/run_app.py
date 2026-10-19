@@ -88,20 +88,19 @@ class RunApp(App[None]):
                 table.update_cell(run, "status", outcome, update_width=True)
                 self.tick()
                 del self.started[run]
-            case "queued" | "deselected" | "reselected":
-                if event["event"] == "deselected":
-                    self.pending.discard(run)
-                    table.update_cell(run, "status", dim("deselected"))
-                if event["event"] == "reselected":
-                    self.pending.add(run)
-                    table.update_cell(run, "status", dim("pending"))
-                waiting: list[str] = [*event["pending"], *event["held"]]  # type: ignore[misc]
-                for waiting_run in waiting:
-                    row = table.get_row(waiting_run)
-                    table.remove_row(waiting_run)
-                    table.add_row(*row, key=waiting_run)
-                if event["event"] == "queued":
-                    table.move_cursor(row=table.get_row_index(run))
+            case "queued":
+                self.reorder(event)
+                table.move_cursor(row=table.get_row_index(run))
+                self.show(describe_event(event))
+            case "deselected":
+                self.pending.discard(run)
+                table.update_cell(run, "status", dim("deselected"))
+                self.reorder(event)
+                self.show(describe_event(event))
+            case "reselected":
+                self.pending.add(run)
+                table.update_cell(run, "status", dim("pending"))
+                self.reorder(event)
                 self.show(describe_event(event))
             case "concurrency":
                 self.show_concurrency(event)
@@ -112,6 +111,14 @@ class RunApp(App[None]):
                 self.show(describe_event(event))
             case _:
                 self.show(describe_event(event))
+
+    def reorder(self, event: dict[str, object]) -> None:
+        table = self.query_one(DataTable)
+        waiting: list[str] = [*event["pending"], *event["held"]]  # type: ignore[misc]
+        for run in waiting:
+            row = table.get_row(run)
+            table.remove_row(run)
+            table.add_row(*row, key=run)
 
     def show_concurrency(self, event: dict[str, object]) -> None:
         self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]

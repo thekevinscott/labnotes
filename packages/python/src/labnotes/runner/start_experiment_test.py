@@ -8,17 +8,13 @@ import pytest
 from labnotes.runner.start_experiment import start_experiment
 
 
-class FakeTimeout(Exception):
-    pass
-
-
 @pytest.fixture
 def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch(
-            "labnotes.runner.start_experiment.lock_path",
-            return_value=tmp_path / "runs" / "exp" / ".labnotes.lock",
-        ) as lock_path,
+            "labnotes.runner.start_experiment.runs_parent",
+            return_value=tmp_path / "runs" / "exp",
+        ) as runs_parent,
         mock.patch(
             "labnotes.runner.start_experiment.read_experiment_config"
         ) as read_experiment_config,
@@ -26,14 +22,13 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.start_experiment.run_experiment",
             new=mock.AsyncMock(return_value=[{"exit_code": 0}]),
         ) as run_experiment,
-        mock.patch("labnotes.runner.start_experiment.FileLock") as file_lock,
-        mock.patch("labnotes.runner.start_experiment.Timeout", FakeTimeout),
+        mock.patch("labnotes.runner.start_experiment.hold_folder") as hold_folder,
     ):
         yield {
-            "lock_path": lock_path,
+            "runs_parent": runs_parent,
             "read_experiment_config": read_experiment_config,
             "run_experiment": run_experiment,
-            "FileLock": file_lock,
+            "hold_folder": hold_folder,
         }
 
 
@@ -60,10 +55,8 @@ def test_runs_the_experiment_under_a_lock(
     assert start_experiment(config, "exp", None, 2, drive()) == [{"exit_code": 0}]
 
     collaborators["read_experiment_config"].assert_called_once_with(path)
-    collaborators["lock_path"].assert_called_once_with(tmp_path, config.runs, "exp")
-    collaborators["FileLock"].assert_called_once_with(
-        tmp_path / "runs" / "exp" / ".labnotes.lock", blocking=False
-    )
+    collaborators["runs_parent"].assert_called_once_with(tmp_path, config.runs, "exp")
+    collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs" / "exp")
     assert (tmp_path / "runs" / "exp").is_dir()
     collaborators["run_experiment"].assert_awaited_once_with(
         config,
@@ -118,9 +111,14 @@ def test_refuses_to_run_twice(
 ) -> None:
     path = tmp_path / "experiment.toml"
     path.touch()
-    collaborators["FileLock"].return_value.__enter__.side_effect = FakeTimeout()
+    collaborators["hold_folder"].return_value.__enter__.side_effect = BlockingIOError()
 
-    with pytest.raises(ValueError, match="exp is already running"):
+    with pytest.raises(ValueError) as error:
         start_experiment(make_config(tmp_path), "exp", path, 1, drive())
+
+    assert (
+        str(error.value)
+        == f"exp is already running ({tmp_path / 'runs' / 'exp'} is held)."
+    )
 
     collaborators["run_experiment"].assert_not_awaited()

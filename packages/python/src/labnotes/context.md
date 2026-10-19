@@ -82,6 +82,7 @@ A script run by labnotes should:
 - take its output folder as an argument, passed in `command` as `{run_dir}`, and write everything it produces there;
 - exit non-zero when it fails, so the run counts as failed and runs again next time;
 - stop any background process it starts before it exits; the run ends when `command` exits.
+- flush its output as it goes (`print(..., flush=True)`, or `PYTHONUNBUFFERED=1`), so the live view shows it as it happens.
 
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
 
@@ -94,7 +95,8 @@ the end of the queue. `/` filters rows by params text; Enter keeps the filter,
 Escape clears it. `D` deselects every pending run the filter shows. `k` stops the
 running run under the cursor; `k` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
-finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
+finish. Enter on a run follows its `stdout.log`; `e` switches to
+`stderr.log` and back, and Escape returns to the table. `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 
 - `--concurrency N` runs N at a time to start with (default 1).

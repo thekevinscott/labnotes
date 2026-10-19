@@ -1,10 +1,12 @@
+import codecs
 import signal
 import time
+from pathlib import Path
 
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.widgets import DataTable, Footer, Header, Input, Log, Static
 
 from labnotes.models import Controls, Start
 from labnotes.runner.describe_event import describe_event
@@ -26,7 +28,8 @@ class RunApp(App[None]):
         Binding("h", "hide_failed", "Hide failed"),
         Binding("r", "retry", "Retry"),
         Binding("slash", "filter", "Filter", key_display="/"),
-        Binding("escape", "clear_filter", "Clear filter"),
+        Binding("e", "switch_output", "stdout/stderr"),
+        Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
         Binding("q", "quit", "Quit"),
@@ -56,10 +59,16 @@ class RunApp(App[None]):
         self.filter = ""
         self.failed: set[str] = set()
         self.hiding = False
+        self.folders: dict[str, Path] = {}
+        self.viewing: str | None = None
+        self.stream = "stdout"
+        self.offset = 0
+        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield DataTable(id="runs", cursor_type="row")
+        yield Log(id="output")
         yield Input(id="filter", placeholder="Filter params")
         yield Static(id="status")
         yield Footer()
@@ -69,9 +78,11 @@ class RunApp(App[None]):
         for column in COLUMNS:
             table.add_column(column, key=column)
         self.query_one(Input).display = False
+        self.query_one(Log).display = False
 
     def on_ready(self) -> None:
         self.set_interval(1, self.tick)
+        self.set_interval(0.25, self.follow)
         self.run_worker(self.drive())
 
     async def drive(self) -> None:
@@ -99,6 +110,7 @@ class RunApp(App[None]):
                 self.idle = False
                 self.pending.discard(run)
                 self.started[run] = time.monotonic()
+                self.folders[run] = Path(str(event["folder"]))
                 if run == self.next_run:
                     self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
@@ -139,9 +151,7 @@ class RunApp(App[None]):
                 self.show(describe_event(event))
             case "idle":
                 self.idle = True
-                failed = len(self.failed)
-                passed = len(self.ended) - failed
-                self.show(f"{passed} passed, {failed} failed. q to quit.")
+                self.show_summary()
             case "concurrency":
                 self.show_concurrency(event)
                 self.show(describe_event(event))
@@ -151,6 +161,11 @@ class RunApp(App[None]):
                 self.show(describe_event(event))
             case _:
                 self.show(describe_event(event))
+
+    def show_summary(self) -> None:
+        failed = len(self.failed)
+        passed = len(self.ended) - failed
+        self.show(f"{passed} passed, {failed} failed. q to quit.")
 
     def reorder(self, event: dict[str, object], row: int) -> None:
         waiting: list[str] = [*event["pending"], *event["held"]]  # type: ignore[misc]
@@ -239,7 +254,46 @@ class RunApp(App[None]):
         field.display = True
         field.focus()
 
-    def action_clear_filter(self) -> None:
+    def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
+        self.view(str(event.row_key.value), "stdout")
+
+    def view(self, run: str, stream: str) -> None:
+        self.viewing = run
+        self.stream = stream
+        self.offset = 0
+        self.decoder.reset()
+        self.query_one(Log).clear()
+        self.query_one(DataTable).display = False
+        self.query_one(Log).display = True
+        self.show(f"{run} {stream}. e switches, Escape goes back.")
+        self.follow()
+
+    def follow(self) -> None:
+        if self.viewing not in self.folders:
+            return
+        path = self.folders[self.viewing] / f"{self.stream}.log"
+        if not path.exists():
+            return
+        with path.open("rb") as log:
+            log.seek(self.offset)
+            data = log.read()
+        self.offset += len(data)
+        self.query_one(Log).write(self.decoder.decode(data))
+
+    def action_switch_output(self) -> None:
+        if self.viewing is not None:
+            self.view(self.viewing, "stderr" if self.stream == "stdout" else "stdout")
+
+    def action_leave(self) -> None:
+        if self.viewing is not None:
+            self.viewing = None
+            self.query_one(Log).display = False
+            self.query_one(DataTable).display = True
+            if self.idle:
+                self.show_summary()
+            else:
+                self.show("")
+            return
         field = self.query_one(Input)
         field.value = ""
         field.display = False

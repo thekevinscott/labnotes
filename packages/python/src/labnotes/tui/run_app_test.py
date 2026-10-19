@@ -1,5 +1,6 @@
 import asyncio
 from collections.abc import Callable, Iterator
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
@@ -68,12 +69,33 @@ def test_shows_each_run_and_the_outcome(
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         listen(mock.Mock(finish=finished.set))
         report(planned("r1", "r2", "r3"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
-        report({"event": "started", "run": "r2", "params": {"m": "b"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
+        report(
+            {
+                "event": "started",
+                "run": "r2",
+                "params": {"m": "b"},
+                "folder": "/runs/r2",
+            }
+        )
         collaborators["time"].monotonic.return_value = 34.0
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
         report({"event": "ended", "run": "r2", "exit_code": None, "error": "boom"})
-        report({"event": "started", "run": "r3", "params": {"m": "c"}})
+        report(
+            {
+                "event": "started",
+                "run": "r3",
+                "params": {"m": "c"},
+                "folder": "/runs/r3",
+            }
+        )
         report({"event": "ended", "run": "r3", "exit_code": 1, "error": None})
         report({"event": "idle"})
         await finished.wait()
@@ -110,7 +132,14 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2"))
         await rendered.wait()
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -137,7 +166,14 @@ def test_skips_pending_runs_when_stopping() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         listen(mock.Mock(finish=finished.set))
         report(planned("r1", "r2", "r3"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         report({"event": "stopping"})
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
@@ -155,7 +191,14 @@ def test_skips_pending_runs_when_stopping() -> None:
 def test_moves_queued_runs_up_the_pending_rows() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3", "r4"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         report(
             {"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"], "held": []}
         )
@@ -178,7 +221,14 @@ def test_clears_the_next_run_note_once_it_starts() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3"))
         report({"event": "queued", "run": "r3", "pending": ["r3", "r2"], "held": []})
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -187,7 +237,14 @@ def test_clears_the_next_run_note_once_it_starts() -> None:
             await pilot.pause()
             assert status(app) == "said queued"
             run = "".join(["r", "3"])
-            app.show_event({"event": "started", "run": run, "params": {"m": "c"}})
+            app.show_event(
+                {
+                    "event": "started",
+                    "run": run,
+                    "params": {"m": "c"},
+                    "folder": "/runs",
+                }
+            )
             assert status(app) == ""
 
     asyncio.run(drive())
@@ -198,7 +255,14 @@ def test_keeps_later_notes_when_the_next_run_starts() -> None:
         report(planned("r1", "r2"))
         report({"event": "queued", "run": "r2", "pending": ["r2"], "held": []})
         report({"event": "concurrency", "concurrency": 3})
-        report({"event": "started", "run": "r2", "params": {"m": "b"}})
+        report(
+            {
+                "event": "started",
+                "run": "r2",
+                "params": {"m": "b"},
+                "folder": "/runs/r2",
+            }
+        )
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -213,7 +277,14 @@ def test_keeps_later_notes_when_the_next_run_starts() -> None:
 def test_moves_deselected_runs_to_the_bottom() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3", "r4"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         report(
             {
                 "event": "deselected",
@@ -441,7 +512,14 @@ def test_ticks_the_time_of_running_runs(
 ) -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -502,7 +580,7 @@ def test_waits_for_runs_before_quitting() -> None:
     asyncio.run(drive())
 
 
-def test_ticks_every_second() -> None:
+def test_ticks_every_second_and_follows_output_often() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         return []
 
@@ -511,7 +589,10 @@ def test_ticks_every_second() -> None:
         with mock.patch.object(app, "set_interval") as set_interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
-        set_interval.assert_called_once_with(1, app.tick)
+        assert set_interval.call_args_list == [
+            mock.call(1, app.tick),
+            mock.call(0.25, app.follow),
+        ]
 
     asyncio.run(drive())
 
@@ -523,7 +604,14 @@ def test_widens_columns_as_cells_grow(
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
         await rendered.wait()
         collaborators["time"].monotonic.return_value = 1234.0
         report({"event": "ended", "run": "r1", "exit_code": -15, "error": None})
@@ -556,8 +644,22 @@ def test_slash_filters_rows_by_params() -> None:
             await pilot.pause()
             await pilot.press("slash", "m", "space", "r", "2", "enter")
             assert [row[0] for row in rows(app)] == ["r2"]
-            reports[0]({"event": "started", "run": "r1", "params": {"m": "r1"}})
-            reports[0]({"event": "started", "run": "r2", "params": {"m": "r2"}})
+            reports[0](
+                {
+                    "event": "started",
+                    "run": "r1",
+                    "params": {"m": "r1"},
+                    "folder": "/runs/r1",
+                }
+            )
+            reports[0](
+                {
+                    "event": "started",
+                    "run": "r2",
+                    "params": {"m": "r2"},
+                    "folder": "/runs/r2",
+                }
+            )
             await pilot.pause()
             assert rows(app) == [["r2", "--m r2", "running", "0 seconds"]]
             assert app.query_one("#filter").display
@@ -617,7 +719,14 @@ def test_shift_d_deselects_the_shown_pending_runs() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         listen(mock.Mock(toggle=toggle))
         report(planned("r1", "r2", "r3", "s1"))
-        report({"event": "started", "run": "r1", "params": {"m": "r1"}})
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "r1"},
+                "folder": "/runs/r1",
+            }
+        )
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -669,7 +778,14 @@ def test_h_hides_and_shows_failed_runs() -> None:
         reports.append(report)
         report(planned("r1", "r2", "r3"))
         for run in ("r1", "r2"):
-            report({"event": "started", "run": run, "params": {"m": run}})
+            report(
+                {
+                    "event": "started",
+                    "run": run,
+                    "params": {"m": run},
+                    "folder": "/runs",
+                }
+            )
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
         report({"event": "ended", "run": "r2", "exit_code": 1, "error": None})
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
@@ -681,7 +797,14 @@ def test_h_hides_and_shows_failed_runs() -> None:
             await pilot.press("h")
             assert [row[0] for row in rows(app)] == ["r1", "r3"]
             assert status(app) == "Failed runs hidden."
-            reports[0]({"event": "started", "run": "r3", "params": {"m": "r3"}})
+            reports[0](
+                {
+                    "event": "started",
+                    "run": "r3",
+                    "params": {"m": "r3"},
+                    "folder": "/runs/r3",
+                }
+            )
             reports[0]({"event": "ended", "run": "r3", "exit_code": 2, "error": None})
             await pilot.pause()
             assert [row[0] for row in rows(app)] == ["r1"]
@@ -701,7 +824,14 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
         listen(mock.Mock(retry=retry))
         report(planned("r1", "r2"))
         for run, code in (("r1", 0), ("r2", 1)):
-            report({"event": "started", "run": run, "params": {"m": run}})
+            report(
+                {
+                    "event": "started",
+                    "run": run,
+                    "params": {"m": run},
+                    "folder": "/runs",
+                }
+            )
             report({"event": "ended", "run": run, "exit_code": code, "error": None})
         report({"event": "idle"})
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
@@ -719,7 +849,14 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
             assert rows(app)[2] == ["r3", "--m r2", "pending", ""]
             assert styles(app)[2][2] == "dim"
             assert status(app) == "said retried"
-            reports[0]({"event": "started", "run": "r3", "params": {"m": "r2"}})
+            reports[0](
+                {
+                    "event": "started",
+                    "run": "r3",
+                    "params": {"m": "r2"},
+                    "folder": "/runs/r3",
+                }
+            )
             await pilot.press("q")
             assert status(app) == "Runs are still going. Ctrl-C stops them."
 
@@ -736,5 +873,103 @@ def test_r_does_nothing_without_rows() -> None:
             async with app.run_test() as pilot:
                 await pilot.press("r")
             controls.retry.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def output(app: RunApp) -> list[str]:
+    log: Any = app.query_one("#output")
+    return [str(line) for line in log.lines]
+
+
+def test_enter_follows_the_output_of_the_run_under_the_cursor(
+    tmp_path: Path,
+) -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        report(planned("r1", "r2"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("down", "enter")
+                assert app.query_one("#output").display
+                assert not app.query_one("#runs").display
+                assert status(app) == "r2 stdout. e switches, Escape goes back."
+                assert output(app) == []
+                (tmp_path / "stdout.log").write_bytes("caf\xc3".encode("latin-1"))
+                (tmp_path / "stderr.log").write_text("oops\n")
+                reports[0](
+                    {
+                        "event": "started",
+                        "run": "r2",
+                        "params": {"m": "r2"},
+                        "folder": tmp_path,
+                    }
+                )
+                app.follow()
+                await pilot.pause()
+                with (tmp_path / "stdout.log").open("ab") as log:
+                    log.write("\xa9 done\nnext".encode("latin-1"))
+                app.follow()
+                await pilot.pause()
+                assert output(app) == ["café done", "next"]
+                await pilot.press("e")
+                assert status(app) == "r2 stderr. e switches, Escape goes back."
+                assert output(app) == ["oops", ""]
+                await pilot.press("e")
+                assert output(app) == ["café done", "next"]
+                await pilot.press("escape")
+                assert not app.query_one("#output").display
+                assert app.query_one("#runs").display
+                assert status(app) == ""
+                await pilot.press("e")
+                assert not app.query_one("#output").display
+
+    asyncio.run(drive())
+
+
+def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report(
+            {"event": "started", "run": "r1", "params": {"m": "r1"}, "folder": tmp_path}
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("enter")
+                app.follow()
+                assert output(app) == []
+
+    asyncio.run(drive())
+
+
+def test_escape_brings_back_the_summary_once_idle() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report(
+            {"event": "started", "run": "r1", "params": {"m": "r1"}, "folder": "/runs"}
+        )
+        report({"event": "ended", "run": "r1", "exit_code": 1, "error": None})
+        report({"event": "idle"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("enter", "escape")
+                assert status(app) == "0 passed, 1 failed. q to quit."
 
     asyncio.run(drive())

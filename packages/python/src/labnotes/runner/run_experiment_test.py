@@ -124,9 +124,19 @@ def test_runs_each_planned_run_in_a_new_folder(
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
         },
-        {"event": "started", "run": "r1", "params": A},
+        {
+            "event": "started",
+            "run": "r1",
+            "params": A,
+            "folder": tmp_path / "exp" / "r1",
+        },
         {"event": "ended", "run": "r1", **ended},
-        {"event": "started", "run": "r2", "params": B},
+        {
+            "event": "started",
+            "run": "r2",
+            "params": B,
+            "folder": tmp_path / "exp" / "r2",
+        },
         {"event": "ended", "run": "r2", **ended},
         {"event": "idle"},
     ]

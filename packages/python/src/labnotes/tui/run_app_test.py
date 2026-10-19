@@ -613,3 +613,33 @@ def test_k_does_nothing_without_rows() -> None:
             controls.kill.assert_not_called()
 
     asyncio.run(drive())
+
+
+def test_h_hides_and_shows_failed_runs() -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        report(planned("r1", "r2", "r3"))
+        for run in ("r1", "r2"):
+            report({"event": "started", "run": run, "params": {"m": run}})
+        report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        report({"event": "ended", "run": "r2", "exit_code": 1, "error": None})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("h")
+            assert [row[0] for row in rows(app)] == ["r1", "r3"]
+            assert status(app) == "Failed runs hidden."
+            reports[0]({"event": "started", "run": "r3", "params": {"m": "r3"}})
+            reports[0]({"event": "ended", "run": "r3", "exit_code": 2, "error": None})
+            await pilot.pause()
+            assert [row[0] for row in rows(app)] == ["r1"]
+            await pilot.press("h")
+            assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
+            assert status(app) == "Failed runs shown."
+
+    asyncio.run(drive())

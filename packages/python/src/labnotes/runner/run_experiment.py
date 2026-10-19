@@ -73,18 +73,42 @@ async def run_experiment(
             pending = [id_ for id_, _ in plan]
             report({"event": "queued", "run": run, "pending": pending})
 
-    async def work() -> None:
-        while plan:
-            run, params = plan.pop(0)
-            folder = run_folder(config.root, config.runs, name, run)
-            folder.mkdir(parents=True)
-            report({"event": "started", "run": run, "params": params})
-            result = await execute_run(
-                config.root, folder, experiment.command, params, running, stopping
-            )
-            report({"event": "ended", "run": run, **result})
-            results.append(result)
+    limit = concurrency
+    live: set[asyncio.Task[None]] = set()
+    started: list[asyncio.Task[None]] = []
+    idle = asyncio.Event()
 
-    listen(Controls(interrupt, run_next))
-    await asyncio.gather(*(work() for _ in range(concurrency)))
+    def fill() -> None:
+        while plan and len(live) < limit:
+            task = asyncio.create_task(start(*plan.pop(0)))
+            task.add_done_callback(end)
+            live.add(task)
+            started.append(task)
+        if not live:
+            idle.set()
+
+    def end(task: asyncio.Task[None]) -> None:
+        live.remove(task)
+        fill()
+
+    def set_concurrency(count: int) -> None:
+        nonlocal limit
+        limit = max(1, count)
+        report({"event": "concurrency", "concurrency": limit})
+        fill()
+
+    async def start(run: str, params: dict[str, object]) -> None:
+        folder = run_folder(config.root, config.runs, name, run)
+        folder.mkdir(parents=True)
+        report({"event": "started", "run": run, "params": params})
+        result = await execute_run(
+            config.root, folder, experiment.command, params, running, stopping
+        )
+        report({"event": "ended", "run": run, **result})
+        results.append(result)
+
+    listen(Controls(interrupt, run_next, set_concurrency))
+    fill()
+    await idle.wait()
+    await asyncio.gather(*started)
     return results

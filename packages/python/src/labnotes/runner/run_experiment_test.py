@@ -276,3 +276,63 @@ def test_moves_a_pending_run_to_the_front(
     queued = {"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"]}
     assert reported[2] == queued
     assert events(report).count("queued") == 1
+
+
+def changing_concurrency(listen: mock.Mock, to: int, widths: list[int]) -> object:
+    live = 0
+
+    async def execute(*args: object) -> dict[str, object]:
+        nonlocal live
+        live += 1
+        widths.append(live)
+        if len(widths) == 1:
+            listen.call_args.args[0].set_concurrency(to)
+        await asyncio.sleep(0.01)
+        live -= 1
+        return {"exit_code": 0, "error": None}
+
+    return execute
+
+
+def reported(report: mock.Mock) -> list[object]:
+    return [c.args[0] for c in report.call_args_list]
+
+
+def test_raising_concurrency_starts_more_runs_at_once(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    widths: list[int] = []
+    collaborators["plan_runs"].return_value = [A, B, A]
+    collaborators["execute_run"].side_effect = changing_concurrency(listen, 3, widths)
+
+    run(tmp_path, report, listen=listen)
+
+    assert widths == [1, 2, 3]
+    assert {"event": "concurrency", "concurrency": 3} in reported(report)
+
+
+def test_lowering_concurrency_lets_running_runs_finish_first(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    widths: list[int] = []
+    ids = iter(["r1", "r2", "r3", "r4"])
+    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["plan_runs"].return_value = [A, B, A, B]
+    collaborators["execute_run"].side_effect = changing_concurrency(listen, 0, widths)
+
+    results = run(tmp_path, report, concurrency=2, listen=listen)
+
+    assert len(results) == 4
+    assert widths == [1, 2, 1, 1]
+    assert {"event": "concurrency", "concurrency": 1} in reported(report)
+
+
+def test_a_failing_run_fails_the_experiment(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["execute_run"].side_effect = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        run(tmp_path, mock.Mock())

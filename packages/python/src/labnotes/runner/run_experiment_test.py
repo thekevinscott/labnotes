@@ -184,7 +184,7 @@ def interrupting(times: int, listen: mock.Mock) -> object:
         running.add(mock.Mock(pid=42))
         assert not stopping.is_set()
         for _ in range(times):
-            listen.call_args.args[0]()
+            listen.call_args.args[0].interrupt()
         assert stopping.is_set()
         running.clear()
         return {"exit_code": -15, "error": None}
@@ -234,7 +234,7 @@ def test_a_late_interrupt_after_the_runs_end_does_nothing(
     report = mock.Mock()
 
     run(tmp_path, report, listen=listen)
-    listen.call_args.args[0]()
+    listen.call_args.args[0].interrupt()
 
     collaborators["killpg"].assert_called_once_with(42, SIGTERM)
     assert events(report) == ["planned", "started", "stopping", "ended"]
@@ -248,3 +248,31 @@ def test_ignores_a_run_that_already_exited(
     collaborators["killpg"].side_effect = ProcessLookupError
 
     run(tmp_path, mock.Mock(), listen=listen)
+
+
+def test_moves_a_pending_run_to_the_front(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen = mock.Mock()
+    report = mock.Mock()
+
+    async def execute(*args: object) -> dict[str, object]:
+        controls = listen.call_args.args[0]
+        controls.run_next("r1")
+        # Built at runtime, so an `is` comparison would miss it.
+        controls.run_next("".join(["r", "4"]))
+        return {"exit_code": 0, "error": None}
+
+    ids = iter(["r1", "r2", "r3", "r4"])
+    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["plan_runs"].return_value = [A, B, A, B]
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    reported = [c.args[0] for c in report.call_args_list]
+    started = [e["run"] for e in reported if e["event"] == "started"]
+    assert started == ["r1", "r4", "r2", "r3"]
+    queued = {"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"]}
+    assert reported[2] == queued
+    assert events(report).count("queued") == 1

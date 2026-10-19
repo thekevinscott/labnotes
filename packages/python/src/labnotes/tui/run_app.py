@@ -1,12 +1,11 @@
 import signal
 import time
-from collections.abc import Callable
 
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Static
 
-from labnotes.models import Start
+from labnotes.models import Controls, Start
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.stop_then_kill import stop_then_kill
 from labnotes.runner.param_args import param_args
@@ -19,6 +18,7 @@ COLUMNS = ("run", "params", "status", "time")
 class RunApp(App[None]):
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Stop runs"),
+        Binding("n", "run_next", "Run next"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -27,14 +27,14 @@ class RunApp(App[None]):
         self.start = start
         self.title = title
         self.results: list[dict[str, object]] = []
-        self.interrupt: Callable[[], None] = lambda: None
+        self.controls = Controls(lambda: None, lambda run: None)
         self.done = False
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield DataTable(id="runs", cursor_type="none")
+        yield DataTable(id="runs", cursor_type="row")
         yield Static(id="status")
         yield Footer()
 
@@ -54,8 +54,8 @@ class RunApp(App[None]):
         passed = len(self.results) - failed
         self.show(f"{passed} passed, {failed} failed. q to quit.")
 
-    def listen(self, interrupt: Callable[[], None]) -> None:
-        self.interrupt = interrupt
+    def listen(self, controls: Controls) -> None:
+        self.controls = controls
         stop_then_kill(self.action_interrupt, signal.SIGTERM, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
@@ -81,6 +81,13 @@ class RunApp(App[None]):
                 table.update_cell(run, "status", outcome, update_width=True)
                 self.tick()
                 del self.started[run]
+            case "queued":
+                for pending in event["pending"]:  # type: ignore[attr-defined]
+                    row = table.get_row(pending)
+                    table.remove_row(pending)
+                    table.add_row(*row, key=pending)
+                table.move_cursor(row=table.get_row_index(run))
+                self.show(describe_event(event))
             case "stopping":
                 for pending in self.pending:
                     table.update_cell(pending, "status", dim("skipped"))
@@ -102,10 +109,16 @@ class RunApp(App[None]):
         if self.done:
             self.exit()
         else:
-            self.interrupt()
+            self.controls.interrupt()
 
     async def action_quit(self) -> None:
         if self.done:
             self.exit()
         else:
             self.show("Runs are still going. Ctrl-C stops them.")
+
+    def action_run_next(self) -> None:
+        table = self.query_one(DataTable)
+        if table.row_count:
+            cell = table.coordinate_to_cell_key(table.cursor_coordinate)
+            self.controls.run_next(str(cell.row_key.value))

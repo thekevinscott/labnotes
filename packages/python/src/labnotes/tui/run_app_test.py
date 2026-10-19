@@ -8,7 +8,7 @@ import pytest
 from labnotes.tui.run_app import RunApp
 
 Report = Callable[[dict[str, object]], None]
-Listen = Callable[[Callable[[], None]], None]
+Listen = Callable[[Any], None]
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +138,58 @@ def test_skips_pending_runs_when_stopping() -> None:
     asyncio.run(drive())
 
 
+def test_moves_queued_runs_up_the_pending_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3", "r4"))
+        report({"event": "started", "run": "r1", "params": {"m": "a"}})
+        report({"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"]})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert [row[0] for row in rows(app)] == ["r1", "r4", "r2", "r3"]
+            assert styles(app)[1] == ["dim"] * 4
+            table: Any = app.query_one("#runs")
+            assert table.cursor_row == 1
+            assert status(app) == "said queued"
+
+    asyncio.run(drive())
+
+
+def test_n_runs_the_row_under_the_cursor_next() -> None:
+    run_next = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(run_next=run_next))
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("down", "down", "n")
+            run_next.assert_called_once_with("r3")
+
+    asyncio.run(drive())
+
+
+def test_n_does_nothing_without_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "controls") as controls:
+            async with app.run_test() as pilot:
+                await pilot.press("n")
+            controls.run_next.assert_not_called()
+
+    asyncio.run(drive())
+
+
 def test_shows_other_events_as_status() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report({"event": "killing"})
@@ -178,7 +230,7 @@ def test_ctrl_c_interrupts_the_runs_until_they_finish(
     finish = asyncio.Event()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(interrupt)
+        listen(mock.Mock(interrupt=interrupt))
         await finish.wait()
         return []
 

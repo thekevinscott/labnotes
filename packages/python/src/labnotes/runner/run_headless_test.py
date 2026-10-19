@@ -43,9 +43,9 @@ def test_interrupts_on_ctrl_c_terminate_and_hang_up(
     interrupt = mock.Mock()
 
     async def start(
-        report: object, listen: Callable[[Callable[[], None]], None]
+        report: object, listen: Callable[[object], None]
     ) -> list[dict[str, object]]:
-        listen(interrupt)
+        listen(mock.Mock(interrupt=interrupt))
         return []
 
     with mock.patch("labnotes.runner.run_headless.asyncio") as fake_asyncio:

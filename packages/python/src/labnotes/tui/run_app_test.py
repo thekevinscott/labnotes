@@ -503,7 +503,7 @@ def test_slash_filters_rows_by_params() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("slash", "2", "enter")
+            await pilot.press("slash", "m", "space", "r", "2", "enter")
             assert [row[0] for row in rows(app)] == ["r2"]
             reports[0]({"event": "started", "run": "r1", "params": {"m": "r1"}})
             reports[0]({"event": "started", "run": "r2", "params": {"m": "r2"}})
@@ -533,6 +533,7 @@ def test_an_empty_filter_hides_the_field() -> None:
             await pilot.pause()
             assert not app.query_one("#filter").display
             await pilot.press("slash")
+            assert app.query_one("#filter").display
             assert app.query_one("#filter").has_focus
             await pilot.press("enter")
             assert not app.query_one("#filter").display
@@ -541,7 +542,7 @@ def test_an_empty_filter_hides_the_field() -> None:
     asyncio.run(drive())
 
 
-def test_filtering_puts_the_cursor_on_the_first_row() -> None:
+def test_filtering_keeps_the_cursor_on_a_shown_row() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3"))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
@@ -552,6 +553,8 @@ def test_filtering_puts_the_cursor_on_the_first_row() -> None:
             await pilot.pause()
             await pilot.press("down", "down", "slash", "r", "enter")
             table: Any = app.query_one("#runs")
+            assert table.cursor_row == 2
+            await pilot.press("slash", "1", "enter")
             assert table.cursor_row == 0
 
     asyncio.run(drive())

@@ -21,7 +21,7 @@ class RunApp(App[None]):
         Binding("n", "run_next", "Run next"),
         Binding("d", "toggle_run", "Deselect"),
         Binding("slash", "filter", "Filter", key_display="/"),
-        Binding("escape", "clear_filter", "Clear filter", show=False),
+        Binding("escape", "clear_filter", "Clear filter"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
         Binding("q", "quit", "Quit"),
@@ -193,7 +193,7 @@ class RunApp(App[None]):
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self.filter = event.value
-        self.redraw(0)
+        self.redraw(self.query_one(DataTable).cursor_row)
 
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.input.display = bool(event.value)

@@ -214,6 +214,23 @@ def test_plus_and_minus_change_the_concurrency() -> None:
     asyncio.run(drive())
 
 
+def test_concurrency_starts_at_one_until_planned() -> None:
+    set_concurrency = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(set_concurrency=set_concurrency))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("plus")
+            set_concurrency.assert_called_once_with(2)
+
+    asyncio.run(drive())
+
+
 def test_shows_the_new_concurrency() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))

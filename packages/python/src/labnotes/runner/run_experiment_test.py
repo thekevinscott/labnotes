@@ -259,15 +259,20 @@ def test_moves_a_pending_run_to_the_front(
     async def execute(*args: object) -> dict[str, object]:
         controls = listen.call_args.args[0]
         controls.run_next("r1")
-        controls.run_next("r3")
+        # Built at runtime, so an `is` comparison would miss it.
+        controls.run_next("".join(["r", "4"]))
         return {"exit_code": 0, "error": None}
 
-    collaborators["plan_runs"].return_value = [A, B, A]
+    ids = iter(["r1", "r2", "r3", "r4"])
+    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["plan_runs"].return_value = [A, B, A, B]
     collaborators["execute_run"].side_effect = execute
 
     run(tmp_path, report, listen=listen)
 
     reported = [c.args[0] for c in report.call_args_list]
-    assert [e["run"] for e in reported if e["event"] == "started"] == ["r1", "r3", "r2"]
-    assert reported[2] == {"event": "queued", "run": "r3", "pending": ["r3", "r2"]}
+    started = [e["run"] for e in reported if e["event"] == "started"]
+    assert started == ["r1", "r4", "r2", "r3"]
+    queued = {"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"]}
+    assert reported[2] == queued
     assert events(report).count("queued") == 1

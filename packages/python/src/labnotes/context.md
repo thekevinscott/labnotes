@@ -88,10 +88,11 @@ Runs can take a long time. Start `run` in the background, then check on it with 
 In a terminal, `run` shows a live table of runs (status and time) and stays
 open when they finish. Runs not started yet show grayed as `pending`, and as
 `skipped` once stopped. Move the cursor to a pending run and press `n` to run it
-next; `q` quits. Elsewhere, or with `--no-tui`, it prints a
+next. `+` and `-` change how many run at once; lowering it lets running runs
+finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 
-- `--concurrency N` runs N at a time (default 1).
+- `--concurrency N` runs N at a time to start with (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
   kills them. Closing the terminal or sending SIGTERM stops them the same way,

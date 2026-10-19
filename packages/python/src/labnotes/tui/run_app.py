@@ -19,6 +19,8 @@ class RunApp(App[None]):
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
+        Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
+        Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
         Binding("q", "quit", "Quit"),
     ]
 
@@ -27,7 +29,8 @@ class RunApp(App[None]):
         self.start = start
         self.title = title
         self.results: list[dict[str, object]] = []
-        self.controls = Controls(lambda: None, lambda run: None)
+        self.controls = Controls(lambda: None, lambda run: None, lambda count: None)
+        self.concurrency = 1
         self.done = False
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
@@ -68,6 +71,7 @@ class RunApp(App[None]):
                     cells = (planned["run"], args, "pending", "")
                     table.add_row(*map(dim, cells), key=planned["run"])
                     self.pending.add(planned["run"])
+                self.show_concurrency(event)
                 self.show(describe_event(event))
             case "started":
                 self.pending.discard(run)
@@ -88,12 +92,19 @@ class RunApp(App[None]):
                     table.add_row(*row, key=pending)
                 table.move_cursor(row=table.get_row_index(run))
                 self.show(describe_event(event))
+            case "concurrency":
+                self.show_concurrency(event)
+                self.show(describe_event(event))
             case "stopping":
                 for pending in self.pending:
                     table.update_cell(pending, "status", dim("skipped"))
                 self.show(describe_event(event))
             case _:
                 self.show(describe_event(event))
+
+    def show_concurrency(self, event: dict[str, object]) -> None:
+        self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]
+        self.sub_title = f"{self.concurrency} at a time"
 
     def tick(self) -> None:
         table = self.query_one(DataTable)
@@ -122,3 +133,6 @@ class RunApp(App[None]):
         if table.row_count:
             cell = table.coordinate_to_cell_key(table.cursor_coordinate)
             self.controls.run_next(str(cell.row_key.value))
+
+    def action_concurrency(self, change: int) -> None:
+        self.controls.set_concurrency(self.concurrency + change)

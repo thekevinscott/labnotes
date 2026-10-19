@@ -51,6 +51,7 @@ def planned(*runs: str) -> dict[str, object]:
     return {
         "event": "planned",
         "runs": [{"run": run, "params": {"m": run}} for run in runs],
+        "concurrency": 2,
     }
 
 
@@ -186,6 +187,45 @@ def test_n_does_nothing_without_rows() -> None:
             async with app.run_test() as pilot:
                 await pilot.press("n")
             controls.run_next.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def test_plus_and_minus_change_the_concurrency() -> None:
+    set_concurrency = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(set_concurrency=set_concurrency))
+        report(planned("r1"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.sub_title == "2 at a time"
+            await pilot.press("plus", "equals_sign", "minus")
+            assert set_concurrency.call_args_list == [
+                mock.call(3),
+                mock.call(3),
+                mock.call(1),
+            ]
+
+    asyncio.run(drive())
+
+
+def test_shows_the_new_concurrency() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report({"event": "concurrency", "concurrency": 5})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert (app.concurrency, app.sub_title) == (5, "5 at a time")
+            assert status(app) == "said concurrency"
 
     asyncio.run(drive())
 

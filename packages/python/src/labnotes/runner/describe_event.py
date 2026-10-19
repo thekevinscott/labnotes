@@ -14,6 +14,8 @@ def describe_event(event: dict[str, object]) -> str:
             return f"{event['run']} {outcome}"
         case "queued":
             return f"{event['run']} runs next."
+        case "concurrency":
+            return f"{event['concurrency']} at a time."
         case "stopping":
             return "Stopping runs. Ctrl-C again to kill them."
         case _:

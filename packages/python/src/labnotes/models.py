@@ -12,6 +12,7 @@ Report = Callable[[dict[str, object]], None]
 class Controls:
     interrupt: Callable[[], None]
     run_next: Callable[[str], None]
+    set_concurrency: Callable[[int], None]
 
 
 Listen = Callable[[Controls], None]

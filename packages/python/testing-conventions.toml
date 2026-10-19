@@ -1,0 +1,5 @@
+[[python.exempt]]
+path = "src/labnotes/runner/hold_folder.py"
+rules = ["mutation"]
+lines = [12]
+reason = "LOCK_EX and LOCK_NB are disjoint bits, so | equals + and ^"

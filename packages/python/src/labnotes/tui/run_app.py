@@ -19,6 +19,7 @@ class RunApp(App[None]):
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
+        Binding("d", "toggle_run", "Deselect"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
         Binding("q", "quit", "Quit"),
@@ -29,7 +30,9 @@ class RunApp(App[None]):
         self.start = start
         self.title = title
         self.results: list[dict[str, object]] = []
-        self.controls = Controls(lambda: None, lambda run: None, lambda count: None)
+        self.controls = Controls(
+            lambda: None, lambda run: None, lambda count: None, lambda run: None
+        )
         self.concurrency = 1
         self.done = False
         self.started: dict[str, float] = {}
@@ -85,12 +88,20 @@ class RunApp(App[None]):
                 table.update_cell(run, "status", outcome, update_width=True)
                 self.tick()
                 del self.started[run]
-            case "queued":
-                for pending in event["pending"]:  # type: ignore[attr-defined]
-                    row = table.get_row(pending)
-                    table.remove_row(pending)
-                    table.add_row(*row, key=pending)
-                table.move_cursor(row=table.get_row_index(run))
+            case "queued" | "deselected" | "reselected":
+                if event["event"] == "deselected":
+                    self.pending.discard(run)
+                    table.update_cell(run, "status", dim("deselected"))
+                if event["event"] == "reselected":
+                    self.pending.add(run)
+                    table.update_cell(run, "status", dim("pending"))
+                waiting: list[str] = [*event["pending"], *event["held"]]  # type: ignore[misc]
+                for waiting_run in waiting:
+                    row = table.get_row(waiting_run)
+                    table.remove_row(waiting_run)
+                    table.add_row(*row, key=waiting_run)
+                if event["event"] == "queued":
+                    table.move_cursor(row=table.get_row_index(run))
                 self.show(describe_event(event))
             case "concurrency":
                 self.show_concurrency(event)
@@ -128,11 +139,20 @@ class RunApp(App[None]):
         else:
             self.show("Runs are still going. Ctrl-C stops them.")
 
-    def action_run_next(self) -> None:
+    def cursor_run(self) -> str | None:
         table = self.query_one(DataTable)
-        if table.row_count:
-            cell = table.coordinate_to_cell_key(table.cursor_coordinate)
-            self.controls.run_next(str(cell.row_key.value))
+        if not table.row_count:
+            return None
+        cell = table.coordinate_to_cell_key(table.cursor_coordinate)
+        return str(cell.row_key.value)
+
+    def action_run_next(self) -> None:
+        if (run := self.cursor_run()) is not None:
+            self.controls.run_next(run)
+
+    def action_toggle_run(self) -> None:
+        if (run := self.cursor_run()) is not None:
+            self.controls.toggle(run)
 
     def action_concurrency(self, change: int) -> None:
         self.controls.set_concurrency(self.concurrency + change)

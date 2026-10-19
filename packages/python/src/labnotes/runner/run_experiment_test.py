@@ -273,7 +273,12 @@ def test_moves_a_pending_run_to_the_front(
     reported = [c.args[0] for c in report.call_args_list]
     started = [e["run"] for e in reported if e["event"] == "started"]
     assert started == ["r1", "r4", "r2", "r3"]
-    queued = {"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"]}
+    queued = {
+        "event": "queued",
+        "run": "r4",
+        "pending": ["r4", "r2", "r3"],
+        "held": [],
+    }
     assert reported[2] == queued
     assert events(report).count("queued") == 1
 
@@ -294,7 +299,7 @@ def changing_concurrency(listen: mock.Mock, to: int, widths: list[int]) -> objec
     return execute
 
 
-def reported(report: mock.Mock) -> list[object]:
+def reported(report: mock.Mock) -> list[dict[str, object]]:
     return [c.args[0] for c in report.call_args_list]
 
 
@@ -336,3 +341,121 @@ def test_a_failing_run_fails_the_experiment(
 
     with pytest.raises(RuntimeError, match="boom"):
         run(tmp_path, mock.Mock())
+
+
+def planning(collaborators: dict[str, mock.MagicMock], count: int) -> None:
+    ids = iter([f"r{n}" for n in range(1, count + 1)])
+    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["plan_runs"].return_value = [A, B] * (count // 2) + [A] * (count % 2)
+
+
+def started_runs(report: mock.Mock) -> list[object]:
+    return [e["run"] for e in reported(report) if e["event"] == "started"]
+
+
+def test_a_deselected_run_does_not_run(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 3)
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        if folder.name == "r1":
+            listen.call_args.args[0].toggle("r2")
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    results = run(tmp_path, report, listen=listen)
+
+    assert len(results) == 2
+    assert started_runs(report) == ["r1", "r3"]
+    deselected = {"event": "deselected", "run": "r2", "pending": ["r3"], "held": ["r2"]}
+    assert deselected in reported(report)
+
+
+def test_a_reselected_run_goes_to_the_back_of_the_queue(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 3)
+
+    async def execute(*args: object) -> dict[str, object]:
+        if len(started_runs(report)) == 1:
+            controls = listen.call_args.args[0]
+            controls.toggle("r2")
+            controls.toggle("r2")
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == ["r1", "r3", "r2"]
+    reselected = {
+        "event": "reselected",
+        "run": "r2",
+        "pending": ["r3", "r2"],
+        "held": [],
+    }
+    assert reselected in reported(report)
+
+
+def test_a_reselected_run_starts_at_once_when_there_is_room(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 3)
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        if folder.name == "r1":
+            controls = listen.call_args.args[0]
+            controls.toggle("r3")
+            await asyncio.sleep(0.01)
+            controls.toggle("r3")
+            await asyncio.sleep(0.01)
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, concurrency=2, listen=listen)
+
+    order = [(e["event"], e.get("run")) for e in reported(report)]
+    assert order.index(("started", "r3")) < order.index(("ended", "r1"))
+
+
+def test_toggling_a_run_that_is_not_waiting_does_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(*args: object) -> dict[str, object]:
+        listen.call_args.args[0].toggle("r1")
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert events(report) == ["planned", "started", "ended", "started", "ended"]
+
+
+def test_toggling_after_stopping_does_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 3)
+
+    async def execute(*args: object) -> dict[str, object]:
+        controls = listen.call_args.args[0]
+        controls.toggle("r2")
+        controls.interrupt()
+        controls.toggle("r2")
+        return {"exit_code": -15, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == ["r1"]
+    assert events(report).count("reselected") == 0

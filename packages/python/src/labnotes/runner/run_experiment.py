@@ -19,6 +19,8 @@ from labnotes.runner.run_folder import run_folder
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.open_tables import open_tables
 
+Entry = tuple[str, dict[str, object]]
+
 
 async def run_experiment(
     config: LabnotesConfig,
@@ -37,7 +39,7 @@ async def run_experiment(
             run in planned or run_folder(config.root, config.runs, name, run).exists()
         )
 
-    plan: list[tuple[str, dict[str, object]]] = []
+    plan: list[Entry] = []
     for params in plan_runs(
         param_grid(experiment.params), experiment.repeats, finished
     ):
@@ -65,13 +67,35 @@ async def run_experiment(
             report({"event": "killing"})
             signal_runs(signal.SIGKILL)
 
+    held: list[Entry] = []
+
+    def find(entries: list[Entry], run: str) -> Entry | None:
+        return next((entry for entry in entries if entry[0] == run), None)
+
+    def arrange(event: str, run: str) -> None:
+        pending = [id_ for id_, _ in plan]
+        deselected = [id_ for id_, _ in held]
+        report({"event": event, "run": run, "pending": pending, "held": deselected})
+
     def run_next(run: str) -> None:
-        entry = next((entry for entry in plan if entry[0] == run), None)
+        entry = find(plan, run)
         if entry is not None:
             plan.remove(entry)
             plan.insert(0, entry)
-            pending = [id_ for id_, _ in plan]
-            report({"event": "queued", "run": run, "pending": pending})
+            arrange("queued", run)
+
+    def toggle(run: str) -> None:
+        if stopping.is_set():
+            return
+        if (entry := find(plan, run)) is not None:
+            plan.remove(entry)
+            held.append(entry)
+            arrange("deselected", run)
+        elif (entry := find(held, run)) is not None:
+            held.remove(entry)
+            plan.append(entry)
+            arrange("reselected", run)
+            fill()
 
     limit = concurrency
     live: set[asyncio.Task[None]] = set()
@@ -107,7 +131,7 @@ async def run_experiment(
         report({"event": "ended", "run": run, **result})
         results.append(result)
 
-    listen(Controls(interrupt, run_next, set_concurrency))
+    listen(Controls(interrupt, run_next, set_concurrency, toggle))
     fill()
     await idle.wait()
     await asyncio.gather(*started)

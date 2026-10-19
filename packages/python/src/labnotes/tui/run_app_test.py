@@ -558,3 +558,22 @@ def test_filtering_keeps_the_cursor_on_a_shown_row() -> None:
             assert table.cursor_row == 0
 
     asyncio.run(drive())
+
+
+def test_shift_d_deselects_the_shown_pending_runs() -> None:
+    toggle = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(toggle=toggle))
+        report(planned("r1", "r2", "r3", "s1"))
+        report({"event": "started", "run": "r1", "params": {"m": "r1"}})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "r", "enter", "D")
+            assert toggle.call_args_list == [mock.call("r2"), mock.call("r3")]
+
+    asyncio.run(drive())

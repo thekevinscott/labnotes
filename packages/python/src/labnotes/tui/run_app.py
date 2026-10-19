@@ -1,6 +1,7 @@
 import signal
 import time
 
+from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Input, Static
@@ -98,7 +99,8 @@ class RunApp(App[None]):
                     self.set_cell(run, column, cell)
             case "ended":
                 outcome = event["error"] or f"exited {event['exit_code']}"
-                self.set_cell(run, "status", outcome)
+                style = "red" if event["error"] or event["exit_code"] else ""
+                self.set_cell(run, "status", Text(str(outcome), style=style))
                 self.tick()
                 del self.started[run]
             case "queued":

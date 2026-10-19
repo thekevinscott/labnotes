@@ -32,6 +32,7 @@ EXPERIMENT: dict[str, object] = {
     "runs_per_cell": 3,
     "target": 6,
     "completed_run": "exit_code = 0",
+    "mode": "fill",
     "other": {"command": "uv run run.py"},
     "runs": 4,
     "completed": 3,
@@ -190,6 +191,21 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
     assert 'name="f.model" value="op"' in text
     assert "1 of 4" in text
     assert 'href="?sort=model&amp;order=desc#runs">Clear filters' in text
+
+
+def test_experiment_page_shows_plain_cell_counts_when_adhoc(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    adhoc = {**EXPERIMENT, "mode": "adhoc", "target": None, "filled": None}
+    collaborators["load_experiment"].return_value = adhoc
+
+    status, text = call(app, "/experiments/{name}", name="models-effort")
+
+    assert status == 200
+    assert "Grid filled" not in text
+    assert "ad-hoc" in text
+    assert '<td class="cell done"' not in text
+    assert '<span class="of">' not in text
 
 
 def test_unknown_experiment_is_not_found(

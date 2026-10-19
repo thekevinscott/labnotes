@@ -24,8 +24,21 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
         "runs_per_cell": 3,
         "target": 6,
         "completed_run": "default",
+        "mode": "fill",
         "other": {"command": "go"},
     }
+
+
+def test_has_no_target_for_an_adhoc_grid() -> None:
+    # Not interned, like a value read from TOML, so `is` can't pass for `==`.
+    mode = "".join(["ad", "hoc"])
+    summary = summarize_config({"command": "go", "repeats": 3, "mode": mode})
+
+    assert (summary["mode"], summary["runs_per_cell"], summary["target"]) == (
+        "adhoc",
+        3,
+        None,
+    )
 
 
 def test_defaults_to_one_repeat() -> None:

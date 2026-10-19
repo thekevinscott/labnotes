@@ -1,0 +1,1 @@
+**Changed** — `labnotes experiments NAME run` locks the folder holding the experiment's runs instead of writing a `.labnotes.lock` file next to it. Nothing is left behind, and a crashed run frees the lock. Any old `.labnotes.lock` files can be deleted.

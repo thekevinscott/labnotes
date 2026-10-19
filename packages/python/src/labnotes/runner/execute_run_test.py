@@ -53,6 +53,7 @@ def run(
             PARAMS,
             set() if running is None else running,  # type: ignore[arg-type]
             event,
+            "inv1",
         )
 
     return asyncio.run(go())
@@ -86,6 +87,7 @@ def test_records_the_run_before_and_after(
 
     started = {
         "params": PARAMS,
+        "invocation_id": "inv1",
         "created": "start",
         "ended": None,
         "exit_code": None,

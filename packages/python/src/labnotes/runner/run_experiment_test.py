@@ -54,6 +54,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             mock.Mock(SIGTERM=SIGTERM, SIGKILL=SIGKILL),
         ),
         mock.patch("labnotes.runner.run_experiment.os.killpg") as killpg,
+        mock.patch(
+            "labnotes.runner.run_experiment.new_invocation_id", return_value="inv1"
+        ),
     ):
         yield {
             "open_tables": open_tables,
@@ -117,6 +120,7 @@ def test_runs_each_planned_run_in_a_new_folder(
         (tmp_path, tmp_path / "exp" / "r2", "run", B),
     ]
     assert (tmp_path / "exp" / "r1").is_dir()
+    assert [c.args[6] for c in calls] == ["inv1", "inv1"]
     ended = {"exit_code": 0, "error": None}
     assert [c.args[0] for c in report.call_args_list] == [
         {
@@ -198,6 +202,7 @@ def interrupting(times: int, listen: mock.Mock) -> object:
         params: object,
         running: set[object],
         stopping: asyncio.Event,
+        invocation: str,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         assert not stopping.is_set()
@@ -494,6 +499,7 @@ def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
         params: object,
         running: set[object],
         stopping: asyncio.Event,
+        invocation: str,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=int(folder.name[1:])))
         for by, target in kills:
@@ -571,6 +577,7 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
         params: object,
         running: set[object],
         stopping: asyncio.Event,
+        invocation: str,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         listen.call_args.args[0].interrupt()

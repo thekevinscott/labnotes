@@ -63,7 +63,10 @@ def status(app: RunApp) -> str:
 def test_shows_each_run_and_the_outcome(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
+    finished = asyncio.Event()
+
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(finish=finished.set))
         report(planned("r1", "r2", "r3"))
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         report({"event": "started", "run": "r2", "params": {"m": "b"}})
@@ -72,6 +75,8 @@ def test_shows_each_run_and_the_outcome(
         report({"event": "ended", "run": "r2", "exit_code": None, "error": "boom"})
         report({"event": "started", "run": "r3", "params": {"m": "c"}})
         report({"event": "ended", "run": "r3", "exit_code": 1, "error": None})
+        report({"event": "idle"})
+        await finished.wait()
         return [
             {"exit_code": 0},
             {"exit_code": None},
@@ -90,10 +95,11 @@ def test_shows_each_run_and_the_outcome(
                 ["r3", "--m c", "exited 1", "0 seconds"],
             ]
             assert [row[2] for row in styles(app)] == ["", "red", "red"]
-            assert status(app) == "3 passed, 1 failed. q to quit."
-            assert len(app.results) == 4
+            assert status(app) == "1 passed, 2 failed. q to quit."
             await pilot.press("q")
+            await pilot.pause()
             assert not app.is_running
+            assert len(app.results) == 4
 
     asyncio.run(drive())
 
@@ -126,7 +132,10 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
 
 
 def test_skips_pending_runs_when_stopping() -> None:
+    finished = asyncio.Event()
+
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(finish=finished.set))
         report(planned("r1", "r2", "r3"))
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         report({"event": "stopping"})
@@ -410,15 +419,17 @@ def test_ticks_the_time_of_running_runs(
     asyncio.run(drive())
 
 
-def test_ctrl_c_interrupts_the_runs_until_they_finish(
+def test_ctrl_c_interrupts_the_runs_then_finishes_once_idle(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     interrupt = mock.Mock()
-    finish = asyncio.Event()
+    finished = asyncio.Event()
+    reports: list[Report] = []
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(mock.Mock(interrupt=interrupt))
-        await finish.wait()
+        reports.append(report)
+        listen(mock.Mock(interrupt=interrupt, finish=finished.set))
+        await finished.wait()
         return []
 
     async def drive() -> None:
@@ -429,9 +440,9 @@ def test_ctrl_c_interrupts_the_runs_until_they_finish(
             await pilot.press("ctrl+c")
             assert interrupt.call_count == 2
             assert app.is_running
-            finish.set()
-            await pilot.pause()
+            reports[0]({"event": "idle"})
             await pilot.press("ctrl+c")
+            await pilot.pause()
             assert not app.is_running
             assert interrupt.call_count == 2
             collaborators["stop_then_kill"].assert_called_once_with(
@@ -641,5 +652,53 @@ def test_h_hides_and_shows_failed_runs() -> None:
             await pilot.press("h")
             assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
             assert status(app) == "Failed runs shown."
+
+    asyncio.run(drive())
+
+
+def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
+    retry = mock.Mock()
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        listen(mock.Mock(retry=retry))
+        report(planned("r1", "r2"))
+        for run, code in (("r1", 0), ("r2", 1)):
+            report({"event": "started", "run": run, "params": {"m": run}})
+            report({"event": "ended", "run": run, "exit_code": code, "error": None})
+        report({"event": "idle"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert status(app) == "1 passed, 1 failed. q to quit."
+            await pilot.press("r", "down", "r")
+            retry.assert_called_once_with("r2")
+            again = {"event": "retried", "run": "r2", "retry": "r3"}
+            reports[0]({**again, "params": {"m": "r2"}})
+            await pilot.pause()
+            assert rows(app)[2] == ["r3", "--m r2", "pending", ""]
+            assert styles(app)[2][2] == "dim"
+            assert status(app) == "said retried"
+            reports[0]({"event": "started", "run": "r3", "params": {"m": "r2"}})
+            await pilot.press("q")
+            assert status(app) == "Runs are still going. Ctrl-C stops them."
+
+    asyncio.run(drive())
+
+
+def test_r_does_nothing_without_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "controls") as controls:
+            async with app.run_test() as pilot:
+                await pilot.press("r")
+            controls.retry.assert_not_called()
 
     asyncio.run(drive())

@@ -55,3 +55,19 @@ def test_interrupts_on_ctrl_c_terminate_and_hang_up(
     loop = fake_asyncio.get_running_loop.return_value
     loop.add_signal_handler.assert_called_once_with(2, interrupt)
     collaborators["stop_then_kill"].assert_called_once_with(interrupt, 15, 1)
+
+
+def test_finishes_once_the_runs_are_done(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    controls = mock.Mock()
+
+    async def start(
+        report: object, listen: Callable[[object], None]
+    ) -> list[dict[str, object]]:
+        listen(controls)
+        return []
+
+    run_headless(start)  # type: ignore[arg-type]
+
+    controls.finish.assert_called_once_with()

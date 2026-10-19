@@ -113,10 +113,22 @@ async def run_experiment(
             arrange("reselected", run)
             fill()
 
+    ended: dict[str, dict[str, object]] = {}
+
+    def retry(run: str) -> None:
+        if stopping.is_set() or run not in ended:
+            return
+        again = new_run_id(taken)
+        planned.add(again)
+        plan.append((again, ended[run]))
+        report({"event": "retried", "run": run, "retry": again, "params": ended[run]})
+        fill()
+
     limit = concurrency
     live: set[asyncio.Task[None]] = set()
     started: list[asyncio.Task[None]] = []
-    idle = asyncio.Event()
+    finishing = False
+    done = asyncio.Event()
 
     def fill() -> None:
         while plan and len(live) < limit:
@@ -125,7 +137,15 @@ async def run_experiment(
             live.add(task)
             started.append(task)
         if not live:
-            idle.set()
+            report({"event": "idle"})
+            if finishing:
+                done.set()
+
+    def finish() -> None:
+        nonlocal finishing
+        finishing = True
+        if not (live or plan):
+            done.set()
 
     def end(task: asyncio.Task[None]) -> None:
         live.remove(task)
@@ -147,10 +167,11 @@ async def run_experiment(
         )
         del running[run]
         report({"event": "ended", "run": run, **result})
+        ended[run] = params
         results.append(result)
 
-    listen(Controls(interrupt, run_next, set_concurrency, toggle, kill))
+    listen(Controls(interrupt, run_next, set_concurrency, toggle, kill, retry, finish))
     fill()
-    await idle.wait()
+    await done.wait()
     await asyncio.gather(*started)
     return results

@@ -21,6 +21,7 @@ class RunApp(App[None]):
         Binding("n", "run_next", "Run next"),
         Binding("d", "toggle_run", "Deselect"),
         Binding("D", "deselect_shown", "Deselect shown"),
+        Binding("k", "kill_run", "Stop run"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "clear_filter", "Clear filter"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
@@ -34,7 +35,11 @@ class RunApp(App[None]):
         self.title = title
         self.results: list[dict[str, object]] = []
         self.controls = Controls(
-            lambda: None, lambda run: None, lambda count: None, lambda run: None
+            lambda: None,
+            lambda run: None,
+            lambda count: None,
+            lambda run: None,
+            lambda run: None,
         )
         self.concurrency = 1
         self.done = False
@@ -177,6 +182,10 @@ class RunApp(App[None]):
     def action_toggle_run(self) -> None:
         if (run := self.cursor_run()) is not None:
             self.controls.toggle(run)
+
+    def action_kill_run(self) -> None:
+        if (run := self.cursor_run()) is not None:
+            self.controls.kill(run)
 
     def action_deselect_shown(self) -> None:
         shown = [str(key.value) for key in self.query_one(DataTable).rows]

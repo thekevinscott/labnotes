@@ -577,3 +577,35 @@ def test_shift_d_deselects_the_shown_pending_runs() -> None:
             assert toggle.call_args_list == [mock.call("r2"), mock.call("r3")]
 
     asyncio.run(drive())
+
+
+def test_k_stops_the_run_under_the_cursor() -> None:
+    kill = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(kill=kill))
+        report(planned("r1", "r2"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("down", "k")
+            kill.assert_called_once_with("r2")
+
+    asyncio.run(drive())
+
+
+def test_k_does_nothing_without_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "controls") as controls:
+            async with app.run_test() as pilot:
+                await pilot.press("k")
+            controls.kill.assert_not_called()
+
+    asyncio.run(drive())

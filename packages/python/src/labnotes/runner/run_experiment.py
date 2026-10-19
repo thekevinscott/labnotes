@@ -48,14 +48,19 @@ async def run_experiment(
         plan.append((run, params))
     runs = [{"run": run, "params": params} for run, params in plan]
     report({"event": "planned", "runs": runs, "concurrency": concurrency})
-    running: set[asyncio.subprocess.Process] = set()
+    running: dict[str, set[asyncio.subprocess.Process]] = {}
+    stopped: set[str] = set()
     results: list[dict[str, object]] = []
     stopping = asyncio.Event()
 
-    def signal_runs(signal_number: int) -> None:
-        for process in running:
+    def signal_run(run: str, signal_number: int) -> None:
+        for process in running[run]:
             with contextlib.suppress(ProcessLookupError):
                 os.killpg(process.pid, signal_number)
+
+    def signal_runs(signal_number: int) -> None:
+        for run in running:
+            signal_run(run, signal_number)
 
     def interrupt() -> None:
         plan.clear()
@@ -63,9 +68,20 @@ async def run_experiment(
             stopping.set()
             report({"event": "stopping"})
             signal_runs(signal.SIGTERM)
-        elif running:
+        elif any(running.values()):
             report({"event": "killing"})
             signal_runs(signal.SIGKILL)
+
+    def kill(run: str) -> None:
+        if not running.get(run):
+            return
+        if run in stopped:
+            report({"event": "killing run", "run": run})
+            signal_run(run, signal.SIGKILL)
+        else:
+            stopped.add(run)
+            report({"event": "stopping run", "run": run})
+            signal_run(run, signal.SIGTERM)
 
     held: list[Entry] = []
 
@@ -125,13 +141,15 @@ async def run_experiment(
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True)
         report({"event": "started", "run": run, "params": params})
+        running[run] = set()
         result = await execute_run(
-            config.root, folder, experiment.command, params, running, stopping
+            config.root, folder, experiment.command, params, running[run], stopping
         )
+        del running[run]
         report({"event": "ended", "run": run, **result})
         results.append(result)
 
-    listen(Controls(interrupt, run_next, set_concurrency, toggle))
+    listen(Controls(interrupt, run_next, set_concurrency, toggle, kill))
     fill()
     await idle.wait()
     await asyncio.gather(*started)

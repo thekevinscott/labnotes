@@ -459,3 +459,102 @@ def test_toggling_after_stopping_does_nothing(
 
     assert started_runs(report) == ["r1"]
     assert events(report).count("reselected") == 0
+
+
+def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        stopping: asyncio.Event,
+    ) -> dict[str, object]:
+        running.add(mock.Mock(pid=int(folder.name[1:])))
+        for by, target in kills:
+            if folder.name == by:
+                listen.call_args.args[0].kill(target)
+        await asyncio.sleep(0.01)
+        running.clear()
+        return {"exit_code": 0, "error": None}
+
+    return execute
+
+
+def test_kill_stops_only_that_run(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 3)
+    collaborators["execute_run"].side_effect = killing(listen, ("r2", "r1"))
+
+    run(tmp_path, report, concurrency=2, listen=listen)
+
+    collaborators["killpg"].assert_called_once_with(1, SIGTERM)
+    assert {"event": "stopping run", "run": "r1"} in reported(report)
+    assert started_runs(report) == ["r1", "r2", "r3"]
+
+
+def test_a_second_kill_sends_sigkill(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 1)
+    collaborators["execute_run"].side_effect = killing(
+        listen, ("r1", "r1"), ("r1", "r1")
+    )
+
+    run(tmp_path, report, listen=listen)
+
+    assert collaborators["killpg"].call_args_list == [
+        mock.call(1, SIGTERM),
+        mock.call(1, SIGKILL),
+    ]
+    assert events(report) == [
+        "planned",
+        "started",
+        "stopping run",
+        "killing run",
+        "ended",
+    ]
+
+
+def test_killing_a_run_that_is_not_running_does_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 2)
+    collaborators["execute_run"].side_effect = killing(listen, ("r1", "r2"))
+
+    run(tmp_path, report, listen=listen)
+    listen.call_args.args[0].kill("r1")
+
+    collaborators["killpg"].assert_not_called()
+    assert events(report) == ["planned", "started", "ended", "started", "ended"]
+
+
+def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        stopping: asyncio.Event,
+    ) -> dict[str, object]:
+        running.add(mock.Mock(pid=42))
+        listen.call_args.args[0].interrupt()
+        running.clear()
+        listen.call_args.args[0].interrupt()
+        return {"exit_code": -15, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    collaborators["killpg"].assert_called_once_with(42, SIGTERM)
+    assert events(report) == ["planned", "started", "stopping", "ended"]

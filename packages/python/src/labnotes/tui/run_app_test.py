@@ -64,12 +64,14 @@ def test_shows_each_run_and_the_outcome(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2"))
+        report(planned("r1", "r2", "r3"))
         report({"event": "started", "run": "r1", "params": {"m": "a"}})
         report({"event": "started", "run": "r2", "params": {"m": "b"}})
         collaborators["time"].monotonic.return_value = 34.0
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
         report({"event": "ended", "run": "r2", "exit_code": None, "error": "boom"})
+        report({"event": "started", "run": "r3", "params": {"m": "c"}})
+        report({"event": "ended", "run": "r3", "exit_code": 1, "error": None})
         return [
             {"exit_code": 0},
             {"exit_code": None},
@@ -85,7 +87,9 @@ def test_shows_each_run_and_the_outcome(
             assert rows(app) == [
                 ["r1", "--m a", "exited 0", "24 seconds"],
                 ["r2", "--m b", "boom", "24 seconds"],
+                ["r3", "--m c", "exited 1", "0 seconds"],
             ]
+            assert [row[2] for row in styles(app)] == ["", "red", "red"]
             assert status(app) == "3 passed, 1 failed. q to quit."
             assert len(app.results) == 4
             await pilot.press("q")

@@ -23,6 +23,7 @@ class RunApp(App[None]):
         Binding("d", "toggle_run", "Deselect"),
         Binding("D", "deselect_shown", "Deselect shown"),
         Binding("k", "kill_run", "Stop run"),
+        Binding("h", "hide_failed", "Hide failed"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "clear_filter", "Clear filter"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
@@ -48,6 +49,8 @@ class RunApp(App[None]):
         self.pending: set[str] = set()
         self.cells: dict[str, list[object]] = {}
         self.filter = ""
+        self.failed: set[str] = set()
+        self.hiding = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -100,9 +103,12 @@ class RunApp(App[None]):
             case "ended":
                 outcome = event["error"] or f"exited {event['exit_code']}"
                 style = "red" if event["error"] or event["exit_code"] else ""
+                if style:
+                    self.failed.add(run)
                 self.set_cell(run, "status", Text(str(outcome), style=style))
                 self.tick()
                 del self.started[run]
+                self.redraw(table.cursor_row)
             case "queued":
                 self.reorder(event, table.cursor_row)
                 table.move_cursor(row=table.get_row_index(run))
@@ -137,7 +143,8 @@ class RunApp(App[None]):
         table = self.query_one(DataTable)
         table.clear()
         for run, cells in self.cells.items():
-            if self.filter in str(cells[1]):
+            hidden = self.hiding and run in self.failed
+            if self.filter in str(cells[1]) and not hidden:
                 table.add_row(*cells, key=run)
         table.move_cursor(row=row)
 
@@ -184,6 +191,11 @@ class RunApp(App[None]):
     def action_toggle_run(self) -> None:
         if (run := self.cursor_run()) is not None:
             self.controls.toggle(run)
+
+    def action_hide_failed(self) -> None:
+        self.hiding = not self.hiding
+        self.redraw(self.query_one(DataTable).cursor_row)
+        self.show("Failed runs hidden." if self.hiding else "Failed runs shown.")
 
     def action_kill_run(self) -> None:
         if (run := self.cursor_run()) is not None:

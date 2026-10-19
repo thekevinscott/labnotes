@@ -86,7 +86,7 @@ A script run by labnotes should:
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish. Failed runs show their status in red. Runs not started yet show grayed as `pending`, and as
+open when they finish. Failed runs show their status in red; `h` hides or shows them. Runs not started yet show grayed as `pending`, and as
 `skipped` once stopped. Move the cursor to a pending run and press `n` to run it
 next. `d` deselects a pending run so it won't run; `d` again puts it back at
 the end of the queue. `/` filters rows by params text; Enter keeps the filter,

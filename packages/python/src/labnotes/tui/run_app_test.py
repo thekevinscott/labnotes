@@ -489,3 +489,72 @@ def test_widens_columns_as_cells_grow(
             assert widths == [len("exited -15"), len("1224 seconds")]
 
     asyncio.run(drive())
+
+
+def test_slash_filters_rows_by_params() -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("slash", "m", "space", "r", "2", "enter")
+            assert [row[0] for row in rows(app)] == ["r2"]
+            reports[0]({"event": "started", "run": "r1", "params": {"m": "r1"}})
+            reports[0]({"event": "started", "run": "r2", "params": {"m": "r2"}})
+            await pilot.pause()
+            assert rows(app) == [["r2", "--m r2", "running", "0 seconds"]]
+            assert app.query_one("#filter").display
+            assert app.query_one("#runs").has_focus
+            await pilot.press("escape")
+            assert [row[:3] for row in rows(app)] == [
+                ["r1", "--m r1", "running"],
+                ["r2", "--m r2", "running"],
+                ["r3", "--m r3", "pending"],
+            ]
+            assert not app.query_one("#filter").display
+
+    asyncio.run(drive())
+
+
+def test_an_empty_filter_hides_the_field() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.query_one("#filter").display
+            await pilot.press("slash")
+            assert app.query_one("#filter").display
+            assert app.query_one("#filter").has_focus
+            await pilot.press("enter")
+            assert not app.query_one("#filter").display
+            assert [row[0] for row in rows(app)] == ["r1"]
+
+    asyncio.run(drive())
+
+
+def test_filtering_keeps_the_cursor_on_a_shown_row() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("down", "down", "slash", "r", "enter")
+            table: Any = app.query_one("#runs")
+            assert table.cursor_row == 2
+            await pilot.press("slash", "1", "enter")
+            assert table.cursor_row == 0
+
+    asyncio.run(drive())

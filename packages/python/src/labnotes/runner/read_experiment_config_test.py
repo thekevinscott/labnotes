@@ -25,7 +25,8 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
         write(
             tmp_path,
             'name = "Study"\ncommand = "run"\nrepeats = 3\n[params]\nm = ["a", "b"]\n',
-        )
+        ),
+        "adhoc",
     )
 
     assert (config.name, config.command, config.repeats, config.params) == (
@@ -37,7 +38,7 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
 
 
 def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
-    config = read_experiment_config(write(tmp_path, 'command = "run"\n'))
+    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "adhoc")
 
     assert (
         config.name,
@@ -48,18 +49,26 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
     ) == (None, 1, {}, "default", "adhoc")
 
 
+def test_falls_back_to_the_project_mode(tmp_path: Path) -> None:
+    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "fill")
+
+    assert config.mode == "fill"
+
+
 def test_reads_counts(tmp_path: Path) -> None:
     config = read_experiment_config(
-        write(tmp_path, 'command = "run"\ncounts = "exit_code = 0"\n')
+        write(tmp_path, 'command = "run"\ncounts = "exit_code = 0"\n'), "adhoc"
     )
 
     assert config.counts == "exit_code = 0"
 
 
-@pytest.mark.parametrize("mode", ["fill", "adhoc"])
-def test_reads_mode(tmp_path: Path, mode: str) -> None:
+@pytest.mark.parametrize(("mode", "project"), [("fill", "adhoc"), ("adhoc", "fill")])
+def test_reads_mode_over_the_project_mode(
+    tmp_path: Path, mode: str, project: str
+) -> None:
     config = read_experiment_config(
-        write(tmp_path, f'command = "run"\nmode = "{mode}"\n')
+        write(tmp_path, f'command = "run"\nmode = "{mode}"\n'), project
     )
 
     assert config.mode == mode
@@ -89,6 +98,6 @@ def test_rejects_a_bad_config(tmp_path: Path, text: str, message: str) -> None:
     path = write(tmp_path, text)
 
     with pytest.raises(ValueError, match=message) as error:
-        read_experiment_config(path)
+        read_experiment_config(path, "adhoc")
 
     assert str(error.value).startswith(f"{path}: ")

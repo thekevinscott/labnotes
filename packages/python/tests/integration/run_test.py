@@ -90,6 +90,17 @@ def test_reruns_every_combination_without_a_mode(project: Path) -> None:
     assert sorted(groups.count(group) for group in set(groups)) == [4, 4]
 
 
+def test_fills_by_the_project_mode(project: Path) -> None:
+    toml = project / "exp" / "experiment.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "fill"\n', ""))
+    (project / ".labnotes.toml").write_text('[experiments]\nmode = "fill"\n')
+    labnotes(project, ["experiments", "exp", "run"])
+    labnotes(project, ["experiments", "exp", "run"])
+
+    recorded = runs(project)
+    assert sorted(run["params"]["m"] for run in recorded) == ["a", "a"] + ["b"] * 4
+
+
 def test_reruns_an_excluded_run(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

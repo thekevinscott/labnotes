@@ -9,7 +9,7 @@ import pytest
 
 from labnotes.create_app import create_app
 
-CONFIG = mock.Mock(root=Path("/p/project"))
+CONFIG = mock.Mock(root=Path("/p/project"), mode="fill")
 
 
 def make_view(
@@ -143,7 +143,7 @@ def test_index_lists_experiments_with_progress(
     status, text = call(app, "/")
 
     assert status == 200
-    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables)
+    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables, "fill")
     assert 'href="/experiment/models-effort">Models by effort</a>' in text
     assert '<span class="crumb">project</span>' in text
     assert "50%" in text
@@ -163,9 +163,10 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
     status, text = call(app, "/experiments/{name}", name="models-effort")
 
     assert status == 200
-    assert collaborators["load_experiment"].await_args.args[:4] == (
+    assert collaborators["load_experiment"].await_args.args[:5] == (
         app.state.tables,
         Path("/p/project"),
+        "fill",
         "models-effort",
         {"sort": "model"},
     )
@@ -343,7 +344,7 @@ def test_experiment_page_shows_outputs_of_blocks_already_run(
     post_run(app, {"block": 0})
     call(app, "/experiments/{name}", name="models-effort")
 
-    outputs_for = collaborators["load_experiment"].await_args.args[4]
+    outputs_for = collaborators["load_experiment"].await_args.args[5]
     with mock.patch(
         "labnotes.create_app.saved_outputs", return_value=["<pre>1</pre>"]
     ) as saved:

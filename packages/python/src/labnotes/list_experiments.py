@@ -9,7 +9,7 @@ from labnotes.experiment_runs import experiment_runs
 from labnotes.summarize_config import summarize_config
 
 
-async def list_experiments(tables: DirSQL) -> list[dict[str, object]]:
+async def list_experiments(tables: DirSQL, mode: str) -> list[dict[str, object]]:
     rows = await tables.query(
         "SELECT name, display_name, config FROM experiments ORDER BY name"
     )
@@ -17,7 +17,7 @@ async def list_experiments(tables: DirSQL) -> list[dict[str, object]]:
     for row in rows:
         name = str(row["name"])
         config = None if row["config"] is None else json.loads(str(row["config"]))
-        summary = summarize_config(config)
+        summary = summarize_config(config, mode)
         varies = cast(dict[str, list[object]], summary["varies"])
         source = experiment_runs(name, list(varies))
         summary = await check_counts(tables, source, summary)

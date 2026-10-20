@@ -42,7 +42,7 @@ def test_globs_each_table_from_its_path(dirsql: dict[str, mock.MagicMock]) -> No
 
     assert {name: t["glob"] for name, t in tables(dirsql).items()} == {
         "files": "notes/*/*.md",
-        "runs": "data/*/*/run.json",
+        "runs": "data/*/**/run.json",
         "experiment_configs": "notes/*/experiment.toml",
     }
 

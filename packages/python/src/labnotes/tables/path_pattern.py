@@ -6,6 +6,9 @@ TOKEN = re.compile(r"\{([^}]*)\}|\*\*|\*|\?|[^{*?]+")
 def path_pattern(template: str) -> re.Pattern[str]:
     parts = []
     for found in TOKEN.finditer(template):
+        if found.group(1) == "run":
+            parts.append("(?P<run>[^/]+(?:/[^/]+)?)")
+            continue
         if found.group(1) is not None:
             parts.append(f"(?P<{found.group(1)}>[^/]+)")
             continue

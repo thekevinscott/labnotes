@@ -1113,6 +1113,34 @@ def test_opens_a_lone_adhoc_run_in_its_output(
     asyncio.run(drive())
 
 
+def test_shows_nested_runs_by_their_own_name() -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        report(planned("g/r1", "g/r2"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            reports[0](
+                {
+                    "event": "retried",
+                    "run": "g/r1",
+                    "retry": "g/r3",
+                    "params": {"m": "a"},
+                }
+            )
+            await pilot.pause()
+            assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
+            table: Any = app.query_one("#runs")
+            assert [key.value for key in table.rows] == ["g/r1", "g/r2", "g/r3"]
+
+    asyncio.run(drive())
+
+
 @pytest.mark.parametrize(
     ("keys", "row"),
     [(("j",), 1), (("j", "j", "k"), 1), (("G",), 2), (("G", "g"), 0)],

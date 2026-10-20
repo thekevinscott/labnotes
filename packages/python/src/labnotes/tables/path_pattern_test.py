@@ -7,6 +7,7 @@ from labnotes.tables.path_pattern import path_pattern
     ("template", "path", "groups"),
     [
         ("{experiment}/runs/{run}", "a/runs/b", {"experiment": "a", "run": "b"}),
+        ("{experiment}/runs/{run}", "a/runs/b/c", {"experiment": "a", "run": "b/c"}),
         (
             "data/{experiment}/{run}",
             "data/a.b/c-d",
@@ -30,7 +31,7 @@ def test_captures_the_placeholders(
 @pytest.mark.parametrize(
     ("template", "path"),
     [
-        ("{experiment}/runs/{run}", "a/runs/b/c"),
+        ("{experiment}/runs/{run}", "a/runs/b/c/d"),
         ("{experiment}/runs/{run}", "a/results/b"),
         ("{experiment}/files/", "a/files/"),
         ("notes/{experiment}/*.md", "notes/a/sub/plan.md"),

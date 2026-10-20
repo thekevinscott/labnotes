@@ -21,6 +21,7 @@ def experiment(mode: str = "fill") -> mock.Mock:
 
 @pytest.fixture
 def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
+    names = iter(["n1", "n2", "n3"])
     ids = iter(["r1", "r2", "r3"])
     with (
         mock.patch("labnotes.runner.run_experiment.open_tables") as open_tables,
@@ -57,8 +58,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         ),
         mock.patch("labnotes.runner.run_experiment.os.killpg") as killpg,
         mock.patch(
-            "labnotes.runner.run_experiment.new_invocation_id", return_value="inv1"
-        ),
+            "labnotes.runner.run_experiment.new_run_id",
+            side_effect=lambda taken: next(names),
+        ) as new_run_id,
     ):
         yield {
             "open_tables": open_tables,
@@ -66,6 +68,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "param_grid": param_grid,
             "plan_runs": plan_runs,
             "new_stamped_run_id": new_stamped_run_id,
+            "new_run_id": new_run_id,
             "execute_run": execute_run,
             "killpg": killpg,
         }
@@ -132,7 +135,6 @@ def test_runs_each_planned_run_in_a_new_folder(
         (tmp_path, tmp_path / "exp" / "r2", "run", B),
     ]
     assert (tmp_path / "exp" / "r1").is_dir()
-    assert [c.args[6] for c in calls] == ["inv1", "inv1"]
     ended = {"exit_code": 0, "error": None}
     assert [c.args[0] for c in report.call_args_list] == [
         {
@@ -168,6 +170,30 @@ def test_checks_new_stamped_run_ids_against_existing_folders(
 
     taken = collaborators["new_stamped_run_id"].call_args.args[0]
     assert (taken("taken"), taken("free")) == (True, False)
+
+
+def test_nests_adhoc_runs_in_one_folder_per_command(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    (tmp_path / "exp" / "r1" / "taken").mkdir(parents=True)
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        if folder.name == "n2":
+            listen.call_args.args[0].retry("r1/n1")
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen, mode="adhoc")
+
+    assert started_runs(report) == ["r1/n1", "r1/n2", "r1/n3"]
+    assert (tmp_path / "exp" / "r1" / "n1").is_dir()
+    assert collaborators["new_stamped_run_id"].call_count == 1
+    group_taken = collaborators["new_stamped_run_id"].call_args.args[0]
+    assert (group_taken("r1"), group_taken("free")) == (True, False)
+    taken = collaborators["new_run_id"].call_args.args[0]
+    assert (taken("taken"), taken("n1"), taken("free")) == (True, True, False)
 
 
 def test_names_every_run_before_the_first_starts(
@@ -215,7 +241,6 @@ def interrupting(times: int, listen: mock.Mock) -> object:
         params: object,
         running: set[object],
         stopping: asyncio.Event,
-        invocation: str,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         assert not stopping.is_set()
@@ -512,7 +537,6 @@ def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
         params: object,
         running: set[object],
         stopping: asyncio.Event,
-        invocation: str,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=int(folder.name[1:])))
         for by, target in kills:
@@ -590,7 +614,6 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
         params: object,
         running: set[object],
         stopping: asyncio.Event,
-        invocation: str,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         listen.call_args.args[0].interrupt()

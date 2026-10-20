@@ -47,7 +47,7 @@ def labnotes(project: Path, argv: list[str]) -> int | str | None:
 def runs(project: Path) -> list[dict[str, Any]]:
     return [
         json.loads(path.read_text(encoding="utf-8")) | {"folder": path.parent}
-        for path in sorted((project / "exp" / "runs").glob("*/run.json"))
+        for path in sorted((project / "exp" / "runs").glob("**/run.json"))
     ]
 
 
@@ -86,6 +86,8 @@ def test_reruns_every_combination_without_a_mode(project: Path) -> None:
 
     recorded = runs(project)
     assert sorted(run["params"]["m"] for run in recorded) == ["a"] * 4 + ["b"] * 4
+    groups = [run["folder"].parent for run in recorded]
+    assert sorted(groups.count(group) for group in set(groups)) == [4, 4]
 
 
 def test_fills_by_the_project_mode(project: Path) -> None:

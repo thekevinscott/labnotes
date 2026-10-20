@@ -8,7 +8,7 @@ from labnotes.tables.path_glob import path_glob
     [
         ("{experiment}", "*"),
         ("{experiment}/files/", "*/files/**"),
-        ("{experiment}/runs/{run}/run.json", "*/runs/*/run.json"),
+        ("{experiment}/runs/{run}/run.json", "*/runs/**/run.json"),
         ("notes/{experiment}/*.md", "notes/*/*.md"),
     ],
 )

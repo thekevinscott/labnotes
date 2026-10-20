@@ -115,4 +115,4 @@ line per event instead.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 
-`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. A grid cell is full once it has `repeats` runs that count.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.

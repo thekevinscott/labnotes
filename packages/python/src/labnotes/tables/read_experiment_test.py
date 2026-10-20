@@ -10,14 +10,14 @@ def write_config(path: Path, text: str) -> str:
 
 
 def test_reads_the_experiment_config(tmp_path: Path) -> None:
-    path = write_config(
-        tmp_path / "exp", 'command = "run"\nrepeats = 2\n[params]\nm = ["a"]\n'
-    )
+    source = 'command = "run"\nrepeats = 2\n[params]\nm = ["a"]\n'
+    path = write_config(tmp_path / "exp", source)
 
     assert read_experiment(tmp_path, "{experiment}", path) == [
         {
             "experiment": "exp",
             "config": '{"command": "run", "repeats": 2, "params": {"m": ["a"]}}',
+            "source": source,
         }
     ]
 

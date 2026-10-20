@@ -2,7 +2,6 @@ import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
-from typing import cast
 
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
@@ -20,7 +19,6 @@ from labnotes.list_experiments import list_experiments
 from labnotes.load_experiment import load_experiment
 from labnotes.models import LabnotesConfig
 from labnotes.notebook_kernel import NotebookKernel
-from labnotes.pivot_cells import pivot_cells
 from labnotes.python_blocks import python_blocks
 from labnotes.saved_outputs import saved_outputs
 from labnotes.stop_idle_kernels import stop_idle_kernels
@@ -69,12 +67,8 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
         )
         if loaded is None:
             raise HTTPException(404, "No such experiment")
-        varies = cast(dict[str, list[object]], loaded["varies"])
-        cells = cast(list[dict[str, object]], loaded["cells"])
         return templates.TemplateResponse(
-            request,
-            "experiment.html",
-            {"experiment": loaded, "pivot": pivot_cells(varies, cells)},
+            request, "experiment.html", {"experiment": loaded}
         )
 
     async def note_content(request: Request) -> str:

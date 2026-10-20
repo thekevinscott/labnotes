@@ -33,7 +33,7 @@ Where experiment folders live. An experiment is a matching folder that holds an 
 
 #### `mode`
 
-- Type: `"adhoc"` | `"fill"`
+- Type: `"adhoc"` | `"matrix"`
 - Default: `"adhoc"`
 
 Mode for every experiment whose `experiment.toml` doesn't set one. See [`mode`](#mode-1).
@@ -73,7 +73,7 @@ One per experiment folder. `labnotes experiments new [NAME]` creates one. `run -
 name = "Model and effort"
 command = "uv run scripts/study.py --output {run_dir}"
 repeats = 5
-mode = "fill"
+mode = "matrix"
 concurrency = 2
 counts = "exit_code = 0 AND created > '2026-10-01'"
 
@@ -112,10 +112,10 @@ Every combination of values runs. Each value is passed as `--name value`, with t
 
 ### `mode`
 
-- Type: `"adhoc"` | `"fill"`
+- Type: `"adhoc"` | `"matrix"`
 - Default: `[experiments] mode` in `.labnotes.toml`, else `"adhoc"`
 
-`"adhoc"`: every `run` plans the full grid, in one new folder whose runs nest inside it. `"fill"`: `run` plans only the combinations with fewer than `repeats` counted runs, in flat run folders.
+`"adhoc"`: every `run` plans the full grid. A single run writes one flat folder; several nest inside one new folder. `"matrix"`: `run` plans only the combinations with fewer than `repeats` counted runs, in flat run folders.
 
 ### `concurrency`
 

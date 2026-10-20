@@ -21,7 +21,6 @@ export default defineConfig({
         items: [
           { text: 'Philosophy', link: '/philosophy' },
           { text: 'Getting Started', link: '/getting-started' },
-          { text: 'Common Organizations', link: '/common-organizations' },
           {
             text: 'CLI',
             link: '/cli/experiments',
@@ -41,6 +40,10 @@ export default defineConfig({
           { text: 'Frontend', link: '/frontend' },
           { text: 'Skill', link: '/skill' },
         ],
+      },
+      {
+        text: 'Guides',
+        items: [{ text: 'Common Organizations', link: '/guides/common-organizations' }],
       },
       {
         text: 'API',

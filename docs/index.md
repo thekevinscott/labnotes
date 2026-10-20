@@ -6,16 +6,16 @@ hero:
   tagline: 'Run param sweeps, watch them live, and keep your notes next to the results. No server to host, no database, nothing to sign up for.'
   actions:
     - theme: brand
-      text: Get Started
-      link: /getting-started
-    - theme: alt
       text: Philosophy
       link: /philosophy
+    - theme: alt
+      text: Get Started
+      link: /getting-started
 
 features:
   - title: Plain files
     details: Experiments, notes and runs stay as folders on your disk. A .labnotes.toml maps them to your layout, whatever it is.
-    link: /common-organizations
+    link: /guides/common-organizations
   - title: Run from the terminal
     details: Define params and repeats in experiment.toml. A live table lets you reorder, deselect, retry and change concurrency while runs go.
     link: /cli/experiments

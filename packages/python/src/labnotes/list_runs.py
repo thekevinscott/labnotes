@@ -3,6 +3,8 @@ from dirsql import DirSQL
 from labnotes.models import RunView
 from labnotes.sql_quote import quote_identifier, quote_string
 
+UNFINISHED = "(ended IS NULL AND exit_code IS NULL AND error IS NULL)"
+
 
 async def list_runs(
     runs: DirSQL, source: str, completed_run: str, view: RunView
@@ -30,6 +32,7 @@ async def list_runs(
     else:
         order = "created DESC, id DESC"
     return await runs.query(
-        f"SELECT ({completed_run}) AS labnotes_completed, * FROM {source}"
+        f"SELECT ({completed_run}) AS labnotes_completed, {UNFINISHED} AS labnotes_unfinished,"
+        f" * FROM {source}"
         f"{filtered} ORDER BY {order}"
     )

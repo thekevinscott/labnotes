@@ -1,0 +1,1 @@
+**Fixed** — The experiment page no longer marks a run that hasn't finished as failed. While the project's daemon is up, it shows as running and its duration counts up live; without a daemon, it shows as interrupted. Adhoc group rows count these runs apart from failures.

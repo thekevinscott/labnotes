@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 from playwright.async_api import Page, async_playwright
 
+from labnotes.daemon.socket_path import socket_path
+
 CONFIG = (
     'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "fill"\n'
     '[params]\nsource-language = ["en", "fr"]\n'
@@ -52,7 +54,7 @@ def daemon(root: Path) -> Iterator[None]:
     )
     try:
         for _ in range(100):
-            if (root / ".labnotes.sock").exists():
+            if socket_path(root).exists():
                 break
             time.sleep(0.1)
         yield

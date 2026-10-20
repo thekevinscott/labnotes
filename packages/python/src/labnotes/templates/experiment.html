@@ -82,8 +82,8 @@
     </thead>
     {% macro run_rows(run) %}
       <tr class="run-row">
-        <td><span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span></td>
-        {% for column in e.run_columns %}{% if column == 'id' %}<td class="mono"><a class="run-link" href="{{ url_for('run', name=e.name, run=run.id) }}">{{ run.id.partition('/')[2] or run.id if nested else run.id }}</a></td>{% if nested %}<td></td>{% endif %}{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else (run[column] | started if column == 'started' else run[column] | value) }}</td>{% endif %}{% endfor %}
+        <td>{% if run.labnotes_unfinished and e.runs_live %}<span class="status running" title="running">◐</span>{% elif run.labnotes_unfinished %}<span class="status interrupted" title="interrupted">–</span>{% else %}<span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span>{% endif %}</td>
+        {% for column in e.run_columns %}{% if column == 'id' %}<td class="mono"><a class="run-link" href="{{ url_for('run', name=e.name, run=run.id) }}">{{ run.id.partition('/')[2] or run.id if nested else run.id }}</a></td>{% if nested %}<td></td>{% endif %}{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{% if column == 'duration' and run.labnotes_unfinished and e.runs_live %}<span class="elapsed" data-since="{{ run.created }}">—</span>{% else %}{{ run[column] | duration if column == 'duration' else (run[column] | started if column == 'started' else run[column] | value) }}{% endif %}</td>{% endif %}{% endfor %}
       </tr>
     {% endmacro %}
     {% if nested %}
@@ -93,7 +93,7 @@
     {% else %}
     <tbody class="group{{ ' open' if narrowed }}" data-name="{{ group.name }}">
       <tr class="group-row">
-        <td class="num" title="{{ group.passed }} passed, {{ group.failed }} failed"><span class="good">{{ group.passed }}✓</span> <span class="bad">{{ group.failed }}✕</span></td>
+        <td class="num" title="{{ group.passed }} passed, {{ group.failed }} failed{% if group.unfinished %}, {{ group.unfinished }} {{ 'running' if e.runs_live else 'interrupted' }}{% endif %}"><span class="good">{{ group.passed }}✓</span> <span class="bad">{{ group.failed }}✕</span>{% if group.unfinished %} <span class="{{ 'running' if e.runs_live else 'interrupted' }}">{{ group.unfinished }}{{ '◐' if e.runs_live else '–' }}</span>{% endif %}</td>
         <td class="mono"><button type="button" class="group-toggle" aria-expanded="{{ 'true' if narrowed else 'false' }}">{{ group.name }}</button></td>
         <td class="num">{{ group.runs | length }}{% if narrowed %} of {{ group.total }}{% endif %}</td>
         {% for column in e.run_columns[1:] %}<td>{% if column == 'started' %}{{ group.started | started if group.started }}{% elif column in group.shared %}{{ group.shared[column] | value }}{% endif %}</td>{% endfor %}
@@ -122,4 +122,5 @@
 <script src="{{ asset('experiment.js') }}" defer></script>
 <script src="{{ asset('local-time.js') }}" defer></script>
 <script src="{{ asset('row-link.js') }}" defer></script>
+<script src="{{ asset('elapsed.js') }}" defer></script>
 {% endblock %}

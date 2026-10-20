@@ -67,6 +67,11 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value={"g": 2},
         ) as count_groups,
+        mock.patch(
+            "labnotes.load_experiment.daemon_running",
+            new_callable=mock.AsyncMock,
+            return_value=True,
+        ) as daemon_running,
     ):
         yield {
             "count_groups": count_groups,
@@ -79,6 +84,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "check_counts": check_counts,
             "sort_href": sort_href,
             "python_blocks": python_blocks,
+            "daemon_running": daemon_running,
         }
 
 
@@ -109,6 +115,8 @@ def test_loads_config_notes_progress_and_runs(
         {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
+    assert loaded["runs_live"] is True
+    collaborators["daemon_running"].assert_awaited_once_with(ROOT)
     assert loaded["run_groups"] is None
     collaborators["nests_runs"].assert_not_awaited()
     assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]

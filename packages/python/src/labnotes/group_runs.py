@@ -25,7 +25,12 @@ def group_runs(
             "total": totals.get(name, len(members)),
             "shared": shared_params(members, params),
             "passed": sum(1 for run in members if run["labnotes_completed"]),
-            "failed": sum(1 for run in members if not run["labnotes_completed"]),
+            "failed": sum(
+                1
+                for run in members
+                if not run["labnotes_completed"] and not run["labnotes_unfinished"]
+            ),
+            "unfinished": sum(1 for run in members if run["labnotes_unfinished"]),
         }
         for name, members in sorted(groups.items(), reverse=True)
     ]

@@ -359,6 +359,8 @@ h3 {
 .status { font-size: 0.8rem; font-weight: 700; }
 .status.good { color: var(--good); }
 .status.bad { color: var(--bad); }
+.status.interrupted, .group-row .interrupted { color: var(--ink-3); }
+.status.running, .group-row .running { color: var(--accent); }
 .counts-error { color: var(--bad); }
 
 /* Index view toggle */

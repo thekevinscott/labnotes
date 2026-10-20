@@ -10,6 +10,8 @@ from pathlib import Path
 import pytest
 from playwright.async_api import Page, async_playwright
 
+from labnotes.daemon.socket_path import socket_path
+
 CONFIG = (
     'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "fill"\n'
     '[params]\nsource-language = ["en", "fr"]\n'
@@ -41,6 +43,24 @@ def free_port() -> int:
     with socket.socket() as sock:
         sock.bind(("127.0.0.1", 0))
         return int(sock.getsockname()[1])
+
+
+def daemon(root: Path) -> Iterator[None]:
+    labnotes = Path(sys.executable).parent / "labnotes"
+    process = subprocess.Popen(
+        [labnotes, "-c", root / ".labnotes.toml", "daemon"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(100):
+            if socket_path(root).exists():
+                break
+            time.sleep(0.1)
+        yield
+    finally:
+        process.terminate()
+        process.wait()
 
 
 def serve(root: Path) -> Iterator[str]:

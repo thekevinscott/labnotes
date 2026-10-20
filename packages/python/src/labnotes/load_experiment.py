@@ -8,6 +8,7 @@ from dirsql import DirSQL
 from labnotes.check_counts import check_counts
 from labnotes.count_groups import count_groups
 from labnotes.count_runs import count_runs
+from labnotes.daemon.daemon_running import daemon_running
 from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
 from labnotes.format_value import format_value
@@ -82,6 +83,7 @@ async def load_experiment(
             for note in notes
         ],
         "runs_list": runs,
+        "runs_live": await daemon_running(root),
         "run_groups": groups,
         "run_columns": shown,
         "run_view": view,

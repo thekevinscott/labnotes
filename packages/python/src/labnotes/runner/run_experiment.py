@@ -17,6 +17,7 @@ from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.run_folder import run_folder
+from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.open_tables import open_tables
 
@@ -31,18 +32,17 @@ async def run_experiment(
     report: Report,
     listen: Listen,
 ) -> list[dict[str, object]]:
+    tables = open_tables(config)
+    existing = await experiment_run_ids(tables, name)
     finished: list[dict[str, object]] = []
     match experiment.mode:
         case "fill":
-            tables = open_tables(config)
-            existing = await list_experiment_runs(tables, name, experiment.counts)
-            finished = [json.loads(str(r["params"])) for r in existing if r["counted"]]
+            counted = await list_experiment_runs(tables, name, experiment.counts)
+            finished = [json.loads(str(r["params"])) for r in counted if r["counted"]]
     planned: set[str] = set()
 
     def taken(run: str) -> bool:
-        return (
-            run in planned or run_folder(config.root, config.runs, name, run).exists()
-        )
+        return run in planned or run in existing
 
     group = new_stamped_run_id(taken) if experiment.mode == "adhoc" else None
 

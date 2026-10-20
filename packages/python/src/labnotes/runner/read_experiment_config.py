@@ -10,10 +10,11 @@ from labnotes.modes import MODES
 SETTINGS = {"name", "command", "repeats", "params", "counts", "mode", "concurrency"}
 
 
-def read_experiment_config(path: Path, mode: str, concurrency: int) -> ExperimentConfig:
+def read_experiment_config(
+    path: Path, source: str, mode: str, concurrency: int
+) -> ExperimentConfig:
     try:
-        with path.open("rb") as file:
-            values = tomllib.load(file)
+        values = tomllib.loads(source)
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from error
     unknown = sorted(values.keys() - SETTINGS)

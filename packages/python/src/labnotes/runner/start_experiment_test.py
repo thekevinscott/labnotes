@@ -23,12 +23,17 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             new=mock.AsyncMock(return_value=[{"exit_code": 0}]),
         ) as run_experiment,
         mock.patch("labnotes.runner.start_experiment.hold_folder") as hold_folder,
+        mock.patch(
+            "labnotes.runner.start_experiment.file_text",
+            new=mock.AsyncMock(return_value="source"),
+        ) as file_text,
     ):
         yield {
             "runs_parent": runs_parent,
             "read_experiment_config": read_experiment_config,
             "run_experiment": run_experiment,
             "hold_folder": hold_folder,
+            "file_text": file_text,
         }
 
 
@@ -52,13 +57,15 @@ def test_runs_the_experiment_under_a_lock(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     path = tmp_path / "notes" / "exp" / "experiment.toml"
-    path.parent.mkdir(parents=True)
-    path.touch()
     config = make_config(tmp_path)
 
     assert start_experiment(config, "exp", None, 2, drive()) == [{"exit_code": 0}]
 
-    collaborators["read_experiment_config"].assert_called_once_with(path, "fill", 3)
+    collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
+
+    collaborators["read_experiment_config"].assert_called_once_with(
+        path, "source", "fill", 3
+    )
     collaborators["runs_parent"].assert_called_once_with(tmp_path, config.runs, "exp")
     collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs" / "exp")
     assert (tmp_path / "runs" / "exp").is_dir()
@@ -79,9 +86,6 @@ def test_titles_the_run_with_the_display_name(
     display_name: str | None,
     title: str,
 ) -> None:
-    path = tmp_path / "notes" / "exp" / "experiment.toml"
-    path.parent.mkdir(parents=True)
-    path.touch()
     collaborators["read_experiment_config"].return_value.name = display_name
     driver = drive()
 
@@ -94,16 +98,19 @@ def test_reads_the_named_experiment_config(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     path = tmp_path / "other.toml"
-    path.touch()
 
     start_experiment(make_config(tmp_path), "exp", path, 1, drive())
 
-    collaborators["read_experiment_config"].assert_called_once_with(path, "fill", 3)
+    collaborators["read_experiment_config"].assert_called_once_with(
+        path, "source", "fill", 3
+    )
 
 
 def test_needs_an_experiment_config(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
+    collaborators["file_text"].return_value = None
+
     with pytest.raises(ValueError, match="No experiment.toml for exp at "):
         start_experiment(make_config(tmp_path), "exp", None, 1, drive())
 
@@ -114,7 +121,6 @@ def test_refuses_to_run_twice(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     path = tmp_path / "experiment.toml"
-    path.touch()
     collaborators["hold_folder"].return_value.__enter__.side_effect = BlockingIOError()
 
     with pytest.raises(ValueError) as error:
@@ -131,9 +137,6 @@ def test_refuses_to_run_twice(
 def test_falls_back_to_the_experiment_concurrency(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    path = tmp_path / "notes" / "exp" / "experiment.toml"
-    path.parent.mkdir(parents=True)
-    path.touch()
     collaborators["read_experiment_config"].return_value.concurrency = 4
 
     start_experiment(make_config(tmp_path), "exp", None, None, drive())

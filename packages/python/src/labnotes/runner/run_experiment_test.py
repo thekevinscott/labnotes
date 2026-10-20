@@ -35,6 +35,10 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             ),
         ) as list_runs,
         mock.patch(
+            "labnotes.runner.run_experiment.experiment_run_ids",
+            new=mock.AsyncMock(return_value=set()),
+        ) as run_ids,
+        mock.patch(
             "labnotes.runner.run_experiment.param_grid", return_value=[A, B]
         ) as param_grid,
         mock.patch(
@@ -65,6 +69,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         yield {
             "open_tables": open_tables,
             "list_runs": list_runs,
+            "run_ids": run_ids,
             "param_grid": param_grid,
             "plan_runs": plan_runs,
             "new_stamped_run_id": new_stamped_run_id,
@@ -117,6 +122,9 @@ def test_adhoc_plans_every_run_again(
 ) -> None:
     run(tmp_path, mock.Mock(), mode="adhoc")
 
+    collaborators["run_ids"].assert_awaited_once_with(
+        collaborators["open_tables"].return_value, "exp"
+    )
     collaborators["list_runs"].assert_not_awaited()
     collaborators["plan_runs"].assert_called_once_with([A, B], 2, [])
 
@@ -161,10 +169,10 @@ def test_runs_each_planned_run_in_a_new_folder(
     ]
 
 
-def test_checks_new_stamped_run_ids_against_existing_folders(
+def test_checks_new_stamped_run_ids_against_existing_runs(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    (tmp_path / "exp" / "taken").mkdir(parents=True)
+    collaborators["run_ids"].return_value = {"taken"}
 
     run(tmp_path, mock.Mock())
 
@@ -175,7 +183,7 @@ def test_checks_new_stamped_run_ids_against_existing_folders(
 def test_nests_adhoc_runs_in_one_folder_per_command(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    (tmp_path / "exp" / "r1" / "taken").mkdir(parents=True)
+    collaborators["run_ids"].return_value = {"r1", "r1/taken"}
     listen, report = mock.Mock(), mock.Mock()
 
     async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:

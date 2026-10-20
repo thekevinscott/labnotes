@@ -128,6 +128,28 @@ def test_shows_each_run_and_the_outcome(
     asyncio.run(drive())
 
 
+def test_names_a_started_adhoc_run_without_its_invocation() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("inv/r1", "inv/r2"))
+        report(
+            {
+                "event": "started",
+                "run": "inv/r1",
+                "params": {"m": "a"},
+                "folder": "/runs/inv/r1",
+            }
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert [row[0] for row in rows(app)] == ["r1", "r2"]
+
+    asyncio.run(drive())
+
+
 def test_shows_planned_runs_as_dim_pending_rows() -> None:
     rendered = asyncio.Event()
 

@@ -128,7 +128,12 @@ class RunApp(App[None]):
                 if run == self.next_run:
                     self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                cells = (run, args, SPINNER[self.frame], format_elapsed(0))
+                cells = (
+                    run.rpartition("/")[2],
+                    args,
+                    SPINNER[self.frame],
+                    format_elapsed(0),
+                )
                 for column, cell in zip(COLUMNS, cells):
                     self.set_cell(run, column, cell)
             case "ended":

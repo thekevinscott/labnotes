@@ -84,5 +84,19 @@ def browse(
 
 
 @pytest.fixture
+def tmp_path(tmp_path: Path) -> Path:
+    # Real project roots run long; pytest's short default hides path-length
+    # limits such as the 107-byte AF_UNIX socket path.
+    deep = (
+        tmp_path
+        / "a-fairly-long-folder-name-for-research"
+        / "and-another-nested-one"
+        / "experiments-and-their-notes-live-here"
+    )
+    deep.mkdir(parents=True)
+    return deep
+
+
+@pytest.fixture
 def site(tmp_path: Path) -> Iterator[str]:
     yield from serve(project(tmp_path))

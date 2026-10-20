@@ -371,12 +371,18 @@ def test_restart_requires_json(app: Any, kernel_class: mock.MagicMock) -> None:
     assert getattr(raised.value, "status_code", None) == 415
 
 
-def put_note(app: Any, body: object, content_type: str = "application/json") -> Any:
+def note_endpoint(app: Any, method: str) -> Any:
     [endpoint] = [
         route.endpoint
         for route in app.routes
         if getattr(route, "path", None) == "/experiments/{name}/notes/{note:path}"
+        and method in route.methods
     ]
+    return endpoint
+
+
+def put_note(app: Any, body: object, content_type: str = "application/json") -> Any:
+    endpoint = note_endpoint(app, "PUT")
     request = mock.Mock(
         path_params={"name": "models-effort", "note": "PLAN.md"},
         headers={"content-type": content_type},
@@ -438,3 +444,50 @@ def test_put_requires_json(app: Any) -> None:
     with pytest.raises(Exception) as raised:
         put_note(app, {"base": NOTE, "content": "new"}, content_type="text/plain")
     assert getattr(raised.value, "status_code", None) == 415
+
+
+def test_get_returns_the_note_markdown_without_requiring_json(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    request = mock.Mock(
+        path_params={"name": "models-effort", "note": "PLAN.md"}, headers={}
+    )
+    request.app = app
+
+    response = asyncio.run(note_endpoint(app, "GET")(request))
+
+    assert response.body.decode() == NOTE
+    assert response.media_type == "text/markdown"
+    collaborators["experiment_notes"].assert_awaited_with(
+        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md"
+    )
+
+
+def test_get_rejects_an_unknown_note(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["experiment_notes"].return_value = []
+    request = mock.Mock(path_params={"name": "e", "note": "nope.md"}, headers={})
+    request.app = app
+
+    with pytest.raises(Exception) as raised:
+        asyncio.run(note_endpoint(app, "GET")(request))
+    assert getattr(raised.value, "status_code", None) == 404
+
+
+def test_streams_the_experiments_file_changes(app: Any) -> None:
+    [endpoint] = [
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/experiments/{name}/changes"
+    ]
+    request = mock.Mock(path_params={"name": "models-effort"})
+    request.app = app
+
+    with mock.patch(
+        "labnotes.create_app.file_changes", return_value=iter(["data: 1\n\n"])
+    ) as changes:
+        response = asyncio.run(endpoint(request))
+
+    assert response.media_type == "text/event-stream"
+    changes.assert_called_once_with(app.state.tables, "models-effort")

@@ -316,6 +316,15 @@ h3 {
 .run-row:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .run-row[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 6%, transparent); }
 .record-row td { background: var(--paper); }
+.group-row { cursor: pointer; background: var(--paper); }
+.group-row td { font-weight: 600; white-space: nowrap; }
+.group-row .good { color: var(--good); }
+.group-row .bad { color: var(--bad); }
+.group-toggle { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.group-toggle::before { content: "▸"; display: inline-block; width: 1rem; color: var(--ink-3); }
+.group-toggle[aria-expanded="true"]::before { content: "▾"; }
+.group:not(.open) > :not(.group-row) { display: none; }
+.group.open .run-row td:nth-child(2) { padding-left: 2rem; }
 
 /* Notes */
 .note {

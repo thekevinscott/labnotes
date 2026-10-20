@@ -47,6 +47,8 @@ export default defineConfig({
           text: 'Explanation',
           items: [
             { text: 'Overview', link: '/explanation/' },
+            { text: 'Ad hoc runs', link: '/explanation/adhoc-runs' },
+            { text: 'Fill runs', link: '/explanation/fill-runs' },
           ],
         },
       ],

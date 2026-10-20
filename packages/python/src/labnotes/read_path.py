@@ -11,13 +11,15 @@ PLACEHOLDERS = {
     "files": {"experiment"},
     "runs": {"experiment", "run"},
 }
+# Keys other readers own, so the path check lets them through.
+OTHER_KEYS = {"experiments": {"mode"}}
 PLACEHOLDER = re.compile(r"\{([^}]*)\}")
 
 
 def read_path(config: Path, table: str, section: object) -> str:
     if not isinstance(section, dict):
         raise ValueError(f"{config}: {table} must be a table, like [{table}]")
-    unknown = sorted(section.keys() - {"path"})
+    unknown = sorted(section.keys() - {"path", *OTHER_KEYS.get(table, ())})
     if unknown:
         raise ValueError(f"{config}: unknown keys in [{table}]: {', '.join(unknown)}")
     template = section.get("path", DEFAULT_PATHS[table])

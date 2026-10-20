@@ -49,6 +49,29 @@ def test_the_root_is_the_config_folder(
     assert (config.path, config.root) == (tmp_path / ".labnotes.toml", tmp_path)
 
 
+@pytest.mark.parametrize(
+    ("text", "mode"),
+    [
+        ("", "adhoc"),
+        ("[experiments]\n", "adhoc"),
+        ('[experiments]\nmode = "fill"\n', "fill"),
+    ],
+)
+def test_reads_the_project_mode(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, mode: str
+) -> None:
+    assert read_config(write(tmp_path, text)).mode == mode
+
+
+def test_rejects_an_unknown_mode(tmp_path: Path, read_path: mock.MagicMock) -> None:
+    path = write(tmp_path, '[experiments]\nmode = "once"\n')
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == f"{path}: [experiments] mode must be fill or adhoc"
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 

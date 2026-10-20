@@ -40,7 +40,10 @@ def drive() -> mock.Mock:
 
 def make_config(root: Path) -> mock.Mock:
     return mock.Mock(
-        root=root, experiments="notes/{experiment}", runs="data/{experiment}/{run}"
+        root=root,
+        experiments="notes/{experiment}",
+        runs="data/{experiment}/{run}",
+        mode="fill",
     )
 
 
@@ -54,7 +57,7 @@ def test_runs_the_experiment_under_a_lock(
 
     assert start_experiment(config, "exp", None, 2, drive()) == [{"exit_code": 0}]
 
-    collaborators["read_experiment_config"].assert_called_once_with(path)
+    collaborators["read_experiment_config"].assert_called_once_with(path, "fill")
     collaborators["runs_parent"].assert_called_once_with(tmp_path, config.runs, "exp")
     collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs" / "exp")
     assert (tmp_path / "runs" / "exp").is_dir()
@@ -94,7 +97,7 @@ def test_reads_the_named_experiment_config(
 
     start_experiment(make_config(tmp_path), "exp", path, 1, drive())
 
-    collaborators["read_experiment_config"].assert_called_once_with(path)
+    collaborators["read_experiment_config"].assert_called_once_with(path, "fill")
 
 
 def test_needs_an_experiment_config(

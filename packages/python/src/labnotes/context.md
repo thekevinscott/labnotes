@@ -59,7 +59,9 @@ renaming the experiment means editing `name`.
 Each combination of `[params]` runs `repeats` times (1 if omitted), round-robin, on every
 `run`, whatever is already on disk. That is `mode = "adhoc"`, the default.
 `mode = "fill"` counts what is there: only runs that count fill a combination,
-so running again fills in what failed or never ran.
+so running again fills in what failed or never ran. `mode` under
+`[experiments]` in `.labnotes.toml` sets it for every experiment that doesn't
+set its own.
 Each run gets a new run folder, named for the UTC time it was planned (`20261020-000429-brave-fox`), so folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.
@@ -90,13 +92,14 @@ A script run by labnotes should:
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish. Failed runs show their status in red; `h` hides or shows them, and `r` on one
-runs it again under a new id. Runs not started yet show grayed as `pending`, and as
+open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one
+runs it again under a new id. `j` and `k` move the cursor, `g` and `G` jump to the
+first and last row. Runs not started yet show grayed as `pending`, and as
 `skipped` once stopped. Move the cursor to a pending run and press `n` to run it
-next. `d` deselects a pending run so it won't run; `d` again puts it back at
+next. Space deselects a pending run so it won't run; Space again puts it back at
 the end of the queue. `/` filters rows by params text; Enter keeps the filter,
-Escape clears it. `D` deselects every pending run the filter shows. `k` stops the
-running run under the cursor; `k` again kills it. `+` and
+Escape clears it. `D` deselects every pending run the filter shows. `x` stops the
+running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
 they're written, and Escape returns to the table. An `adhoc` experiment that

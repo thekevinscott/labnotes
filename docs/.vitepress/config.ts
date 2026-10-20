@@ -23,6 +23,7 @@ export default defineConfig({
           { text: 'Getting Started', link: '/getting-started' },
           { text: 'CLI', link: '/cli' },
           { text: 'Frontend', link: '/frontend' },
+          { text: 'Skill', link: '/skill' },
         ],
       },
       {

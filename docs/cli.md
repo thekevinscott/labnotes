@@ -53,11 +53,3 @@ Dynamic parameters get recorded for a particular run in a run.json file in the r
 Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI allows you to queue specific runs to go next, or filter by a parameter and deselect pending runs so they don't run. You can also raise or lower concurrency dynamically. You can also kill specific runs. Failed runs show in red; you can retry them or hide them.
 
 ctrl-c stops all runs and cleans up. A second ctrl-c kills them immediately.
-
-## Skill
-
-You can install the `labnotes` skill with:
-
-```bash
-npx skills add thekevinscott/labnotes
-```

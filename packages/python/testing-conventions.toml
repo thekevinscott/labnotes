@@ -15,3 +15,9 @@ path = "src/labnotes/runner/run_experiment.py"
 rules = ["mutation"]
 lines = [47]
 reason = "mode is validated to fill or adhoc; \"fill\" <= \"adhoc\" is false like ==, and both are interned literals so is equals =="
+
+[[python.exempt]]
+path = "src/labnotes/load_experiment.py"
+rules = ["mutation"]
+lines = [59]
+reason = "summarize_config returns mode fill or adhoc; \"fill\" <= \"adhoc\" is false like ==, and both are interned literals so is equals =="

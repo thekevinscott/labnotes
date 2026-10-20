@@ -10,8 +10,10 @@ from labnotes.count_runs import count_runs
 from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
 from labnotes.format_value import format_value
+from labnotes.group_runs import group_runs
 from labnotes.list_runs import list_runs
 from labnotes.models import QueryParams
+from labnotes.nests_runs import nests_runs
 from labnotes.parse_run_view import parse_run_view
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
@@ -53,6 +55,8 @@ async def load_experiment(
     view = parse_run_view(params, shown, choices)
     [totals] = await count_runs(tables, source, str(summary["completed_run"]))
     notes = await experiment_notes(tables, root, name)
+    runs = await list_runs(tables, source, str(summary["completed_run"]), view)
+    nested = summary["mode"] == "adhoc" and await nests_runs(tables, source)
     return {
         "name": row["name"],
         "display_name": row["display_name"],
@@ -71,9 +75,8 @@ async def load_experiment(
             }
             for note in notes
         ],
-        "runs_list": await list_runs(
-            tables, source, str(summary["completed_run"]), view
-        ),
+        "runs_list": runs,
+        "run_groups": group_runs(runs) if nested else None,
         "run_columns": shown,
         "run_view": view,
         "run_choices": choices,

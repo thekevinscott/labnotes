@@ -11,7 +11,14 @@ if (summary) {
   dialog.querySelector(".config-close").addEventListener("click", () => dialog.close());
 }
 
+const expand = (group, open) => {
+  group.classList.toggle("open", open);
+  group.querySelector(".group-toggle").setAttribute("aria-expanded", String(open));
+};
+
 document.addEventListener("click", (event) => {
+  const header = event.target.closest(".group-row");
+  if (header) expand(header.parentElement, !header.parentElement.classList.contains("open"));
   const row = event.target.closest(".run-row");
   if (!row || getSelection().toString()) return;
   const record = row.nextElementSibling;
@@ -43,8 +50,13 @@ if (filters) {
     runs.querySelector(".narrowed")?.remove();
     const narrowed = fresh.querySelector(".narrowed");
     if (narrowed) runs.prepend(narrowed);
-    for (const part of ["thead tr:first-child", "tbody"]) {
-      runs.querySelector(part).replaceWith(fresh.querySelector(part));
+    runs.querySelector("thead tr").replaceWith(fresh.querySelector("thead tr"));
+    const table = runs.querySelector("table");
+    const opened = new Set([...table.querySelectorAll(".group.open")].map((group) => group.dataset.name));
+    for (const body of table.querySelectorAll("tbody")) body.remove();
+    for (const body of fresh.querySelectorAll("tbody")) {
+      table.append(body);
+      if (opened.has(body.dataset.name)) expand(body, true);
     }
     const summaries = fresh.querySelectorAll(".pick summary");
     runs.querySelectorAll(".pick summary").forEach((summary, index) => {

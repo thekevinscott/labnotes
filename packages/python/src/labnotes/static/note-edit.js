@@ -4,6 +4,7 @@ if (note) {
   const prose = note.querySelector(".prose");
   const status = note.querySelector(".edit-status");
   const editor = import(note.dataset.editor);
+  const source = JSON.parse(note.querySelector(".note-source").textContent);
   let editing = null;
 
   editor.then(
@@ -29,7 +30,13 @@ if (note) {
 
   new EventSource(note.dataset.changesUrl).addEventListener("message", (event) => {
     if (JSON.parse(event.data) !== note.dataset.note) return;
-    if (editing) editing.pull();
-    else location.reload();
+    if (editing) return editing.pull();
+    // A touch or a duplicate event leaves the text alone, and reloading then
+    // would swallow a click that is opening the editor.
+    fetch(note.dataset.saveUrl, { cache: "no-store" })
+      .then((response) => response.text())
+      .then((text) => {
+        if (text !== source) location.reload();
+      });
   });
 }

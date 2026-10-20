@@ -53,6 +53,8 @@
 {% else %}
 <section id="runs">
   {% set view = e.run_view %}
+  {% set nested = e.run_groups is not none %}
+  {% set width = e.run_columns | length + (2 if nested else 1) %}
   {% set narrowed = view.status or view.filters or view.picked %}
   {% if narrowed %}<p class="narrowed"><span class="num">{{ e.runs_list | length }}</span> of <span class="num">{{ e.runs }}</span> <a class="clear" href="{{ '?sort=' ~ (view.sort | urlencode) ~ ('&order=desc' if view.descending else '') if view.sort else '?' }}#runs">Clear filters</a></p>{% endif %}
   {% if e.runs %}
@@ -68,6 +70,7 @@
         {% for column in ['status'] + e.run_columns %}
         {% set sorted = view.sort == column %}
         <th scope="col"{% if sorted %} aria-sort="{{ 'descending' if view.descending else 'ascending' }}"{% endif %}><a class="sort{{ ' sorted' if sorted }}" href="{{ e.sort_hrefs[column] }}" title="Sort by {{ column }}">{{ '' if column == 'status' else column }}{% if sorted %}<span class="arrow">{{ '↓' if view.descending else '↑' }}</span>{% endif %}</a></th>
+        {% if nested and column == 'id' %}<th scope="col">runs</th>{% endif %}
         {% endfor %}
       </tr>
       <tr class="filters">
@@ -79,17 +82,16 @@
         {% for column in e.run_columns %}<td>{% if column in e.run_choices %}{% set picked = view.picked.get(column, {}) %}<details class="pick">
           <summary aria-label="Filter {{ column }}">{{ picked | join(', ') if picked else 'all' }}</summary>
           <div class="options">{% for label in e.run_choices[column] %}<label><input form="run-filters" type="checkbox" name="f.{{ column }}" value="{{ label }}"{{ ' checked' if label in picked }}> {{ label }}</label>{% endfor %}</div>
-        </details>{% else %}<input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endif %}</td>{% endfor %}
+        </details>{% else %}<input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endif %}</td>{% if nested and loop.first %}<td></td>{% endif %}{% endfor %}
       </tr>
     </thead>
-    <tbody>
-      {% for run in e.runs_list %}
+    {% macro run_rows(run) %}
       <tr class="run-row" aria-expanded="false">
         <td><span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span></td>
-        {% for column in e.run_columns %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else run[column] | value }}</td>{% endfor %}
+        {% for column in e.run_columns %}{% if column == 'id' and nested %}<td class="mono">{{ run.id.partition('/')[2] or run.id }}</td><td></td>{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else run[column] | value }}</td>{% endif %}{% endfor %}
       </tr>
       <tr class="record-row" hidden>
-        <td colspan="{{ e.run_columns | length + 1 }}">
+        <td colspan="{{ width }}">
           <dl class="record">
             {% for key, value in run.items() if key != 'labnotes_completed' %}
             <dt>{{ key }}</dt>
@@ -99,10 +101,29 @@
           </dl>
         </td>
       </tr>
+    {% endmacro %}
+    {% if nested %}
+    {% for group in e.run_groups %}
+    <tbody class="group" data-name="{{ group.name }}">
+      <tr class="group-row">
+        <td class="num" title="{{ group.passed }} passed, {{ group.failed }} failed"><span class="good">{{ group.passed }}✓</span> <span class="bad">{{ group.failed }}✕</span></td>
+        <td class="mono"><button type="button" class="group-toggle" aria-expanded="false">{{ group.name }}</button></td>
+        <td class="num">{{ group.runs | length }}</td>
+        {% for column in e.run_columns[1:] %}<td>{{ group.started or '' if column == 'started' }}</td>{% endfor %}
+      </tr>
+      {% for run in group.runs %}{{ run_rows(run) }}{% endfor %}
+    </tbody>
+    {% else %}
+    <tbody><tr><td class="empty" colspan="{{ width }}">No runs match these filters.</td></tr></tbody>
+    {% endfor %}
+    {% else %}
+    <tbody>
+      {% for run in e.runs_list %}{{ run_rows(run) }}
       {% else %}
-      <tr><td class="empty" colspan="{{ e.run_columns | length + 1 }}">No runs match these filters.</td></tr>
+      <tr><td class="empty" colspan="{{ width }}">No runs match these filters.</td></tr>
       {% endfor %}
     </tbody>
+    {% endif %}
   </table>
   </div>
   {% else %}

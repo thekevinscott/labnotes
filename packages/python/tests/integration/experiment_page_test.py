@@ -130,6 +130,72 @@ def test_picks_any_of_a_params_values(site: str) -> None:
     browse(f"{site}/experiments/alpha", check)
 
 
+ADHOC = 'command = "go"\nmode = "adhoc"\n[params]\nm = ["a", "b"]\n'
+LAKE = "20261020-105052-lake"
+POND = "20261019-090000-pond"
+
+
+def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=1)
+    run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        groups = page.locator(".group-row")
+        one = page.get_by_role("cell", name="one1", exact=True)
+        await expect(groups).to_have_count(2)
+        await expect(groups.first).to_contain_text(LAKE)
+        await expect(groups.first).to_contain_text("2026-10-20 10:50:52")
+        await expect(
+            groups.first.get_by_role("cell", name="2", exact=True)
+        ).to_be_visible()
+        await expect(groups.first).to_contain_text("1✓ 1✕")
+        await expect(groups.last).to_contain_text(POND)
+        await expect(one).to_be_hidden()
+
+        await page.get_by_role("button", name=LAKE).click()
+
+        await expect(one).to_be_visible()
+        await expect(page.get_by_role("cell", name="three3", exact=True)).to_be_hidden()
+        await one.click()
+        await expect(page.get_by_text(f"{LAKE}/one1", exact=True)).to_be_visible()
+
+        await page.get_by_label("Filter m").click()
+        await page.get_by_role("checkbox", name="b").check()
+
+        await expect(one).to_have_count(0)
+        await expect(page.get_by_role("cell", name="two2", exact=True)).to_be_visible()
+        await expect(groups).to_have_count(1)
+
+        await groups.first.click()
+
+        await expect(page.get_by_role("cell", name="two2", exact=True)).to_be_hidden()
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
+def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{POND}/three3", {"m": "b"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        await expect(page.get_by_role("cell", name=f"{LAKE}/one1")).to_be_visible()
+        await expect(page.locator(".group-row")).to_have_count(0)
+
+        await page.get_by_label("Filter id").fill("three")
+
+        await expect(page.get_by_role("cell", name=f"{LAKE}/one1")).to_have_count(0)
+        await expect(page.locator(".group-row")).to_have_count(0)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
 def test_switches_between_notebooks(site: str) -> None:
     async def check(page: Page) -> None:
         await page.get_by_role("link", name="Notebooks 2").click()

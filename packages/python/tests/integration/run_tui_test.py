@@ -1,5 +1,6 @@
 import shlex
 import sys
+import time
 from pathlib import Path
 
 from curtaincall import Terminal, expect
@@ -26,7 +27,7 @@ def run_tui(terminal, tmp_path: Path, repeats: int) -> Terminal:
 
 def test_escape_backs_out_of_a_runs_output(terminal, tmp_path: Path) -> None:
     term = run_tui(terminal, tmp_path, 2)
-    expect(term.get_by_text("2 runs to go")).to_be_visible()
+    expect(term.get_by_text("1 at a time")).to_be_visible()
 
     term.key_enter()
     expect(term.get_by_text("line 3")).to_be_visible()
@@ -45,5 +46,27 @@ def test_escape_backs_out_of_a_lone_adhoc_run(terminal, tmp_path: Path) -> None:
     term.key_escape()
     expect(term.get_by_text("params")).to_be_visible()
     expect(term.get_by_text("line 3")).not_to_be_visible()
+
+    term.key_ctrl_c()
+
+
+def test_coming_back_to_a_run_shows_its_output_so_far_and_keeps_following(
+    terminal, tmp_path: Path
+) -> None:
+    term = run_tui(terminal, tmp_path, 2)
+    expect(term.get_by_text("params")).to_be_visible()
+    time.sleep(1)
+
+    term.key_enter()
+    expect(term.get_by_text("line 0")).to_be_visible()
+    expect(term.get_by_text("line 3")).to_be_visible()
+
+    term.key_escape()
+    expect(term.get_by_text("line 3")).not_to_be_visible()
+    time.sleep(1)
+
+    term.key_enter()
+    expect(term.get_by_text("line 0")).to_be_visible()
+    expect(term.get_by_text("line 15")).to_be_visible()
 
     term.key_ctrl_c()

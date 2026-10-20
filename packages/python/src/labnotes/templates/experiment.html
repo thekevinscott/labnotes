@@ -88,12 +88,12 @@
     {% endmacro %}
     {% if nested %}
     {% for group in e.run_groups %}
-    <tbody class="group" data-name="{{ group.name }}">
+    <tbody class="group{{ ' open' if narrowed }}" data-name="{{ group.name }}">
       <tr class="group-row">
         <td class="num" title="{{ group.passed }} passed, {{ group.failed }} failed"><span class="good">{{ group.passed }}✓</span> <span class="bad">{{ group.failed }}✕</span></td>
-        <td class="mono"><button type="button" class="group-toggle" aria-expanded="false">{{ group.name }}</button></td>
-        <td class="num">{{ group.runs | length }}</td>
-        {% for column in e.run_columns[1:] %}<td>{{ group.started | started if column == 'started' and group.started }}</td>{% endfor %}
+        <td class="mono"><button type="button" class="group-toggle" aria-expanded="{{ 'true' if narrowed else 'false' }}">{{ group.name }}</button></td>
+        <td class="num">{{ group.runs | length }}{% if narrowed %} of {{ group.total }}{% endif %}</td>
+        {% for column in e.run_columns[1:] %}<td>{% if column == 'started' %}{{ group.started | started if group.started }}{% elif column in group.shared %}{{ group.shared[column] | value }}{% endif %}</td>{% endfor %}
       </tr>
       {% for run in group.runs %}{{ run_rows(run) }}{% endfor %}
     </tbody>

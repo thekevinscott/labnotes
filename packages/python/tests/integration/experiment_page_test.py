@@ -225,6 +225,41 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check, timezone_id="America/New_York")
 
 
+def test_opens_groups_to_show_what_a_filter_matched(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=0)
+    run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{POND}/four4", {"m": "a"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        lake = page.locator(".group-row").filter(has_text=LAKE)
+        pond = page.locator(".group-row").filter(has_text=POND)
+        one = page.get_by_role("cell", name="one1", exact=True)
+        three = page.get_by_role("cell", name="three3", exact=True)
+        await expect(lake.get_by_role("cell").nth(3)).to_have_text("")
+        await expect(pond.get_by_role("cell").nth(3)).to_have_text("a")
+        await page.get_by_role("button", name=POND).click()
+
+        await page.get_by_label("Filter m").click()
+        await page.get_by_role("checkbox", name="a").check()
+
+        await expect(one).to_be_visible()
+        await expect(lake.get_by_role("cell").nth(2)).to_have_text("1 of 2")
+        await expect(lake.get_by_role("cell").nth(3)).to_have_text("a")
+        await expect(pond.get_by_role("cell").nth(2)).to_have_text("2 of 2")
+
+        await page.get_by_role("checkbox", name="a").uncheck()
+
+        await expect(lake.get_by_role("cell").nth(2)).to_have_text("2")
+        await expect(one).to_be_hidden()
+        await expect(three).to_be_visible()
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
 def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(tmp_path / "alpha/experiment.toml", ADHOC)

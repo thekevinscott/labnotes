@@ -30,6 +30,7 @@ class RunView:
     descending: bool = False
     status: str | None = None
     filters: dict[str, str] = field(default_factory=dict)
+    picked: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

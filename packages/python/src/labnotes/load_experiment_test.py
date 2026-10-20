@@ -6,6 +6,7 @@ from typing import cast
 from unittest import mock
 
 import pytest
+from starlette.datastructures import QueryParams
 
 from labnotes.load_experiment import load_experiment
 
@@ -83,7 +84,7 @@ def test_loads_config_notes_progress_and_runs(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     tables = make_tables(experiment())
-    params = {"sort": "x", "f.x": "1"}
+    params = QueryParams("sort=x&f.x=1")
 
     loaded = asyncio.run(load_experiment(tables, ROOT, "adhoc", "it's", params))
 
@@ -106,7 +107,11 @@ def test_loads_config_notes_progress_and_runs(
     )
     collaborators["experiment_notes"].assert_awaited_once_with(tables, ROOT, "it's")
     view = collaborators["parse_run_view"].return_value
-    collaborators["parse_run_view"].assert_called_once_with(params, ["id", "x", "y"])
+    choices = {"x": {"1": "1", "2": "2"}, "y": {"a": '"a"'}}
+    collaborators["parse_run_view"].assert_called_once_with(
+        params, ["id", "x", "y"], choices
+    )
+    assert loaded["run_choices"] == choices
     source = collaborators["list_runs"].await_args.args[1]
     assert source.endswith("FROM runs WHERE experiment = 'it''s')")
     assert '"x", params' in source
@@ -131,7 +136,9 @@ def test_shows_only_id_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(None)), ROOT, "adhoc", "a", {})
+        load_experiment(
+            make_tables(experiment(None)), ROOT, "adhoc", "a", QueryParams()
+        )
     )
 
     assert loaded is not None
@@ -144,7 +151,9 @@ def test_falls_back_to_the_project_mode(
     config = {key: value for key, value in CONFIG.items() if key != "mode"}
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(config)), ROOT, "fill", "a", {})
+        load_experiment(
+            make_tables(experiment(config)), ROOT, "fill", "a", QueryParams()
+        )
     )
 
     assert loaded is not None
@@ -155,7 +164,10 @@ def test_returns_none_for_an_unknown_experiment(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     assert (
-        asyncio.run(load_experiment(make_tables([]), ROOT, "adhoc", "nope", {})) is None
+        asyncio.run(
+            load_experiment(make_tables([]), ROOT, "adhoc", "nope", QueryParams())
+        )
+        is None
     )
 
 
@@ -165,11 +177,14 @@ def test_lists_a_param_named_id_once(
     config = {**CONFIG, "params": {"id": [1], "a": [2]}}
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(config)), ROOT, "adhoc", "a", {})
+        load_experiment(
+            make_tables(experiment(config)), ROOT, "adhoc", "a", QueryParams()
+        )
     )
 
     assert loaded is not None
     assert loaded["run_columns"] == ["id", "a"]
+    assert loaded["run_choices"] == {"a": {"2": "2"}}
 
 
 def test_renders_notes_with_their_saved_outputs(
@@ -182,7 +197,9 @@ def test_renders_notes_with_their_saved_outputs(
         return ["<out>"]
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", {}, outputs_for)
+        load_experiment(
+            make_tables(experiment()), ROOT, "adhoc", "a", QueryParams(), outputs_for
+        )
     )
 
     assert loaded is not None
@@ -198,7 +215,7 @@ def test_marks_notes_without_python_blocks_as_not_runnable(
     collaborators["python_blocks"].return_value = []
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", {})
+        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", QueryParams())
     )
 
     assert loaded is not None
@@ -213,7 +230,9 @@ def test_notes_a_counts_rule_set_in_the_config(
     config = {**CONFIG, "counts": "exit_code = 0"}
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(config)), ROOT, "adhoc", "a", {})
+        load_experiment(
+            make_tables(experiment(config)), ROOT, "adhoc", "a", QueryParams()
+        )
     )
 
     assert loaded is not None
@@ -224,7 +243,9 @@ def test_has_no_counts_rule_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(None)), ROOT, "adhoc", "a", {})
+        load_experiment(
+            make_tables(experiment(None)), ROOT, "adhoc", "a", QueryParams()
+        )
     )
 
     assert loaded is not None

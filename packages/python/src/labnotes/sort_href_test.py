@@ -8,9 +8,14 @@ def make_view(
     descending: bool = False,
     status: str | None = None,
     filters: dict[str, str] | None = None,
+    picked: dict[str, dict[str, str]] | None = None,
 ) -> mock.Mock:
     return mock.Mock(
-        sort=sort, descending=descending, status=status, filters=filters or {}
+        sort=sort,
+        descending=descending,
+        status=status,
+        filters=filters or {},
+        picked=picked or {},
     )
 
 
@@ -37,3 +42,9 @@ def test_keeps_status_and_filters() -> None:
     assert sort_href(view, "run_id") == (
         "?sort=run_id&status=complete&f.run_id=a+b#runs"
     )
+
+
+def test_repeats_a_column_for_each_picked_value() -> None:
+    view = make_view(picked={"model": {"a b": '"a b"', "c": '"c"'}})
+
+    assert sort_href(view, "model") == "?sort=model&f.model=a+b&f.model=c#runs"

@@ -1,14 +1,16 @@
 import json
-from collections.abc import Callable, Mapping, Sequence
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import cast
 
 from dirsql import DirSQL
+from starlette.datastructures import ImmutableMultiDict
 
 from labnotes.check_counts import check_counts
 from labnotes.count_runs import count_runs
 from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
+from labnotes.format_value import format_value
 from labnotes.list_runs import list_runs
 from labnotes.parse_run_view import parse_run_view
 from labnotes.python_blocks import python_blocks
@@ -27,7 +29,7 @@ async def load_experiment(
     root: Path,
     mode: str,
     name: str,
-    params: Mapping[str, str],
+    params: ImmutableMultiDict[str, str],
     outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
 ) -> dict[str, object] | None:
     found = await tables.query(
@@ -43,7 +45,12 @@ async def load_experiment(
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)
     shown = ["id", *(key for key in varies if key != "id")]
-    view = parse_run_view(params, shown)
+    choices = {
+        key: {format_value(value): json.dumps(value) for value in values}
+        for key, values in varies.items()
+        if key != "id"
+    }
+    view = parse_run_view(params, shown, choices)
     [totals] = await count_runs(tables, source, str(summary["completed_run"]))
     notes = await experiment_notes(tables, root, name)
     return {
@@ -68,6 +75,7 @@ async def load_experiment(
         ),
         "run_columns": shown,
         "run_view": view,
+        "run_choices": choices,
         "sort_hrefs": {
             column: sort_href(view, column) for column in ["status", *shown]
         },

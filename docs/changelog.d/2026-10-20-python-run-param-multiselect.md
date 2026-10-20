@@ -1,0 +1,1 @@
+**Added** — In the runs table of `labnotes server`, a param from `experiment.toml` filters through a dropdown of its values. Pick one or more to show runs with any of them. The URL repeats the param once per value (`?f.model=a&f.model=b`). The id column and other free-text columns keep their text box.

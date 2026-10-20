@@ -276,6 +276,39 @@ h3 {
   border-radius: 5px;
 }
 .runs-table .filters select { padding: 0.1rem 0; }
+.runs-table .pick { position: relative; }
+.runs-table .pick summary {
+  list-style: none;
+  cursor: pointer;
+  font-size: 0.82rem;
+  padding: 0.1rem 0.4rem;
+  color: var(--ink);
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.runs-table .pick summary::-webkit-details-marker { display: none; }
+.runs-table .pick[open] summary, .runs-table .pick summary:focus-visible { outline: none; border-color: var(--accent); }
+.runs-table .pick .options {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + 0.25rem);
+  left: 0;
+  min-width: 100%;
+  max-height: 16rem;
+  overflow: auto;
+  padding: 0.3rem 0;
+  background: var(--surface);
+  border: 1px solid var(--rule);
+  border-radius: 5px;
+  box-shadow: 0 4px 12px rgb(0 0 0 / 0.08);
+}
+.runs-table .pick label { display: flex; gap: 0.45rem; align-items: center; padding: 0.2rem 0.6rem; font-size: 0.82rem; white-space: nowrap; cursor: pointer; }
+.runs-table .pick label:hover { background: var(--paper); }
+.runs-table .filters .pick input { width: auto; }
 .runs-table .filters input:focus, .runs-table .filters select:focus { outline: none; border-color: var(--accent); }
 .runs-table tbody tr:last-child td { border-bottom: 0; }
 .run-row { cursor: pointer; }

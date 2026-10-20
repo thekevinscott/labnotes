@@ -926,6 +926,14 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                 app.follow()
                 await pilot.pause()
                 assert output(app) == ["café done", "next", "oops", "more", ""]
+                with (tmp_path / "stderr.log").open("a") as log:
+                    log.write("warn")
+                app.follow()
+                with (tmp_path / "stdout.log").open("a") as log:
+                    log.write("end\n")
+                app.follow()
+                await pilot.pause()
+                assert output(app)[-4:] == ["more", "warn", "end", ""]
                 await pilot.press("escape")
                 assert not app.query_one("#output").display
                 assert app.query_one("#runs").display
@@ -950,6 +958,62 @@ def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
                 await pilot.press("enter")
                 app.follow()
                 assert output(app) == []
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize("stdout", [None, ""])
+def test_follows_stderr_without_stdout(tmp_path: Path, stdout: str | None) -> None:
+    if stdout is not None:
+        (tmp_path / "stdout.log").write_text(stdout)
+    (tmp_path / "stderr.log").write_text("oops\n")
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report(
+            {"event": "started", "run": "r1", "params": {"m": "r1"}, "folder": tmp_path}
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("enter")
+                await pilot.pause()
+                assert output(app) == ["oops", ""]
+
+    asyncio.run(drive())
+
+
+def test_starts_each_run_with_fresh_decoders(tmp_path: Path) -> None:
+    for run, data in (("r1", b"cut \xe2\x82"), ("r2", b"hi\n")):
+        (tmp_path / run).mkdir()
+        (tmp_path / run / "stdout.log").write_bytes(data)
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        for run in ("r1", "r2"):
+            report(
+                {
+                    "event": "started",
+                    "run": run,
+                    "params": {"m": run},
+                    "folder": tmp_path / run,
+                }
+            )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.view("r1")
+                app.view("r2")
+                await pilot.pause()
+                assert output(app) == ["hi", ""]
 
     asyncio.run(drive())
 

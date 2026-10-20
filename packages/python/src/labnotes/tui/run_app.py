@@ -68,8 +68,8 @@ class RunApp(App[None]):
             stream: codecs.getincrementaldecoder("utf-8")(errors="replace")
             for stream in STREAMS
         }
-        self.last_stream: str | None = None
-        self.mid_line = False
+        self.last_stream: str | None
+        self.mid_line: bool
 
     def compose(self) -> ComposeResult:
         yield Header()

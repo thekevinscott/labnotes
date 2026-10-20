@@ -21,6 +21,7 @@ export default defineConfig({
         items: [
           { text: 'Getting Started', link: '/getting-started' },
           { text: 'Philosophy', link: '/philosophy' },
+          { text: 'Config', link: '/config' },
         ],
       },
     ],

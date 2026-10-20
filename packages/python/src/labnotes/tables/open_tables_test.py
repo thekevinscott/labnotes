@@ -93,3 +93,11 @@ def test_experiments_carry_the_config_source(dirsql: dict[str, mock.MagicMock]) 
     ddl = str(tables(dirsql)["experiment_configs"]["ddl"])
     assert "config TEXT, source TEXT" in ddl
     assert "experiment_configs.source\n" in ddl
+
+
+def test_files_carry_a_nanosecond_mtime_so_quick_edits_change_the_row(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
+    open_tables(CONFIG)
+
+    assert "mtime_ns INTEGER" in str(tables(dirsql)["files"]["ddl"])

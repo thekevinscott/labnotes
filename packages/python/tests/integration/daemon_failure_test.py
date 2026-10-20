@@ -1,6 +1,8 @@
 import shlex
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from curtaincall import expect
@@ -46,15 +48,24 @@ def assert_one_line_error(err: str, cause: str) -> None:
     assert cause in lines[0]
 
 
-def test_exits_non_zero_when_the_daemon_socket_cannot_be_used(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
-) -> None:
-    monkeypatch.setattr(
-        "labnotes.daemon.daemon_running.socket_path", lambda root: TOO_LONG
-    )
+@pytest.fixture
+def unusable_socket() -> Iterator[None]:
+    with mock.patch(
+        "labnotes.daemon.daemon_running.socket_path", return_value=TOO_LONG
+    ):
+        yield
 
+
+@pytest.fixture
+def missing_socket() -> Iterator[None]:
+    with mock.patch("labnotes.daemon.daemon_client.socket_path", return_value=MISSING):
+        yield
+
+
+@pytest.mark.usefixtures("unusable_socket")
+def test_exits_non_zero_when_the_daemon_socket_cannot_be_used(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
     assert run(make_project(tmp_path)) == 1
 
     out, err = capsys.readouterr()
@@ -62,15 +73,10 @@ def test_exits_non_zero_when_the_daemon_socket_cannot_be_used(
     assert_one_line_error(err, "AF_UNIX path too long")
 
 
+@pytest.mark.usefixtures("missing_socket")
 def test_exits_non_zero_when_the_daemon_cannot_be_reached(
-    tmp_path: Path,
-    monkeypatch: pytest.MonkeyPatch,
-    capsys: pytest.CaptureFixture[str],
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    monkeypatch.setattr(
-        "labnotes.daemon.daemon_client.socket_path", lambda root: MISSING
-    )
-
     assert run(make_project(tmp_path)) == 1
 
     out, err = capsys.readouterr()

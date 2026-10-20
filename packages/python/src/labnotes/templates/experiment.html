@@ -79,10 +79,10 @@
           <option value="complete"{{ ' selected' if view.status == 'complete' }}>✓</option>
           <option value="incomplete"{{ ' selected' if view.status == 'incomplete' }}>✕</option>
         </select></td>
-        {% for column in e.run_columns %}<td>{% if column in e.run_choices %}{% set picked = view.picked.get(column, {}) %}<details class="pick">
+        {% for column in e.run_columns %}<td>{% if column in e.run_choices %}{% if e.run_choices[column] | length > 1 %}{% set picked = view.picked.get(column, {}) %}<details class="pick">
           <summary aria-label="Filter {{ column }}">{{ picked | join(', ') if picked else 'all' }}</summary>
           <div class="options">{% for label in e.run_choices[column] %}<label><input form="run-filters" type="checkbox" name="f.{{ column }}" value="{{ label }}"{{ ' checked' if label in picked }}> {{ label }}</label>{% endfor %}</div>
-        </details>{% else %}<input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endif %}</td>{% if nested and loop.first %}<td></td>{% endif %}{% endfor %}
+        </details>{% endif %}{% else %}<input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endif %}</td>{% if nested and loop.first %}<td></td>{% endif %}{% endfor %}
       </tr>
     </thead>
     {% macro run_rows(run) %}

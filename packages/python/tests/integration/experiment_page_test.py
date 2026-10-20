@@ -123,6 +123,25 @@ def test_picks_any_of_a_params_values(site: str) -> None:
     browse(f"{site}/experiments/alpha", check)
 
 
+def test_offers_no_filter_for_a_param_with_one_value(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(
+        tmp_path / "alpha/experiment.toml",
+        'command = "go"\n[params]\nm = ["a", "b"]\nk = "same"\nj = ["one"]\n',
+    )
+    run(tmp_path, "run1", {"m": "a", "k": "same", "j": "one"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        table = page.get_by_role("table")
+        for column in ("k", "j"):
+            await expect(table.get_by_role("columnheader", name=column)).to_be_visible()
+            await expect(page.get_by_label(f"Filter {column}")).to_have_count(0)
+        await expect(page.get_by_label("Filter m")).to_be_visible()
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
 ADHOC = 'command = "go"\nmode = "adhoc"\n[params]\nm = ["a", "b"]\n'
 LAKE = "20261020-105052-lake"
 POND = "20261019-090000-pond"

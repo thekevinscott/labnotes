@@ -43,9 +43,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.create_app.drain_watch", new_callable=mock.AsyncMock
         ) as drain,
         mock.patch(
-            "labnotes.create_app.stop_idle_kernels", new_callable=mock.AsyncMock
-        ) as stop_idle_kernels,
-        mock.patch(
             "labnotes.create_app.list_experiments",
             new_callable=mock.AsyncMock,
             return_value=[EXPERIMENT],
@@ -63,7 +60,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "open_tables": open_tables,
             "experiment_notes": experiment_notes,
             "drain_watch": drain,
-            "stop_idle_kernels": stop_idle_kernels,
             "list_experiments": list_experiments,
             "load_experiment": load_experiment,
             "templates": templates,
@@ -72,7 +68,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
 
 @pytest.fixture
 def app(collaborators: dict[str, mock.MagicMock]) -> Iterator[Any]:
-    app = create_app(CONFIG, 30)
+    app = create_app(CONFIG)
 
     async def run_lifespan() -> None:
         async with app.router.lifespan_context(app):
@@ -156,7 +152,7 @@ def test_builds_without_deprecation_warnings(
 ) -> None:
     with warnings.catch_warnings():
         warnings.simplefilter("error")
-        create_app(CONFIG, 30)
+        create_app(CONFIG)
 
 
 def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) -> None:
@@ -170,7 +166,7 @@ def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) ->
             raise
 
     collaborators["drain_watch"].side_effect = watch_forever
-    app = create_app(CONFIG, 30)
+    app = create_app(CONFIG)
 
     async def run_lifespan() -> list[object]:
         async with app.router.lifespan_context(app):
@@ -282,7 +278,7 @@ def test_experiment_page_shows_outputs_of_blocks_already_run(
 def test_stops_kernels_on_shutdown(
     collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
 ) -> None:
-    app = create_app(CONFIG, 30)
+    app = create_app(CONFIG)
 
     async def lifecycle() -> None:
         async with app.router.lifespan_context(app):
@@ -302,23 +298,6 @@ def test_stops_kernels_on_shutdown(
     asyncio.run(lifecycle())
 
     kernel_class.return_value.stop.assert_awaited_once()
-
-
-def test_stops_idle_kernels_in_the_background(
-    collaborators: dict[str, mock.MagicMock], kernel_class: mock.MagicMock
-) -> None:
-    app = create_app(CONFIG, 7)
-
-    async def lifecycle() -> None:
-        async with app.router.lifespan_context(app):
-            await asyncio.sleep(0)
-
-    asyncio.run(lifecycle())
-    post_run(app, {"block": 0})
-
-    kernels, idle_minutes = collaborators["stop_idle_kernels"].await_args.args
-    assert idle_minutes == 7
-    assert kernels == {("models-effort", "PLAN.md"): kernel_class.return_value}
 
 
 def test_restart_stops_the_note_kernel_and_keeps_it(

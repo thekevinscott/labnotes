@@ -100,38 +100,4 @@ def test_server_help_shows_the_bind_defaults_and_uvicorn_options(
     out = " ".join(capsys.readouterr().out.split())
     assert "[default: 127.0.0.1]" in out
     assert "[default: 8000]" in out
-    assert "--kernel-idle-minutes INTEGER RANGE" in out
-    assert "[default: 30;" in out
-    assert "Stop a note's Python kernel after this long without a run." in out
     assert "--proxy-headers" in out
-
-
-def test_passes_the_kernel_idle_limit_to_the_factory(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    assert run([*SERVER, "--kernel-idle-minutes", "1"]) == 0
-
-    assert os.environ["LABNOTES_KERNEL_IDLE_MINUTES"] == "1"
-
-
-def test_stops_idle_kernels_after_thirty_minutes_by_default(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    run(SERVER)
-
-    assert os.environ["LABNOTES_KERNEL_IDLE_MINUTES"] == "30"
-
-
-def test_reads_the_kernel_idle_limit_from_the_environment(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    with mock.patch.dict("os.environ", {"LABNOTES_KERNEL_IDLE_MINUTES": "12"}):
-        run(SERVER)
-        assert os.environ["LABNOTES_KERNEL_IDLE_MINUTES"] == "12"
-
-
-def test_rejects_a_kernel_idle_limit_under_a_minute(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    assert run([*SERVER, "--kernel-idle-minutes", "0"]) == 2
-    collaborators["uvicorn_main"].assert_not_called()

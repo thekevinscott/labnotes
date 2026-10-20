@@ -326,15 +326,18 @@ def test_finishes_a_session_once_its_client_leaves(
 
     async def go() -> None:
         app = daemon_app(CONFIG)
-        owner = await connect(app, 1)
-        other = await connect(app, 2)
-        await start(app, client=1)
+        lower = await connect(app, 1)
+        owner = await connect(app, 2)
+        higher = await connect(app, 3)
+        await start(app, "low", client=1)
         await start(app, "mine", client=2)
+        await start(app, "high", client=3)
         await start(app, "anyone")
-        await other.aclose()  # type: ignore[attr-defined]
-        assert controls.finish.call_count == 1
         await owner.aclose()  # type: ignore[attr-defined]
-        assert controls.finish.call_count == 2
+        assert controls.finish.call_count == 1
+        await lower.aclose()  # type: ignore[attr-defined]
+        await higher.aclose()  # type: ignore[attr-defined]
+        assert controls.finish.call_count == 3
         controls.interrupt.assert_not_called()
 
     asyncio.run(go())

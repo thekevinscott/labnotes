@@ -4,12 +4,13 @@ from pathlib import Path
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.models import ExperimentConfig
+from labnotes.is_positive_int import is_positive_int
 from labnotes.modes import MODES
 
-SETTINGS = {"name", "command", "repeats", "params", "counts", "mode"}
+SETTINGS = {"name", "command", "repeats", "params", "counts", "mode", "concurrency"}
 
 
-def read_experiment_config(path: Path, mode: str) -> ExperimentConfig:
+def read_experiment_config(path: Path, mode: str, concurrency: int) -> ExperimentConfig:
     try:
         with path.open("rb") as file:
             values = tomllib.load(file)
@@ -25,7 +26,7 @@ def read_experiment_config(path: Path, mode: str) -> ExperimentConfig:
     if not isinstance(command, str) or not command.strip():
         raise ValueError(f"{path}: command must be a string")
     repeats = values.get("repeats", 1)
-    if isinstance(repeats, bool) or not isinstance(repeats, int) or repeats < 1:
+    if not is_positive_int(repeats):
         raise ValueError(f"{path}: repeats must be a positive integer")
     params = values.get("params", {})
     if not isinstance(params, dict):
@@ -43,4 +44,7 @@ def read_experiment_config(path: Path, mode: str) -> ExperimentConfig:
     mode = values.get("mode", mode)
     if mode not in MODES:
         raise ValueError(f"{path}: mode must be fill or adhoc")
-    return ExperimentConfig(command, repeats, params, name, counts, mode)
+    concurrency = values.get("concurrency", concurrency)
+    if not is_positive_int(concurrency):
+        raise ValueError(f"{path}: concurrency must be a positive integer")
+    return ExperimentConfig(command, repeats, params, name, counts, mode, concurrency)

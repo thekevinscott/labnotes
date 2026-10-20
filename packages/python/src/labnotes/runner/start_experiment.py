@@ -13,7 +13,7 @@ def start_experiment(
     config: LabnotesConfig,
     name: str,
     experiment_config: Path | None,
-    concurrency: int,
+    concurrency: int | None,
     drive: Callable[[Start, str], list[dict[str, object]]],
 ) -> list[dict[str, object]]:
     if experiment_config is None:
@@ -21,7 +21,11 @@ def start_experiment(
         experiment_config = config.root / folder / "experiment.toml"
     if not experiment_config.is_file():
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")
-    experiment = read_experiment_config(experiment_config, config.mode)
+    experiment = read_experiment_config(
+        experiment_config, config.mode, config.concurrency
+    )
+    if concurrency is None:
+        concurrency = experiment.concurrency
     runs = runs_parent(config.root, config.runs, name)
     runs.mkdir(parents=True, exist_ok=True)
     try:

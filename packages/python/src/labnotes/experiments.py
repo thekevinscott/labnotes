@@ -30,9 +30,8 @@ from labnotes.tui.run_tui import run_tui
 @click.option(
     "--concurrency",
     type=click.IntRange(min=1),
-    default=1,
-    show_default=True,
-    help="With run: how many runs at once.",
+    help="With run: how many runs at once. Overrides experiment.toml and"
+    " .labnotes.toml; 1 if none sets it.",
 )
 @click.option(
     "-e",
@@ -51,7 +50,7 @@ def experiments(
     name: str | None,
     action: str | None,
     output_format: str,
-    concurrency: int,
+    concurrency: int | None,
     experiment_config: Path | None,
     no_tui: bool,
 ) -> None:

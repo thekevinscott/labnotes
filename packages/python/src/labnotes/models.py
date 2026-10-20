@@ -40,6 +40,7 @@ class LabnotesConfig:
     files: str
     runs: str
     mode: str = DEFAULT_MODE
+    concurrency: int = 1
 
 
 @dataclass(frozen=True)
@@ -50,3 +51,4 @@ class ExperimentConfig:
     name: str | None = None
     counts: str = DEFAULT_COUNTS
     mode: str = DEFAULT_MODE
+    concurrency: int = 1

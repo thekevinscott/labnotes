@@ -16,9 +16,15 @@ const expand = (group, open) => {
   group.querySelector(".group-toggle").setAttribute("aria-expanded", String(open));
 };
 
+const opened = new Set();
+
 document.addEventListener("click", (event) => {
-  const header = event.target.closest(".group-row");
-  if (header) expand(header.parentElement, !header.parentElement.classList.contains("open"));
+  const group = event.target.closest(".group-row")?.parentElement;
+  if (!group) return;
+  const opening = !group.classList.contains("open");
+  expand(group, opening);
+  if (opening) opened.add(group.dataset.name);
+  else opened.delete(group.dataset.name);
 });
 
 const filters = document.querySelector("#run-filters");
@@ -49,7 +55,6 @@ if (filters) {
     for (const input of filters.querySelectorAll("input[type=hidden]")) input.remove();
     filters.prepend(...fresh.querySelectorAll("#run-filters input[type=hidden]"));
     const table = runs.querySelector("table");
-    const opened = new Set([...table.querySelectorAll(".group.open")].map((group) => group.dataset.name));
     for (const body of table.querySelectorAll("tbody")) body.remove();
     for (const body of fresh.querySelectorAll("tbody")) {
       table.append(body);

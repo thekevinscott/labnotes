@@ -62,8 +62,14 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             return_value=True,
         ) as nests_runs,
         mock.patch("labnotes.load_experiment.group_runs") as group_runs,
+        mock.patch(
+            "labnotes.load_experiment.count_groups",
+            new_callable=mock.AsyncMock,
+            return_value={"g": 2},
+        ) as count_groups,
     ):
         yield {
+            "count_groups": count_groups,
             "nests_runs": nests_runs,
             "group_runs": group_runs,
             "count_runs": count_runs,
@@ -272,8 +278,13 @@ def test_groups_adhoc_runs_by_invocation_once_any_has_several(
     source = collaborators["list_runs"].await_args.args[1]
     collaborators["nests_runs"].assert_awaited_once_with(tables, source)
     group_runs = collaborators["group_runs"]
+    count_groups = collaborators["count_groups"]
     if nested:
-        group_runs.assert_called_once_with(loaded["runs_list"])
+        count_groups.assert_awaited_once_with(tables, source)
+        group_runs.assert_called_once_with(
+            loaded["runs_list"], ["x", "y"], count_groups.return_value
+        )
         assert loaded["run_groups"] is group_runs.return_value
     else:
+        count_groups.assert_not_awaited()
         assert loaded["run_groups"] is None

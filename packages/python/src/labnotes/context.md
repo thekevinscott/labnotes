@@ -129,4 +129,4 @@ going. Elsewhere, it prints a line per event instead.
 - A second `run` of the same experiment fails while the first is going.
 - It exits 0 even if runs fail; the summary line counts failures.
 
-`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

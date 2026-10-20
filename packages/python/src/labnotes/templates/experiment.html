@@ -83,7 +83,7 @@
     {% macro run_rows(run) %}
       <tr class="run-row">
         <td><span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span></td>
-        {% for column in e.run_columns %}{% if column == 'id' and nested %}<td class="mono">{{ run.id.partition('/')[2] or run.id }}</td><td></td>{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else (run[column] | started if column == 'started' else run[column] | value) }}</td>{% endif %}{% endfor %}
+        {% for column in e.run_columns %}{% if column == 'id' %}<td class="mono"><a class="run-link" href="{{ url_for('run', name=e.name, run=run.id) }}">{{ run.id.partition('/')[2] or run.id if nested else run.id }}</a></td>{% if nested %}<td></td>{% endif %}{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else (run[column] | started if column == 'started' else run[column] | value) }}</td>{% endif %}{% endfor %}
       </tr>
     {% endmacro %}
     {% if nested %}
@@ -117,4 +117,5 @@
 {% endif %}
 <script src="{{ asset('experiment.js') }}" defer></script>
 <script src="{{ asset('local-time.js') }}" defer></script>
+<script src="{{ asset('row-link.js') }}" defer></script>
 {% endblock %}

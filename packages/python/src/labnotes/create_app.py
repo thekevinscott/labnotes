@@ -28,11 +28,13 @@ from labnotes.format_started import format_started
 from labnotes.format_value import format_value
 from labnotes.list_experiments import list_experiments
 from labnotes.load_experiment import load_experiment
+from labnotes.load_run import load_run
 from labnotes.models import LabnotesConfig
 from labnotes.note_path import note_path
 from labnotes.notebook_kernel import NotebookKernel
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
+from labnotes.run_output import run_output
 from labnotes.save_conflict_copy import save_conflict_copy
 from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
@@ -82,6 +84,32 @@ def create_app(config: LabnotesConfig) -> Starlette:
             raise HTTPException(404, "No such experiment")
         return templates.TemplateResponse(
             request, "experiment.html", {"experiment": loaded}
+        )
+
+    async def find_run(request: Request) -> dict[str, object]:
+        found = await load_run(
+            request.app.state.tables,
+            request.path_params["name"],
+            request.path_params["run"],
+        )
+        if found is None:
+            raise HTTPException(404, "No such run")
+        return found
+
+    async def run(request: Request) -> Response:
+        found = await find_run(request)
+        return templates.TemplateResponse(request, "run.html", {"run": found})
+
+    async def output(request: Request) -> Response:
+        await find_run(request)
+        return StreamingResponse(
+            run_output(
+                request.app.state.tables,
+                config.root,
+                request.path_params["name"],
+                request.path_params["run"],
+            ),
+            media_type="text/event-stream",
         )
 
     async def read_note(request: Request) -> dict[str, str]:
@@ -191,6 +219,8 @@ def create_app(config: LabnotesConfig) -> Starlette:
             Route("/", index),
             Route("/experiments/{name}", experiment),
             Route("/experiments/{name}/changes", changes),
+            Route("/experiments/{name}/runs/{run:path}", run),
+            Route("/experiments/{name}/output/{run:path}", output),
             Route("/experiments/{name}/notes", post_note, methods=["POST"]),
             Route("/experiments/{name}/notes/{note:path}", get_note),
             Route("/experiments/{name}/notes/{note:path}", put_note, methods=["PUT"]),

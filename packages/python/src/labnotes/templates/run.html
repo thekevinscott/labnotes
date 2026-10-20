@@ -1,0 +1,19 @@
+{% extends "base.html" %}
+{% block title %}{{ run.id }} · {{ run.display_name }} · labnotes{% endblock %}
+{% block crumbs %}<span class="crumb"><a href="{{ url_for('index') }}">Experiments</a></span><span class="crumb"><a href="{{ url_for('experiment', name=run.experiment) }}">{{ run.display_name }}</a></span><span class="crumb mono">{{ run.id }}</span>{% endblock %}
+{% block main %}
+<section class="intro">
+  <h1 class="mono">{{ run.id }}</h1>
+  <p class="config-summary">
+    {% if run.ended is none %}<span class="chip run-state">running</span>{% elif run.exit_code is none %}<span class="chip run-state bad">ended</span>{% else %}<span class="chip run-state {{ 'good' if run.exit_code == 0 else 'bad' }}">exit {{ run.exit_code }}</span>{% endif %}
+    {% if run.created %}<span class="setting">started <code>{{ run.created }}</code></span>{% endif %}
+    {% for key, value in run.params.items() %}<span class="setting">{{ key }} <code>{{ value | value }}</code></span>{% endfor %}
+  </p>
+</section>
+
+<section class="run-log">
+  <header><span class="stdout">stdout</span><span class="stderr">stderr</span></header>
+  <pre class="run-output" data-url="{{ url_for('output', name=run.experiment, run=run.id) }}"></pre>
+</section>
+<script src="{{ asset('run-output.js') }}" defer></script>
+{% endblock %}

@@ -1,6 +1,6 @@
 # Common Organizations
 
-`labnotes` reads your folders where they are. Three paths in `.labnotes.toml` tell it where experiments, files and runs live. These are the layouts we see most often. The [config reference](api/config) covers every key.
+`labnotes` reads your folders where they are. Three paths in `.labnotes.toml` tell it where experiments, files and runs live. These are the layouts we see most often. The [config reference](../api/config) covers every key.
 
 ## Default
 
@@ -11,7 +11,7 @@ data
     experiment-one
         files
             readme.md
-        runs
+        runs/
 </Tree>
 
 ```toml
@@ -34,7 +34,7 @@ data
     experiment-one
         readme.md
         plan.md
-        results
+        results/
 </Tree>
 
 ```toml
@@ -58,7 +58,7 @@ data
         experiment-one
             readme.md
     runs
-        experiment-one
+        experiment-one/
 </Tree>
 
 ```toml

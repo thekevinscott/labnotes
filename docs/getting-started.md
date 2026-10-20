@@ -16,11 +16,11 @@ data
         files
             readme.md
             plan.md
-        runs
+        runs/
     experiment-two
         files
             readme.md
-        runs
+        runs/
 </Tree>
 
 A `.labnotes.toml` at the root (`/data` here) maps those folders to experiments, files and runs. `init` writes one with the defaults, which match this layout:

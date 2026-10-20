@@ -10,7 +10,7 @@ Each `run` gets an invocation folder, named for the UTC time it was planned, and
 my-experiment
     runs
         20261020-000429-brave-fox
-            quiet-river
+            quiet-river/
 </Tree>
 
 If multiple parameters or `repeats` are specified, each run inside the invocation is named from the params that vary:
@@ -19,10 +19,10 @@ If multiple parameters or `repeats` are specified, each run inside the invocatio
 my-experiment
     runs
         20261020-000429-brave-fox
-            opus-low-1a2b
-            opus-high-3c4d
-            sonnet-low-5e6f
-            sonnet-high-7a8b
+            opus-low-1a2b/
+            opus-high-3c4d/
+            sonnet-low-5e6f/
+            sonnet-high-7a8b/
 </Tree>
 
 When nothing varies, the run gets a haiku name instead, like `quiet-river` above.

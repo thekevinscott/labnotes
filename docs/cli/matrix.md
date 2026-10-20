@@ -23,8 +23,8 @@ Runs will appear on disk as flat folders, each named for the UTC time it was pla
 <Tree>
 my-experiment
     runs
-        20261020-000429-brave-fox
-        20261020-000431-quiet-river
+        20261020-000429-brave-fox/
+        20261020-000431-quiet-river/
 </Tree>
 
 You can use the [TUI](tui) to prioritize and manage which runs are in flight, and concurrency. The [frontend](../frontend) shows progress toward `repeats` for each combination.

@@ -27,16 +27,19 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new=mock.AsyncMock(return_value=process),
         ) as spawn,
         mock.patch(
-            "labnotes.runner.execute_run.wait_for_group", new=mock.AsyncMock()
-        ) as wait_for_group,
+            "labnotes.runner.execute_run.wait_for_tree", new=mock.AsyncMock()
+        ) as wait_for_tree,
     ):
         yield {
-            "wait_for_group": wait_for_group,
+            "wait_for_tree": wait_for_tree,
             "shell_command": shell_command,
             "write_run_json": write_run_json,
             "spawn": spawn,
             "process": process,
         }
+
+
+TREE: set[object] = {"orphan"}
 
 
 def run(
@@ -53,6 +56,7 @@ def run(
             PARAMS,
             set() if running is None else running,  # type: ignore[arg-type]
             event,
+            TREE,  # type: ignore[arg-type]
         )
 
     return asyncio.run(go())
@@ -69,7 +73,8 @@ def test_runs_the_command_from_the_root(
     spawn = collaborators["spawn"]
     assert spawn.await_args.args == ("study",)
     kwargs = spawn.await_args.kwargs
-    assert (kwargs["cwd"], kwargs["start_new_session"]) == (tmp_path / "root", True)
+    assert kwargs["cwd"] == tmp_path / "root"
+    assert "start_new_session" not in kwargs
     assert kwargs["stdout"].name == str(tmp_path / "stdout.log")
     assert kwargs["stderr"].name == str(tmp_path / "stderr.log")
 
@@ -106,11 +111,11 @@ def test_tracks_the_process_while_it_runs(
         seen.append(collaborators["process"] in running)
         return 0
 
-    async def wait_for_group(group: int) -> None:
-        seen.append(collaborators["process"] in running and group == 42)
+    async def wait_for_tree(tree: set[object]) -> None:
+        seen.append(collaborators["process"] in running and tree is TREE)
 
     collaborators["process"].wait = wait
-    collaborators["wait_for_group"].side_effect = wait_for_group
+    collaborators["wait_for_tree"].side_effect = wait_for_tree
 
     run(tmp_path, running, stopping=True)
 
@@ -123,7 +128,7 @@ def test_ends_a_normal_exit_without_waiting_for_leftovers(
 ) -> None:
     result = run(tmp_path)
 
-    collaborators["wait_for_group"].assert_not_awaited()
+    collaborators["wait_for_tree"].assert_not_awaited()
     assert result["exit_code"] == 3
 
 

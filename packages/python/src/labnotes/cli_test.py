@@ -52,6 +52,8 @@ def test_prints_help_without_a_command(
     assert "context" in out
     assert "init" in out
     assert "experiments" in out
+    assert "run" in out.split("Commands:")[1]
+    assert "daemon" not in out
     collaborators["load_config"].assert_not_called()
 
 

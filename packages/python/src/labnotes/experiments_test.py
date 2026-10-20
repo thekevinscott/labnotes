@@ -106,35 +106,43 @@ def test_help_shows_the_default_format(
 
 @pytest.fixture
 def drivers() -> Iterator[dict[str, mock.MagicMock]]:
+    results = [{"exit_code": 0}, {"exit_code": 0}]
     with (
-        mock.patch("labnotes.experiments.run_headless") as run_headless,
+        mock.patch(
+            "labnotes.experiments.run_headless", return_value=results
+        ) as run_headless,
+        mock.patch("labnotes.experiments.remote_start") as remote_start,
+        mock.patch(
+            "labnotes.experiments.start_experiment", return_value=results
+        ) as start_experiment,
         mock.patch("labnotes.experiments.run_tui") as run_tui,
         mock.patch("labnotes.experiments.sys") as sys,
     ):
         sys.stdout.isatty.return_value = False
         sys.stderr.isatty.return_value = True
-        yield {"run_headless": run_headless, "run_tui": run_tui, "sys": sys}
+        yield {
+            "run_headless": run_headless,
+            "remote_start": remote_start,
+            "start_experiment": start_experiment,
+            "run_tui": run_tui,
+            "sys": sys,
+        }
 
 
-@pytest.fixture
-def start_experiment(drivers: dict[str, mock.MagicMock]) -> Iterator[mock.MagicMock]:
-    with mock.patch(
-        "labnotes.experiments.start_experiment",
-        return_value=[{"exit_code": 0}, {"exit_code": 0}],
-    ) as start_experiment:
-        yield start_experiment
-
-
-def test_runs_an_experiment(
+def test_runs_an_experiment_through_the_daemon(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
+    drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    start_experiment.assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, mock.ANY
+    drivers["remote_start"].assert_called_once_with(
+        collaborators["load_config"].return_value, "a", None, 3
     )
+    drivers["run_headless"].assert_called_once_with(
+        drivers["remote_start"].return_value
+    )
+    drivers["start_experiment"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"
     collaborators["experiment_rows"].assert_not_awaited()
 
@@ -142,22 +150,22 @@ def test_runs_an_experiment(
 def test_runs_an_experiment_from_a_named_config(
     tmp_path: Path,
     collaborators: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
+    drivers: dict[str, mock.MagicMock],
 ) -> None:
     path = tmp_path / "other.toml"
     path.touch()
 
     assert run(["a", "run", "-e", str(path)]) == 0
 
-    assert start_experiment.call_args.args[1:4] == ("a", path, None)
+    assert drivers["remote_start"].call_args.args[1:4] == ("a", path, None)
 
 
 def test_exits_zero_when_a_run_fails(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
+    drivers: dict[str, mock.MagicMock],
 ) -> None:
-    start_experiment.return_value = [
+    drivers["run_headless"].return_value = [
         {"exit_code": 0},
         {"exit_code": 2},
         {"exit_code": None},
@@ -168,12 +176,16 @@ def test_exits_zero_when_a_run_fails(
     assert capsys.readouterr().out == "1 passed, 2 failed.\n"
 
 
+@pytest.mark.parametrize("terminal", [True, False])
 def test_reports_an_experiment_that_cannot_run(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
+    drivers: dict[str, mock.MagicMock],
+    terminal: bool,
 ) -> None:
-    start_experiment.side_effect = ValueError("a is already running")
+    drivers["sys"].stdout.isatty.return_value = terminal
+    drivers["run_headless"].side_effect = ValueError("a is already running")
+    drivers["start_experiment"].side_effect = ValueError("a is already running")
 
     assert run(["a", "run"]) == 1
 
@@ -189,11 +201,11 @@ def test_help_says_concurrency_falls_back_to_config(
 
 
 def test_needs_a_concurrency_of_at_least_one(
-    collaborators: dict[str, mock.MagicMock], start_experiment: mock.MagicMock
+    collaborators: dict[str, mock.MagicMock], drivers: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["a", "run", "--concurrency", "0"]) == 2
 
-    start_experiment.assert_not_called()
+    drivers["remote_start"].assert_not_called()
 
 
 @pytest.mark.parametrize("path", ["missing.toml", "."])
@@ -201,54 +213,40 @@ def test_needs_an_experiment_config_file(
     tmp_path: Path,
     path: str,
     collaborators: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
+    drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "-e", str(tmp_path / path)]) == 2
 
-    start_experiment.assert_not_called()
-
-
-def assert_headless(
-    start_experiment: mock.MagicMock, drivers: dict[str, mock.MagicMock]
-) -> None:
-    drive = start_experiment.call_args.args[4]
-    assert drive("start", "title") is drivers["run_headless"].return_value
-    drivers["run_headless"].assert_called_once_with("start")
-
-
-def test_prints_events_when_not_in_a_terminal(
-    collaborators: dict[str, mock.MagicMock],
-    drivers: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
-) -> None:
-    run(["a", "run"])
-
-    assert_headless(start_experiment, drivers)
+    drivers["remote_start"].assert_not_called()
 
 
 def test_prints_events_when_stderr_is_not_a_terminal(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = True
     drivers["sys"].stderr.isatty.return_value = False
 
     run(["a", "run"])
 
-    assert_headless(start_experiment, drivers)
+    drivers["run_headless"].assert_called_once()
+    drivers["start_experiment"].assert_not_called()
 
 
 def test_shows_the_live_view_in_a_terminal(
+    capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = True
 
-    run(["a", "run"])
+    assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    assert start_experiment.call_args.args[4] is drivers["run_tui"]
+    drivers["start_experiment"].assert_called_once_with(
+        collaborators["load_config"].return_value, "a", None, 3, drivers["run_tui"]
+    )
+    drivers["run_headless"].assert_not_called()
+    assert capsys.readouterr().out == "2 passed, 0 failed.\n"
 
 
 @pytest.mark.parametrize(

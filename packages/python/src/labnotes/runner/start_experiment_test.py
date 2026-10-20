@@ -10,30 +10,23 @@ from labnotes.runner.start_experiment import start_experiment
 
 @pytest.fixture
 def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
+    experiment = mock.Mock()
     with (
         mock.patch(
-            "labnotes.runner.start_experiment.runs_parent",
-            return_value=tmp_path / "runs" / "exp",
-        ) as runs_parent,
-        mock.patch(
-            "labnotes.runner.start_experiment.read_experiment_config"
-        ) as read_experiment_config,
+            "labnotes.runner.start_experiment.prepare_experiment",
+            new=mock.AsyncMock(return_value=(experiment, 2, tmp_path / "runs")),
+        ) as prepare_experiment,
         mock.patch(
             "labnotes.runner.start_experiment.run_experiment",
             new=mock.AsyncMock(return_value=[{"exit_code": 0}]),
         ) as run_experiment,
         mock.patch("labnotes.runner.start_experiment.hold_folder") as hold_folder,
-        mock.patch(
-            "labnotes.runner.start_experiment.file_text",
-            new=mock.AsyncMock(return_value="source"),
-        ) as file_text,
     ):
         yield {
-            "runs_parent": runs_parent,
-            "read_experiment_config": read_experiment_config,
+            "experiment": experiment,
+            "prepare_experiment": prepare_experiment,
             "run_experiment": run_experiment,
             "hold_folder": hold_folder,
-            "file_text": file_text,
         }
 
 
@@ -43,102 +36,40 @@ def drive() -> mock.Mock:
     )
 
 
-def make_config(root: Path) -> mock.Mock:
-    return mock.Mock(
-        root=root,
-        experiments="notes/{experiment}",
-        runs="data/{experiment}/{run}",
-        mode="fill",
-        concurrency=3,
-    )
-
-
 def test_runs_the_experiment_under_a_lock(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    path = tmp_path / "notes" / "exp" / "experiment.toml"
-    config = make_config(tmp_path)
+    config = mock.Mock()
+    path = tmp_path / "other.toml"
 
-    assert start_experiment(config, "exp", None, 2, drive()) == [{"exit_code": 0}]
+    assert start_experiment(config, "exp", path, 5, drive()) == [{"exit_code": 0}]
 
-    collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
-
-    collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "fill", 3
-    )
-    collaborators["runs_parent"].assert_called_once_with(tmp_path, config.runs, "exp")
-    collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs" / "exp")
-    assert (tmp_path / "runs" / "exp").is_dir()
+    collaborators["prepare_experiment"].assert_awaited_once_with(config, "exp", path, 5)
+    collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs")
     collaborators["run_experiment"].assert_awaited_once_with(
-        config,
-        "exp",
-        collaborators["read_experiment_config"].return_value,
-        2,
-        "report",
-        "listen",
+        config, "exp", collaborators["experiment"], 2, "report", "listen"
     )
 
 
 @pytest.mark.parametrize(("display_name", "title"), [("Study", "Study"), (None, "exp")])
 def test_titles_the_run_with_the_display_name(
-    tmp_path: Path,
-    collaborators: dict[str, mock.MagicMock],
-    display_name: str | None,
-    title: str,
+    collaborators: dict[str, mock.MagicMock], display_name: str | None, title: str
 ) -> None:
-    collaborators["read_experiment_config"].return_value.name = display_name
+    collaborators["experiment"].name = display_name
     driver = drive()
 
-    start_experiment(make_config(tmp_path), "exp", None, 1, driver)
+    start_experiment(mock.Mock(), "exp", None, 1, driver)
 
     assert driver.call_args.args[1] == title
-
-
-def test_reads_the_named_experiment_config(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    path = tmp_path / "other.toml"
-
-    start_experiment(make_config(tmp_path), "exp", path, 1, drive())
-
-    collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "fill", 3
-    )
-
-
-def test_needs_an_experiment_config(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["file_text"].return_value = None
-
-    with pytest.raises(ValueError, match="No experiment.toml for exp at "):
-        start_experiment(make_config(tmp_path), "exp", None, 1, drive())
-
-    collaborators["run_experiment"].assert_not_awaited()
 
 
 def test_refuses_to_run_twice(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    path = tmp_path / "experiment.toml"
     collaborators["hold_folder"].return_value.__enter__.side_effect = BlockingIOError()
 
     with pytest.raises(ValueError) as error:
-        start_experiment(make_config(tmp_path), "exp", path, 1, drive())
+        start_experiment(mock.Mock(), "exp", None, 1, drive())
 
-    assert (
-        str(error.value)
-        == f"exp is already running ({tmp_path / 'runs' / 'exp'} is held)."
-    )
-
+    assert str(error.value) == f"exp is already running ({tmp_path / 'runs'} is held)."
     collaborators["run_experiment"].assert_not_awaited()
-
-
-def test_falls_back_to_the_experiment_concurrency(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["read_experiment_config"].return_value.concurrency = 4
-
-    start_experiment(make_config(tmp_path), "exp", None, None, drive())
-
-    assert collaborators["run_experiment"].await_args.args[3] == 4

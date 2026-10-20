@@ -223,7 +223,6 @@ def test_reads_and_runs_offline_without_the_editor(site: str) -> None:
         await page.route("https://esm.sh/**", lambda route: route.abort())
         await page.reload()
 
-        await expect(page.get_by_text("Editing needs the network")).to_be_visible()
         await page.get_by_role("heading", name="The plan").click()
         await expect(page.get_by_role("textbox", name="Note")).to_have_count(0)
         await page.get_by_role("button", name="Run").click()

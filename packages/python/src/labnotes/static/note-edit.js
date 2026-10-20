@@ -11,10 +11,7 @@ export function attach(note, openNow) {
 
   editor.then(
     () => prose.classList.add("editable"),
-    () => {
-      status.textContent = "Editing needs the network: the editor loads from esm.sh.";
-      status.hidden = false;
-    },
+    () => {},
   );
 
   const open = async (event) => {

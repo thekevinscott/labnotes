@@ -1019,3 +1019,23 @@ def test_opens_a_lone_adhoc_run_in_its_output(
                 assert [row[0] for row in rows(app)] == ["r1"]
 
     asyncio.run(drive())
+
+
+@pytest.mark.parametrize(
+    ("keys", "row"),
+    [(("j",), 1), (("j", "j", "k"), 1), (("G",), 2), (("G", "g"), 0)],
+)
+def test_moves_the_cursor_with_vim_keys(keys: tuple[str, ...], row: int) -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press(*keys)
+            table: Any = app.query_one("#runs")
+            assert table.cursor_row == row
+
+    asyncio.run(drive())

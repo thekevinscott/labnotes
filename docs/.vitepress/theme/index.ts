@@ -9,5 +9,9 @@ export default {
   enhanceApp({ app }) {
     app.component('Tree', LiteTree)
   },
-  Layout: () => h(DefaultTheme.Layout, null, { 'nav-bar-title-after': () => h(Wordmark) }),
+  Layout: () =>
+    h(DefaultTheme.Layout, null, {
+      'nav-bar-title-after': () => h(Wordmark),
+      'home-hero-info-before': () => h('h1', { class: 'hero-wordmark' }, h(Wordmark)),
+    }),
 }

@@ -2,7 +2,6 @@
 layout: home
 
 hero:
-  name: 'labnotes'
   text: 'Experiments in the folders you already have'
   tagline: 'Run param sweeps, watch them live, and keep your notes next to the results. No server to host, no database, nothing to sign up for.'
   actions:

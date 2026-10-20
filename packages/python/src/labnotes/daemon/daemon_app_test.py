@@ -331,11 +331,28 @@ def test_finishes_a_session_once_its_client_leaves(
         await start(app, client=1)
         await start(app, "mine", client=2)
         await start(app, "anyone")
-        await other.aclose()  # type: ignore[attr-defined]
-        assert controls.finish.call_count == 1
         await owner.aclose()  # type: ignore[attr-defined]
+        assert controls.finish.call_count == 1
+        await other.aclose()  # type: ignore[attr-defined]
         assert controls.finish.call_count == 2
         controls.interrupt.assert_not_called()
+
+    asyncio.run(go())
+
+
+def test_matches_an_owner_by_value_past_the_cached_ints(
+    collaborators: dict[str, Any],
+) -> None:
+    controls = collaborators["session"].controls
+
+    async def go() -> None:
+        with mock.patch("labnotes.daemon.daemon_app.itertools.count") as count:
+            count.return_value = iter(range(1000, 1002))
+            app = daemon_app(CONFIG)
+        owner = await connect(app, 1000)
+        await start(app, client=int("1000"))
+        await owner.aclose()  # type: ignore[attr-defined]
+        controls.finish.assert_called_once_with()
 
     asyncio.run(go())
 

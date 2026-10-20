@@ -8,6 +8,13 @@ import pytest
 from labnotes.list_experiments import list_experiments
 
 
+COMPUTED = (
+    "strftime('%Y-%m-%d %H:%M:%S', created) AS started,"
+    " CAST(round((julianday(ended) - julianday(created)) * 86400) AS INTEGER)"
+    " AS duration"
+)
+
+
 @pytest.fixture
 def experiment_progress() -> Iterator[mock.AsyncMock]:
     with mock.patch(
@@ -56,9 +63,12 @@ def test_lists_each_experiment_with_its_config_summary_and_progress(
     first, second = experiment_progress.await_args_list
     assert first.args[0] is tables
     assert first.args[1] == (
-        "(SELECT *, params ->> '$.\"x\"' AS \"x\" FROM runs WHERE experiment = 'a')"
+        '(SELECT *, params ->> \'$."x"\' AS "x", ' + COMPUTED + " FROM runs"
+        " WHERE experiment = 'a')"
     )
     assert first.args[2]["target"] == 4
     assert first.args[2]["checked"]
     assert a["checked"]
-    assert second.args[1] == "(SELECT * FROM runs WHERE experiment = 'b')"
+    assert second.args[1] == (
+        "(SELECT *, " + COMPUTED + " FROM runs WHERE experiment = 'b')"
+    )

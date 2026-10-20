@@ -99,14 +99,16 @@ def test_loads_config_notes_progress_and_runs(
         {"name": "PLAN.md", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
-    assert loaded["run_columns"] == ["id", "x", "y"]
+    assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]
     assert tables.query.await_args.args[0] == (
         "SELECT name, display_name, config, source FROM experiments"
         " WHERE name = 'it''s'"
     )
     collaborators["experiment_notes"].assert_awaited_once_with(tables, ROOT, "it's")
     view = collaborators["parse_run_view"].return_value
-    collaborators["parse_run_view"].assert_called_once_with(params, ["id", "x", "y"])
+    collaborators["parse_run_view"].assert_called_once_with(
+        params, ["id", "x", "y", "started", "duration"]
+    )
     source = collaborators["list_runs"].await_args.args[1]
     assert source.endswith("FROM runs WHERE experiment = 'it''s')")
     assert '"x", params' in source
@@ -123,6 +125,8 @@ def test_loads_config_notes_progress_and_runs(
         "id": "?sort=id",
         "x": "?sort=x",
         "y": "?sort=y",
+        "started": "?sort=started",
+        "duration": "?sort=duration",
     }
     assert collaborators["sort_href"].call_args_list[0].args == (view, "status")
 
@@ -135,7 +139,10 @@ def test_shows_only_id_without_a_config(
     )
 
     assert loaded is not None
-    assert (loaded["run_columns"], loaded["target"]) == (["id"], None)
+    assert (loaded["run_columns"], loaded["target"]) == (
+        ["id", "started", "duration"],
+        None,
+    )
 
 
 def test_falls_back_to_the_project_mode(
@@ -169,7 +176,7 @@ def test_lists_a_param_named_id_once(
     )
 
     assert loaded is not None
-    assert loaded["run_columns"] == ["id", "a"]
+    assert loaded["run_columns"] == ["id", "a", "started", "duration"]
 
 
 def test_renders_notes_with_their_saved_outputs(

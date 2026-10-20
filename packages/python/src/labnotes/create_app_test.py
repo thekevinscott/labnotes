@@ -18,6 +18,11 @@ EXPERIMENT: dict[str, object] = {"name": "models-effort"}
 NOTE = "# Plan\n\n```python\na = 1\n```\n\n```python\na + 1\n```\n"
 
 
+def test_formats_durations_in_templates() -> None:
+    module = create_app.__globals__
+    assert module["templates"].env.filters["duration"] is module["format_duration"]
+
+
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (

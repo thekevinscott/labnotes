@@ -42,7 +42,7 @@ async def load_experiment(
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)
-    shown = ["id", *(key for key in varies if key != "id")]
+    shown = ["id", *(key for key in varies if key != "id"), "started", "duration"]
     view = parse_run_view(params, shown)
     [totals] = await count_runs(tables, source, str(summary["completed_run"]))
     notes = await experiment_notes(tables, root, name)

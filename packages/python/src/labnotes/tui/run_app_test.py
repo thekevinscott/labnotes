@@ -113,9 +113,9 @@ def test_shows_each_run_and_the_outcome(
             await pilot.pause()
             assert app.title == "exp"
             assert rows(app) == [
-                ["r1", "--m a", "exited 0", "24 seconds"],
-                ["r2", "--m b", "boom", "24 seconds"],
-                ["r3", "--m c", "exited 1", "0 seconds"],
+                ["r1", "--m a", "✓", "24 seconds"],
+                ["r2", "--m b", "✗ boom", "24 seconds"],
+                ["r3", "--m c", "✗ exited 1", "0 seconds"],
             ]
             assert [row[2] for row in styles(app)] == ["", "red", "red"]
             assert status(app) == "1 passed, 2 failed. q to quit."
@@ -150,8 +150,8 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
             rendered.set()
             await pilot.pause()
             assert rows(app) == [
-                ["r1", "--m a", "running", "0 seconds"],
-                ["r2", "--m r2", "pending", ""],
+                ["r1", "--m a", "◐", "0 seconds"],
+                ["r2", "--m r2", "○", ""],
             ]
             assert styles(app) == [[None] * 4, ["dim"] * 4]
             table: Any = app.query_one("#runs")
@@ -182,7 +182,7 @@ def test_skips_pending_runs_when_stopping() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert [row[2] for row in rows(app)] == ["running", "skipped", "skipped"]
+            assert [row[2] for row in rows(app)] == ["◐", "–", "–"]
             assert styles(app)[1][2] == "dim"
             assert status(app) == "said stopping"
 
@@ -302,10 +302,10 @@ def test_moves_deselected_runs_to_the_bottom() -> None:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[:3:2] for row in rows(app)] == [
-                ["r1", "running"],
-                ["r3", "skipped"],
-                ["r4", "skipped"],
-                ["r2", "deselected"],
+                ["r1", "◐"],
+                ["r3", "–"],
+                ["r4", "–"],
+                ["r2", "⊘"],
             ]
             assert styles(app)[3][2] == "dim"
 
@@ -339,9 +339,9 @@ def test_puts_reselected_runs_back_in_the_queue() -> None:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[:3:2] for row in rows(app)] == [
-                ["r2", "skipped"],
-                ["r3", "skipped"],
-                ["r1", "skipped"],
+                ["r2", "–"],
+                ["r3", "–"],
+                ["r1", "–"],
             ]
 
     asyncio.run(drive())
@@ -529,7 +529,7 @@ def test_ticks_the_time_of_running_runs(
             await pilot.pause()
             collaborators["time"].monotonic.return_value = 25.0
             app.tick()
-            assert rows(app) == [["r1", "--m a", "running", "15 seconds"]]
+            assert rows(app) == [["r1", "--m a", "◐", "15 seconds"]]
 
     asyncio.run(drive())
 
@@ -626,7 +626,7 @@ def test_widens_columns_as_cells_grow(
             await pilot.pause()
             table: Any = app.query_one("#runs")
             widths = [table.columns[key].content_width for key in ("status", "time")]
-            assert widths == [len("exited -15"), len("1224 seconds")]
+            assert widths == [len("✗ exited -15"), len("1224 seconds")]
 
     asyncio.run(drive())
 
@@ -662,14 +662,14 @@ def test_slash_filters_rows_by_params() -> None:
                 }
             )
             await pilot.pause()
-            assert rows(app) == [["r2", "--m r2", "running", "0 seconds"]]
+            assert rows(app) == [["r2", "--m r2", "◐", "0 seconds"]]
             assert app.query_one("#filter").display
             assert app.query_one("#runs").has_focus
             await pilot.press("escape")
             assert [row[:3] for row in rows(app)] == [
-                ["r1", "--m r1", "running"],
-                ["r2", "--m r2", "running"],
-                ["r3", "--m r3", "pending"],
+                ["r1", "--m r1", "◐"],
+                ["r2", "--m r2", "◐"],
+                ["r3", "--m r3", "○"],
             ]
             assert not app.query_one("#filter").display
 
@@ -847,7 +847,7 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
             again = {"event": "retried", "run": "r2", "retry": "r3"}
             reports[0]({**again, "params": {"m": "r2"}})
             await pilot.pause()
-            assert rows(app)[2] == ["r3", "--m r2", "pending", ""]
+            assert rows(app)[2] == ["r3", "--m r2", "○", ""]
             assert styles(app)[2][2] == "dim"
             assert status(app) == "said retried"
             reports[0](

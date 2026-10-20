@@ -26,7 +26,8 @@ export default defineConfig({
             items: [
               { text: 'Working with Experiments', link: '/cli/experiments' },
               { text: 'Adhoc', link: '/cli/adhoc' },
-              { text: 'Grid', link: '/cli/grid' },
+              { text: 'Matrix', link: '/cli/matrix' },
+              { text: 'TUI', link: '/cli/tui' },
             ],
           },
           { text: 'Frontend', link: '/frontend' },

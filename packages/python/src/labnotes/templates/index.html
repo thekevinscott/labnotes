@@ -1,5 +1,4 @@
 {% extends "base.html" %}
-{% from "macros.html" import meter, percent %}
 {% block crumbs %}<span class="crumb">{{ folder }}</span>{% endblock %}
 {% block main %}
 <section class="intro">
@@ -19,9 +18,7 @@
   <thead>
     <tr>
       <th scope="col">Experiment</th>
-      <th scope="col">Design</th>
       <th scope="col" class="num">Runs</th>
-      <th scope="col" class="progress-col">Grid filled</th>
     </tr>
   </thead>
   <tbody>
@@ -30,23 +27,9 @@
       <td>
         <a class="title-link" href="{{ url_for('experiment', name=experiment.name) }}">{{ experiment.display_name }}</a>
         {% if experiment.display_name != experiment.name %}<div class="study">{{ experiment.name }}</div>{% endif %}
-      </td>
-      <td class="design">
-        {% for key, values in experiment.varies.items() %}<span class="factor">{{ key }} <b>{{ values | length }}</b>{% if not loop.last or experiment.runs_per_cell %}<span class="times">×</span>{% endif %}</span> {% endfor %}
-        {% if experiment.runs_per_cell %}<span class="factor">runs <b>{{ experiment.runs_per_cell }}</b></span>{% endif %}
+        {% if experiment.counts_error %}<div class="counts-error" title="{{ experiment.counts_error }}">counts rule doesn't work</div>{% endif %}
       </td>
       <td class="num" data-label="Runs">{{ experiment.runs }}</td>
-      <td class="progress-col">
-        {% if experiment.counts_error %}
-        <span class="counts-error" title="{{ experiment.counts_error }}">counts rule doesn't work</span>
-        {% elif experiment.filled is not none and experiment.target %}
-        <div class="progress-line">
-          {{ meter(experiment.filled, experiment.target) }}
-          <span class="num">{{ experiment.filled }}<span class="of">/{{ experiment.target }}</span></span>
-          <span class="pct num">{{ percent(experiment.filled, experiment.target) }}</span>
-        </div>
-        {% else %}<span class="muted">—</span>{% endif %}
-      </td>
     </tr>
     {% endfor %}
   </tbody>

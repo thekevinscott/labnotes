@@ -30,7 +30,6 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
         "varies": {"x": [1, 2], "y": ["a"], "z": [5]},
         "cell_count": 2,
         "runs_per_cell": 3,
-        "target": 6,
         "completed_run": "default",
         "mode": "fill",
         "other": {"command": "go"},
@@ -41,37 +40,23 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
     ("config", "project"),
     [({"mode": "adhoc"}, "fill"), ({"mode": "other"}, "fill"), ({}, "adhoc")],
 )
-def test_has_no_target_for_an_adhoc_grid(
-    config: dict[str, object], project: str
-) -> None:
+def test_runs_ad_hoc_unless_filling(config: dict[str, object], project: str) -> None:
     summary = summarize_config({"command": "go", "repeats": 3, **config}, project)
 
-    assert (summary["mode"], summary["runs_per_cell"], summary["target"]) == (
-        "adhoc",
-        3,
-        None,
-    )
+    assert (summary["mode"], summary["runs_per_cell"]) == ("adhoc", 3)
 
 
 def test_defaults_to_one_repeat() -> None:
     summary = summarize_config({"command": "go"}, "fill")
 
-    assert (summary["mode"], summary["runs_per_cell"], summary["target"]) == (
-        "fill",
-        1,
-        1,
-    )
+    assert (summary["mode"], summary["runs_per_cell"]) == ("fill", 1)
 
 
 @pytest.mark.parametrize("config", [None, {}, {"repeats": "two", "params": [1]}])
 def test_has_no_grid_without_a_usable_config(config: dict[str, object] | None) -> None:
     summary = summarize_config(config, "adhoc")
 
-    assert (summary["varies"], summary["runs_per_cell"], summary["target"]) == (
-        {},
-        None,
-        None,
-    )
+    assert (summary["varies"], summary["runs_per_cell"]) == ({}, None)
     assert summary["other"] == {}
 
 

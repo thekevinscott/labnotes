@@ -100,7 +100,7 @@ def test_opens_the_tables_and_watches_them(
     assert watched == [tables]
 
 
-def test_index_lists_experiments_with_progress(
+def test_index_lists_experiments(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     status, _ = call(app, "/")

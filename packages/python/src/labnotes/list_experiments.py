@@ -4,7 +4,7 @@ from typing import cast
 from dirsql import DirSQL
 
 from labnotes.check_counts import check_counts
-from labnotes.experiment_progress import experiment_progress
+from labnotes.count_runs import count_runs
 from labnotes.experiment_runs import experiment_runs
 from labnotes.summarize_config import summarize_config
 
@@ -21,8 +21,8 @@ async def list_experiments(tables: DirSQL, mode: str) -> list[dict[str, object]]
         varies = cast(dict[str, list[object]], summary["varies"])
         source = experiment_runs(name, list(varies))
         summary = await check_counts(tables, source, summary)
-        progress = await experiment_progress(tables, source, summary)
+        [totals] = await count_runs(tables, source, str(summary["completed_run"]))
         listed.append(
-            {"name": name, "display_name": row["display_name"], **summary, **progress}
+            {"name": name, "display_name": row["display_name"], **summary, **totals}
         )
     return listed

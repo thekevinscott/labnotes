@@ -21,7 +21,6 @@ def summarize_config(config: dict[str, object] | None, mode: str) -> dict[str, o
         "varies": varies,
         "cell_count": cells,
         "runs_per_cell": repeats,
-        "target": cells * repeats if repeats is not None and fill else None,
         "completed_run": counts if isinstance(counts, str) else DEFAULT_COUNTS,
         "mode": "fill" if fill else "adhoc",
         "other": {} if command is None else {"command": command},

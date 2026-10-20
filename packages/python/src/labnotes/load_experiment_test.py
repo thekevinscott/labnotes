@@ -96,11 +96,7 @@ def test_loads_config_notes_progress_and_runs(
     loaded = asyncio.run(load_experiment(tables, ROOT, "adhoc", "it's", params))
 
     assert loaded is not None
-    assert (loaded["name"], loaded["display_name"], loaded["target"]) == (
-        "a",
-        "Alpha",
-        4,
-    )
+    assert (loaded["name"], loaded["display_name"]) == ("a", "Alpha")
     assert (loaded["runs"], loaded["completed"]) == (3, 2)
     assert (loaded["config_source"], loaded["counts_set"]) == ("toml", False)
     assert loaded["notes"] == [
@@ -151,10 +147,7 @@ def test_shows_only_id_without_a_config(
     )
 
     assert loaded is not None
-    assert (loaded["run_columns"], loaded["target"]) == (
-        ["id", "started", "duration"],
-        None,
-    )
+    assert loaded["run_columns"] == ["id", "started", "duration"]
 
 
 def test_falls_back_to_the_project_mode(
@@ -167,7 +160,7 @@ def test_falls_back_to_the_project_mode(
     )
 
     assert loaded is not None
-    assert (loaded["mode"], loaded["target"]) == ("fill", 4)
+    assert loaded["mode"] == "fill"
 
 
 def test_returns_none_for_an_unknown_experiment(

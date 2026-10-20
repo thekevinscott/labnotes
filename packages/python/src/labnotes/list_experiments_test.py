@@ -5,8 +5,14 @@ from unittest import mock
 
 import pytest
 
-from labnotes.experiment_runs import experiment_runs
 from labnotes.list_experiments import list_experiments
+
+
+COMPUTED = (
+    "strftime('%Y-%m-%d %H:%M:%S', created) AS started,"
+    " CAST(round((julianday(ended) - julianday(created)) * 86400) AS INTEGER)"
+    " AS duration"
+)
 
 
 @pytest.fixture
@@ -56,8 +62,13 @@ def test_lists_each_experiment_with_its_config_summary_and_progress(
     assert (b["name"], b["target"]) == ("b", None)
     first, second = experiment_progress.await_args_list
     assert first.args[0] is tables
-    assert first.args[1] == experiment_runs("a", ["x"])
+    assert first.args[1] == (
+        '(SELECT *, params ->> \'$."x"\' AS "x", ' + COMPUTED + " FROM runs"
+        " WHERE experiment = 'a')"
+    )
     assert first.args[2]["target"] == 4
     assert first.args[2]["checked"]
     assert a["checked"]
-    assert second.args[1] == experiment_runs("b", [])
+    assert second.args[1] == (
+        "(SELECT *, " + COMPUTED + " FROM runs WHERE experiment = 'b')"
+    )

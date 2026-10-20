@@ -27,16 +27,20 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-@pytest.fixture
-def project(tmp_path: Path) -> Path:
-    write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "script.py", SCRIPT)
+def make_project(root: Path) -> Path:
+    write(root / ".labnotes.toml", "")
+    write(root / "script.py", SCRIPT)
     write(
-        tmp_path / "exp" / "experiment.toml",
+        root / "exp" / "experiment.toml",
         f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
         'repeats = 2\nmode = "fill"\n[params]\nm = ["a", "b"]\n',
     )
-    return tmp_path
+    return root
+
+
+@pytest.fixture
+def project(tmp_path: Path) -> Path:
+    return make_project(tmp_path)
 
 
 def labnotes(project: Path, argv: list[str]) -> int | str | None:
@@ -233,3 +237,14 @@ def test_keeps_stamped_haiku_names_for_fill_runs(project: Path) -> None:
 
     names = [run["folder"].name for run in runs(project)]
     assert all(re.fullmatch(STAMP, name) for name in names)
+
+
+def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    deep = make_project(tmp_path / ("optimizing-llms-with-small-updates-" * 3))
+    assert len(str(deep / ".labnotes.sock")) > 107
+
+    assert labnotes(deep, ["experiments", "exp", "run"]) == 0
+
+    assert len(runs(deep)) == 4

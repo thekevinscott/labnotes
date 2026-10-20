@@ -1,4 +1,5 @@
 import asyncio
+import os
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -89,6 +90,19 @@ def test_shows_an_outside_edit_in_the_rendered_note(site: str, root: Path) -> No
         await expect(
             page.get_by_role("heading", name="Changed elsewhere")
         ).to_be_visible()
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_keeps_the_page_when_the_file_is_touched(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await expect(page.get_by_role("heading", name="The plan")).to_be_visible()
+        await page.evaluate("window.loaded = true")
+
+        async with page.expect_response(lambda r: r.url.endswith("/notes/plan.md")):
+            os.utime(root / PLAN)
+
+        assert await page.evaluate("window.loaded") is True
 
     browse(f"{site}{NOTE}", check)
 

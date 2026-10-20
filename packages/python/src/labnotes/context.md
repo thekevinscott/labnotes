@@ -122,6 +122,10 @@ going. Elsewhere, it prints a line per event instead.
   seconds later. Once the runs are done, either one closes the live view.
 - `labnotes run stop` stops every run the daemon has going: SIGTERM, then
   SIGKILL 5 seconds later.
+- `labnotes run status` prints what the daemon has going, a line per event so
+  far plus the latest line each running run logged. `-f` keeps following, and
+  waits for a daemon when none is up. `--json` prints one JSON object per line.
+  Following doesn't keep the daemon up.
 - A second `run` of the same experiment fails while the first is going.
 - It exits 0 even if runs fail; the summary line counts failures.
 

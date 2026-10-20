@@ -11,3 +11,13 @@ Learn how to use `labnotes` before running it:
 ```bash
 uvx labnotes context
 ```
+
+Start runs from a background shell command, so you hear when they finish
+without holding the conversation. Without a terminal, `run` blocks until its
+runs end and prints a line per event:
+
+```bash
+uvx labnotes experiments NAME run
+```
+
+Stop them with `uvx labnotes run stop`.

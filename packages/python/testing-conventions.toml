@@ -39,3 +39,9 @@ path = "src/labnotes/daemon/remote_start.py"
 rules = ["mutation"]
 lines = [39]
 reason = "the daemon answers a run with 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
+
+[[python.exempt]]
+path = "src/labnotes/run_control.py"
+rules = ["mutation"]
+lines = [38]
+reason = "argument counts are small ints, which CPython caches, so is not equals !="

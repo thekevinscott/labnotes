@@ -28,6 +28,7 @@ const follow = ($: EngineInterface, run: string, folder: string) => {
   }
   void (async () => {
     let held = ''
+    await update($, log, now => (now?.run === run ? { run, lines: [] } : now))
     for await (const { stream, text } of tail) {
       if (stream !== 'stdout') continue
       const [lines, rest] = splitLines(held, text)
@@ -116,7 +117,7 @@ export const register: Register = on => {
       return <Text>The labnotes pane needs a terminal.</Text>
     }
     const { Client } = $.ui.resolve(e)
-    const props = { experiments: await read($, experiments), log: await read($, log) }
+    const props = { experiments: await read($, experiments), log: await read($, log), rows: e.props.scroll.bodyRows }
     return <Client key="runs" module="./pane.tsx" props={props} flexGrow={1} />
   })
 }

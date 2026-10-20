@@ -3,7 +3,7 @@ import type { ClientKeyEvent, ClientModule, JsonValue } from 'claude-code'
 import type { Experiment, Log, Row } from '../types'
 import { SPINNER, rowCells } from './runs'
 
-export type PaneProps = { experiments: Experiment[]; log: Log | null }
+export type PaneProps = { experiments: Experiment[]; log: Log | null; rows: number }
 
 export type Control = { experiment: string; action: string; args: string[] }
 
@@ -151,7 +151,7 @@ const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
   surface.onKey(onKey)
 
   if (log !== null) {
-    const room = surface.rows > 2 ? surface.rows - 2 : log.lines.length
+    const room = Math.max(props.rows - 2, 1)
     return (
       <Box flexDirection="column">
         <Text bold>{log.run}</Text>

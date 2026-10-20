@@ -117,6 +117,6 @@ line per event instead.
   then kills any still going 5 seconds later. Once the runs are done, either
   one closes the live view.
 - A second `run` of the same experiment fails while the first holds the lock.
-- It exits 1 if any run failed.
+- It exits 0 even if runs fail; the summary line counts failures.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.

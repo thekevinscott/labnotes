@@ -1,3 +1,4 @@
+import re
 from pathlib import Path
 
 from playwright.async_api import Page, expect
@@ -53,6 +54,27 @@ def test_filters_runs_by_a_param(site: str) -> None:
 
         await expect(page.get_by_role("cell", name="run2", exact=True)).to_be_visible()
         await expect(page.get_by_role("cell", name="run1", exact=True)).to_have_count(0)
+
+    browse(f"{site}/experiments/alpha", check)
+
+
+def test_filters_runs_live_while_typing(site: str) -> None:
+    async def check(page: Page) -> None:
+        box = page.get_by_label("Filter source-language")
+        await box.press_sequentially("fr")
+
+        await expect(page.get_by_role("cell", name="run1", exact=True)).to_have_count(0)
+        await expect(page).to_have_url(re.compile(r"\?f\.source-language=fr$"))
+        await expect(box).to_be_focused()
+        assert await box.evaluate("box => box.selectionStart") == 2
+
+        await page.get_by_role("cell", name="run2", exact=True).click()
+        await expect(page.get_by_text("boom")).to_be_visible()
+
+        await box.press_sequentially("x")
+
+        await expect(page.get_by_text("No runs match these filters.")).to_be_visible()
+        await expect(page.get_by_text("0 of 2")).to_be_visible()
 
     browse(f"{site}/experiments/alpha", check)
 

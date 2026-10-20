@@ -40,9 +40,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.plan_runs", return_value=[A, B]
         ) as plan_runs,
         mock.patch(
-            "labnotes.runner.run_experiment.new_run_id",
+            "labnotes.runner.run_experiment.new_stamped_run_id",
             side_effect=lambda taken: next(ids),
-        ) as new_run_id,
+        ) as new_stamped_run_id,
         mock.patch(
             "labnotes.runner.run_experiment.run_folder",
             side_effect=lambda root, template, name, run: root / name / run,
@@ -65,7 +65,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "list_runs": list_runs,
             "param_grid": param_grid,
             "plan_runs": plan_runs,
-            "new_run_id": new_run_id,
+            "new_stamped_run_id": new_stamped_run_id,
             "execute_run": execute_run,
             "killpg": killpg,
         }
@@ -159,14 +159,14 @@ def test_runs_each_planned_run_in_a_new_folder(
     ]
 
 
-def test_checks_new_run_ids_against_existing_folders(
+def test_checks_new_stamped_run_ids_against_existing_folders(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     (tmp_path / "exp" / "taken").mkdir(parents=True)
 
     run(tmp_path, mock.Mock())
 
-    taken = collaborators["new_run_id"].call_args.args[0]
+    taken = collaborators["new_stamped_run_id"].call_args.args[0]
     assert (taken("taken"), taken("free")) == (True, False)
 
 
@@ -178,11 +178,11 @@ def test_names_every_run_before_the_first_starts(
         return next(ids)
 
     ids = iter(["r1", "r2"])
-    collaborators["new_run_id"].side_effect = started
+    collaborators["new_stamped_run_id"].side_effect = started
 
     run(tmp_path, mock.Mock())
 
-    taken = collaborators["new_run_id"].call_args.args[0]
+    taken = collaborators["new_stamped_run_id"].call_args.args[0]
     assert (taken("r1"), taken("r2")) == (True, True)
 
 
@@ -307,7 +307,7 @@ def test_moves_a_pending_run_to_the_front(
         return {"exit_code": 0, "error": None}
 
     ids = iter(["r1", "r2", "r3", "r4"])
-    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["new_stamped_run_id"].side_effect = lambda taken: next(ids)
     collaborators["plan_runs"].return_value = [A, B, A, B]
     collaborators["execute_run"].side_effect = execute
 
@@ -366,7 +366,7 @@ def test_lowering_concurrency_lets_running_runs_finish_first(
     listen, report = mock.Mock(), mock.Mock()
     widths: list[int] = []
     ids = iter(["r1", "r2", "r3", "r4"])
-    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["new_stamped_run_id"].side_effect = lambda taken: next(ids)
     collaborators["plan_runs"].return_value = [A, B, A, B]
     collaborators["execute_run"].side_effect = changing_concurrency(listen, 0, widths)
 
@@ -388,7 +388,7 @@ def test_a_failing_run_fails_the_experiment(
 
 def planning(collaborators: dict[str, mock.MagicMock], count: int) -> None:
     ids = iter([f"r{n}" for n in range(1, count + 1)])
-    collaborators["new_run_id"].side_effect = lambda taken: next(ids)
+    collaborators["new_stamped_run_id"].side_effect = lambda taken: next(ids)
     collaborators["plan_runs"].return_value = [A, B] * (count // 2) + [A] * (count % 2)
 
 
@@ -646,7 +646,7 @@ def test_retry_runs_an_ended_run_again_under_a_new_id(
     retried = {"event": "retried", "run": "r1", "retry": "r3", "params": A}
     assert retried in reported(report)
     assert collaborators["execute_run"].await_args_list[2].args[3] == A
-    assert collaborators["new_run_id"].call_args_list[2].args[0]("r3")
+    assert collaborators["new_stamped_run_id"].call_args_list[2].args[0]("r3")
 
 
 def test_retry_ignores_runs_that_have_not_ended(

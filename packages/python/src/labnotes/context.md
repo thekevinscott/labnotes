@@ -61,7 +61,7 @@ that count fill a combination, so running again fills in what failed or never
 ran.
 `mode = "adhoc"` skips that: every `run` runs each combination `repeats` times
 again, whatever is already on disk. The default is `mode = "fill"`.
-Each run gets a new run folder. `command` runs in a shell from the root, with
+Each run gets a new run folder, named for the UTC time it was planned (`20261020-000429-brave-fox`), so folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.
 Each param is appended as `--name value`, with the name as written (use

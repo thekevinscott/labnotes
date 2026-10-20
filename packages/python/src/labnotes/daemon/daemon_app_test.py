@@ -22,6 +22,7 @@ class Session:
         self.end: asyncio.Event | None = None
         self.error: Exception | None = None
         self.listen = True
+        self.listen_now: Callable[[], None] = lambda: None
 
     async def __call__(
         self,
@@ -34,8 +35,9 @@ class Session:
     ) -> list[object]:
         self.report = report
         self.end = asyncio.Event()
+        self.listen_now = lambda: listen(self.controls)
         if self.listen:
-            listen(self.controls)
+            self.listen_now()
         report({"event": "planned", "folder": Path("/runs/r1")})
         await self.end.wait()
         if self.error is not None:
@@ -44,24 +46,22 @@ class Session:
 
 
 @pytest.fixture
-def collaborators(tmp_path: Path) -> Iterator[dict[str, Any]]:
+def collaborators() -> Iterator[dict[str, Any]]:
     session = Session()
     with (
         mock.patch(
             "labnotes.daemon.daemon_app.prepare_experiment",
-            new=mock.AsyncMock(return_value=(EXPERIMENT, 3, tmp_path / "runs")),
+            new=mock.AsyncMock(return_value=(EXPERIMENT, 3)),
         ) as prepare_experiment,
         mock.patch(
             "labnotes.daemon.daemon_app.run_experiment", side_effect=session.__call__
         ) as run_experiment,
-        mock.patch("labnotes.daemon.daemon_app.hold_folder") as hold_folder,
         mock.patch("labnotes.daemon.daemon_app.GRACE_SECONDS", 0),
     ):
         yield {
             "session": session,
             "prepare_experiment": prepare_experiment,
             "run_experiment": run_experiment,
-            "hold_folder": hold_folder,
         }
 
 
@@ -84,9 +84,9 @@ async def start(app: Any, name: str = "exp", **body: object) -> Any:
     )
 
 
-async def connect(app: Any) -> AsyncIterator[str]:
+async def connect(app: Any, client: int = 1) -> AsyncIterator[str]:
     stream: AsyncIterator[str] = (await call(app, "/events")).body_iterator
-    assert await anext(stream) == f"data: {json.dumps({'event': 'connected'})}\n\n"
+    assert await next_event(stream) == {"event": "connected", "client": client}
     return stream
 
 
@@ -98,7 +98,7 @@ async def next_event(stream: AsyncIterator[str]) -> object:
 
 
 def test_starts_a_session_and_streams_its_events(
-    tmp_path: Path, collaborators: dict[str, Any]
+    collaborators: dict[str, Any],
 ) -> None:
     session: Session = collaborators["session"]
 
@@ -112,7 +112,6 @@ def test_starts_a_session_and_streams_its_events(
         collaborators["prepare_experiment"].assert_awaited_once_with(
             CONFIG, "exp", Path("/x.toml"), 2
         )
-        collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs")
         args = collaborators["run_experiment"].call_args.args
         assert args[:4] == (CONFIG, "exp", EXPERIMENT, 3)
         assert await next_event(stream) == {
@@ -128,8 +127,6 @@ def test_starts_a_session_and_streams_its_events(
             "experiment": "exp",
             "error": None,
         }
-        lock = collaborators["hold_folder"].return_value
-        lock.__exit__.assert_called_once()
         await stream.aclose()  # type: ignore[attr-defined]
         assert app.state.idle()
 
@@ -189,24 +186,6 @@ def test_reports_an_experiment_that_cannot_be_read(
         response = await start(app)
         assert response.status_code == 400
         assert payload(response) == {"error": "No toml"}
-        assert app.state.idle()
-
-    asyncio.run(go())
-    collaborators["run_experiment"].assert_not_called()
-
-
-def test_refuses_runs_another_process_holds(
-    tmp_path: Path, collaborators: dict[str, Any]
-) -> None:
-    collaborators["hold_folder"].return_value.__enter__.side_effect = BlockingIOError()
-
-    async def go() -> None:
-        app = daemon_app(CONFIG)
-        response = await start(app)
-        assert response.status_code == 409
-        assert payload(response) == {
-            "error": f"exp is already running ({tmp_path / 'runs'} is held)."
-        }
         assert app.state.idle()
 
     asyncio.run(go())
@@ -327,5 +306,77 @@ def test_stop_spares_sessions_started_after_it(
         await start(app)
         await asyncio.sleep(0.01)
         controls.interrupt.assert_not_called()
+
+    asyncio.run(go())
+
+
+def test_numbers_each_client() -> None:
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        await connect(app, 1)
+        await connect(app, 2)
+
+    asyncio.run(go())
+
+
+def test_finishes_a_session_once_its_client_leaves(
+    collaborators: dict[str, Any],
+) -> None:
+    controls = collaborators["session"].controls
+
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        owner = await connect(app, 1)
+        other = await connect(app, 2)
+        await start(app, client=1)
+        await start(app, "mine", client=2)
+        await start(app, "anyone")
+        await other.aclose()  # type: ignore[attr-defined]
+        assert controls.finish.call_count == 1
+        await owner.aclose()  # type: ignore[attr-defined]
+        assert controls.finish.call_count == 2
+        controls.interrupt.assert_not_called()
+
+    asyncio.run(go())
+
+
+def test_finishes_a_session_whose_client_left_before_it_started(
+    collaborators: dict[str, Any],
+) -> None:
+    session: Session = collaborators["session"]
+    controls = session.controls
+    session.listen = False
+
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        owner = await connect(app, 1)
+        starting = asyncio.create_task(start(app, client=1))
+        await next_event(owner)
+        await owner.aclose()  # type: ignore[attr-defined]
+        controls.finish.assert_not_called()
+        session.listen_now()
+        assert (await starting).status_code == 202
+        controls.finish.assert_called_once_with()
+
+    asyncio.run(go())
+
+
+def test_forgets_the_owner_of_an_ended_session(
+    collaborators: dict[str, Any],
+) -> None:
+    session: Session = collaborators["session"]
+    controls = session.controls
+
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        owner = await connect(app, 1)
+        await start(app, client=1)
+        await next_event(owner)
+        assert session.end is not None
+        session.end.set()
+        await next_event(owner)
+        await start(app)
+        await owner.aclose()  # type: ignore[attr-defined]
+        controls.finish.assert_not_called()
 
     asyncio.run(go())

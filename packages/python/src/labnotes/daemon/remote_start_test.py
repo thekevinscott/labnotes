@@ -20,7 +20,7 @@ def daemon() -> Iterator[dict[str, Any]]:
     client = mock.MagicMock()
     client.post = mock.AsyncMock(return_value=mock.Mock(status_code=202))
     response = client.stream.return_value.__aenter__.return_value
-    sent: list[dict[str, object]] = [{"event": "connected"}]
+    sent: list[dict[str, object]] = [{"event": "connected", "client": 7}]
 
     async def stream(_: object) -> AsyncIterator[mock.Mock]:
         for event in sent:
@@ -79,7 +79,11 @@ def test_runs_the_experiment_through_the_daemon(
     daemon["event_source"].assert_called_once_with(daemon["response"])
     daemon["client"].post.assert_awaited_once_with(
         "/experiments/exp/run",
-        json={"experiment_config": str(toml.resolve()), "concurrency": 3},
+        json={
+            "client": 7,
+            "experiment_config": str(toml.resolve()),
+            "concurrency": 3,
+        },
     )
     assert report.call_args_list == [
         mock.call({"event": "planned", "folder": "/r1"}),
@@ -94,6 +98,7 @@ def test_sends_no_experiment_config_by_default(daemon: dict[str, Any]) -> None:
     assert go() == []
 
     assert daemon["client"].post.call_args.kwargs["json"] == {
+        "client": 7,
         "experiment_config": None,
         "concurrency": 3,
     }

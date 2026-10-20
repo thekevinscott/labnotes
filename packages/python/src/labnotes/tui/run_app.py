@@ -1,3 +1,4 @@
+import asyncio
 import codecs
 import signal
 import time
@@ -104,13 +105,15 @@ class RunApp(App[None]):
 
     def listen(self, controls: Controls) -> None:
         self.controls = controls
-        stop_then_kill(self.action_interrupt, signal.SIGTERM, signal.SIGHUP)
+        stop_then_kill(self.action_interrupt, signal.SIGTERM)
+        asyncio.get_running_loop().add_signal_handler(signal.SIGHUP, self.exit)
 
     def show_event(self, event: dict[str, object]) -> None:
         table = self.query_one(DataTable)
         run = str(event.get("run"))
         match event["event"]:
             case "planned":
+                self.title = str(event["title"])
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
                     cells = (planned["run"].rpartition("/")[2], args, PENDING, "")
@@ -242,7 +245,7 @@ class RunApp(App[None]):
         if self.idle:
             self.controls.finish()
         else:
-            self.show("Runs are still going. Ctrl-C stops them.")
+            self.exit()
 
     def cursor_run(self) -> str | None:
         table = self.query_one(DataTable)

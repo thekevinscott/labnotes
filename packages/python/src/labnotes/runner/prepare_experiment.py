@@ -2,7 +2,6 @@ from pathlib import Path
 
 from labnotes.models import ExperimentConfig, LabnotesConfig
 from labnotes.runner.read_experiment_config import read_experiment_config
-from labnotes.runner.runs_parent import runs_parent
 from labnotes.tables.file_text import file_text
 
 
@@ -11,7 +10,7 @@ async def prepare_experiment(
     name: str,
     experiment_config: Path | None,
     concurrency: int | None,
-) -> tuple[ExperimentConfig, int, Path]:
+) -> tuple[ExperimentConfig, int]:
     if experiment_config is None:
         folder = config.experiments.replace("{experiment}", name)
         experiment_config = config.root / folder / "experiment.toml"
@@ -21,10 +20,4 @@ async def prepare_experiment(
     experiment = read_experiment_config(
         experiment_config, source, config.mode, config.concurrency
     )
-    runs = runs_parent(config.root, config.runs, name)
-    runs.mkdir(parents=True, exist_ok=True)
-    return (
-        experiment,
-        experiment.concurrency if concurrency is None else concurrency,
-        runs,
-    )
+    return experiment, experiment.concurrency if concurrency is None else concurrency

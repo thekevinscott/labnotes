@@ -10,7 +10,6 @@ from labnotes.load_config import load_config
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
 from labnotes.runner.run_headless import run_headless
-from labnotes.runner.start_experiment import start_experiment
 from labnotes.tables.experiment_rows import experiment_rows
 from labnotes.tui.run_tui import run_tui
 
@@ -63,15 +62,12 @@ def experiments(
             click.echo(f"Created {path / 'experiment.toml'}")
             return
         case str(), "run":
+            start = remote_start(config, name, experiment_config, concurrency)
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():
-                    results = start_experiment(
-                        config, name, experiment_config, concurrency, run_tui
-                    )
+                    results = run_tui(start, name)
                 else:
-                    results = run_headless(
-                        remote_start(config, name, experiment_config, concurrency)
-                    )
+                    results = run_headless(start)
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
             failed = sum(result["exit_code"] != 0 for result in results)

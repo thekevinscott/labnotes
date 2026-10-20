@@ -112,10 +112,7 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.experiments.run_headless", return_value=results
         ) as run_headless,
         mock.patch("labnotes.experiments.remote_start") as remote_start,
-        mock.patch(
-            "labnotes.experiments.start_experiment", return_value=results
-        ) as start_experiment,
-        mock.patch("labnotes.experiments.run_tui") as run_tui,
+        mock.patch("labnotes.experiments.run_tui", return_value=results) as run_tui,
         mock.patch("labnotes.experiments.sys") as sys,
     ):
         sys.stdout.isatty.return_value = False
@@ -123,7 +120,6 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         yield {
             "run_headless": run_headless,
             "remote_start": remote_start,
-            "start_experiment": start_experiment,
             "run_tui": run_tui,
             "sys": sys,
         }
@@ -142,7 +138,7 @@ def test_runs_an_experiment_through_the_daemon(
     drivers["run_headless"].assert_called_once_with(
         drivers["remote_start"].return_value
     )
-    drivers["start_experiment"].assert_not_called()
+    drivers["run_tui"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"
     collaborators["experiment_rows"].assert_not_awaited()
 
@@ -185,7 +181,7 @@ def test_reports_an_experiment_that_cannot_run(
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = terminal
     drivers["run_headless"].side_effect = ValueError("a is already running")
-    drivers["start_experiment"].side_effect = ValueError("a is already running")
+    drivers["run_tui"].side_effect = ValueError("a is already running")
 
     assert run(["a", "run"]) == 1
 
@@ -230,7 +226,7 @@ def test_prints_events_when_stderr_is_not_a_terminal(
     run(["a", "run"])
 
     drivers["run_headless"].assert_called_once()
-    drivers["start_experiment"].assert_not_called()
+    drivers["run_tui"].assert_not_called()
 
 
 def test_shows_the_live_view_in_a_terminal(
@@ -242,8 +238,11 @@ def test_shows_the_live_view_in_a_terminal(
 
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    drivers["start_experiment"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, drivers["run_tui"]
+    drivers["remote_start"].assert_called_once_with(
+        collaborators["load_config"].return_value, "a", None, 3
+    )
+    drivers["run_tui"].assert_called_once_with(
+        drivers["remote_start"].return_value, "a"
     )
     drivers["run_headless"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"

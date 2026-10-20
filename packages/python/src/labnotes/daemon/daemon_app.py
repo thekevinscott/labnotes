@@ -1,6 +1,6 @@
 import asyncio
-import contextlib
 import dataclasses
+import itertools
 import json
 from collections.abc import AsyncIterator
 from pathlib import Path
@@ -11,7 +11,6 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from labnotes.models import Controls, LabnotesConfig
-from labnotes.runner.hold_folder import hold_folder
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
@@ -22,35 +21,45 @@ ACTIONS = frozenset(field.name for field in dataclasses.fields(Controls))
 
 def daemon_app(config: LabnotesConfig) -> Starlette:
     sessions: dict[str, Controls | None] = {}
-    clients: set[asyncio.Queue[Event]] = set()
+    owners: dict[str, int] = {}
+    clients: dict[int, asyncio.Queue[Event]] = {}
+    ids = itertools.count(1)
     tasks: set[asyncio.Task[str | None]] = set()
 
     def broadcast(event: Event) -> None:
-        for queue in clients:
+        for queue in clients.values():
             queue.put_nowait(event)
 
     def refuse(status: int, error: str) -> Response:
         return JSONResponse({"error": error}, status_code=status)
 
+    def release(client: int) -> None:
+        for name, owner in list(owners.items()):
+            controls = sessions.get(name)
+            if owner == client and controls is not None:
+                del owners[name]
+                controls.finish()
+
     async def events(request: Request) -> Response:
-        queue: asyncio.Queue[Event] = asyncio.Queue()
+        client = next(ids)
 
         async def stream() -> AsyncIterator[str]:
-            clients.add(queue)
+            clients[client] = asyncio.Queue()
             try:
-                event: Event = {"event": "connected"}
+                event: Event = {"event": "connected", "client": client}
                 while True:
                     yield f"data: {json.dumps(event, default=str)}\n\n"
-                    event = await queue.get()
+                    event = await clients[client].get()
             finally:
-                clients.discard(queue)
+                del clients[client]
+                release(client)
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 
     async def start(name: str, body: dict[str, object]) -> Response:
         path = body.get("experiment_config")
         try:
-            experiment, concurrency, runs = await prepare_experiment(
+            experiment, concurrency = await prepare_experiment(
                 config,
                 name,
                 None if path is None else Path(str(path)),
@@ -58,33 +67,33 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
             )
         except ValueError as error:
             return refuse(400, str(error))
-        lock = contextlib.ExitStack()
-        try:
-            lock.enter_context(hold_folder(runs))
-        except BlockingIOError:
-            return refuse(409, f"{name} is already running ({runs} is held).")
         ready = asyncio.Event()
+        owner = body.get("client")
+        if isinstance(owner, int):
+            owners[name] = owner
 
         def listen(controls: Controls) -> None:
             sessions[name] = controls
             ready.set()
+            if name in owners and owners[name] not in clients:
+                release(owners[name])
 
         async def session() -> str | None:
             error = None
-            with lock:
-                try:
-                    await run_experiment(
-                        config,
-                        name,
-                        experiment,
-                        concurrency,
-                        lambda event: broadcast({**event, "experiment": name}),
-                        listen,
-                    )
-                # Clients hear why the session ended; the daemon keeps serving.
-                except Exception as failure:  # noqa: BLE001
-                    error = str(failure)
+            try:
+                await run_experiment(
+                    config,
+                    name,
+                    experiment,
+                    concurrency,
+                    lambda event: broadcast({**event, "experiment": name}),
+                    listen,
+                )
+            # Clients hear why the session ended; the daemon keeps serving.
+            except Exception as failure:  # noqa: BLE001
+                error = str(failure)
             del sessions[name]
+            owners.pop(name, None)
             broadcast({"event": "done", "experiment": name, "error": error})
             return error
 

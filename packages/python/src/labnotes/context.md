@@ -59,7 +59,9 @@ renaming the experiment means editing `name`.
 Each combination of `[params]` runs `repeats` times (1 if omitted), round-robin, on every
 `run`, whatever is already on disk. That is `mode = "adhoc"`, the default.
 `mode = "fill"` counts what is there: only runs that count fill a combination,
-so running again fills in what failed or never ran.
+so running again fills in what failed or never ran. `mode` under
+`[experiments]` in `.labnotes.toml` sets it for every experiment that doesn't
+set its own.
 Each run gets a new run folder, named for the UTC time it was planned (`20261020-000429-brave-fox`), so folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.

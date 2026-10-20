@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any
 
 from labnotes.default_counts import DEFAULT_COUNTS
+from labnotes.modes import DEFAULT_MODE
 
 Report = Callable[[dict[str, object]], None]
 
@@ -38,6 +39,7 @@ class LabnotesConfig:
     experiments: str
     files: str
     runs: str
+    mode: str = DEFAULT_MODE
 
 
 @dataclass(frozen=True)
@@ -47,4 +49,4 @@ class ExperimentConfig:
     params: dict[str, list[object]]
     name: str | None = None
     counts: str = DEFAULT_COUNTS
-    mode: str = "adhoc"
+    mode: str = DEFAULT_MODE

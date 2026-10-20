@@ -21,7 +21,7 @@ def start_experiment(
         experiment_config = config.root / folder / "experiment.toml"
     if not experiment_config.is_file():
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")
-    experiment = read_experiment_config(experiment_config)
+    experiment = read_experiment_config(experiment_config, config.mode)
     runs = runs_parent(config.root, config.runs, name)
     runs.mkdir(parents=True, exist_ok=True)
     try:

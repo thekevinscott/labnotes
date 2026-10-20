@@ -4,12 +4,12 @@ from pathlib import Path
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.models import ExperimentConfig
+from labnotes.modes import MODES
 
 SETTINGS = {"name", "command", "repeats", "params", "counts", "mode"}
-MODES = ("fill", "adhoc")
 
 
-def read_experiment_config(path: Path) -> ExperimentConfig:
+def read_experiment_config(path: Path, mode: str) -> ExperimentConfig:
     try:
         with path.open("rb") as file:
             values = tomllib.load(file)
@@ -40,7 +40,7 @@ def read_experiment_config(path: Path) -> ExperimentConfig:
     counts = values.get("counts", DEFAULT_COUNTS)
     if not isinstance(counts, str) or not counts.strip():
         raise ValueError(f"{path}: counts must be a SQL condition")
-    mode = values.get("mode", "adhoc")
+    mode = values.get("mode", mode)
     if mode not in MODES:
         raise ValueError(f"{path}: mode must be fill or adhoc")
     return ExperimentConfig(command, repeats, params, name, counts, mode)

@@ -25,11 +25,16 @@ def test_reads_a_path(table: str, template: str) -> None:
     assert read_path(CONFIG, table, {"path": template}) == template
 
 
+def test_lets_mode_through_in_experiments() -> None:
+    assert read_path(CONFIG, "experiments", {"mode": "fill"}) == "{experiment}"
+
+
 @pytest.mark.parametrize(
     ("table", "section", "message"),
     [
         ("experiments", "e", "experiments must be a table, like [experiments]"),
         ("files", {"glob": 1}, "unknown keys in [files]: glob"),
+        ("files", {"mode": "fill"}, "unknown keys in [files]: mode"),
         ("files", {"path": 1}, "[files] path must be a string"),
         ("files", {"path": "/abs/{experiment}"}, "[files] path must be relative"),
         ("files", {"path": "~/{experiment}"}, "[files] path must be relative"),

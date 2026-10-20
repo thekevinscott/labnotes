@@ -85,7 +85,7 @@ def test_loads_config_notes_progress_and_runs(
     tables = make_tables(experiment())
     params = {"sort": "x", "f.x": "1"}
 
-    loaded = asyncio.run(load_experiment(tables, ROOT, "it's", params))
+    loaded = asyncio.run(load_experiment(tables, ROOT, "adhoc", "it's", params))
 
     assert loaded is not None
     assert (loaded["name"], loaded["display_name"], loaded["target"]) == (
@@ -134,16 +134,33 @@ def test_loads_config_notes_progress_and_runs(
 def test_shows_only_id_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    loaded = asyncio.run(load_experiment(make_tables(experiment(None)), ROOT, "a", {}))
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(None)), ROOT, "adhoc", "a", {})
+    )
 
     assert loaded is not None
     assert (loaded["run_columns"], loaded["target"]) == (["id"], None)
 
 
+def test_falls_back_to_the_project_mode(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    config = {key: value for key, value in CONFIG.items() if key != "mode"}
+
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(config)), ROOT, "fill", "a", {})
+    )
+
+    assert loaded is not None
+    assert (loaded["mode"], loaded["target"]) == ("fill", 4)
+
+
 def test_returns_none_for_an_unknown_experiment(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    assert asyncio.run(load_experiment(make_tables([]), ROOT, "nope", {})) is None
+    assert (
+        asyncio.run(load_experiment(make_tables([]), ROOT, "adhoc", "nope", {})) is None
+    )
 
 
 def test_lists_a_param_named_id_once(
@@ -152,7 +169,7 @@ def test_lists_a_param_named_id_once(
     config = {**CONFIG, "params": {"id": [1], "a": [2]}}
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(config)), ROOT, "a", {})
+        load_experiment(make_tables(experiment(config)), ROOT, "adhoc", "a", {})
     )
 
     assert loaded is not None
@@ -169,7 +186,7 @@ def test_renders_notes_with_their_saved_outputs(
         return ["<out>"]
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment()), ROOT, "a", {}, outputs_for)
+        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", {}, outputs_for)
     )
 
     assert loaded is not None
@@ -184,7 +201,9 @@ def test_marks_notes_without_python_blocks_as_not_runnable(
 ) -> None:
     collaborators["python_blocks"].return_value = []
 
-    loaded = asyncio.run(load_experiment(make_tables(experiment()), ROOT, "a", {}))
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", {})
+    )
 
     assert loaded is not None
     notes = cast(list[dict[str, object]], loaded["notes"])

@@ -81,16 +81,52 @@ def test_runs_a_block_as_edited(site: str, root: Path) -> None:
     browse(f"{site}{NOTE}", check)
 
 
-def test_keeps_edits_when_the_file_changed_on_disk(site: str, root: Path) -> None:
+def test_shows_an_outside_edit_in_the_rendered_note(site: str, root: Path) -> None:
     async def check(page: Page) -> None:
+        await expect(page.get_by_role("heading", name="The plan")).to_be_visible()
         write(root / PLAN, "# Changed elsewhere\n")
-        await open_editor(page)
-        await page.keyboard.type("mine ")
 
-        await expect(page.get_by_text("This note changed on disk")).to_be_visible()
-        await page.keyboard.press("Escape")
-        await expect(page.get_by_role("textbox", name="Note")).to_be_visible()
-        assert (root / PLAN).read_text(encoding="utf-8") == "# Changed elsewhere\n"
+        await expect(
+            page.get_by_role("heading", name="Changed elsewhere")
+        ).to_be_visible()
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_merges_an_outside_edit_into_the_open_editor(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await open_editor(page)
+        await page.keyboard.press("End")
+        await page.keyboard.type(" mine")
+        await on_disk(root / PLAN, "# The plan mine\n")
+
+        write(root / PLAN, "# The plan mine\n\nTheirs.\n\n```python\n1 + 1\n```\n")
+        editor = page.get_by_role("textbox", name="Note")
+        await expect(editor).to_contain_text("Theirs.")
+        await page.keyboard.type(" too")
+
+        await on_disk(
+            root / PLAN, "# The plan mine too\n\nTheirs.\n\n```python\n1 + 1\n```\n"
+        )
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_merges_when_a_save_finds_the_file_changed(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await page.route("**/changes", lambda route: route.abort())
+        await page.reload()
+        await open_editor(page)
+        write(root / PLAN, "# The plan\n\nTheirs.\n\n```python\n1 + 1\n```\n")
+        await page.keyboard.press("End")
+        await page.keyboard.type(" mine")
+
+        await on_disk(
+            root / PLAN, "# The plan mine\n\nTheirs.\n\n```python\n1 + 1\n```\n"
+        )
+        await expect(page.get_by_role("textbox", name="Note")).to_contain_text(
+            "Theirs."
+        )
 
     browse(f"{site}{NOTE}", check)
 

@@ -14,18 +14,13 @@ def default_counts() -> Iterator[None]:
         yield
 
 
-def write(tmp_path: Path, text: str) -> Path:
-    path = tmp_path / "experiment.toml"
-    path.write_text(text, encoding="utf-8")
-    return path
+PATH = Path("/p/experiment.toml")
 
 
-def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
+def test_reads_command_repeats_and_params() -> None:
     config = read_experiment_config(
-        write(
-            tmp_path,
-            'name = "Study"\ncommand = "run"\nrepeats = 3\n[params]\nm = ["a", "b"]\n',
-        ),
+        PATH,
+        'name = "Study"\ncommand = "run"\nrepeats = 3\n[params]\nm = ["a", "b"]\n',
         "adhoc",
         1,
     )
@@ -38,8 +33,8 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
     )
 
 
-def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
-    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "adhoc", 1)
+def test_defaults_to_one_repeat_and_no_params() -> None:
+    config = read_experiment_config(PATH, 'command = "run"\n', "adhoc", 1)
 
     assert (
         config.name,
@@ -51,34 +46,32 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
     ) == (None, 1, {}, "default", "adhoc", 1)
 
 
-def test_falls_back_to_the_project_mode_and_concurrency(tmp_path: Path) -> None:
-    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "fill", 3)
+def test_falls_back_to_the_project_mode_and_concurrency() -> None:
+    config = read_experiment_config(PATH, 'command = "run"\n', "fill", 3)
 
     assert (config.mode, config.concurrency) == ("fill", 3)
 
 
-def test_reads_concurrency_over_the_project_concurrency(tmp_path: Path) -> None:
+def test_reads_concurrency_over_the_project_concurrency() -> None:
     config = read_experiment_config(
-        write(tmp_path, 'command = "run"\nconcurrency = 2\n'), "adhoc", 3
+        PATH, 'command = "run"\nconcurrency = 2\n', "adhoc", 3
     )
 
     assert config.concurrency == 2
 
 
-def test_reads_counts(tmp_path: Path) -> None:
+def test_reads_counts() -> None:
     config = read_experiment_config(
-        write(tmp_path, 'command = "run"\ncounts = "exit_code = 0"\n'), "adhoc", 1
+        PATH, 'command = "run"\ncounts = "exit_code = 0"\n', "adhoc", 1
     )
 
     assert config.counts == "exit_code = 0"
 
 
 @pytest.mark.parametrize(("mode", "project"), [("fill", "adhoc"), ("adhoc", "fill")])
-def test_reads_mode_over_the_project_mode(
-    tmp_path: Path, mode: str, project: str
-) -> None:
+def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
     config = read_experiment_config(
-        write(tmp_path, f'command = "run"\nmode = "{mode}"\n'), project, 1
+        PATH, f'command = "run"\nmode = "{mode}"\n', project, 1
     )
 
     assert config.mode == mode
@@ -105,10 +98,8 @@ def test_reads_mode_over_the_project_mode(
         ('command = "run"\nconcurrency = 0\n', "concurrency must be a positive"),
     ],
 )
-def test_rejects_a_bad_config(tmp_path: Path, text: str, message: str) -> None:
-    path = write(tmp_path, text)
-
+def test_rejects_a_bad_config(text: str, message: str) -> None:
     with pytest.raises(ValueError, match=message) as error:
-        read_experiment_config(path, "adhoc", 1)
+        read_experiment_config(PATH, text, "adhoc", 1)
 
-    assert str(error.value).startswith(f"{path}: ")
+    assert str(error.value).startswith(f"{PATH}: ")

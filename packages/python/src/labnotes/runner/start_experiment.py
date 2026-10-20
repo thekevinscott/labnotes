@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import Callable
 from functools import partial
 from pathlib import Path
@@ -7,6 +8,7 @@ from labnotes.runner.hold_folder import hold_folder
 from labnotes.runner.read_experiment_config import read_experiment_config
 from labnotes.runner.run_experiment import run_experiment
 from labnotes.runner.runs_parent import runs_parent
+from labnotes.tables.file_text import file_text
 
 
 def start_experiment(
@@ -19,10 +21,11 @@ def start_experiment(
     if experiment_config is None:
         folder = config.experiments.replace("{experiment}", name)
         experiment_config = config.root / folder / "experiment.toml"
-    if not experiment_config.is_file():
+    source = asyncio.run(file_text(config.root, experiment_config))
+    if source is None:
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")
     experiment = read_experiment_config(
-        experiment_config, config.mode, config.concurrency
+        experiment_config, source, config.mode, config.concurrency
     )
     if concurrency is None:
         concurrency = experiment.concurrency

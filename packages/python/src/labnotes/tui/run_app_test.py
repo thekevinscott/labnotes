@@ -49,7 +49,7 @@ def styles(app: RunApp) -> list[list[object]]:
     ]
 
 
-def planned(*runs: str, mode: str = "fill") -> dict[str, object]:
+def planned(*runs: str, mode: str = "matrix") -> dict[str, object]:
     return {
         "event": "planned",
         "title": "Exp",
@@ -1164,7 +1164,7 @@ def test_escape_brings_back_the_summary_once_idle() -> None:
     [
         (("r1",), "adhoc", "r1"),
         (("r1", "r2"), "adhoc", None),
-        (("r1",), "fill", None),
+        (("r1",), "matrix", None),
     ],
 )
 def test_opens_a_lone_adhoc_run_in_its_output(

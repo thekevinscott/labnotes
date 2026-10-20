@@ -10,7 +10,7 @@ import pytest
 
 from labnotes.create_app import create_app
 
-CONFIG = mock.Mock(root=Path("/p/project"), mode="fill")
+CONFIG = mock.Mock(root=Path("/p/project"), mode="matrix")
 
 
 EXPERIMENT: dict[str, object] = {"name": "models-effort"}
@@ -108,7 +108,9 @@ def test_index_lists_experiments(
     status, _ = call(app, "/")
 
     assert status == 200
-    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables, "fill")
+    collaborators["list_experiments"].assert_awaited_once_with(
+        app.state.tables, "matrix"
+    )
     collaborators["templates"].TemplateResponse.assert_called_once_with(
         mock.ANY, "index.html", {"experiments": [EXPERIMENT], "folder": "project"}
     )
@@ -123,7 +125,7 @@ def test_experiment_page_loads_the_named_experiment(
     assert collaborators["load_experiment"].await_args.args[:5] == (
         app.state.tables,
         Path("/p/project"),
-        "fill",
+        "matrix",
         "models-effort",
         {"sort": "model"},
     )

@@ -11,7 +11,7 @@ import pytest
 from playwright.async_api import Page, async_playwright
 
 CONFIG = (
-    'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "fill"\n'
+    'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "matrix"\n'
     '[params]\nsource-language = ["en", "fr"]\n'
 )
 

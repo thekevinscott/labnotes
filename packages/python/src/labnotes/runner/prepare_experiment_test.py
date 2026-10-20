@@ -30,7 +30,7 @@ def make_config(root: Path) -> mock.Mock:
         root=root,
         experiments="notes/{experiment}",
         runs="data/{experiment}/{run}",
-        mode="fill",
+        mode="matrix",
         concurrency=3,
     )
 
@@ -52,7 +52,7 @@ def test_reads_the_experiment(
 
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "fill", 3
+        path, "source", "matrix", 3
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
@@ -66,7 +66,7 @@ def test_reads_the_named_experiment_config(
     prepare(tmp_path, path)
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "fill", 3
+        path, "source", "matrix", 3
     )
 
 

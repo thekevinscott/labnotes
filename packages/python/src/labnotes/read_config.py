@@ -24,7 +24,7 @@ def read_config(path: Path) -> LabnotesConfig:
     experiments = values.get("experiments", {})
     mode = experiments.get("mode", DEFAULT_MODE)
     if mode not in MODES:
-        raise ValueError(f"{path}: [experiments] mode must be fill or adhoc")
+        raise ValueError(f"{path}: [experiments] mode must be matrix or adhoc")
     concurrency = experiments.get("concurrency", 1)
     if not is_positive_int(concurrency):
         raise ValueError(

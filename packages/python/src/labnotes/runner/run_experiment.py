@@ -37,7 +37,7 @@ async def run_experiment(
     existing = await experiment_run_ids(tables, name)
     finished: list[dict[str, object]] = []
     match experiment.mode:
-        case "fill":
+        case "matrix":
             counted = await list_experiment_runs(tables, name, experiment.counts)
             finished = [json.loads(str(r["params"])) for r in counted if r["counted"]]
     planned: set[str] = set()

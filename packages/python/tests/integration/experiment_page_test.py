@@ -9,7 +9,7 @@ def test_shows_the_experiment_toml_on_one_line(site: str) -> None:
     async def check(page: Page) -> None:
         await expect(page.get_by_role("heading", name="Alpha study")).to_be_visible()
         summary = page.locator(".config-summary")
-        await expect(summary).to_contain_text("fill")
+        await expect(summary).to_contain_text("matrix")
         await expect(summary).to_contain_text("command go")
         await expect(summary).to_contain_text("repeats 2")
         await expect(summary).to_contain_text("source-language en fr")

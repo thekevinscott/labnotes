@@ -14,7 +14,7 @@ def default_counts() -> Iterator[None]:
 
 def test_summarizes_the_grid_from_params_and_repeats() -> None:
     # Not interned, like a value read from TOML, so `is` can't pass for `==`.
-    mode = "".join(["fi", "ll"])
+    mode = "".join(["mat", "rix"])
     summary = summarize_config(
         {
             "command": "go",
@@ -31,25 +31,25 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
         "cell_count": 2,
         "runs_per_cell": 3,
         "completed_run": "default",
-        "mode": "fill",
+        "mode": "matrix",
         "other": {"command": "go"},
     }
 
 
 @pytest.mark.parametrize(
     ("config", "project"),
-    [({"mode": "adhoc"}, "fill"), ({"mode": "other"}, "fill"), ({}, "adhoc")],
+    [({"mode": "adhoc"}, "matrix"), ({"mode": "other"}, "matrix"), ({}, "adhoc")],
 )
-def test_runs_ad_hoc_unless_filling(config: dict[str, object], project: str) -> None:
+def test_runs_ad_hoc_unless_matrix(config: dict[str, object], project: str) -> None:
     summary = summarize_config({"command": "go", "repeats": 3, **config}, project)
 
     assert (summary["mode"], summary["runs_per_cell"]) == ("adhoc", 3)
 
 
 def test_defaults_to_one_repeat() -> None:
-    summary = summarize_config({"command": "go"}, "fill")
+    summary = summarize_config({"command": "go"}, "matrix")
 
-    assert (summary["mode"], summary["runs_per_cell"]) == ("fill", 1)
+    assert (summary["mode"], summary["runs_per_cell"]) == ("matrix", 1)
 
 
 @pytest.mark.parametrize("config", [None, {}, {"repeats": "two", "params": [1]}])

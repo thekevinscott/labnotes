@@ -34,7 +34,7 @@ def project(tmp_path: Path) -> Path:
     write(
         tmp_path / "exp" / "experiment.toml",
         f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
-        'repeats = 2\nmode = "fill"\n[params]\nm = ["a", "b"]\n',
+        'repeats = 2\nmode = "matrix"\n[params]\nm = ["a", "b"]\n',
     )
     return tmp_path
 
@@ -81,7 +81,7 @@ def test_reruns_only_the_runs_that_failed(
 
 def test_reruns_every_combination_without_a_mode(project: Path) -> None:
     toml = project / "exp" / "experiment.toml"
-    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "fill"\n', ""))
+    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
     labnotes(project, ["experiments", "exp", "run"])
     labnotes(project, ["experiments", "exp", "run"])
 
@@ -93,8 +93,8 @@ def test_reruns_every_combination_without_a_mode(project: Path) -> None:
 
 def test_fills_by_the_project_mode(project: Path) -> None:
     toml = project / "exp" / "experiment.toml"
-    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "fill"\n', ""))
-    (project / ".labnotes.toml").write_text('[experiments]\nmode = "fill"\n')
+    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
+    (project / ".labnotes.toml").write_text('[experiments]\nmode = "matrix"\n')
     labnotes(project, ["experiments", "exp", "run"])
     labnotes(project, ["experiments", "exp", "run"])
 

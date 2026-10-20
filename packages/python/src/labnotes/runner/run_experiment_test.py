@@ -13,7 +13,7 @@ B: dict[str, object] = {"m": "b"}
 SIGKILL, SIGTERM = 9, 15
 
 
-def experiment(mode: str = "fill") -> mock.Mock:
+def experiment(mode: str = "matrix") -> mock.Mock:
     config = mock.Mock(
         command="run", params={"m": ["a", "b"]}, repeats=2, counts="c", mode=mode
     )
@@ -86,7 +86,7 @@ def run(
     report: mock.Mock,
     concurrency: int = 1,
     listen: mock.Mock | None = None,
-    mode: str = "fill",
+    mode: str = "matrix",
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
@@ -152,7 +152,7 @@ def test_runs_each_planned_run_in_a_new_folder(
             "title": "exp",
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
-            "mode": "fill",
+            "mode": "matrix",
         },
         {
             "event": "started",

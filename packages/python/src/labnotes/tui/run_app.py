@@ -25,6 +25,7 @@ VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette"}
 
 
 class RunApp(App[None]):
+    CSS = "#concurrency { dock: right; width: auto; padding: 0 1; }"
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
@@ -89,6 +90,7 @@ class RunApp(App[None]):
             table.add_column(column, key=column)
         self.query_one(Input).display = False
         self.query_one(Log).display = False
+        self.query_one(Header).mount(Static(id="concurrency"))
         table.set_interval(0.1, self.spin)
 
     def on_ready(self) -> None:
@@ -116,7 +118,6 @@ class RunApp(App[None]):
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
-                self.show(describe_event(event))
                 match event["mode"], event["runs"]:
                     case "adhoc", [only]:
                         self.view(only["run"])  # type: ignore[index]
@@ -178,7 +179,6 @@ class RunApp(App[None]):
                 self.show_summary()
             case "concurrency":
                 self.show_concurrency(event)
-                self.show(describe_event(event))
             case "stopping":
                 for pending in self.pending:
                     self.set_cell(pending, "status", dim(SKIPPED))
@@ -217,7 +217,7 @@ class RunApp(App[None]):
 
     def show_concurrency(self, event: dict[str, object]) -> None:
         self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]
-        self.sub_title = f"{self.concurrency} at a time"
+        self.query_one("#concurrency", Static).update(f"{self.concurrency} at a time")
 
     def tick(self) -> None:
         for run, began in self.started.items():
@@ -330,7 +330,7 @@ class RunApp(App[None]):
             self.viewing = None
             self.query_one(Log).display = False
             self.query_one(DataTable).display = True
-            self.sub_title = f"{self.concurrency} at a time"
+            self.sub_title = ""
             self.refresh_bindings()
             if self.idle:
                 self.show_summary()

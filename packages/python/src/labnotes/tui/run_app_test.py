@@ -63,6 +63,11 @@ def status(app: RunApp) -> str:
     return str(widget.content)
 
 
+def corner(app: RunApp) -> str:
+    widget: Any = app.query_one("Header #concurrency")
+    return str(widget.content)
+
+
 def test_shows_each_run_and_the_outcome(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
@@ -179,7 +184,7 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
             assert styles(app) == [[None] * 4, ["dim"] * 4]
             table: Any = app.query_one("#runs")
             assert table.columns["time"].content_width == len("0 seconds")
-            assert status(app) == "said planned"
+            assert status(app) == ""
 
     asyncio.run(drive())
 
@@ -278,7 +283,7 @@ def test_keeps_later_notes_when_the_next_run_starts() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2"))
         report({"event": "queued", "run": "r2", "pending": ["r2"], "held": []})
-        report({"event": "concurrency", "concurrency": 3})
+        report({"event": "killing"})
         report(
             {
                 "event": "started",
@@ -293,7 +298,7 @@ def test_keeps_later_notes_when_the_next_run_starts() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert status(app) == "said concurrency"
+            assert status(app) == "said killing"
 
     asyncio.run(drive())
 
@@ -473,7 +478,7 @@ def test_plus_and_minus_change_the_concurrency() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert app.sub_title == "2 at a time"
+            assert corner(app) == "2 at a time"
             await pilot.press("plus", "equals_sign", "minus")
             assert set_concurrency.call_args_list == [
                 mock.call(3),
@@ -511,8 +516,8 @@ def test_shows_the_new_concurrency() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert (app.concurrency, app.sub_title) == (5, "5 at a time")
-            assert status(app) == "said concurrency"
+            assert (app.concurrency, corner(app)) == (5, "5 at a time")
+            assert status(app) == ""
 
     asyncio.run(drive())
 
@@ -989,7 +994,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                 await pilot.press("escape")
                 assert not app.query_one("#output").display
                 assert app.query_one("#runs").display
-                assert (app.sub_title, status(app)) == ("2 at a time", "")
+                assert (app.sub_title, corner(app)) == ("", "2 at a time")
 
     asyncio.run(drive())
 

@@ -125,6 +125,13 @@ async def run_experiment(
             plan.insert(0, entry)
             arrange("queued", run)
 
+    def move(run: str, place: int) -> None:
+        entry = find(plan, run)
+        if entry is not None:
+            plan.remove(entry)
+            plan.insert(max(0, place), entry)
+            arrange("moved", run)
+
     def toggle(run: str) -> None:
         if stopping.is_set():
             return
@@ -202,7 +209,11 @@ async def run_experiment(
         ended[run] = params
         results.append(result)
 
-    listen(Controls(interrupt, run_next, set_concurrency, toggle, kill, retry, finish))
+    listen(
+        Controls(
+            interrupt, run_next, set_concurrency, toggle, kill, retry, finish, move
+        )
+    )
     fill()
     await done.wait()
     await asyncio.gather(*started)

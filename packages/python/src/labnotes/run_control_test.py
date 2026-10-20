@@ -28,6 +28,7 @@ def run(argv: list[str]) -> int | str | None:
     [
         (["exp", "kill", "exp/r1"], ["exp/r1"]),
         (["exp", "set_concurrency", "3"], [3]),
+        (["exp", "move", "exp/r1", "2"], ["exp/r1", 2]),
         (["exp", "interrupt"], []),
     ],
 )
@@ -61,6 +62,7 @@ def test_says_why_the_daemon_refused(
         (["exp", "kill"], "kill takes 1 argument(s)."),
         (["exp", "finish", "extra"], "finish takes 0 argument(s)."),
         (["exp", "set_concurrency", "lots"], "set_concurrency takes a number."),
+        (["exp", "move", "exp/r1"], "move takes 2 argument(s)."),
     ],
 )
 def test_refuses_the_wrong_arguments(
@@ -101,3 +103,4 @@ def test_help_lists_what_each_control_takes(
 
     out = " ".join(capsys.readouterr().out.split())
     assert "set_concurrency a number" in out
+    assert "move a run and its new place in the queue" in out

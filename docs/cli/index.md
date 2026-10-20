@@ -4,3 +4,4 @@
 
 - [Viewing experiments](viewing)
 - [Running experiments](running)
+- [Modes](modes): `adhoc` and `fill`

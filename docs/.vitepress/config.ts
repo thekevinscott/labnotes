@@ -27,6 +27,7 @@ export default defineConfig({
             items: [
               { text: 'Viewing Experiments', link: '/cli/viewing' },
               { text: 'Running Experiments', link: '/cli/running' },
+              { text: 'Modes', link: '/cli/modes' },
             ],
           },
           { text: 'Frontend', link: '/frontend' },

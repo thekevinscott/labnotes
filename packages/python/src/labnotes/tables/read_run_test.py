@@ -53,6 +53,6 @@ def test_leaves_missing_fields_empty(tmp_path: Path) -> None:
 
 
 def test_skips_a_run_json_outside_the_template(tmp_path: Path) -> None:
-    path = write_run(tmp_path / "exp" / "runs" / "a" / "b", {})
+    path = write_run(tmp_path / "exp" / "runs" / "a" / "b" / "c", {})
 
     assert read_run(tmp_path, "{experiment}/runs/{run}", path) == []

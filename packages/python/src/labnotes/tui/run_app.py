@@ -106,7 +106,7 @@ class RunApp(App[None]):
             case "planned":
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
-                    cells = (planned["run"], args, PENDING, "")
+                    cells = (planned["run"].rpartition("/")[2], args, PENDING, "")
                     self.cells[planned["run"]] = [*map(dim, cells)]
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
@@ -157,7 +157,9 @@ class RunApp(App[None]):
             case "retried":
                 again = str(event["retry"])
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                self.cells[again] = [*map(dim, (again, args, PENDING, ""))]
+                self.cells[again] = [
+                    *map(dim, (again.rpartition("/")[2], args, PENDING, ""))
+                ]
                 self.pending.add(again)
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))

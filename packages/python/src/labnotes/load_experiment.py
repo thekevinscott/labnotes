@@ -56,6 +56,7 @@ async def load_experiment(
         "notes": [
             {
                 "name": note["name"],
+                "content": note["content"],
                 "html": render_markdown(
                     note["content"], outputs_for(note["name"], note["content"])
                 ),

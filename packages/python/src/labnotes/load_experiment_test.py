@@ -96,7 +96,7 @@ def test_loads_config_notes_progress_and_runs(
     assert (loaded["runs"], loaded["completed"]) == (3, 2)
     assert (loaded["config_source"], loaded["counts_set"]) == ("toml", False)
     assert loaded["notes"] == [
-        {"name": "PLAN.md", "html": "<p>plan</p>", "runnable": True}
+        {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
     assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]
@@ -194,7 +194,12 @@ def test_renders_notes_with_their_saved_outputs(
 
     assert loaded is not None
     assert loaded["notes"] == [
-        {"name": "PLAN.md", "html": "<p>plan<out></p>", "runnable": True}
+        {
+            "name": "PLAN.md",
+            "content": "plan",
+            "html": "<p>plan<out></p>",
+            "runnable": True,
+        }
     ]
     assert seen == [("PLAN.md", "plan")]
 

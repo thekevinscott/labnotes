@@ -424,3 +424,27 @@ h3 {
 .cell-output pre { background: none; border: 0; padding: 0.3rem 0; }
 .cell-output .stderr, .cell-output .error { color: var(--bad); }
 .cell-output img, .cell-output svg { max-width: 100%; height: auto; }
+
+/* Editing a note in place */
+.prose.editable { cursor: text; }
+.edit-status { margin: 0; padding: 0.45rem 1.75rem; font-family: var(--sans); font-size: 0.8rem; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
+.editor { padding: 0.5rem 1.75rem 1.5rem; max-width: 46rem; }
+.editor .cm-editor.cm-focused { outline: none; }
+.editor .cm-content { font-family: var(--serif); font-size: 1.06rem; line-height: 1.68; caret-color: var(--ink); }
+.editor .cm-line { padding: 0; }
+.editor .md-h1 { font-size: 1.6rem; font-weight: 600; }
+.editor .md-h2 { font-size: 1.3rem; font-weight: 600; }
+.editor .md-h3 { font-size: 1.1rem; font-weight: 600; }
+.editor .md-h4 { font-weight: 600; }
+.editor .md-strong { font-weight: 700; }
+.editor .md-em { font-style: italic; }
+.editor .md-strike { text-decoration: line-through; }
+.editor .md-link { color: var(--accent); }
+.editor .md-code { font-family: var(--mono); font-size: 0.86em; }
+.editor .md-quote { color: var(--ink-2); }
+.editor .md-mark { color: var(--ink-3); }
+.editor .md-code-line { font-family: var(--mono); font-size: 0.8rem; line-height: 1.5; background: var(--paper); padding: 0 1rem; }
+.editor .py-keyword { color: var(--accent); }
+.editor .py-string { color: var(--good); }
+.editor .py-comment { color: var(--ink-3); font-style: italic; }
+.editor .py-number { color: var(--bad); }

@@ -88,6 +88,9 @@
     {% endmacro %}
     {% if nested %}
     {% for group in e.run_groups %}
+    {% if group.flat %}
+    <tbody class="lone">{{ run_rows(group.runs[0]) }}</tbody>
+    {% else %}
     <tbody class="group{{ ' open' if narrowed }}" data-name="{{ group.name }}">
       <tr class="group-row">
         <td class="num" title="{{ group.passed }} passed, {{ group.failed }} failed"><span class="good">{{ group.passed }}✓</span> <span class="bad">{{ group.failed }}✕</span></td>
@@ -97,6 +100,7 @@
       </tr>
       {% for run in group.runs %}{{ run_rows(run) }}{% endfor %}
     </tbody>
+    {% endif %}
     {% else %}
     <tbody><tr><td class="empty" colspan="{{ width }}">No runs match these filters.</td></tr></tbody>
     {% endfor %}

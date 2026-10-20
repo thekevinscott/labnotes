@@ -15,6 +15,7 @@ def group_runs(
     return [
         {
             "name": name,
+            "flat": [run["id"] for run in members] == [name],
             "started": invocation_started(name),
             "runs": members,
             "total": totals.get(name, len(members)),

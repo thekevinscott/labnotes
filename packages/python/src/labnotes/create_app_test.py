@@ -24,6 +24,11 @@ def test_formats_durations_in_templates() -> None:
     assert module["templates"].env.filters["duration"] is module["format_duration"]
 
 
+def test_formats_start_times_in_templates() -> None:
+    module = create_app.__globals__
+    assert module["templates"].env.filters["started"] is module["format_started"]
+
+
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (

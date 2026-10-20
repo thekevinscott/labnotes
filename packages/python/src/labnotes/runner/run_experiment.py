@@ -1,8 +1,8 @@
 import asyncio
-import contextlib
 import json
-import os
 import signal
+
+import psutil
 
 from labnotes.models import (
     Controls,
@@ -17,6 +17,7 @@ from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.run_folder import run_folder
+from labnotes.runner.signal_tree import signal_tree
 from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.open_tables import open_tables
@@ -70,14 +71,14 @@ async def run_experiment(
         }
     )
     running: dict[str, set[asyncio.subprocess.Process]] = {}
+    trees: dict[str, set[psutil.Process]] = {}
     stopped: set[str] = set()
     results: list[dict[str, object]] = []
     stopping = asyncio.Event()
 
     def signal_run(run: str, signal_number: int) -> None:
         for process in running[run]:
-            with contextlib.suppress(ProcessLookupError):
-                os.killpg(process.pid, signal_number)
+            signal_tree(process.pid, signal_number, trees[run])
 
     def signal_runs(signal_number: int) -> None:
         for run in running:
@@ -183,6 +184,7 @@ async def run_experiment(
         folder.mkdir(parents=True)
         report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
+        trees[run] = set()
         result = await execute_run(
             config.root,
             folder,
@@ -190,8 +192,9 @@ async def run_experiment(
             params,
             running[run],
             stopping,
+            trees[run],
         )
-        del running[run]
+        del running[run], trees[run]
         report({"event": "ended", "run": run, **result})
         ended[run] = params
         results.append(result)

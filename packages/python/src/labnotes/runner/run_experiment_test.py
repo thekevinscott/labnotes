@@ -60,7 +60,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.signal",
             mock.Mock(SIGTERM=SIGTERM, SIGKILL=SIGKILL),
         ),
-        mock.patch("labnotes.runner.run_experiment.os.killpg") as killpg,
+        mock.patch("labnotes.runner.run_experiment.signal_tree") as signal_tree,
         mock.patch(
             "labnotes.runner.run_experiment.new_param_run_id",
             side_effect=lambda params, choices, taken: next(names),
@@ -75,7 +75,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "new_stamped_run_id": new_stamped_run_id,
             "new_param_run_id": new_param_run_id,
             "execute_run": execute_run,
-            "killpg": killpg,
+            "signal_tree": signal_tree,
         }
 
 
@@ -252,6 +252,7 @@ def interrupting(times: int, listen: mock.Mock) -> object:
         params: object,
         running: set[object],
         stopping: asyncio.Event,
+        tree: set[object],
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         assert not stopping.is_set()
@@ -278,7 +279,7 @@ def test_first_interrupt_stops_runs_and_starts_no_more(
     results = run(tmp_path, report, listen=listen)
 
     assert results == [{"exit_code": -15, "error": None}]
-    collaborators["killpg"].assert_called_once_with(42, SIGTERM)
+    collaborators["signal_tree"].assert_called_once_with(42, SIGTERM, set())
     assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 
 
@@ -291,9 +292,9 @@ def test_second_interrupt_kills_runs(
 
     run(tmp_path, report, listen=listen)
 
-    assert collaborators["killpg"].call_args_list == [
-        mock.call(42, SIGTERM),
-        mock.call(42, SIGKILL),
+    assert collaborators["signal_tree"].call_args_list == [
+        mock.call(42, SIGTERM, set()),
+        mock.call(42, SIGKILL, set()),
     ]
     assert events(report) == [
         "planned",
@@ -315,18 +316,20 @@ def test_a_late_interrupt_after_the_runs_end_does_nothing(
     run(tmp_path, report, listen=listen)
     listen.call_args.args[0].interrupt()
 
-    collaborators["killpg"].assert_called_once_with(42, SIGTERM)
+    collaborators["signal_tree"].assert_called_once_with(42, SIGTERM, set())
     assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 
 
-def test_ignores_a_run_that_already_exited(
+def test_signals_the_tree_the_run_waits_on(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     listen = mock.Mock()
     collaborators["execute_run"].side_effect = interrupting(1, listen)
-    collaborators["killpg"].side_effect = ProcessLookupError
 
     run(tmp_path, mock.Mock(), listen=listen)
+
+    tree = collaborators["execute_run"].await_args.args[6]
+    assert collaborators["signal_tree"].call_args.args[2] is tree
 
 
 def test_moves_a_pending_run_to_the_front(
@@ -548,6 +551,7 @@ def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
         params: object,
         running: set[object],
         stopping: asyncio.Event,
+        tree: set[object],
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=int(folder.name[1:])))
         for by, target in kills:
@@ -569,7 +573,7 @@ def test_kill_stops_only_that_run(
 
     run(tmp_path, report, concurrency=2, listen=listen)
 
-    collaborators["killpg"].assert_called_once_with(1, SIGTERM)
+    collaborators["signal_tree"].assert_called_once_with(1, SIGTERM, set())
     assert {"event": "stopping run", "run": "r1"} in reported(report)
     assert started_runs(report) == ["r1", "r2", "r3"]
 
@@ -585,9 +589,9 @@ def test_a_second_kill_sends_sigkill(
 
     run(tmp_path, report, listen=listen)
 
-    assert collaborators["killpg"].call_args_list == [
-        mock.call(1, SIGTERM),
-        mock.call(1, SIGKILL),
+    assert collaborators["signal_tree"].call_args_list == [
+        mock.call(1, SIGTERM, set()),
+        mock.call(1, SIGKILL, set()),
     ]
     assert events(report) == [
         "planned",
@@ -609,7 +613,7 @@ def test_killing_a_run_that_is_not_running_does_nothing(
     run(tmp_path, report, listen=listen)
     listen.call_args.args[0].kill("r1")
 
-    collaborators["killpg"].assert_not_called()
+    collaborators["signal_tree"].assert_not_called()
     assert events(report) == ["planned", "started", "ended", "started", "ended", "idle"]
 
 
@@ -625,6 +629,7 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
         params: object,
         running: set[object],
         stopping: asyncio.Event,
+        tree: set[object],
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         listen.call_args.args[0].interrupt()
@@ -636,7 +641,7 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
 
     run(tmp_path, report, listen=listen)
 
-    collaborators["killpg"].assert_called_once_with(42, SIGTERM)
+    collaborators["signal_tree"].assert_called_once_with(42, SIGTERM, set())
     assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 
 

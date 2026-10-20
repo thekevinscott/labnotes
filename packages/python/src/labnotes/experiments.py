@@ -5,6 +5,7 @@ from pathlib import Path
 import click
 
 from labnotes.create_experiment import create_experiment
+from labnotes.daemon.remote_start import remote_start
 from labnotes.load_config import load_config
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
@@ -62,12 +63,15 @@ def experiments(
             click.echo(f"Created {path / 'experiment.toml'}")
             return
         case str(), "run":
-            live = sys.stdout.isatty() and sys.stderr.isatty()
-            drive = run_tui if live else lambda start, title: run_headless(start)
             try:
-                results = start_experiment(
-                    config, name, experiment_config, concurrency, drive
-                )
+                if sys.stdout.isatty() and sys.stderr.isatty():
+                    results = start_experiment(
+                        config, name, experiment_config, concurrency, run_tui
+                    )
+                else:
+                    results = run_headless(
+                        remote_start(config, name, experiment_config, concurrency)
+                    )
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
             failed = sum(result["exit_code"] != 0 for result in results)

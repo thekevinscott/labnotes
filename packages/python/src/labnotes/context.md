@@ -116,7 +116,15 @@ line per event instead.
   kills them. Closing the terminal or sending SIGTERM stops them the same way,
   then kills any still going 5 seconds later. Once the runs are done, either
   one closes the live view.
-- A second `run` of the same experiment fails while the first holds the lock.
+- Outside a terminal, `run` hands its runs to the project's labnotes daemon,
+  starting it if needed, and waits for them. The daemon listens on
+  `.labnotes.sock` in the project folder and exits once nothing is running and
+  no client has been connected for 15 seconds. Runs belong to the daemon, so
+  killing the waiting `run` outright leaves them going. Ctrl-C or SIGTERM to it
+  still stops them.
+- `labnotes run stop` stops every run the daemon has going: SIGTERM, then
+  SIGKILL 5 seconds later.
+- A second `run` of the same experiment fails while the first is going.
 - It exits 0 even if runs fail; the summary line counts failures.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.

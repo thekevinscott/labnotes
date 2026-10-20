@@ -53,7 +53,7 @@ exclude = ["*_test.py"]
 packages = ["src/labnotes"]
 
 [tool.pytest.ini_options]
-testpaths = ["src/labnotes", "tests/integration"]
+testpaths = ["src/labnotes", "tests"]
 python_files = "*_test.py"
 
 [tool.ruff.lint]

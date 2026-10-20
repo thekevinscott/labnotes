@@ -21,6 +21,12 @@ CASES = [
         "0580",
         id="ignores-params-that-never-change",
     ),
+    pytest.param(
+        {"U": "mimo", "m": "a"},
+        {"U": ["mimo"], "m": ["a", "b"]},
+        "a",
+        id="looks-past-a-constant-listed-first",
+    ),
     pytest.param({"m": "a"}, {"m": ["a"]}, "", id="nothing-varies"),
     pytest.param({}, {}, "", id="no-params"),
     pytest.param(

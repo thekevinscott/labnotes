@@ -28,6 +28,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             side_effect=lambda seconds: f"{seconds:g} seconds",
         ),
         mock.patch("labnotes.tui.run_app.time") as time,
+        mock.patch("labnotes.tui.run_app.SPINNER", "|"),
         mock.patch("labnotes.tui.run_app.signal", mock.Mock(SIGTERM=15, SIGHUP=1)),
         mock.patch("labnotes.tui.run_app.stop_then_kill") as stop_then_kill,
     ):
@@ -150,7 +151,7 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
             rendered.set()
             await pilot.pause()
             assert rows(app) == [
-                ["r1", "--m a", "◐", "0 seconds"],
+                ["r1", "--m a", "|", "0 seconds"],
                 ["r2", "--m r2", "○", ""],
             ]
             assert styles(app) == [[None] * 4, ["dim"] * 4]
@@ -182,7 +183,7 @@ def test_skips_pending_runs_when_stopping() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert [row[2] for row in rows(app)] == ["◐", "–", "–"]
+            assert [row[2] for row in rows(app)] == ["|", "–", "–"]
             assert styles(app)[1][2] == "dim"
             assert status(app) == "said stopping"
 
@@ -302,7 +303,7 @@ def test_moves_deselected_runs_to_the_bottom() -> None:
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[:3:2] for row in rows(app)] == [
-                ["r1", "◐"],
+                ["r1", "|"],
                 ["r3", "–"],
                 ["r4", "–"],
                 ["r2", "⊘"],
@@ -529,7 +530,36 @@ def test_ticks_the_time_of_running_runs(
             await pilot.pause()
             collaborators["time"].monotonic.return_value = 25.0
             app.tick()
-            assert rows(app) == [["r1", "--m a", "◐", "15 seconds"]]
+            assert rows(app) == [["r1", "--m a", "|", "15 seconds"]]
+
+    asyncio.run(drive())
+
+
+@mock.patch("labnotes.tui.run_app.SPINNER", "|/-\\")
+def test_spins_the_status_of_running_runs() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch("labnotes.tui.run_app.DataTable.set_interval") as interval:
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                interval.assert_called_once_with(0.1, app.spin)
+                spun = []
+                for _ in range(4):
+                    app.spin()
+                    spun.append([row[2] for row in rows(app)])
+                assert spun == [["/", "○"], ["-", "○"], ["\\", "○"], ["|", "○"]]
 
     asyncio.run(drive())
 
@@ -662,13 +692,13 @@ def test_slash_filters_rows_by_params() -> None:
                 }
             )
             await pilot.pause()
-            assert rows(app) == [["r2", "--m r2", "◐", "0 seconds"]]
+            assert rows(app) == [["r2", "--m r2", "|", "0 seconds"]]
             assert app.query_one("#filter").display
             assert app.query_one("#runs").has_focus
             await pilot.press("escape")
             assert [row[:3] for row in rows(app)] == [
-                ["r1", "--m r1", "◐"],
-                ["r2", "--m r2", "◐"],
+                ["r1", "--m r1", "|"],
+                ["r2", "--m r2", "|"],
                 ["r3", "--m r3", "○"],
             ]
             assert not app.query_one("#filter").display

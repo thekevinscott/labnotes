@@ -287,7 +287,7 @@ h3 {
 .run-row td { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-row:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .group-row { cursor: pointer; background: var(--paper); }
-.group-row td { font-weight: 600; white-space: nowrap; }
+.group-row td { white-space: nowrap; }
 .group-row .good { color: var(--good); }
 .group-row .bad { color: var(--bad); }
 .group-toggle { font: inherit; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }

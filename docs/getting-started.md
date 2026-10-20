@@ -10,6 +10,8 @@ You can use `labnotes` without installation:
 uvx labnotes
 ```
 
+## Philosophy
+
 `labnotes` is designed to work entirely with local files. 
 
 

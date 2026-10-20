@@ -3,8 +3,7 @@ layout: home
 
 hero:
   name: 'labnotes'
-  text: ''
-  tagline: ''
+  tagline: 'Curate Your Experiments Experience'
   actions:
     - theme: brand
       text: Getting Started

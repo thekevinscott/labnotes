@@ -37,7 +37,7 @@ reason = "start answers 202, 400, 409 or 500, so every status but 202 is above i
 [[python.exempt]]
 path = "src/labnotes/daemon/remote_start.py"
 rules = ["mutation"]
-lines = [39]
+lines = [49]
 reason = "the daemon answers a run with 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
 
 [[python.exempt]]

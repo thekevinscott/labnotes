@@ -130,6 +130,7 @@ going. Elsewhere, it prints a line per event instead.
   running experiment: `kill`, `retry`, `run_next` or `toggle` a run,
   `set_concurrency` to a number, `interrupt` or `finish`.
 - A second `run` of the same experiment fails while the first is going.
-- It exits 0 even if runs fail; the summary line counts failures.
+- It exits 0 even if runs fail; the summary line counts failures. If it can't
+  start or reach the daemon, it prints the cause on one line and exits 1.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

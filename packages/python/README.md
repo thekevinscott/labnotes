@@ -89,7 +89,8 @@ line per event instead.
   kills them. Closing the terminal or sending SIGTERM stops them the same way,
   then kills any still going 5 seconds later.
 - A second `run` of the same experiment fails while the first holds the lock.
-- It exits 0 even if runs fail; the summary line counts failures.
+- It exits 0 even if runs fail; the summary line counts failures. If it can't
+  start or reach the daemon, it prints the cause on one line and exits 1.
 
 `labnotes server` serves a local site at http://127.0.0.1:8000 from the same
 `.labnotes.toml`: a table of experiments, and a page per experiment with its

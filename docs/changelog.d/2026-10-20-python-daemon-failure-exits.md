@@ -1,0 +1,1 @@
+**Fixed** — `labnotes experiments NAME run` now exits 1 with a one-line error when it can't start or reach the labnotes daemon, such as `Error: Can't reach the labnotes daemon: AF_UNIX path too long`. Before, it crashed with a traceback, or the live view closed and printed `0 passed, 0 failed.` with exit code 0.

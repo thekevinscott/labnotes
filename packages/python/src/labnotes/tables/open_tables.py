@@ -28,7 +28,8 @@ CREATE VIEW experiments AS
 """
 FILES = """
 CREATE TABLE files (
-  experiment TEXT, filename TEXT, path TEXT PRIMARY KEY, ctime TEXT, mtime TEXT
+  experiment TEXT, filename TEXT, path TEXT PRIMARY KEY, ctime TEXT, mtime TEXT,
+  mtime_ns INTEGER
 )
 """
 RUNS = """

@@ -9,7 +9,7 @@ from labnotes.tables.read_file import read_file
 def touch(path: Path) -> str:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("x", encoding="utf-8")
-    os.utime(path, (0, 1_792_281_600))
+    os.utime(path, ns=(0, 1_792_281_600_123_456_789))
     return str(path)
 
 
@@ -24,6 +24,7 @@ def test_reads_a_file_row(tmp_path: Path) -> None:
         "path": "exp/files/sub/plan.md",
         "ctime": row["ctime"],
         "mtime": "2026-10-18T00:00:00Z",
+        "mtime_ns": 1_792_281_600_123_456_789,
     }
     assert str(row["ctime"]).endswith("Z")
 

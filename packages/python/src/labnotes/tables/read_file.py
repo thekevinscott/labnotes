@@ -19,5 +19,6 @@ def read_file(root: Path, template: str, path: str) -> list[dict[str, object]]:
             "path": relative,
             "ctime": iso_time(stat.st_ctime),
             "mtime": iso_time(stat.st_mtime),
+            "mtime_ns": stat.st_mtime_ns,
         }
     ]

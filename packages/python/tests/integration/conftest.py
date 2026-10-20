@@ -43,6 +43,24 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def daemon(root: Path) -> Iterator[None]:
+    labnotes = Path(sys.executable).parent / "labnotes"
+    process = subprocess.Popen(
+        [labnotes, "-c", root / ".labnotes.toml", "daemon"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(100):
+            if (root / ".labnotes.sock").exists():
+                break
+            time.sleep(0.1)
+        yield
+    finally:
+        process.terminate()
+        process.wait()
+
+
 def serve(root: Path) -> Iterator[str]:
     port = free_port()
     labnotes = Path(sys.executable).parent / "labnotes"

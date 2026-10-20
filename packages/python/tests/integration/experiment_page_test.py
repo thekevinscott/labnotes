@@ -1,8 +1,9 @@
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from playwright.async_api import Page, expect
-from conftest import browse, run, serve, write
+from conftest import browse, daemon, run, serve, write
 
 
 def test_shows_the_experiment_toml_on_one_line(site: str) -> None:
@@ -179,6 +180,46 @@ def test_offers_no_filter_for_a_param_with_one_value(tmp_path: Path) -> None:
 ADHOC = 'command = "go"\nmode = "adhoc"\n[params]\nm = ["a", "b"]\n'
 LAKE = "20261020-105052-lake"
 POND = "20261019-090000-pond"
+
+
+def unfinished(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    started = datetime.now(UTC) - timedelta(seconds=5)
+    run(tmp_path, "run1", {}, created=started.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
+def test_shows_an_unfinished_run_as_running_while_the_daemon_is_up(
+    tmp_path: Path,
+) -> None:
+    unfinished(tmp_path)
+
+    async def check(page: Page) -> None:
+        row = page.get_by_role("row").filter(has_text="run1")
+        await expect(row.get_by_title("running")).to_be_visible()
+        await expect(row.get_by_title("not complete")).to_have_count(0)
+        elapsed = row.locator(".elapsed")
+        await expect(elapsed).to_have_text(re.compile(r"^\d+s$"))
+        first = await elapsed.text_content()
+        await expect(elapsed).not_to_have_text(str(first), timeout=3000)
+
+    for _ in daemon(tmp_path):
+        for site in serve(tmp_path):
+            browse(f"{site}/experiments/alpha", check)
+
+
+def test_shows_an_unfinished_run_as_interrupted_without_a_daemon(
+    tmp_path: Path,
+) -> None:
+    unfinished(tmp_path)
+
+    async def check(page: Page) -> None:
+        row = page.get_by_role("row").filter(has_text="run1")
+        await expect(row.get_by_title("interrupted")).to_be_visible()
+        await expect(row.locator(".elapsed")).to_have_count(0)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
 
 
 def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:

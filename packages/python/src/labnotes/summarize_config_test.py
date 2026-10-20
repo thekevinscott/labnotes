@@ -21,7 +21,8 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
             "repeats": 3,
             "mode": mode,
             "params": {"x": [1, 2], "y": ["a"], "z": 5},
-        }
+        },
+        "adhoc",
     )
 
     assert summary == {
@@ -36,9 +37,13 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
     }
 
 
-@pytest.mark.parametrize("config", [{"mode": "adhoc"}, {}])
-def test_has_no_target_for_an_adhoc_grid(config: dict[str, object]) -> None:
-    summary = summarize_config({"command": "go", "repeats": 3, **config})
+@pytest.mark.parametrize(
+    ("config", "project"), [({"mode": "adhoc"}, "fill"), ({}, "adhoc")]
+)
+def test_has_no_target_for_an_adhoc_grid(
+    config: dict[str, object], project: str
+) -> None:
+    summary = summarize_config({"command": "go", "repeats": 3, **config}, project)
 
     assert (summary["mode"], summary["runs_per_cell"], summary["target"]) == (
         "adhoc",
@@ -48,14 +53,18 @@ def test_has_no_target_for_an_adhoc_grid(config: dict[str, object]) -> None:
 
 
 def test_defaults_to_one_repeat() -> None:
-    summary = summarize_config({"command": "go", "mode": "fill"})
+    summary = summarize_config({"command": "go"}, "fill")
 
-    assert (summary["runs_per_cell"], summary["target"]) == (1, 1)
+    assert (summary["mode"], summary["runs_per_cell"], summary["target"]) == (
+        "fill",
+        1,
+        1,
+    )
 
 
 @pytest.mark.parametrize("config", [None, {}, {"repeats": "two", "params": [1]}])
 def test_has_no_grid_without_a_usable_config(config: dict[str, object] | None) -> None:
-    summary = summarize_config(config)
+    summary = summarize_config(config, "adhoc")
 
     assert (summary["varies"], summary["runs_per_cell"], summary["target"]) == (
         {},
@@ -66,10 +75,10 @@ def test_has_no_grid_without_a_usable_config(config: dict[str, object] | None) -
 
 
 def test_takes_counts_from_the_config() -> None:
-    summary = summarize_config({"command": "go", "counts": "exit_code = 0"})
+    summary = summarize_config({"command": "go", "counts": "exit_code = 0"}, "adhoc")
 
     assert summary["completed_run"] == "exit_code = 0"
 
 
 def test_ignores_counts_that_is_not_a_string() -> None:
-    assert summarize_config({"counts": 1})["completed_run"] == "default"
+    assert summarize_config({"counts": 1}, "adhoc")["completed_run"] == "default"

@@ -3,7 +3,7 @@ from math import prod
 from labnotes.default_counts import DEFAULT_COUNTS
 
 
-def summarize_config(config: dict[str, object] | None) -> dict[str, object]:
+def summarize_config(config: dict[str, object] | None, mode: str) -> dict[str, object]:
     config = config or {}
     params = config.get("params")
     varies = {
@@ -15,7 +15,7 @@ def summarize_config(config: dict[str, object] | None) -> dict[str, object]:
     cells = prod(len(values) for values in varies.values())
     command = config.get("command")
     counts = config.get("counts")
-    fill = config.get("mode") == "fill"
+    fill = config.get("mode", mode) == "fill"
     return {
         "fixed": {},
         "varies": varies,

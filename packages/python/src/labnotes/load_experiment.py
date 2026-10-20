@@ -25,6 +25,7 @@ def _no_outputs(note: str, content: str) -> Sequence[str]:
 async def load_experiment(
     tables: DirSQL,
     root: Path,
+    mode: str,
     name: str,
     params: Mapping[str, str],
     outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
@@ -37,7 +38,7 @@ async def load_experiment(
         return None
     [row] = found
     config = None if row["config"] is None else json.loads(str(row["config"]))
-    summary = summarize_config(config)
+    summary = summarize_config(config, mode)
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)

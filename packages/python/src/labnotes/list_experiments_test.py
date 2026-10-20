@@ -40,7 +40,7 @@ def test_lists_each_experiment_with_its_config_summary_and_progress(
         ]
     )
 
-    [a, b] = asyncio.run(list_experiments(tables))
+    [a, b] = asyncio.run(list_experiments(tables, "adhoc"))
 
     assert tables.query.await_args.args[0] == (
         "SELECT name, display_name, config FROM experiments ORDER BY name"

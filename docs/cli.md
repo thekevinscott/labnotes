@@ -1,4 +1,4 @@
-# TUI
+# CLI
 
 `labnotes experiments NAME run` in a terminal opens a live table of the experiment's runs, with status and time for each. It stays open after the last run finishes. Outside a terminal, `run` prints one line per event instead.
 

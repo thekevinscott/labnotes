@@ -6,6 +6,6 @@ hero:
   tagline: 'Curate Your Experiments Experience'
   actions:
     - theme: brand
-      text: Getting Started
-      link: /getting-started
+      text: Philosophy
+      link: /philosophy
 ---

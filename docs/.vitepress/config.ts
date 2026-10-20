@@ -15,16 +15,18 @@ export default defineConfig({
   srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**', 'migrations.md'],
   themeConfig: {
     siteTitle: false,
-    nav: [{ text: 'Getting Started', link: '/getting-started' }],
     sidebar: [
       {
         items: [
-          { text: 'Getting Started', link: '/getting-started' },
           { text: 'Philosophy', link: '/philosophy' },
-          { text: 'Config', link: '/config' },
-          { text: 'TUI', link: '/tui' },
+          { text: 'Getting Started', link: '/getting-started' },
+          { text: 'CLI', link: '/cli' },
           { text: 'Frontend', link: '/frontend' },
         ],
+      },
+      {
+        text: 'API',
+        items: [{ text: 'Config', link: '/api/config' }],
       },
     ],
     socialLinks: [{ icon: 'github', link: repository }],

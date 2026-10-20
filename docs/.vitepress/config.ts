@@ -13,6 +13,7 @@ export default defineConfig({
   // internals/ is contributor/agent-facing material, also excluded.
   srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**'],
   themeConfig: {
+    siteTitle: false,
     // Top-level nav is the four Diataxis quadrants, mirroring the
     // testing-conventions docs site. See docs/AGENTS.md.
     nav: [

@@ -85,6 +85,7 @@ Sends one control to an experiment's runs, the same as a [TUI](tui) key.
 | --- | --- | --- |
 | `run_next` | run | Runs this pending run next. |
 | `toggle` | run | Deselects a pending run, or puts it back. |
+| `move` | run, place | Moves a pending run to that place in the queue, counted from 0. |
 | `kill` | run | Stops a running run. A second `kill` kills it. |
 | `retry` | run | Runs a failed run again under a new id. |
 | `set_concurrency` | number | Sets how many run at once. |

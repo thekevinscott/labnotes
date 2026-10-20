@@ -22,7 +22,7 @@ The header shows the experiment's name and how many runs go at once.
 | `j` / `k` | Move the cursor down / up. |
 | `g` / `G` | Jump to the first / last row. |
 | `n` | Run the pending run under the cursor next. |
-| `m` | Grab the pending run under the cursor. `j` / `k` move it through the queue, Enter or `m` drops it, Escape puts it back. |
+| `m` | Grab the pending run under the cursor. `j` / `k` (or the arrow keys) move it through the queue, Enter or `m` drops it, Escape puts it back. |
 | Space | Deselect a pending run so it won't run. Press again to put it back at the end of the queue. |
 | `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
 | `D` | Deselect every pending run the filter shows. |

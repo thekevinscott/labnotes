@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.group_runs import group_runs, shared_params
+from labnotes.group_runs import group_runs
 
 
 @pytest.fixture(autouse=True)
@@ -77,15 +77,3 @@ def test_puts_a_run_without_an_invocation_in_its_own_group() -> None:
     [group] = group_runs([{"id": "lone", "labnotes_completed": 0}], [], {"lone": 1})
 
     assert (group["name"], group["passed"], group["failed"]) == ("lone", 0, 1)
-
-
-def test_shares_a_value_every_run_has() -> None:
-    assert shared_params([{"m": "a"}, {"m": "a"}], ["m"]) == {"m": "a"}
-
-
-def test_shares_nothing_the_runs_differ_on() -> None:
-    assert shared_params([{"m": "a"}, {"m": "b"}], ["m"]) == {}
-
-
-def test_shares_only_the_params_asked_about() -> None:
-    assert shared_params([{"m": "a", "n": 1}], ["m"]) == {"m": "a"}

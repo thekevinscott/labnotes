@@ -231,6 +231,26 @@ def test_nests_adhoc_runs_in_one_folder_per_command(
     assert named == [(A, choices), (B, choices), (A, choices)]
 
 
+def test_gives_a_lone_adhoc_run_its_own_stamped_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    listen = mock.Mock()
+
+    def retry_first(event: dict[str, object]) -> None:
+        if event == {"event": "ended", "run": "r1", "exit_code": 0, "error": None}:
+            retry = listen.call_args.args[0].retry
+            asyncio.get_running_loop().call_soon(retry, "r1")
+
+    report = mock.Mock(side_effect=retry_first)
+
+    run(tmp_path, report, listen=listen, mode="adhoc")
+
+    assert started_runs(report) == ["r1", "r2"]
+    assert (tmp_path / "exp" / "r1").is_dir()
+    collaborators["new_param_run_id"].assert_not_called()
+
+
 def test_names_every_run_before_the_first_starts(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

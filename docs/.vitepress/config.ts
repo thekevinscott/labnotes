@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 const repository = 'https://github.com/thekevinscott/labnotes'
 
 export default defineConfig({
+  vue: { template: { compilerOptions: { whitespace: 'preserve' } } },
   title: 'labnotes',
   description: '',
   base: '/labnotes/',

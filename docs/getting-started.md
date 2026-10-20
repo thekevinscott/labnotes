@@ -10,18 +10,18 @@ uvx labnotes
 
 Say your experiments live on disk like this:
 
-```
-/data
-  /experiment-one
-    /files
-      /readme.md
-      /plan.md
-    /runs
-  /experiment-two
-    /files
-      /readme.md
-    /runs
-```
+<Tree>
+data
+    experiment-one
+        files
+            readme.md
+            plan.md
+        runs
+    experiment-two
+        files
+            readme.md
+        runs
+</Tree>
 
 A `.labnotes.toml` at the root (`/data` here) maps those folders to experiments, files and runs. `init` writes one with the defaults, which match this layout:
 

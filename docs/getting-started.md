@@ -29,7 +29,7 @@ A `.labnotes.toml` at the root (`/data` here) maps those folders to experiments,
 uvx labnotes init
 ```
 
-`labnotes` picks up `.labnotes.toml` from the folder you run it in. Point it elsewhere with `uvx labnotes -c /path/to/.labnotes.toml`. The [config reference](api/config) covers every key.
+`labnotes` picks up `.labnotes.toml` from the folder you run it in. Point it elsewhere with `uvx labnotes -c /path/to/.labnotes.toml`. [Common organizations](common-organizations) shows other layouts, and the [config reference](api/config) covers every key.
 
 ## Next
 

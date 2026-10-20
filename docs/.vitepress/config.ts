@@ -21,8 +21,10 @@ export default defineConfig({
         items: [
           { text: 'Philosophy', link: '/philosophy' },
           { text: 'Getting Started', link: '/getting-started' },
+          { text: 'Common Organizations', link: '/common-organizations' },
           {
             text: 'CLI',
+            link: '/cli/experiments',
             items: [
               { text: 'Working with Experiments', link: '/cli/experiments' },
               {
@@ -42,7 +44,11 @@ export default defineConfig({
       },
       {
         text: 'API',
-        items: [{ text: 'Config', link: '/api/config' }],
+        items: [
+          { text: 'Config', link: '/api/config' },
+          { text: 'CLI', link: '/api/cli' },
+          { text: 'TUI', link: '/api/tui' },
+        ],
       },
     ],
     socialLinks: [{ icon: 'github', link: repository }],

@@ -1,0 +1,8 @@
+name = "Model sweep"
+command = "python3 sweep/train.py --output {run_dir}"
+repeats = 2
+concurrency = 2
+
+[params]
+model = ["opus", "sonnet"]
+effort = ["low", "high"]

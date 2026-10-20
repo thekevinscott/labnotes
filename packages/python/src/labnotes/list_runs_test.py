@@ -11,9 +11,14 @@ def make_view(
     descending: bool = False,
     status: str | None = None,
     filters: dict[str, str] | None = None,
+    picked: dict[str, dict[str, str]] | None = None,
 ) -> mock.Mock:
     return mock.Mock(
-        sort=sort, descending=descending, status=status, filters=filters or {}
+        sort=sort,
+        descending=descending,
+        status=status,
+        filters=filters or {},
+        picked=picked or {},
     )
 
 
@@ -72,5 +77,21 @@ def test_filters_columns_by_case_insensitive_substring() -> None:
     assert (
         "(source) WHERE instr(lower(CAST(\"model\" AS TEXT)), lower('it''s')) > 0"
         " AND instr(lower(CAST(\"effort\" AS TEXT)), lower('hi')) > 0"
+        " ORDER BY"
+    ) in sql
+
+
+def test_filters_choice_columns_to_any_picked_json_value() -> None:
+    sql = query(
+        make_view(
+            filters={"id": "r"},
+            picked={"it's": {"a": '"a"', "1": "1"}, "m": {"b": '"b"'}},
+        )
+    )
+
+    assert (
+        "(source) WHERE instr(lower(CAST(\"id\" AS TEXT)), lower('r')) > 0"
+        " AND params -> '$.\"it''s\"' IN ('\"a\"', '1')"
+        " AND params -> '$.\"m\"' IN ('\"b\"')"
         " ORDER BY"
     ) in sql

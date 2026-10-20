@@ -46,6 +46,10 @@ if (filters) {
     for (const part of ["thead tr:first-child", "tbody"]) {
       runs.querySelector(part).replaceWith(fresh.querySelector(part));
     }
+    const summaries = fresh.querySelectorAll(".pick summary");
+    runs.querySelectorAll(".pick summary").forEach((summary, index) => {
+      summary.textContent = summaries[index].textContent;
+    });
     history.replaceState(null, "", url);
   };
 
@@ -57,5 +61,13 @@ if (filters) {
     if (event.target.form !== filters || event.target.type !== "search") return;
     clearTimeout(pending);
     pending = setTimeout(refresh, 250);
+  });
+  document.addEventListener("change", (event) => {
+    if (event.target.form === filters && event.target.type === "checkbox") refresh();
+  });
+  document.addEventListener("click", (event) => {
+    for (const pick of runs.querySelectorAll(".pick[open]")) {
+      if (!pick.contains(event.target)) pick.open = false;
+    }
   });
 }

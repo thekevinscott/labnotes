@@ -68,10 +68,10 @@ def test_shows_when_each_run_started_and_how_long_it_took(tmp_path: Path) -> Non
         browse(f"{site}/experiments/alpha", check)
 
 
-def test_filters_runs_by_a_param(site: str) -> None:
+def test_filters_runs_by_text(site: str) -> None:
     async def check(page: Page) -> None:
-        await page.get_by_label("Filter source-language").fill("fr")
-        await page.get_by_label("Filter source-language").press("Enter")
+        await page.get_by_label("Filter id").fill("2")
+        await page.get_by_label("Filter id").press("Enter")
 
         await expect(page.get_by_role("cell", name="run2", exact=True)).to_be_visible()
         await expect(page.get_by_role("cell", name="run1", exact=True)).to_have_count(0)
@@ -81,11 +81,11 @@ def test_filters_runs_by_a_param(site: str) -> None:
 
 def test_filters_runs_live_while_typing(site: str) -> None:
     async def check(page: Page) -> None:
-        box = page.get_by_label("Filter source-language")
-        await box.press_sequentially("fr")
+        box = page.get_by_label("Filter id")
+        await box.press_sequentially("n2")
 
         await expect(page.get_by_role("cell", name="run1", exact=True)).to_have_count(0)
-        await expect(page).to_have_url(re.compile(r"\?f\.source-language=fr$"))
+        await expect(page).to_have_url(re.compile(r"\?f\.id=n2$"))
         await expect(box).to_be_focused()
         assert await box.evaluate("box => box.selectionStart") == 2
 
@@ -96,6 +96,36 @@ def test_filters_runs_live_while_typing(site: str) -> None:
 
         await expect(page.get_by_text("No runs match these filters.")).to_be_visible()
         await expect(page.get_by_text("0 of 2")).to_be_visible()
+
+    browse(f"{site}/experiments/alpha", check)
+
+
+def test_picks_any_of_a_params_values(site: str) -> None:
+    async def check(page: Page) -> None:
+        picker = page.get_by_label("Filter source-language")
+        run1 = page.get_by_role("cell", name="run1", exact=True)
+        run2 = page.get_by_role("cell", name="run2", exact=True)
+        await picker.click()
+        await page.get_by_role("checkbox", name="fr").check()
+
+        await expect(run1).to_have_count(0)
+        await expect(picker).to_have_text("fr")
+        await expect(page).to_have_url(re.compile(r"\?f\.source-language=fr$"))
+
+        await page.get_by_role("checkbox", name="en").check()
+
+        await expect(run1).to_be_visible()
+        await expect(run2).to_be_visible()
+        await expect(page.get_by_text("2 of 2")).to_be_visible()
+
+        await page.get_by_role("checkbox", name="fr").uncheck()
+        await page.get_by_role("heading", name="Alpha study").click()
+
+        await expect(run2).to_have_count(0)
+        await expect(page.get_by_role("checkbox", name="en")).to_be_hidden()
+        await page.reload()
+        await expect(picker).to_have_text("en")
+        await expect(run2).to_have_count(0)
 
     browse(f"{site}/experiments/alpha", check)
 

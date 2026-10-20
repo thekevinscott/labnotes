@@ -16,6 +16,11 @@ async def list_runs(
         f" lower({quote_string(value)})) > 0"
         for column, value in view.filters.items()
     ]
+    where += [
+        f"params -> {quote_string(f'$.{quote_identifier(column)}')}"
+        f" IN ({', '.join(quote_string(value) for value in picked.values())})"
+        for column, picked in view.picked.items()
+    ]
     filtered = f" WHERE {' AND '.join(where)}" if where else ""
     direction = "DESC" if view.descending else "ASC"
     if view.sort == "status":

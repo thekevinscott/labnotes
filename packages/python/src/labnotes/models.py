@@ -1,7 +1,7 @@
 from collections.abc import Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.modes import DEFAULT_MODE
@@ -24,12 +24,17 @@ Listen = Callable[[Controls], None]
 Start = Callable[[Report, Listen], Coroutine[Any, Any, list[dict[str, object]]]]
 
 
+class QueryParams(Protocol):
+    def getlist(self, key: str) -> list[str]: ...
+
+
 @dataclass(frozen=True)
 class RunView:
     sort: str | None = None
     descending: bool = False
     status: str | None = None
     filters: dict[str, str] = field(default_factory=dict)
+    picked: dict[str, dict[str, str]] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

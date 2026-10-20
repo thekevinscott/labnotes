@@ -52,7 +52,7 @@
 {% else %}
 <section id="runs">
   {% set view = e.run_view %}
-  {% set narrowed = view.status or view.filters %}
+  {% set narrowed = view.status or view.filters or view.picked %}
   {% if narrowed %}<p class="narrowed"><span class="num">{{ e.runs_list | length }}</span> of <span class="num">{{ e.runs }}</span> <a class="clear" href="{{ '?sort=' ~ (view.sort | urlencode) ~ ('&order=desc' if view.descending else '') if view.sort else '?' }}#runs">Clear filters</a></p>{% endif %}
   {% if e.runs %}
   <form id="run-filters" method="get" action="#runs">
@@ -75,7 +75,10 @@
           <option value="complete"{{ ' selected' if view.status == 'complete' }}>✓</option>
           <option value="incomplete"{{ ' selected' if view.status == 'incomplete' }}>✕</option>
         </select></td>
-        {% for column in e.run_columns %}<td><input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}"></td>{% endfor %}
+        {% for column in e.run_columns %}<td>{% if column in e.run_choices %}{% set picked = view.picked.get(column, {}) %}<details class="pick">
+          <summary aria-label="Filter {{ column }}">{{ picked | join(', ') if picked else 'all' }}</summary>
+          <div class="options">{% for label in e.run_choices[column] %}<label><input form="run-filters" type="checkbox" name="f.{{ column }}" value="{{ label }}"{{ ' checked' if label in picked }}> {{ label }}</label>{% endfor %}</div>
+        </details>{% else %}<input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endif %}</td>{% endfor %}
       </tr>
     </thead>
     <tbody>

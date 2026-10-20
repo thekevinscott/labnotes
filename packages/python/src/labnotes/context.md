@@ -108,7 +108,9 @@ finish. Enter on a run follows its `stdout.log`; `e` switches to
 plans a single run opens straight on its output. `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 
-- `--concurrency N` runs N at a time to start with (default 1).
+- `--concurrency N` runs N at a time to start with. Without it, `concurrency`
+  in `experiment.toml` sets it, then `concurrency` under `[experiments]` in
+  `.labnotes.toml`, then 1.
 - `-e PATH` reads another file instead of `experiment.toml`.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
   kills them. Closing the terminal or sending SIGTERM stops them the same way,

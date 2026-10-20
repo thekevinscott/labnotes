@@ -7,6 +7,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from starlette.datastructures import URL
 
 from labnotes.create_app import create_app
 
@@ -491,3 +492,59 @@ def test_streams_the_experiments_file_changes(app: Any) -> None:
 
     assert response.media_type == "text/event-stream"
     changes.assert_called_once_with(app.state.tables, "models-effort")
+
+
+def post_note(app: Any, content_type: str = "application/json") -> Any:
+    [endpoint] = [
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/experiments/{name}/notes"
+    ]
+    request = mock.Mock(
+        path_params={"name": "models effort"}, headers={"content-type": content_type}
+    )
+    request.app = app
+    request.url_for.return_value = URL("http://t/experiments/models%20effort")
+    response = asyncio.run(endpoint(request))
+    request.url_for.assert_called_with("experiment", name="models effort")
+    return response
+
+
+def test_post_creates_a_note_and_points_at_it_in_the_editor(app: Any) -> None:
+    with (
+        mock.patch(
+            "labnotes.create_app.create_note", return_value="Untitled 2.md"
+        ) as create,
+        mock.patch(
+            "labnotes.create_app.wait_for_note", new_callable=mock.AsyncMock
+        ) as wait,
+    ):
+        response = post_note(app)
+
+    assert response.status_code == 201
+    assert json.loads(response.body) == {
+        "url": "/experiments/models%20effort?tab=notebooks&note=Untitled+2.md#edit"
+    }
+    create.assert_called_once_with(CONFIG, "models effort")
+    wait.assert_awaited_once_with(
+        app.state.tables, CONFIG.root, "models effort", "Untitled 2.md"
+    )
+
+
+def test_post_rejects_an_unknown_experiment(app: Any) -> None:
+    with (
+        mock.patch("labnotes.create_app.create_note", return_value=None),
+        pytest.raises(Exception) as raised,
+    ):
+        post_note(app)
+    assert getattr(raised.value, "status_code", None) == 404
+
+
+def test_post_requires_json(app: Any) -> None:
+    with (
+        mock.patch("labnotes.create_app.create_note") as create,
+        pytest.raises(Exception) as raised,
+    ):
+        post_note(app, "application/x-www-form-urlencoded")
+    assert getattr(raised.value, "status_code", None) == 415
+    create.assert_not_called()

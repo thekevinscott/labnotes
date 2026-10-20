@@ -18,6 +18,7 @@ from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
 
 from labnotes.asset_url import asset_url
+from labnotes.create_note import create_note
 from labnotes.drain_watch import drain_watch
 from labnotes.experiment_notes import experiment_notes
 from labnotes.file_changes import file_changes
@@ -32,6 +33,7 @@ from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
 from labnotes.stop_idle_kernels import stop_idle_kernels
 from labnotes.tables.open_tables import open_tables
+from labnotes.wait_for_note import wait_for_note
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
@@ -97,6 +99,18 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
             raise HTTPException(415, "Send JSON")
         return await read_note(request)
 
+    async def post_note(request: Request) -> Response:
+        if request.headers.get("content-type") != "application/json":
+            raise HTTPException(415, "Send JSON")
+        name = request.path_params["name"]
+        filename = create_note(config, name)
+        if filename is None:
+            raise HTTPException(404, "No such experiment")
+        await wait_for_note(request.app.state.tables, config.root, name, filename)
+        page = request.url_for("experiment", name=name)
+        url = page.include_query_params(tab="notebooks", note=filename)
+        return JSONResponse({"url": f"{url.path}?{url.query}#edit"}, status_code=201)
+
     async def get_note(request: Request) -> Response:
         note = await read_note(request)
         return PlainTextResponse(note["content"], media_type="text/markdown")
@@ -140,6 +154,7 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
             Route("/", index),
             Route("/experiments/{name}", experiment),
             Route("/experiments/{name}/changes", changes),
+            Route("/experiments/{name}/notes", post_note, methods=["POST"]),
             Route("/experiments/{name}/notes/{note:path}", get_note),
             Route("/experiments/{name}/notes/{note:path}", put_note, methods=["PUT"]),
             Route(

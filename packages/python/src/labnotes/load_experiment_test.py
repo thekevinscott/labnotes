@@ -9,7 +9,12 @@ import pytest
 
 from labnotes.load_experiment import load_experiment
 
-CONFIG = {"command": "go", "repeats": 2, "params": {"x": [1, 2], "y": ["a"]}}
+CONFIG = {
+    "command": "go",
+    "repeats": 2,
+    "mode": "fill",
+    "params": {"x": [1, 2], "y": ["a"]},
+}
 ROOT = Path("/p")
 
 

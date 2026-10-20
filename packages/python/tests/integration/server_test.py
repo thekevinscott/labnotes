@@ -24,7 +24,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
     write(tmp_path / ".labnotes.toml", "")
     write(
         tmp_path / "alpha/experiment.toml",
-        'name = "Alpha study"\ncommand = "go"\nrepeats = 2\n'
+        'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "fill"\n'
         '[params]\nsource-language = ["en", "fr"]\n',
     )
     write(tmp_path / "alpha/files/plan.md", "# The plan\n\n```python\n1 + 1\n```\n")

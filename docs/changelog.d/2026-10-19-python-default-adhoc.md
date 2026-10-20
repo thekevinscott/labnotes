@@ -1,0 +1,1 @@
+**Changed** — `mode` in `experiment.toml` defaults to `"adhoc"`: every `run` runs each combination `repeats` times, whatever is already on disk. Set `mode = "fill"` to keep filling in only what failed or never ran.

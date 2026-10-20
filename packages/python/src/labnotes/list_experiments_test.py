@@ -31,7 +31,7 @@ def check_counts() -> Iterator[mock.AsyncMock]:
 def test_lists_each_experiment_with_its_config_summary_and_progress(
     experiment_progress: mock.AsyncMock,
 ) -> None:
-    config = {"command": "go", "repeats": 2, "params": {"x": [1, 2]}}
+    config = {"command": "go", "repeats": 2, "mode": "fill", "params": {"x": [1, 2]}}
     tables = mock.Mock()
     tables.query = mock.AsyncMock(
         return_value=[

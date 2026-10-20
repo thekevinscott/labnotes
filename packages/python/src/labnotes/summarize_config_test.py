@@ -13,8 +13,15 @@ def default_counts() -> Iterator[None]:
 
 
 def test_summarizes_the_grid_from_params_and_repeats() -> None:
+    # Not interned, like a value read from TOML, so `is` can't pass for `==`.
+    mode = "".join(["fi", "ll"])
     summary = summarize_config(
-        {"command": "go", "repeats": 3, "params": {"x": [1, 2], "y": ["a"], "z": 5}}
+        {
+            "command": "go",
+            "repeats": 3,
+            "mode": mode,
+            "params": {"x": [1, 2], "y": ["a"], "z": 5},
+        }
     )
 
     assert summary == {
@@ -29,10 +36,9 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
     }
 
 
-def test_has_no_target_for_an_adhoc_grid() -> None:
-    # Not interned, like a value read from TOML, so `is` can't pass for `==`.
-    mode = "".join(["ad", "hoc"])
-    summary = summarize_config({"command": "go", "repeats": 3, "mode": mode})
+@pytest.mark.parametrize("config", [{"mode": "adhoc"}, {}])
+def test_has_no_target_for_an_adhoc_grid(config: dict[str, object]) -> None:
+    summary = summarize_config({"command": "go", "repeats": 3, **config})
 
     assert (summary["mode"], summary["runs_per_cell"], summary["target"]) == (
         "adhoc",
@@ -42,7 +48,7 @@ def test_has_no_target_for_an_adhoc_grid() -> None:
 
 
 def test_defaults_to_one_repeat() -> None:
-    summary = summarize_config({"command": "go"})
+    summary = summarize_config({"command": "go", "mode": "fill"})
 
     assert (summary["runs_per_cell"], summary["target"]) == (1, 1)
 

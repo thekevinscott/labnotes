@@ -239,12 +239,9 @@ def test_keeps_stamped_haiku_names_for_fill_runs(project: Path) -> None:
     assert all(re.fullmatch(STAMP, name) for name in names)
 
 
-def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    deep = make_project(tmp_path / ("optimizing-llms-with-small-updates-" * 3))
-    assert len(str(deep)) > 107
+def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(project: Path) -> None:
+    assert len(str(project)) > 120
 
-    assert labnotes(deep, ["experiments", "exp", "run"]) == 0
+    assert labnotes(project, ["experiments", "exp", "run"]) == 0
 
-    assert len(runs(deep)) == 4
+    assert len(runs(project)) == 4

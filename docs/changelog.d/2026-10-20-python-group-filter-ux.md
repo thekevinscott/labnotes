@@ -1,0 +1,1 @@
+**Changed** — while a filter is active, the experiment page opens every invocation group so the matching runs show, and each group row counts its matches against its total ("2 of 3"). Group rows also show a param's value when all of the group's shown runs share it. Clearing the filters collapses the groups again, except those opened by hand.

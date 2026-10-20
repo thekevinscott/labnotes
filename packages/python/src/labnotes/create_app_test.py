@@ -24,6 +24,11 @@ def test_formats_durations_in_templates() -> None:
     assert module["templates"].env.filters["duration"] is module["format_duration"]
 
 
+def test_formats_start_times_in_templates() -> None:
+    module = create_app.__globals__
+    assert module["templates"].env.filters["started"] is module["format_started"]
+
+
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
@@ -548,6 +553,72 @@ def test_streams_the_experiments_file_changes(app: Any) -> None:
 
     assert response.media_type == "text/event-stream"
     changes.assert_called_once_with(app.state.tables, "models-effort")
+
+
+RUN: dict[str, object] = {"id": "g1/r1"}
+
+
+def test_run_page_loads_the_named_run(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch(
+        "labnotes.create_app.load_run", new_callable=mock.AsyncMock, return_value=RUN
+    ) as load_run:
+        status, _ = call(
+            app, "/experiments/{name}/runs/{run:path}", name="alpha", run="g1/r1"
+        )
+
+    assert status == 200
+    load_run.assert_awaited_once_with(app.state.tables, "alpha", "g1/r1")
+    collaborators["templates"].TemplateResponse.assert_called_once_with(
+        mock.ANY, "run.html", {"run": RUN}
+    )
+
+
+@pytest.mark.parametrize(
+    "path",
+    ["/experiments/{name}/runs/{run:path}", "/experiments/{name}/output/{run:path}"],
+)
+def test_unknown_run_is_not_found(app: Any, path: str) -> None:
+    with (
+        mock.patch(
+            "labnotes.create_app.load_run",
+            new_callable=mock.AsyncMock,
+            return_value=None,
+        ),
+        mock.patch("labnotes.create_app.run_output") as output,
+        pytest.raises(Exception) as raised,
+    ):
+        call(app, path, name="alpha", run="nope")
+    assert getattr(raised.value, "status_code", None) == 404
+    output.assert_not_called()
+
+
+def test_streams_the_runs_output(app: Any) -> None:
+    [endpoint] = [
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/experiments/{name}/output/{run:path}"
+    ]
+    request = mock.Mock(path_params={"name": "alpha", "run": "g1/r1"})
+    request.app = app
+
+    with (
+        mock.patch(
+            "labnotes.create_app.load_run",
+            new_callable=mock.AsyncMock,
+            return_value=RUN,
+        ),
+        mock.patch(
+            "labnotes.create_app.run_output", return_value=iter(["data: 1\n\n"])
+        ) as output,
+    ):
+        response = asyncio.run(endpoint(request))
+
+    assert response.media_type == "text/event-stream"
+    output.assert_called_once_with(
+        app.state.tables, Path("/p/project"), "alpha", "g1/r1"
+    )
 
 
 def post_note(app: Any, content_type: str = "application/json") -> Any:

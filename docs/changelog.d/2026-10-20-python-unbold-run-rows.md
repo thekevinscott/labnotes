@@ -1,0 +1,1 @@
+**Changed** — Grouped runs on the experiment page in `labnotes server` are no longer bold. Each invocation row now uses normal weight, and its shaded background still sets it apart from the runs inside it.

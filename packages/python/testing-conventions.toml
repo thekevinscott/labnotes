@@ -31,11 +31,17 @@ reason = "quiet counts up by one from zero, so it reaches IDLE_EXIT_SECONDS befo
 [[python.exempt]]
 path = "src/labnotes/daemon/daemon_app.py"
 rules = ["mutation"]
-lines = [117]
+lines = [132]
 reason = "start answers 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
 
 [[python.exempt]]
 path = "src/labnotes/daemon/remote_start.py"
 rules = ["mutation"]
-lines = [39]
+lines = [49]
 reason = "the daemon answers a run with 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
+
+[[python.exempt]]
+path = "src/labnotes/run_control.py"
+rules = ["mutation"]
+lines = [38]
+reason = "argument counts are small ints, which CPython caches, so is not equals !="

@@ -150,3 +150,53 @@ def test_reports_a_lost_daemon(daemon: dict[str, Any]) -> None:
 
     with pytest.raises(ValueError, match=r"^Lost the labnotes daemon\.$"):
         go()
+
+
+def test_reports_a_daemon_that_closes_the_stream_at_once(
+    daemon: dict[str, Any],
+) -> None:
+    daemon["sent"].clear()
+
+    with pytest.raises(ValueError, match=r"^Lost the labnotes daemon\.$"):
+        go()
+
+    daemon["client"].post.assert_not_awaited()
+
+
+def test_names_why_the_daemon_could_not_start(daemon: dict[str, Any]) -> None:
+    daemon["ensure_daemon"].side_effect = OSError("AF_UNIX path too long")
+
+    with pytest.raises(
+        ValueError, match="^Can't reach the labnotes daemon: AF_UNIX path too long$"
+    ):
+        go()
+
+    daemon["daemon_client"].assert_not_called()
+
+
+class Transport(Exception):
+    pass
+
+
+@pytest.fixture
+def transport_error() -> Iterator[None]:
+    with mock.patch("labnotes.daemon.remote_start.httpx2.TransportError", Transport):
+        yield
+
+
+@pytest.mark.usefixtures("transport_error")
+def test_names_why_the_daemon_could_not_be_reached(daemon: dict[str, Any]) -> None:
+    daemon["client"].stream.side_effect = Transport("refused")
+
+    with pytest.raises(ValueError, match="^Can't reach the labnotes daemon: refused$"):
+        go()
+
+
+@pytest.mark.usefixtures("transport_error")
+def test_names_the_error_type_when_it_has_no_message(daemon: dict[str, Any]) -> None:
+    daemon["client"].post.side_effect = Transport()
+
+    with pytest.raises(
+        ValueError, match="^Can't reach the labnotes daemon: Transport$"
+    ):
+        go()

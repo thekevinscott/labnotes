@@ -23,6 +23,8 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
     sessions: dict[str, Controls | None] = {}
     owners: dict[str, int] = {}
     clients: dict[int, asyncio.Queue[Event]] = {}
+    watchers: set[int] = set()
+    history: dict[str, list[Event]] = {}
     ids = itertools.count(1)
     tasks: set[asyncio.Task[str | None]] = set()
 
@@ -40,11 +42,22 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                 del owners[name]
                 controls.finish()
 
+    def record(event: Event) -> None:
+        history.setdefault(str(event["experiment"]), []).append(event)
+        broadcast(event)
+
     async def events(request: Request) -> Response:
         client = next(ids)
+        watching = request.query_params.get("watch") == "1"
 
         async def stream() -> AsyncIterator[str]:
             clients[client] = asyncio.Queue()
+            if watching:
+                watchers.add(client)
+                for past in history.values():
+                    for old in past:
+                        clients[client].put_nowait(old)
+                clients[client].put_nowait({"event": "replayed"})
             try:
                 event: Event = {"event": "connected", "client": client}
                 while True:
@@ -52,6 +65,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                     event = await clients[client].get()
             finally:
                 del clients[client]
+                watchers.discard(client)
                 release(client)
 
         return StreamingResponse(stream(), media_type="text/event-stream")
@@ -86,7 +100,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                     name,
                     experiment,
                     concurrency,
-                    lambda event: broadcast({**event, "experiment": name}),
+                    lambda event: record({**event, "experiment": name}),
                     listen,
                 )
             # Clients hear why the session ended; the daemon keeps serving.
@@ -94,6 +108,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                 error = str(failure)
             del sessions[name]
             owners.pop(name, None)
+            history.pop(name, None)
             broadcast({"event": "done", "experiment": name, "error": error})
             return error
 
@@ -149,6 +164,8 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
             Route("/experiments/{name}/{action}", control, methods=["POST"]),
         ]
     )
-    app.state.idle = lambda: not clients and not sessions
+    app.state.idle = (
+        lambda: all(client in watchers for client in clients) and not sessions
+    )
     app.state.stop = stop_all
     return app

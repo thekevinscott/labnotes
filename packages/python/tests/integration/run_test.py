@@ -27,16 +27,20 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-@pytest.fixture
-def project(tmp_path: Path) -> Path:
-    write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "script.py", SCRIPT)
+def make_project(root: Path) -> Path:
+    write(root / ".labnotes.toml", "")
+    write(root / "script.py", SCRIPT)
     write(
-        tmp_path / "exp" / "experiment.toml",
+        root / "exp" / "experiment.toml",
         f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
         'repeats = 2\nmode = "matrix"\n[params]\nm = ["a", "b"]\n',
     )
-    return tmp_path
+    return root
+
+
+@pytest.fixture
+def project(tmp_path: Path) -> Path:
+    return make_project(tmp_path)
 
 
 def labnotes(project: Path, argv: list[str]) -> int | str | None:
@@ -91,7 +95,7 @@ def test_reruns_every_combination_without_a_mode(project: Path) -> None:
     assert sorted(groups.count(group) for group in set(groups)) == [4, 4]
 
 
-def test_fills_by_the_project_mode(project: Path) -> None:
+def test_runs_the_matrix_by_the_project_mode(project: Path) -> None:
     toml = project / "exp" / "experiment.toml"
     toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
     (project / ".labnotes.toml").write_text('[experiments]\nmode = "matrix"\n')
@@ -228,8 +232,24 @@ def test_keeps_one_stamped_folder_per_invocation(project: Path) -> None:
     assert re.fullmatch(STAMP, group.name)
 
 
-def test_keeps_stamped_haiku_names_for_fill_runs(project: Path) -> None:
+def test_writes_a_lone_adhoc_run_to_one_stamped_folder(project: Path) -> None:
+    [recorded] = run_adhoc(project, 'm = ["a"]\n')
+
+    assert recorded["folder"].parent == project / "exp" / "runs"
+    assert re.fullmatch(STAMP, recorded["folder"].name)
+    assert (recorded["folder"] / "out.txt").read_text() == "--m a"
+
+
+def test_keeps_stamped_haiku_names_for_matrix_runs(project: Path) -> None:
     labnotes(project, ["experiments", "exp", "run"])
 
     names = [run["folder"].name for run in runs(project)]
     assert all(re.fullmatch(STAMP, name) for name in names)
+
+
+def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(project: Path) -> None:
+    assert len(str(project)) > 120
+
+    assert labnotes(project, ["experiments", "exp", "run"]) == 0
+
+    assert len(runs(project)) == 4

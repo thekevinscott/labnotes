@@ -57,3 +57,15 @@ def test_help_says_how_runs_stop(capsys: pytest.CaptureFixture[str]) -> None:
     assert run(["stop", "--help"]) == 0
 
     assert "SIGKILL 5 seconds later" in capsys.readouterr().out
+
+
+def test_has_a_status_command(capsys: pytest.CaptureFixture[str]) -> None:
+    assert run(["--help"]) == 0
+
+    assert "status" in capsys.readouterr().out
+
+
+def test_holds_the_control_command(capsys: pytest.CaptureFixture[str]) -> None:
+    assert run(["control", "--help"]) == 0
+
+    assert "as the live view's keys do" in capsys.readouterr().out

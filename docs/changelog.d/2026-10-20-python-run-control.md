@@ -1,0 +1,1 @@
+**Added** — `labnotes run control NAME ACTION [ARG]` sends one live-view control to a running experiment through the daemon: `kill`, `retry`, `run_next` or `toggle` a run, `set_concurrency N`, `interrupt` or `finish`.

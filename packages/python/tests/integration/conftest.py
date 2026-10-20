@@ -65,17 +65,36 @@ def serve(root: Path) -> Iterator[str]:
 
 
 def browse(
-    url: str, check: Callable[[Page], Awaitable[None]], width: int = 1280
+    url: str,
+    check: Callable[[Page], Awaitable[None]],
+    width: int = 1280,
+    timezone_id: str = "UTC",
 ) -> None:
     async def drive() -> None:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch()
-            page = await browser.new_page(viewport={"width": width, "height": 800})
+            page = await browser.new_page(
+                viewport={"width": width, "height": 800}, timezone_id=timezone_id
+            )
             await page.goto(url)
             await check(page)
             await browser.close()
 
     asyncio.run(drive())
+
+
+@pytest.fixture
+def tmp_path(tmp_path: Path) -> Path:
+    # Real project roots run long; pytest's short default hides path-length
+    # limits such as the 107-byte AF_UNIX socket path.
+    deep = (
+        tmp_path
+        / "a-fairly-long-folder-name-for-research"
+        / "and-another-nested-one"
+        / "experiments-and-their-notes-live-here"
+    )
+    deep.mkdir(parents=True)
+    return deep
 
 
 @pytest.fixture

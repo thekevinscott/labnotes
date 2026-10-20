@@ -47,6 +47,7 @@ class RunApp(App[None]):
         self.start = start
         self.title = title
         self.results: list[dict[str, object]] = []
+        self.error: Exception | None = None
         self.controls = Controls(
             lambda: None,
             lambda run: None,
@@ -100,7 +101,10 @@ class RunApp(App[None]):
         self.run_worker(self.drive())
 
     async def drive(self) -> None:
-        self.results = await self.start(self.show_event, self.listen)
+        try:
+            self.results = await self.start(self.show_event, self.listen)
+        except Exception as error:
+            self.error = error
         self.exit()
 
     def listen(self, controls: Controls) -> None:

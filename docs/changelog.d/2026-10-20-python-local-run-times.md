@@ -1,0 +1,1 @@
+**Changed** — the experiment page shows each run's and each ad hoc invocation's `started` time in the browser's local time zone instead of UTC. The server still sends UTC, and the `started` filter still matches the UTC text.

@@ -45,7 +45,11 @@ async def run_experiment(
     def taken(run: str) -> bool:
         return run in planned or run in existing
 
-    group = new_stamped_run_id(taken) if experiment.mode == "adhoc" else None
+    cells = plan_runs(param_grid(experiment.params), experiment.repeats, finished)
+    group = None
+    match experiment.mode:
+        case "adhoc" if len(cells) > 1:
+            group = new_stamped_run_id(taken)
 
     def new_id(params: dict[str, object]) -> str:
         if group is None:
@@ -55,9 +59,7 @@ async def run_experiment(
         )
 
     plan: list[Entry] = []
-    for params in plan_runs(
-        param_grid(experiment.params), experiment.repeats, finished
-    ):
+    for params in cells:
         run = new_id(params)
         planned.add(run)
         plan.append((run, params))

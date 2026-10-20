@@ -24,3 +24,7 @@ docs/.vitepress/dist
 docs/node_modules/
 
 notes
+
+# Written by Claude Code when it loads the labnotes mod
+skills/labnotes/.claude-plugin/types/
+skills/labnotes/tsconfig.json

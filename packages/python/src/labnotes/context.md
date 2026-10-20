@@ -101,8 +101,8 @@ the end of the queue. `/` filters rows by params text; Enter keeps the filter,
 Escape clears it. `D` deselects every pending run the filter shows. `x` stops the
 running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
-finish. Enter on a run follows its `stdout.log`; `e` switches to
-`stderr.log` and back, and Escape returns to the table. An `adhoc` experiment that
+finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
+they're written, and Escape returns to the table. An `adhoc` experiment that
 plans a single run opens straight on its output. `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 

@@ -1,0 +1,1 @@
+**Changed** — on the `labnotes server` experiment page, clicking a runs-table column header sorts the table in place instead of reloading the page. Scroll position, focus, filters, and open adhoc groups stay put.

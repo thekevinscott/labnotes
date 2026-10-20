@@ -28,24 +28,26 @@ if (filters) {
   let pending;
   let latest;
 
-  const refresh = async () => {
+  const load = async (url) => {
     clearTimeout(pending);
-    const params = new URLSearchParams();
-    for (const [key, value] of new FormData(filters)) {
-      if (value) params.append(key, value);
-    }
-    const url = new URL(location.href);
-    url.search = params;
     latest = url.href;
     const response = await fetch(url);
     if (latest !== url.href) return;
     const fresh = new DOMParser()
       .parseFromString(await response.text(), "text/html")
       .querySelector("#runs");
+    const scroller = runs.querySelector(".scroll");
+    const { scrollX, scrollY } = window;
+    const { scrollLeft } = scroller;
+    const header = runs.querySelector("thead tr");
+    const focused = [...header.querySelectorAll("a.sort")].indexOf(document.activeElement);
     runs.querySelector(".narrowed")?.remove();
     const narrowed = fresh.querySelector(".narrowed");
     if (narrowed) runs.prepend(narrowed);
-    runs.querySelector("thead tr").replaceWith(fresh.querySelector("thead tr"));
+    const freshHeader = fresh.querySelector("thead tr");
+    header.replaceWith(freshHeader);
+    for (const input of filters.querySelectorAll("input[type=hidden]")) input.remove();
+    filters.prepend(...fresh.querySelectorAll("#run-filters input[type=hidden]"));
     const table = runs.querySelector("table");
     const opened = new Set([...table.querySelectorAll(".group.open")].map((group) => group.dataset.name));
     for (const body of table.querySelectorAll("tbody")) body.remove();
@@ -58,7 +60,27 @@ if (filters) {
       summary.textContent = summaries[index].textContent;
     });
     history.replaceState(null, "", url);
+    scroller.scrollLeft = scrollLeft;
+    window.scrollTo(scrollX, scrollY);
+    if (focused >= 0) freshHeader.querySelectorAll("a.sort")[focused].focus({ preventScroll: true });
   };
+
+  const refresh = () => {
+    const params = new URLSearchParams();
+    for (const [key, value] of new FormData(filters)) {
+      if (value) params.append(key, value);
+    }
+    const url = new URL(location.href);
+    url.search = params;
+    return load(url);
+  };
+
+  runs.addEventListener("click", (event) => {
+    const link = event.target.closest("a.sort");
+    if (!link || event.button || event.metaKey || event.ctrlKey || event.shiftKey || event.altKey) return;
+    event.preventDefault();
+    load(new URL(link.href));
+  });
 
   filters.addEventListener("submit", (event) => {
     event.preventDefault();

@@ -93,6 +93,40 @@ def test_filters_runs_live_while_typing(site: str) -> None:
     browse(f"{site}/experiments/alpha", check)
 
 
+def test_sorts_runs_in_place(site: str) -> None:
+    async def check(page: Page) -> None:
+        loads: list[Page] = []
+        page.on("load", lambda loaded: loads.append(loaded))
+        await page.evaluate("window.stayed = true")
+        await page.get_by_label("Filter source-language").click()
+        await page.get_by_role("checkbox", name="fr").check()
+        await page.get_by_role("checkbox", name="en").check()
+        await page.get_by_role("heading", name="Alpha study").click()
+        rows = page.locator("tbody tr.run-row")
+        header = page.get_by_role("columnheader", name="id")
+        sort = header.get_by_role("link")
+
+        await sort.click()
+        await expect(header).to_have_attribute("aria-sort", "ascending")
+        await sort.click()
+
+        await expect(header).to_have_attribute("aria-sort", "descending")
+        await expect(rows.first).to_contain_text("run2")
+        await expect(rows.last).to_contain_text("run1")
+        await expect(page).to_have_url(re.compile(r"sort=id&order=desc"))
+        await expect(sort).to_be_focused()
+        await expect(page.get_by_label("Filter source-language")).to_have_text("en, fr")
+        assert await page.evaluate("window.stayed")
+        assert loads == []
+
+        await page.get_by_label("Filter id").fill("run")
+        await page.get_by_label("Filter id").press("Enter")
+        await expect(page).to_have_url(re.compile(r"sort=id&order=desc&.*f\.id=run"))
+        await expect(rows.first).to_contain_text("run2")
+
+    browse(f"{site}/experiments/alpha", check)
+
+
 def test_picks_any_of_a_params_values(site: str) -> None:
     async def check(page: Page) -> None:
         picker = page.get_by_label("Filter source-language")

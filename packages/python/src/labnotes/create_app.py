@@ -28,13 +28,14 @@ from labnotes.format_value import format_value
 from labnotes.list_experiments import list_experiments
 from labnotes.load_experiment import load_experiment
 from labnotes.models import LabnotesConfig
+from labnotes.note_path import note_path
 from labnotes.notebook_kernel import NotebookKernel
 from labnotes.python_blocks import python_blocks
+from labnotes.render_markdown import render_markdown
 from labnotes.save_conflict_copy import save_conflict_copy
 from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
 from labnotes.tables.open_tables import open_tables
-from labnotes.wait_for_note import wait_for_note
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
@@ -100,13 +101,24 @@ def create_app(config: LabnotesConfig) -> Starlette:
         if request.headers.get("content-type") != "application/json":
             raise HTTPException(415, "Send JSON")
         name = request.path_params["name"]
-        filename = create_note(config, name)
-        if filename is None:
+        path = create_note(config, name)
+        if path is None:
             raise HTTPException(404, "No such experiment")
-        await wait_for_note(request.app.state.tables, config.root, name, filename)
-        page = request.url_for("experiment", name=name)
-        url = page.include_query_params(tab="notebooks", note=filename)
-        return JSONResponse({"url": f"{url.path}?{url.query}#edit"}, status_code=201)
+        content = path.read_text(encoding="utf-8")
+        return templates.TemplateResponse(
+            request,
+            "note.html",
+            {
+                "e": {"name": name},
+                "note": {
+                    "name": path.name,
+                    "content": content,
+                    "html": render_markdown(content, ()),
+                    "runnable": bool(python_blocks(content)),
+                },
+            },
+            status_code=201,
+        )
 
     async def get_note(request: Request) -> Response:
         note = await read_note(request)
@@ -118,23 +130,33 @@ def create_app(config: LabnotesConfig) -> Starlette:
             media_type="text/event-stream",
         )
 
+    def note_file(request: Request) -> Path:
+        if request.headers.get("content-type") != "application/json":
+            raise HTTPException(415, "Send JSON")
+        path = note_path(
+            config, request.path_params["name"], request.path_params["note"]
+        )
+        if path is None:
+            raise HTTPException(404, "No such note")
+        return path
+
     async def put_note(request: Request) -> Response:
-        note = await find_note(request)
+        path = note_file(request)
         body = await request.json()
         base, content = body.get("base"), body.get("content")
         if not isinstance(base, str) or not isinstance(content, str):
             raise HTTPException(400, "Send base and content as strings")
-        current = save_note(Path(note["path"]), base, content)
+        current = save_note(path, base, content)
         if current is not None:
             return JSONResponse({"content": current}, status_code=409)
         return Response(status_code=204)
 
     async def post_conflict(request: Request) -> Response:
-        note = await find_note(request)
+        path = note_file(request)
         content = (await request.json()).get("content")
         if not isinstance(content, str):
             raise HTTPException(400, "Send content as a string")
-        copy = save_conflict_copy(Path(note["path"]), content, datetime.now())
+        copy = save_conflict_copy(path, content, datetime.now())
         return JSONResponse({"name": copy.name}, status_code=201)
 
     async def run_block(request: Request) -> Response:

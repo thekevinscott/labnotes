@@ -1,0 +1,6 @@
+<article class="note" data-run-url="{{ url_for('run_block', name=e.name, note=note.name) }}" data-restart-url="{{ url_for('restart_kernel', name=e.name, note=note.name) }}" data-save-url="{{ url_for('put_note', name=e.name, note=note.name) }}" data-conflict-url="{{ url_for('post_conflict', name=e.name, note=note.name) }}" data-editor="{{ asset('note-editor.js') }}" data-changes-url="{{ url_for('changes', name=e.name) }}" data-note="{{ note.name }}">
+  {% if note.runnable %}<header class="note-name"><button type="button" class="restart" title="Stop this note's Python kernel. The next Run starts a fresh one.">Restart</button></header>{% endif %}
+  <p class="edit-status" role="status" hidden></p>
+  <div class="prose">{{ note.html | safe }}</div>
+  <script type="application/json" class="note-source">{{ note.content | tojson }}</script>
+</article>

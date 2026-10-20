@@ -4,7 +4,7 @@ from labnotes.models import LabnotesConfig
 from labnotes.tables.file_prefix import file_prefix
 
 
-def create_note(config: LabnotesConfig, experiment: str) -> str | None:
+def create_note(config: LabnotesConfig, experiment: str) -> Path | None:
     def folder(template: str) -> Path:
         return config.root / template.replace("{experiment}", experiment)
 
@@ -17,7 +17,7 @@ def create_note(config: LabnotesConfig, experiment: str) -> str | None:
         try:
             with (notes / filename).open("x", encoding="utf-8") as note:
                 note.write("# Untitled\n")
-            return filename
+            return notes / filename
         except FileExistsError:
             n += 1
             filename = f"Untitled {n}.md"

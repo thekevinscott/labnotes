@@ -1,11 +1,13 @@
-const note = document.querySelector(".note[data-save-url]");
+let detach = () => {};
 
-if (note) {
+export function attach(note, openNow) {
+  detach();
   const prose = note.querySelector(".prose");
   const status = note.querySelector(".edit-status");
   const editor = import(note.dataset.editor);
   const source = JSON.parse(note.querySelector(".note-source").textContent);
   let editing = null;
+  let attached = true;
 
   editor.then(
     () => prose.classList.add("editable"),
@@ -18,17 +20,15 @@ if (note) {
   const open = async (event) => {
     if (event.target.closest("a, button, output") || getSelection().toString()) return;
     const { edit } = await editor;
-    if (editing) return;
+    if (editing || !attached) return;
     prose.removeEventListener("click", open);
     editing = edit(note, prose, status);
   };
   prose.addEventListener("click", open);
-  if (location.hash === "#edit") {
-    history.replaceState(null, "", location.pathname + location.search);
-    open({ target: prose });
-  }
+  if (openNow) open({ target: prose });
 
-  new EventSource(note.dataset.changesUrl).addEventListener("message", (event) => {
+  const changes = new EventSource(note.dataset.changesUrl);
+  changes.addEventListener("message", (event) => {
     if (JSON.parse(event.data) !== note.dataset.note) return;
     if (editing) return editing.pull();
     // A touch or a duplicate event leaves the text alone, and reloading then
@@ -39,4 +39,13 @@ if (note) {
         if (text !== source) location.reload();
       });
   });
+
+  detach = () => {
+    attached = false;
+    changes.close();
+    editing?.detach();
+  };
 }
+
+const note = document.querySelector(".note[data-save-url]");
+if (note) attach(note, false);

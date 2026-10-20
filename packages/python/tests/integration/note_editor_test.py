@@ -236,12 +236,19 @@ def test_plus_creates_a_note_and_opens_it_for_editing(site: str, root: Path) -> 
     write(root / "alpha/files/Untitled.md", "# Taken\n")
 
     async def check(page: Page) -> None:
+        await page.evaluate("window.loaded = true")
         await page.get_by_role("button", name="New note").click()
 
         await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
         await expect(page.get_by_role("link", name="Untitled 2.md")).to_have_attribute(
             "aria-current", "page"
         )
+        await expect(page.get_by_role("link", name="plan.md")).not_to_have_attribute(
+            "aria-current", "page"
+        )
+        await expect(page.get_by_role("link", name="Notebooks 4")).to_be_visible()
+        assert page.url.endswith("?tab=notebooks&note=Untitled%202.md")
+        assert await page.evaluate("window.loaded") is True
         await page.keyboard.press("End")
         await page.keyboard.type(" notes")
         await on_disk(root / "alpha/files/Untitled 2.md", "# Untitled notes\n")
@@ -262,9 +269,33 @@ def test_plus_starts_the_first_note(tmp_path: Path) -> None:
         await page.get_by_role("button", name="New note").click()
 
         await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
+        await expect(page.get_by_role("link", name="Untitled.md")).to_be_visible()
         assert (root / "alpha/files/Untitled.md").read_text(
             encoding="utf-8"
         ) == "# Untitled\n"
+        await page.keyboard.press("End")
+        await page.keyboard.type(" first")
+        await on_disk(root / "alpha/files/Untitled.md", "# Untitled first\n")
+        await page.keyboard.press("Escape")
+        await expect(page.get_by_role("heading", name="Untitled first")).to_be_visible()
 
     for site in serve(root):
         browse(f"{site}/experiments/alpha?tab=notebooks", check)
+
+
+def test_plus_keeps_an_edit_in_progress(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await open_editor(page)
+        await page.keyboard.press("End")
+        await page.keyboard.type(" unsaved")
+        await page.get_by_role("button", name="New note").click()
+
+        await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
+        await expect(page.get_by_role("link", name="Untitled.md")).to_have_attribute(
+            "aria-current", "page"
+        )
+        await on_disk(root / PLAN, "# The plan unsaved\n")
+        await page.keyboard.type("new ")
+        await on_disk(root / "alpha/files/Untitled.md", "new # Untitled\n")
+
+    browse(f"{site}{NOTE}", check)

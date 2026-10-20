@@ -15,7 +15,10 @@ export default defineConfig({
   srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**', 'migrations.md'],
   themeConfig: {
     siteTitle: false,
-    nav: [{ text: 'Getting Started', link: '/getting-started' }],
+    nav: [
+      { text: 'Getting Started', link: '/getting-started' },
+      { text: 'Philosophy', link: '/philosophy' },
+    ],
     socialLinks: [{ icon: 'github', link: repository }],
     search: { provider: 'local' },
     outline: [2, 3],

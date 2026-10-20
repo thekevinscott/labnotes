@@ -56,8 +56,16 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.load_experiment.python_blocks", return_value=["a = 1\n"]
         ) as python_blocks,
+        mock.patch(
+            "labnotes.load_experiment.nests_runs",
+            new_callable=mock.AsyncMock,
+            return_value=True,
+        ) as nests_runs,
+        mock.patch("labnotes.load_experiment.group_runs") as group_runs,
     ):
         yield {
+            "nests_runs": nests_runs,
+            "group_runs": group_runs,
             "count_runs": count_runs,
             "experiment_notes": experiment_notes,
             "list_runs": list_runs,
@@ -99,6 +107,8 @@ def test_loads_config_notes_progress_and_runs(
         {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
+    assert loaded["run_groups"] is None
+    collaborators["nests_runs"].assert_not_awaited()
     assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]
     assert tables.query.await_args.args[0] == (
         "SELECT name, display_name, config, source FROM experiments"
@@ -253,3 +263,24 @@ def test_has_no_counts_rule_without_a_config(
 
     assert loaded is not None
     assert loaded["counts_set"] is False
+
+
+@pytest.mark.parametrize("nested", [True, False])
+def test_groups_adhoc_runs_by_invocation_once_any_has_several(
+    collaborators: dict[str, mock.MagicMock], nested: bool
+) -> None:
+    collaborators["nests_runs"].return_value = nested
+    config = {**CONFIG, "mode": "adhoc"}
+    tables = make_tables(experiment(config))
+
+    loaded = asyncio.run(load_experiment(tables, ROOT, "fill", "a", mock.Mock()))
+
+    assert loaded is not None
+    source = collaborators["list_runs"].await_args.args[1]
+    collaborators["nests_runs"].assert_awaited_once_with(tables, source)
+    group_runs = collaborators["group_runs"]
+    if nested:
+        group_runs.assert_called_once_with(loaded["runs_list"])
+        assert loaded["run_groups"] is group_runs.return_value
+    else:
+        assert loaded["run_groups"] is None

@@ -902,10 +902,9 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                 await pilot.press("down", "enter")
                 assert app.query_one("#output").display
                 assert not app.query_one("#runs").display
-                assert status(app) == "r2 stdout. e switches, Escape goes back."
+                assert status(app) == "r2 stdout and stderr. Escape goes back."
                 assert output(app) == []
                 (tmp_path / "stdout.log").write_bytes("caf\xc3".encode("latin-1"))
-                (tmp_path / "stderr.log").write_text("oops\n")
                 reports[0](
                     {
                         "event": "started",
@@ -918,20 +917,19 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                 await pilot.pause()
                 with (tmp_path / "stdout.log").open("ab") as log:
                     log.write("\xa9 done\nnext".encode("latin-1"))
+                (tmp_path / "stderr.log").write_text("oops\n")
                 app.follow()
                 await pilot.pause()
-                assert output(app) == ["café done", "next"]
-                await pilot.press("e")
-                assert status(app) == "r2 stderr. e switches, Escape goes back."
-                assert output(app) == ["oops", ""]
-                await pilot.press("e")
-                assert output(app) == ["café done", "next"]
+                assert output(app) == ["café done", "next", "oops", ""]
+                with (tmp_path / "stdout.log").open("a") as log:
+                    log.write("more\n")
+                app.follow()
+                await pilot.pause()
+                assert output(app) == ["café done", "next", "oops", "more", ""]
                 await pilot.press("escape")
                 assert not app.query_one("#output").display
                 assert app.query_one("#runs").display
                 assert status(app) == ""
-                await pilot.press("e")
-                assert not app.query_one("#output").display
 
     asyncio.run(drive())
 

@@ -16,7 +16,7 @@ from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
 
 COLUMNS = ("run", "params", "status", "time")
-OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
+STREAMS = ("stdout", "stderr")
 PENDING, RUNNING, PASSED, FAILED = "○", "◐", "✓", "✗"
 SKIPPED, DESELECTED = "–", "⊘"
 
@@ -31,7 +31,6 @@ class RunApp(App[None]):
         Binding("h", "hide_failed", "Hide failed"),
         Binding("r", "retry", "Retry"),
         Binding("slash", "filter", "Filter", key_display="/"),
-        Binding("e", "switch_output", "stdout/stderr"),
         Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
@@ -64,9 +63,13 @@ class RunApp(App[None]):
         self.hiding = False
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
-        self.stream = "stdout"
-        self.offset: int
-        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
+        self.offsets: dict[str, int]
+        self.decoders = {
+            stream: codecs.getincrementaldecoder("utf-8")(errors="replace")
+            for stream in STREAMS
+        }
+        self.last_stream: str | None = None
+        self.mid_line = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -111,7 +114,7 @@ class RunApp(App[None]):
                 self.show(describe_event(event))
                 match event["mode"], event["runs"]:
                     case "adhoc", [only]:
-                        self.view(only["run"], "stdout")  # type: ignore[index]
+                        self.view(only["run"])  # type: ignore[index]
             case "started":
                 self.idle = False
                 self.pending.discard(run)
@@ -264,34 +267,41 @@ class RunApp(App[None]):
         field.focus()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.view(str(event.row_key.value), "stdout")
+        self.view(str(event.row_key.value))
 
-    def view(self, run: str, stream: str) -> None:
+    def view(self, run: str) -> None:
         self.viewing = run
-        self.stream = stream
-        self.offset = 0
-        self.decoder.reset()
+        self.offsets = dict.fromkeys(STREAMS, 0)
+        for decoder in self.decoders.values():
+            decoder.reset()
+        self.last_stream = None
+        self.mid_line = False
         self.query_one(Log).clear()
         self.query_one(DataTable).display = False
         self.query_one(Log).display = True
-        self.show(f"{run} {stream}. e switches, Escape goes back.")
+        self.show(f"{run} stdout and stderr. Escape goes back.")
         self.follow()
 
     def follow(self) -> None:
         if self.viewing not in self.folders:
             return
-        path = self.folders[self.viewing] / f"{self.stream}.log"
-        if not path.exists():
-            return
-        with path.open("rb") as log:
-            log.seek(self.offset)
-            data = log.read()
-        self.offset += len(data)
-        self.query_one(Log).write(self.decoder.decode(data))
-
-    def action_switch_output(self) -> None:
-        if self.viewing is not None:
-            self.view(self.viewing, OTHER_STREAM[self.stream])
+        for stream in STREAMS:
+            path = self.folders[self.viewing] / f"{stream}.log"
+            if not path.exists():
+                continue
+            with path.open("rb") as log:
+                log.seek(self.offsets[stream])
+                data = log.read()
+            self.offsets[stream] += len(data)
+            text = self.decoders[stream].decode(data)
+            if not text:
+                continue
+            # Don't glue one stream's unfinished line onto the other's output.
+            if self.mid_line and stream != self.last_stream:
+                text = "\n" + text
+            self.query_one(Log).write(text)
+            self.last_stream = stream
+            self.mid_line = not text.endswith("\n")
 
     def action_leave(self) -> None:
         if self.viewing is not None:

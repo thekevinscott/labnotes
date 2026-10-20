@@ -58,9 +58,10 @@ async def load_experiment(
     notes = await experiment_notes(tables, root, name)
     runs = await list_runs(tables, source, str(summary["completed_run"]), view)
     nested = summary["mode"] == "adhoc" and await nests_runs(tables, source)
-    keys = [key for key in varies if key != "id"]
     groups = (
-        group_runs(runs, keys, await count_groups(tables, source)) if nested else None
+        group_runs(runs, list(choices), await count_groups(tables, source))
+        if nested
+        else None
     )
     return {
         "name": row["name"],

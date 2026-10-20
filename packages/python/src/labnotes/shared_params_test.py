@@ -2,7 +2,7 @@ from labnotes.shared_params import shared_params
 
 
 def test_shares_a_value_every_run_has() -> None:
-    assert shared_params([{"m": "a"}, {"m": "a"}], ["m"]) == {"m": "a"}
+    assert shared_params([{"m": [1]}, {"m": [1]}], ["m"]) == {"m": [1]}
 
 
 def test_shares_nothing_the_runs_differ_on() -> None:

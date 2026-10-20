@@ -37,6 +37,7 @@ def test_waits_for_the_tables_to_hold_the_saved_text() -> None:
             "labnotes.wait_for_note.experiment_notes",
             side_effect=[
                 [{"content": "abc"}],
+                [{"content": "old"}],
                 [{"content": "".join(["n", "ew"])}, {"content": "other"}],
             ],
         ) as notes,
@@ -44,5 +45,5 @@ def test_waits_for_the_tables_to_hold_the_saved_text() -> None:
     ):
         asyncio.run(wait_for_note("tables", Path("/p"), "alpha", "a.md", "new"))  # type: ignore[arg-type]
 
-    assert notes.call_count == 2
-    assert sleep.call_count == 1
+    assert notes.call_count == 3
+    assert sleep.call_count == 2

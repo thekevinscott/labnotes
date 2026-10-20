@@ -21,6 +21,7 @@ STREAMS = ("stdout", "stderr")
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED, DESELECTED = "–", "⊘"
+VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette"}
 
 
 class RunApp(App[None]):
@@ -206,6 +207,9 @@ class RunApp(App[None]):
         if run in table.rows:
             table.update_cell(run, column, cell, update_width=True)
 
+    def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        return self.viewing is None or action in VIEWING_ACTIONS
+
     def show_concurrency(self, event: dict[str, object]) -> None:
         self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]
         self.sub_title = f"{self.concurrency} at a time"
@@ -290,7 +294,9 @@ class RunApp(App[None]):
         self.query_one(Log).clear()
         self.query_one(DataTable).display = False
         self.query_one(Log).display = True
-        self.show(f"{run} stdout and stderr. Escape goes back.")
+        self.sub_title = run
+        self.show("")
+        self.refresh_bindings()
         self.follow()
 
     def follow(self) -> None:
@@ -319,6 +325,8 @@ class RunApp(App[None]):
             self.viewing = None
             self.query_one(Log).display = False
             self.query_one(DataTable).display = True
+            self.sub_title = f"{self.concurrency} at a time"
+            self.refresh_bindings()
             if self.idle:
                 self.show_summary()
             else:

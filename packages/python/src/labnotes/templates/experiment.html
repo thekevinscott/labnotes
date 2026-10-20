@@ -81,7 +81,7 @@
       {% for run in e.runs_list %}
       <tr class="run-row" aria-expanded="false">
         <td><span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span></td>
-        {% for column in e.run_columns %}<td class="{{ 'mono' if loop.first }}">{{ run[column] | value }}</td>{% endfor %}
+        {% for column in e.run_columns %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else run[column] | value }}</td>{% endfor %}
       </tr>
       <tr class="record-row" hidden>
         <td colspan="{{ e.run_columns | length + 1 }}">

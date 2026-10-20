@@ -18,7 +18,13 @@ def test_reads_an_experiments_markdown_files(tmp_path: Path) -> None:
 
     notes = asyncio.run(experiment_notes(tables, tmp_path, "it's"))
 
-    assert notes == [{"name": "PLAN.md", "content": "plan ✓"}]
+    assert notes == [
+        {
+            "name": "PLAN.md",
+            "path": str(tmp_path / "a/files/PLAN.md"),
+            "content": "plan ✓",
+        }
+    ]
     assert tables.query.await_args.args[0] == (
         "SELECT filename, path FROM files"
         " WHERE experiment = 'it''s' AND filename LIKE '%.md' ORDER BY filename"

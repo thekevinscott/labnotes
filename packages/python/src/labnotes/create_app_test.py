@@ -1,4 +1,5 @@
 import asyncio
+import json
 import warnings
 from collections.abc import Iterator
 from pathlib import Path
@@ -18,6 +19,11 @@ EXPERIMENT: dict[str, object] = {"name": "models-effort"}
 NOTE = "# Plan\n\n```python\na = 1\n```\n\n```python\na + 1\n```\n"
 
 
+def test_formats_durations_in_templates() -> None:
+    module = create_app.__globals__
+    assert module["templates"].env.filters["duration"] is module["format_duration"]
+
+
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
@@ -25,7 +31,13 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.create_app.experiment_notes",
             new_callable=mock.AsyncMock,
-            return_value=[{"name": "PLAN.md", "content": NOTE}],
+            return_value=[
+                {
+                    "name": "PLAN.md",
+                    "path": "/p/project/e/files/PLAN.md",
+                    "content": NOTE,
+                }
+            ],
         ) as experiment_notes,
         mock.patch(
             "labnotes.create_app.drain_watch", new_callable=mock.AsyncMock
@@ -356,4 +368,73 @@ def test_restart_rejects_an_unknown_note(
 def test_restart_requires_json(app: Any, kernel_class: mock.MagicMock) -> None:
     with pytest.raises(Exception) as raised:
         post_run(app, {}, content_type="text/plain", action="restart")
+    assert getattr(raised.value, "status_code", None) == 415
+
+
+def put_note(app: Any, body: object, content_type: str = "application/json") -> Any:
+    [endpoint] = [
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/experiments/{name}/notes/{note:path}"
+    ]
+    request = mock.Mock(
+        path_params={"name": "models-effort", "note": "PLAN.md"},
+        headers={"content-type": content_type},
+    )
+    request.app = app
+    request.json = mock.AsyncMock(return_value=body)
+    return asyncio.run(endpoint(request))
+
+
+def test_put_saves_the_note_over_its_base(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch("labnotes.create_app.save_note", return_value=None) as save:
+        response = put_note(app, {"base": NOTE, "content": "new"})
+
+    assert response.status_code == 204
+    save.assert_called_once_with(Path("/p/project/e/files/PLAN.md"), NOTE, "new")
+    collaborators["experiment_notes"].assert_awaited_with(
+        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md"
+    )
+
+
+def test_put_refuses_a_stale_base_with_the_file_on_disk(app: Any) -> None:
+    with mock.patch("labnotes.create_app.save_note", return_value="theirs"):
+        response = put_note(app, {"base": "old", "content": "new"})
+
+    assert response.status_code == 409
+    assert json.loads(response.body) == {"content": "theirs"}
+
+
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"content": "new"},
+        {"base": NOTE},
+        {"base": 1, "content": "new"},
+        {"base": NOTE, "content": 1},
+    ],
+)
+def test_put_rejects_a_body_without_base_and_content(app: Any, body: object) -> None:
+    with mock.patch("labnotes.create_app.save_note") as save:
+        with pytest.raises(Exception) as raised:
+            put_note(app, body)
+    assert getattr(raised.value, "status_code", None) == 400
+    save.assert_not_called()
+
+
+def test_put_rejects_an_unknown_note(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["experiment_notes"].return_value = []
+
+    with pytest.raises(Exception) as raised:
+        put_note(app, {"base": NOTE, "content": "new"})
+    assert getattr(raised.value, "status_code", None) == 404
+
+
+def test_put_requires_json(app: Any) -> None:
+    with pytest.raises(Exception) as raised:
+        put_note(app, {"base": NOTE, "content": "new"}, content_type="text/plain")
     assert getattr(raised.value, "status_code", None) == 415

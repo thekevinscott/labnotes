@@ -4,7 +4,6 @@ from pathlib import Path
 from typing import cast
 
 from dirsql import DirSQL
-from starlette.datastructures import ImmutableMultiDict
 
 from labnotes.check_counts import check_counts
 from labnotes.count_runs import count_runs
@@ -12,6 +11,7 @@ from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
 from labnotes.format_value import format_value
 from labnotes.list_runs import list_runs
+from labnotes.models import QueryParams
 from labnotes.parse_run_view import parse_run_view
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
@@ -29,7 +29,7 @@ async def load_experiment(
     root: Path,
     mode: str,
     name: str,
-    params: ImmutableMultiDict[str, str],
+    params: QueryParams,
     outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
 ) -> dict[str, object] | None:
     found = await tables.query(

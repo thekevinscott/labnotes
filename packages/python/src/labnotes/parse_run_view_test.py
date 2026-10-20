@@ -2,7 +2,6 @@ from collections.abc import Iterator
 from unittest import mock
 
 import pytest
-from starlette.datastructures import QueryParams
 
 from labnotes.parse_run_view import parse_run_view
 
@@ -15,6 +14,18 @@ EMPTY: dict[str, object] = {
     "picked": {},
 }
 CHOICES = {"model": {"haiku": '"haiku"', "1": "1"}}
+
+
+class QueryParams(list[tuple[str, str]]):
+    def __init__(self, params: dict[str, str] | str = "") -> None:
+        if isinstance(params, str):
+            pairs = [pair.split("=") for pair in params.split("&") if pair]
+            super().__init__((key, value) for key, value in pairs)
+        else:
+            super().__init__(params.items())
+
+    def getlist(self, key: str) -> list[str]:
+        return [value for name, value in self if name == key]
 
 
 def fresh(text: str) -> str:
@@ -91,3 +102,12 @@ def test_drops_a_choice_column_with_no_known_values(run_view: mock.MagicMock) ->
     parse_run_view(QueryParams("f.model=opus"), COLUMNS, CHOICES)
 
     run_view.assert_called_once_with(**EMPTY)
+
+
+def test_reads_the_last_of_repeated_params(run_view: mock.MagicMock) -> None:
+    parse_run_view(
+        QueryParams("sort=run_id&sort=model&f.model=a&f.model=b"), COLUMNS, {}
+    )
+
+    assert run_view.call_args.kwargs["sort"] == "model"
+    assert run_view.call_args.kwargs["filters"] == {"model": "b"}

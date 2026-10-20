@@ -1,28 +1,29 @@
 from collections.abc import Mapping
 
-from starlette.datastructures import ImmutableMultiDict
-
-from labnotes.models import RunView
+from labnotes.models import QueryParams, RunView
 
 STATUSES = {"complete", "incomplete"}
 
 
 def parse_run_view(
-    params: ImmutableMultiDict[str, str],
+    params: QueryParams,
     columns: list[str],
     choices: Mapping[str, Mapping[str, str]],
 ) -> RunView:
-    sort = params.get("sort")
-    status = params.get("status")
+    def last(key: str) -> str | None:
+        values = params.getlist(key)
+        return values[-1] if values else None
+
+    sort = last("sort")
+    status = last("status")
     return RunView(
         sort=sort if sort in columns or sort == "status" else None,
-        descending=params.get("order") == "desc",
+        descending=last("order") == "desc",
         status=status if status in STATUSES else None,
         filters={
             column: value
             for column in columns
-            if column not in choices
-            and (value := params.get(f"f.{column}", "").strip())
+            if column not in choices and (value := (last(f"f.{column}") or "").strip())
         },
         picked={
             column: picked

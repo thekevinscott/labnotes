@@ -1,16 +1,14 @@
 # Getting Started
 
-You can use `labnotes` without installation:
+Run `labnotes` without installing it:
 
 ```bash
 uvx labnotes
 ```
 
-Read a bit [about the `labnotes` philosophy](philosophy). You can also read about how to [configure your filesystem](api/config) to work with `labnotes`.
-
 ## Config
 
-Assume you have the following structure on disk:
+Say your experiments live on disk like this:
 
 ```
 /data
@@ -25,18 +23,15 @@ Assume you have the following structure on disk:
     /runs
 ```
 
-You can define a configuration file mapping your files to a SQL layout. `init` will create a config file:
+A `.labnotes.toml` at the root (`/data` here) maps those folders to experiments, files and runs. `init` writes one with the defaults, which match this layout:
 
 ```bash
 uvx labnotes init
 ```
 
-`labnotes` will automatically pick up `.labnotes.toml` when run from the same folder, or specify it with `uvx labnotes -c /path/to/.labnotes.toml`.
+`labnotes` picks up `.labnotes.toml` from the folder you run it in. Point it elsewhere with `uvx labnotes -c /path/to/.labnotes.toml`. The [config reference](api/config) covers every key.
 
-*Every key is described in the [config reference](api/config).*
+## Next
 
-`labnotes` offers the following surfaces:
-
-- a [CLI](cli), for running experiments
-- a [frontend](frontend), for analyzing experiments
-
+- The [CLI](cli) runs experiments.
+- The [frontend](frontend) is for reading and analyzing them.

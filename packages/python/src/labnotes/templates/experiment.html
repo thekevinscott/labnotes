@@ -1,167 +1,106 @@
 {% extends "base.html" %}
-{% from "macros.html" import meter, percent %}
 {% set e = experiment %}
+{% set tab = 'notebooks' if request.query_params.get('tab') == 'notebooks' else 'runs' %}
 {% block title %}{{ e.display_name }} · labnotes{% endblock %}
 {% block crumbs %}<span class="crumb"><a href="{{ url_for('index') }}">Experiments</a></span><span class="crumb">{{ e.display_name }}</span>{% endblock %}
 {% block main %}
 <section class="intro">
   <h1>{{ e.display_name }}</h1>
   {% if e.display_name != e.name %}<p class="study">{{ e.name }}</p>{% endif %}
-  <nav class="toc">
-    <a href="#design">Design</a>
-    {% if pivot %}<a href="#progress">Progress</a>{% endif %}
-    {% if e.notes %}<a href="#notes">Notes</a>{% endif %}
-    <a href="#runs">Runs</a>
-  </nav>
-</section>
-
-<section class="figures">
-  {% if e.filled is not none and e.target %}
-  <div class="figure wide">
-    <div class="figure-label">Grid filled</div>
-    <div class="figure-value">{{ percent(e.filled, e.target) }}</div>
-    {{ meter(e.filled, e.target) }}
-    <div class="figure-note"><span class="num">{{ e.filled }}</span> of <span class="num">{{ e.target }}</span> runs needed</div>
+  {% if e.config_source is not none %}
+  <div class="config-line">
+    <p class="config-summary">
+      <span class="chip quiet">{{ e.mode }}</span>
+      {% for key, value in e.other.items() %}<span class="setting">{{ key }} <code>{{ value | value }}</code></span>{% endfor %}
+      {% if e.runs_per_cell %}<span class="setting">repeats <b class="num">{{ e.runs_per_cell }}</b></span>{% endif %}
+      {% for key, values in e.varies.items() %}<span class="setting">{{ key }}{% for value in values %} <span class="chip">{{ value | value }}</span>{% endfor %}</span>{% endfor %}
+      {% if e.counts_error %}<span class="setting counts-error">{{ e.counts_error }}</span>{% elif e.counts_set %}<span class="setting">counts <code>{{ e.completed_run }}</code></span>{% endif %}
+    </p>
+    <button type="button" class="config-open">experiment.toml</button>
   </div>
+  <dialog class="config-file">
+    <header>experiment.toml<button type="button" class="config-close">Close</button></header>
+    <pre>{{ e.config_source }}</pre>
+  </dialog>
   {% endif %}
-  <div class="figure">
-    <div class="figure-label">Runs recorded</div>
-    <div class="figure-value">{{ e.runs }}</div>
-    <div class="figure-note"><span class="num">{{ e.completed }}</span> counted as complete</div>
-  </div>
-  <div class="figure">
-    <div class="figure-label">Cells</div>
-    <div class="figure-value">{{ e.cell_count }}</div>
-    <div class="figure-note">{% if e.mode == "adhoc" %}ad-hoc, <span class="num">{{ e.runs_per_cell }}</span> runs each time{% elif e.runs_per_cell %}<span class="num">{{ e.runs_per_cell }}</span> runs each{% else %}no experiment.toml{% endif %}</div>
-  </div>
 </section>
 
-<section id="design" class="block">
-  <h2>Design</h2>
-  <div class="design-grid">
-    {% if e.varies %}
-    <div>
-      <h3>Varies</h3>
-      <dl class="factors">
-        {% for key, values in e.varies.items() %}
-        <dt>{{ key }}</dt>
-        <dd>{% for value in values %}<span class="chip">{{ value | value }}</span>{% endfor %}</dd>
-        {% endfor %}
-      </dl>
-    </div>
-    {% endif %}
-    {% if e.fixed %}
-    <div>
-      <h3>Held fixed</h3>
-      <dl class="factors">
-        {% for key, value in e.fixed.items() %}
-        <dt>{{ key }}</dt>
-        <dd><span class="chip quiet">{{ value | value }}</span></dd>
-        {% endfor %}
-      </dl>
-    </div>
-    {% endif %}
-  </div>
-  <dl class="facts">
-    {% for key, value in e.other.items() %}
-    <dt>{{ key }}</dt><dd><code>{{ value | value }}</code></dd>
-    {% endfor %}
-    <dt>complete when</dt>{% if e.counts_error %}<dd class="counts-error">{{ e.counts_error }}</dd>{% else %}<dd><code>{{ e.completed_run }}</code></dd>{% endif %}
-  </dl>
-</section>
+<nav class="tabs">
+  <a href="?"{% if tab == 'runs' %} aria-current="page"{% endif %}>Runs <span class="count num">{{ e.runs }}</span></a>
+  <a href="?tab=notebooks"{% if tab == 'notebooks' %} aria-current="page"{% endif %}>Notebooks <span class="count num">{{ e.notes | length }}</span></a>
+</nav>
 
-{% if pivot %}
-<section id="progress" class="block">
-  <h2>Progress</h2>
+{% if tab == 'notebooks' %}
+{% set chosen = request.query_params.get('note') %}
+{% set note = (e.notes | selectattr('name', 'equalto', chosen) | first) or (e.notes | first) %}
+{% if note %}
+<nav class="tabs sub">
+  {% for each in e.notes %}<a href="?tab=notebooks&amp;note={{ each.name | urlencode }}"{% if each.name == note.name %} aria-current="page"{% endif %}>{{ each.name }}</a>{% endfor %}
+</nav>
+<article class="note" data-run-url="{{ url_for('run_block', name=e.name, note=note.name) }}" data-restart-url="{{ url_for('restart_kernel', name=e.name, note=note.name) }}">
+  {% if note.runnable %}<header class="note-name"><button type="button" class="restart" title="Stop this note's Python kernel. The next Run starts a fresh one.">Restart</button></header>{% endif %}
+  <div class="prose">{{ note.html | safe }}</div>
+</article>
+<script src="{{ asset('run-cell.js') }}" defer></script>
+{% else %}
+<p class="empty">No notebooks yet.</p>
+{% endif %}
+{% else %}
+<section id="runs">
+  {% set view = e.run_view %}
+  {% set narrowed = view.status or view.filters %}
+  {% if narrowed %}<p class="narrowed"><span class="num">{{ e.runs_list | length }}</span> of <span class="num">{{ e.runs }}</span> <a class="clear" href="{{ '?sort=' ~ (view.sort | urlencode) ~ ('&order=desc' if view.descending else '') if view.sort else '?' }}#runs">Clear filters</a></p>{% endif %}
+  {% if e.runs %}
+  <form id="run-filters" method="get" action="#runs">
+    {% if view.sort %}<input type="hidden" name="sort" value="{{ view.sort }}">{% endif %}
+    {% if view.descending %}<input type="hidden" name="order" value="desc">{% endif %}
+    <button type="submit" hidden>Filter</button>
+  </form>
   <div class="scroll">
-  <table class="grid">
+  <table class="runs-table">
     <thead>
-      <tr class="axis-row">
-        <td colspan="{{ pivot.row_keys | length }}"></td>
-        <th scope="colgroup" colspan="{{ pivot.columns | length }}" class="axis">{{ pivot.column_key }}</th>
-      </tr>
       <tr>
-        {% for key in pivot.row_keys %}<th scope="col" class="label">{{ key }}</th>{% endfor %}
-        {% for column in pivot.columns %}<th scope="col" class="cell-head">{{ column | value }}</th>{% endfor %}
+        {% for column in ['status'] + e.run_columns %}
+        {% set sorted = view.sort == column %}
+        <th scope="col"{% if sorted %} aria-sort="{{ 'descending' if view.descending else 'ascending' }}"{% endif %}><a class="sort{{ ' sorted' if sorted }}" href="{{ e.sort_hrefs[column] }}" title="Sort by {{ column }}">{{ '' if column == 'status' else column }}{% if sorted %}<span class="arrow">{{ '↓' if view.descending else '↑' }}</span>{% endif %}</a></th>
+        {% endfor %}
+      </tr>
+      <tr class="filters">
+        <td><select form="run-filters" name="status" aria-label="Filter by status" onchange="this.form.requestSubmit()">
+          <option value=""{{ ' selected' if not view.status }}>all</option>
+          <option value="complete"{{ ' selected' if view.status == 'complete' }}>✓</option>
+          <option value="incomplete"{{ ' selected' if view.status == 'incomplete' }}>✕</option>
+        </select></td>
+        {% for column in e.run_columns %}<td><input form="run-filters" type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}"></td>{% endfor %}
       </tr>
     </thead>
     <tbody>
-      {% for row in pivot.rows %}
-      <tr>
-        {% for label in row.labels %}<th scope="row" class="label">{{ label | value }}</th>{% endfor %}
-        {% for cell in row.cells %}
-        {% set goal = e.runs_per_cell if e.mode == "fill" %}
-        {% set done = goal and cell.completed >= goal %}
-        <td class="cell{{ ' done' if done }}{{ ' empty' if not cell.runs }}" title="{{ cell['values'].items() | map('join', ' = ') | join(', ') }}: {{ cell.completed }} complete of {{ cell.runs }} recorded">
-          <span class="num">{{ cell.completed }}{% if goal %}<span class="of">/{{ goal }}</span>{% endif %}</span>
-          {% if goal %}{{ meter(cell.completed, goal) }}{% endif %}
-        </td>
-        {% endfor %}
+      {% for run in e.runs_list %}
+      <tr class="run-row" aria-expanded="false">
+        <td><span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span></td>
+        {% for column in e.run_columns %}<td class="{{ 'mono' if loop.first }}">{{ run[column] | value }}</td>{% endfor %}
       </tr>
+      <tr class="record-row" hidden>
+        <td colspan="{{ e.run_columns | length + 1 }}">
+          <dl class="record">
+            {% for key, value in run.items() if key != 'labnotes_completed' %}
+            <dt>{{ key }}</dt>
+            {% set shown = value | value %}
+            <dd>{% if shown | length > 80 %}<pre>{{ shown }}</pre>{% else %}<code>{{ shown }}</code>{% endif %}</dd>
+            {% endfor %}
+          </dl>
+        </td>
+      </tr>
+      {% else %}
+      <tr><td class="empty" colspan="{{ e.run_columns | length + 1 }}">No runs match these filters.</td></tr>
       {% endfor %}
     </tbody>
   </table>
-  </div>
-</section>
-{% endif %}
-
-{% if e.notes %}
-<section id="notes" class="block">
-  <h2>Notes</h2>
-  {% for note in e.notes %}
-  <article class="note" data-run-url="{{ url_for('run_block', name=e.name, note=note.name) }}" data-restart-url="{{ url_for('restart_kernel', name=e.name, note=note.name) }}">
-    <header class="note-name">{{ note.name }}{% if note.runnable %}<button type="button" class="restart" title="Stop this note's Python kernel. The next Run starts a fresh one.">Restart</button>{% endif %}</header>
-    <div class="prose">{{ note.html | safe }}</div>
-  </article>
-  {% endfor %}
-</section>
-<script src="{{ asset('run-cell.js') }}" defer></script>
-{% endif %}
-
-<section id="runs" class="block">
-  {% set view = e.run_view %}
-  {% set narrowed = view.status or view.filters %}
-  <h2>Runs <span class="count num">{{ e.runs_list | length }}{% if narrowed %} of {{ e.runs }}{% endif %}</span>
-    {% if narrowed %}<a class="clear" href="{{ '?sort=' ~ (view.sort | urlencode) ~ ('&order=desc' if view.descending else '') if view.sort else '?' }}#runs">Clear filters</a>{% endif %}</h2>
-  {% if e.runs %}
-  <div class="runs" style="--columns: {{ e.run_columns | length }}">
-    <div class="run-head">
-      {% for column in ['status'] + e.run_columns %}
-      {% set sorted = view.sort == column %}
-      <a class="sort{{ ' sorted' if sorted }}" href="{{ e.sort_hrefs[column] }}"{% if sorted %} aria-sort="{{ 'descending' if view.descending else 'ascending' }}"{% endif %} title="Sort by {{ column }}">{{ '' if column == 'status' else column }}{% if sorted %}<span class="arrow">{{ '↓' if view.descending else '↑' }}</span>{% endif %}</a>
-      {% endfor %}
-    </div>
-    <form class="run-filters" method="get" action="#runs">
-      {% if view.sort %}<input type="hidden" name="sort" value="{{ view.sort }}">{% endif %}
-      {% if view.descending %}<input type="hidden" name="order" value="desc">{% endif %}
-      <select name="status" aria-label="Filter by status" onchange="this.form.requestSubmit()">
-        <option value=""{{ ' selected' if not view.status }}>all</option>
-        <option value="complete"{{ ' selected' if view.status == 'complete' }}>✓</option>
-        <option value="incomplete"{{ ' selected' if view.status == 'incomplete' }}>✕</option>
-      </select>
-      {% for column in e.run_columns %}<input type="search" name="f.{{ column }}" value="{{ view.filters.get(column, '') }}" placeholder="filter" aria-label="Filter {{ column }}">{% endfor %}
-      <button type="submit" hidden>Filter</button>
-    </form>
-    {% for run in e.runs_list %}
-    <details class="run">
-      <summary>
-        <span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span>
-        {% for column in e.run_columns %}<span class="{{ 'mono' if loop.first }}">{{ run[column] | value }}</span>{% endfor %}
-      </summary>
-      <dl class="record">
-        {% for key, value in run.items() if key != 'labnotes_completed' %}
-        <dt>{{ key }}</dt>
-        {% set shown = value | value %}
-        <dd>{% if shown | length > 80 %}<pre>{{ shown }}</pre>{% else %}<code>{{ shown }}</code>{% endif %}</dd>
-        {% endfor %}
-      </dl>
-    </details>
-    {% else %}
-    <p class="empty run-empty">No runs match these filters.</p>
-    {% endfor %}
   </div>
   {% else %}
   <p class="empty">No runs recorded yet.</p>
   {% endif %}
 </section>
+{% endif %}
+<script src="{{ asset('experiment.js') }}" defer></script>
 {% endblock %}

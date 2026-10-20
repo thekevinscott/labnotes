@@ -1,0 +1,1 @@
+**Changed** — The experiment page in `labnotes server` shows `experiment.toml` on one line (the full file opens in a modal when the line is cut off), then two tabs: Runs, a sortable and filterable table where clicking a run shows its record, and Notebooks, with a tab per markdown file. The Design, Progress grid and headline figures are gone.

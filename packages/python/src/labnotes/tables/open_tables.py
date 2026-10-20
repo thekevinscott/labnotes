@@ -10,12 +10,15 @@ from labnotes.tables.read_run import read_run
 
 # experiments is a view, so files and runs can't declare a foreign key to it.
 EXPERIMENTS = """
-CREATE TABLE experiment_configs (experiment TEXT PRIMARY KEY, config TEXT);
+CREATE TABLE experiment_configs (
+  experiment TEXT PRIMARY KEY, config TEXT, source TEXT
+);
 CREATE VIEW experiments AS
   SELECT
     names.name,
     coalesce(experiment_configs.config ->> 'name', names.name) AS display_name,
-    experiment_configs.config
+    experiment_configs.config,
+    experiment_configs.source
   FROM (
     SELECT experiment AS name FROM experiment_configs
     UNION SELECT experiment FROM files

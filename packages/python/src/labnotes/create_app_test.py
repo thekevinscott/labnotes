@@ -157,10 +157,10 @@ def test_index_lists_experiments_with_progress(
     assert "/static/row-link.js?v=" in text
 
 
-def test_experiment_page_shows_design_grid_notes_and_runs(
+def test_experiment_page_loads_the_named_experiment(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    status, text = call(app, "/experiments/{name}", name="models-effort")
+    status, _ = call(app, "/experiments/{name}", name="models-effort")
 
     assert status == 200
     assert collaborators["load_experiment"].await_args.args[:5] == (
@@ -170,43 +170,6 @@ def test_experiment_page_shows_design_grid_notes_and_runs(
         "models-effort",
         {"sort": "model"},
     )
-    assert '<span class="chip">haiku</span>' in text
-    assert '<span class="chip quiet">true</span>' in text
-    assert "<code>exit_code = 0</code>" in text
-    assert "<code>uv run run.py</code>" in text
-    assert "<h1>Models by effort</h1>" in text
-    assert "<h1>The plan</h1>" in text
-    assert 'data-run-url="/run_block/models-effort"' in text
-    assert 'data-restart-url="/restart_kernel/models-effort"' in text
-    assert text.count('class="restart"') == 1
-    assert "/static/run-cell.js" in text
-    assert '<td class="cell done"' in text
-    assert '<td class="cell"' in text
-    assert "<pre>" + "x" * 100 + "</pre>" in text
-    assert '<span class="status good"' in text
-    assert 'aria-sort="descending"' in text
-    assert '<span class="arrow">↓</span>' in text
-    assert 'href="?sort=id#runs"' in text
-    assert '<input type="hidden" name="sort" value="model">' in text
-    assert '<input type="hidden" name="order" value="desc">' in text
-    assert 'name="f.model" value="op"' in text
-    assert "1 of 4" in text
-    assert 'href="?sort=model&amp;order=desc#runs">Clear filters' in text
-
-
-def test_experiment_page_shows_plain_cell_counts_when_adhoc(
-    app: Any, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    adhoc = {**EXPERIMENT, "mode": "adhoc", "target": None, "filled": None}
-    collaborators["load_experiment"].return_value = adhoc
-
-    status, text = call(app, "/experiments/{name}", name="models-effort")
-
-    assert status == 200
-    assert "Grid filled" not in text
-    assert "ad-hoc" in text
-    assert '<td class="cell done"' not in text
-    assert '<span class="of">' not in text
 
 
 def test_unknown_experiment_is_not_found(

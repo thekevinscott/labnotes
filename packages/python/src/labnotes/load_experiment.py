@@ -5,9 +5,9 @@ from typing import cast
 
 from dirsql import DirSQL
 
-from labnotes.experiment_notes import experiment_notes
 from labnotes.check_counts import check_counts
-from labnotes.experiment_progress import experiment_progress
+from labnotes.count_runs import count_runs
+from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
 from labnotes.list_runs import list_runs
 from labnotes.parse_run_view import parse_run_view
@@ -31,7 +31,7 @@ async def load_experiment(
     outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
 ) -> dict[str, object] | None:
     found = await tables.query(
-        "SELECT name, display_name, config FROM experiments"
+        "SELECT name, display_name, config, source FROM experiments"
         f" WHERE name = {quote_string(name)}"
     )
     if not found:
@@ -42,15 +42,17 @@ async def load_experiment(
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)
-    progress = await experiment_progress(tables, source, summary)
     shown = ["id", *(key for key in varies if key != "id")]
     view = parse_run_view(params, shown)
+    [totals] = await count_runs(tables, source, str(summary["completed_run"]))
     notes = await experiment_notes(tables, root, name)
     return {
         "name": row["name"],
         "display_name": row["display_name"],
+        "config_source": row["source"],
+        "counts_set": "counts" in (config or {}),
         **summary,
-        **progress,
+        **totals,
         "notes": [
             {
                 "name": note["name"],

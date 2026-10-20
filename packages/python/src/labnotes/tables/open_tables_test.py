@@ -85,3 +85,11 @@ def test_runs_carry_exclusion(dirsql: dict[str, mock.MagicMock]) -> None:
 
     ddl = str(tables(dirsql)["runs"]["ddl"])
     assert "params TEXT, run TEXT" in ddl
+
+
+def test_experiments_carry_the_config_source(dirsql: dict[str, mock.MagicMock]) -> None:
+    open_tables(CONFIG)
+
+    ddl = str(tables(dirsql)["experiment_configs"]["ddl"])
+    assert "config TEXT, source TEXT" in ddl
+    assert "experiment_configs.source\n" in ddl

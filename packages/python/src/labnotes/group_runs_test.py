@@ -25,6 +25,7 @@ def test_groups_runs_by_invocation_newest_first_keeping_their_order() -> None:
     assert group_runs(runs, [], {"20261020-b": 5, "20261019-a": 2}) == [
         {
             "name": "20261020-b",
+            "flat": False,
             "started": "<20261020-b>",
             "runs": [runs[1], runs[3]],
             "total": 5,
@@ -34,6 +35,7 @@ def test_groups_runs_by_invocation_newest_first_keeping_their_order() -> None:
         },
         {
             "name": "20261019-a",
+            "flat": False,
             "started": "<20261019-a>",
             "runs": [runs[0], runs[2]],
             "total": 2,
@@ -77,3 +79,10 @@ def test_puts_a_run_without_an_invocation_in_its_own_group() -> None:
     [group] = group_runs([{"id": "lone", "labnotes_completed": 0}], [], {"lone": 1})
 
     assert (group["name"], group["passed"], group["failed"]) == ("lone", 0, 1)
+    assert group["flat"] is True
+
+
+def test_keeps_a_lone_nested_run_in_a_group() -> None:
+    [group] = group_runs([{"id": "a/x", "labnotes_completed": 1}], [], {"a": 1})
+
+    assert group["flat"] is False

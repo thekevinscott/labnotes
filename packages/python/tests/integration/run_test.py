@@ -232,6 +232,14 @@ def test_keeps_one_stamped_folder_per_invocation(project: Path) -> None:
     assert re.fullmatch(STAMP, group.name)
 
 
+def test_writes_a_lone_adhoc_run_to_one_stamped_folder(project: Path) -> None:
+    [recorded] = run_adhoc(project, 'm = ["a"]\n')
+
+    assert recorded["folder"].parent == project / "exp" / "runs"
+    assert re.fullmatch(STAMP, recorded["folder"].name)
+    assert (recorded["folder"] / "out.txt").read_text() == "--m a"
+
+
 def test_keeps_stamped_haiku_names_for_fill_runs(project: Path) -> None:
     labnotes(project, ["experiments", "exp", "run"])
 

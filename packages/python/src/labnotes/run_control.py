@@ -38,7 +38,7 @@ def run_control(
     if len(args) != len(kinds):
         raise click.UsageError(f"{action} takes {len(kinds)} argument(s).")
     try:
-        values = [kind(arg) for kind, arg in zip(kinds, args, strict=True)]
+        values = [kind(args[i]) for i, kind in enumerate(kinds)]
     except ValueError:
         raise click.UsageError(f"{action} takes a number.") from None
     refused = asyncio.run(control_run(config.root, name, action, values))

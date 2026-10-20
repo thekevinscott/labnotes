@@ -33,6 +33,6 @@ uvx labnotes init
 
 ## Next
 
-- The [CLI](cli) runs experiments.
+- The [CLI](cli/) runs experiments.
 - The [frontend](frontend) is for reading and analyzing them.
 - The [skill](skill) lets a coding agent drive `labnotes`.

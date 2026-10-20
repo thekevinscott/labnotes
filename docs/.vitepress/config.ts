@@ -21,7 +21,14 @@ export default defineConfig({
         items: [
           { text: 'Philosophy', link: '/philosophy' },
           { text: 'Getting Started', link: '/getting-started' },
-          { text: 'CLI', link: '/cli' },
+          {
+            text: 'CLI',
+            link: '/cli/',
+            items: [
+              { text: 'Viewing Experiments', link: '/cli/viewing' },
+              { text: 'Running Experiments', link: '/cli/running' },
+            ],
+          },
           { text: 'Frontend', link: '/frontend' },
           { text: 'Skill', link: '/skill' },
         ],

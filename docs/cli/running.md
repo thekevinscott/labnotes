@@ -1,31 +1,4 @@
-# CLI
-
-`labnotes` offers a CLI for managing and running experiments. Ensure that you've [first created a configuration file](getting-started).
-
-## Viewing Experiments
-
-View experiments with:
-
-```bash
-uvx labnotes experiments
-```
-
-Which returns name, last run, created, files (num), runs (num).
-
-View a particular experiment with:
-
-```bash
-uvx labnotes experiments foo
-```
-
-Which shows metadata about the experiment along with the above fields. You can see runs with:
-
-```bash
-uvx labnotes experiments foo runs
-```
-
-## Running Experiments
-
+# Running Experiments
 
 You can run an experiment with:
 

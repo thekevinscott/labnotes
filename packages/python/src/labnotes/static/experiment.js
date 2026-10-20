@@ -19,11 +19,6 @@ const expand = (group, open) => {
 document.addEventListener("click", (event) => {
   const header = event.target.closest(".group-row");
   if (header) expand(header.parentElement, !header.parentElement.classList.contains("open"));
-  const row = event.target.closest(".run-row");
-  if (!row || getSelection().toString()) return;
-  const record = row.nextElementSibling;
-  record.hidden = !record.hidden;
-  row.setAttribute("aria-expanded", String(!record.hidden));
 });
 
 const filters = document.querySelector("#run-filters");

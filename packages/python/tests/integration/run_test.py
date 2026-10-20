@@ -134,14 +134,102 @@ def test_counts_runs_by_the_experiments_rule(
     assert capsys.readouterr().out.endswith("0 passed, 0 failed.\n")
 
 
-def test_names_adhoc_runs_by_the_params_that_vary(project: Path) -> None:
+HASH = r"-[0-9a-f]{4}"
+STAMP = r"\d{8}-\d{6}-[a-z]+-[a-z]+"
+HAIKU = r"[a-z]+-[a-z]+(-\d+)?"
+
+
+def run_adhoc(project: Path, params: str, repeats: int = 1) -> list[dict[str, Any]]:
     write(
         project / "exp" / "experiment.toml",
         f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
-        'mode = "adhoc"\n[params]\nm = ["data/x 1", "data/y"]\nk = ["same"]\n',
+        f'mode = "adhoc"\nrepeats = {repeats}\n[params]\n{params}',
     )
     labnotes(project, ["experiments", "exp", "run"])
+    return runs(project)
 
-    names = sorted(run["folder"].name for run in runs(project))
-    assert [name[:-5] for name in names] == ["x-1", "y"]
-    assert all(re.fullmatch(r"[a-z0-9-]+-[0-9a-f]{4}", name) for name in names)
+
+def labels(recorded: list[dict[str, Any]]) -> list[str]:
+    for run in recorded:
+        assert re.fullmatch(rf".+{HASH}", run["folder"].name)
+    return sorted(run["folder"].name[:-5] for run in recorded)
+
+
+def test_names_adhoc_runs_by_a_path_param_without_its_shared_prefix(
+    project: Path,
+) -> None:
+    recorded = run_adhoc(
+        project,
+        'problem-dir = ["../data/APPS/test/0580", "../data/APPS/test/2002", '
+        '"../data/APPS/test/3876"]\n',
+    )
+
+    assert labels(recorded) == ["0580", "2002", "3876"]
+
+
+def test_keeps_the_real_param_values_in_run_json(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["data/x 1", "data/y"]\n')
+
+    by_label = {run["folder"].name[:-5]: run["params"]["m"] for run in recorded}
+    assert by_label == {"x-1": "data/x 1", "y": "data/y"}
+    for run in recorded:
+        assert (run["folder"] / "out.txt").read_text() == f"--m {run['params']['m']}"
+
+
+def test_leaves_params_that_never_change_out_of_the_name(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["p", "q"]\nk = ["same"]\n')
+
+    assert labels(recorded) == ["p", "q"]
+
+
+def test_joins_every_varying_param_in_config_order(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["p", "q"]\nseed = [1, 2]\n')
+
+    assert labels(recorded) == ["p-1", "p-2", "q-1", "q-2"]
+
+
+def test_keeps_numbers_whole(project: Path) -> None:
+    recorded = run_adhoc(project, "n = [10, 11, 0.5]\n")
+
+    assert labels(recorded) == ["0-5", "10", "11"]
+
+
+def test_turns_unsafe_characters_into_dashes(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["(a  b).c", "café", "Big"]\n')
+
+    assert labels(recorded) == ["Big", "a-b-c", "caf"]
+
+
+def test_cuts_a_long_name_at_sixty_characters(project: Path) -> None:
+    recorded = run_adhoc(project, f'm = ["{"x" * 80}", "y"]\n')
+
+    assert labels(recorded) == ["x" * 60, "y"]
+
+
+def test_tells_runs_with_the_same_name_apart_by_their_hash(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["a b", "a/b"]\n', repeats=2)
+
+    assert labels(recorded) == ["a-b"] * 4
+    assert len({run["folder"] for run in recorded}) == 4
+
+
+def test_names_adhoc_runs_with_a_haiku_when_nothing_varies(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["a"]\n', repeats=2)
+
+    names = [run["folder"].name for run in recorded]
+    assert all(re.fullmatch(HAIKU, name) for name in names)
+    assert len(set(names)) == 2
+
+
+def test_keeps_one_stamped_folder_per_invocation(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["p", "q"]\n')
+
+    [group] = {run["folder"].parent for run in recorded}
+    assert re.fullmatch(STAMP, group.name)
+
+
+def test_keeps_stamped_haiku_names_for_fill_runs(project: Path) -> None:
+    labnotes(project, ["experiments", "exp", "run"])
+
+    names = [run["folder"].name for run in runs(project)]
+    assert all(re.fullmatch(STAMP, name) for name in names)

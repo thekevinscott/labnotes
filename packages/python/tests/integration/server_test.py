@@ -72,3 +72,46 @@ def test_requires_json_so_forms_on_other_sites_cannot_post(
 
 def test_unknown_experiment_is_not_found(client: TestClient) -> None:
     assert client.get("/experiments/nope").status_code == 404
+
+
+NOTE = "/experiments/alpha/notes/plan.md"
+PLAN = "```python\na = 1\n```\n\n```python\na + 1\n```\n"
+
+
+def test_saves_a_note_to_disk(client: TestClient, tmp_path: Path) -> None:
+    response = client.put(NOTE, json={"base": PLAN, "content": "# New ✓\n"})
+
+    assert response.status_code == 204
+    assert (tmp_path / "alpha/files/plan.md").read_text(encoding="utf-8") == "# New ✓\n"
+
+
+def test_refuses_a_save_based_on_a_stale_note(
+    client: TestClient, tmp_path: Path
+) -> None:
+    write(tmp_path / "alpha/files/plan.md", "edited elsewhere")
+
+    response = client.put(NOTE, json={"base": PLAN, "content": "mine"})
+
+    assert response.status_code == 409
+    assert response.json() == {"content": "edited elsewhere"}
+    assert (tmp_path / "alpha/files/plan.md").read_text() == "edited elsewhere"
+
+
+def test_runs_the_blocks_of_a_saved_note(client: TestClient) -> None:
+    client.put(NOTE, json={"base": PLAN, "content": "```python\n40 + 2\n```\n"})
+
+    assert ">42<" in client.post(RUN, json={"block": 0}).text
+
+
+def test_save_requires_json(client: TestClient) -> None:
+    response = client.put(NOTE, content="x", headers={"content-type": "text/plain"})
+
+    assert response.status_code == 415
+
+
+def test_save_rejects_an_unknown_note(client: TestClient) -> None:
+    response = client.put(
+        NOTE.replace("plan", "nope"), json={"base": "", "content": "x"}
+    )
+
+    assert response.status_code == 404

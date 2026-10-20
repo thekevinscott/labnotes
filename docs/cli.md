@@ -1,6 +1,8 @@
 # CLI
 
-All commands take a `--format` flag, with `table` (default) and `json`.
+`labnotes` offers a CLI for managing and running experiments. Ensure that you've [first created a configuration file](getting-started).
+
+## Viewing Experiments
 
 View experiments with:
 
@@ -8,7 +10,7 @@ View experiments with:
 uvx labnotes experiments
 ```
 
-Which returns name, last run, created, files (num), runs (num). 
+Which returns name, last run, created, files (num), runs (num).
 
 View a particular experiment with:
 
@@ -21,6 +23,9 @@ Which shows metadata about the experiment along with the above fields. You can s
 ```bash
 uvx labnotes experiments foo runs
 ```
+
+## Running Experiments
+
 
 You can run an experiment with:
 

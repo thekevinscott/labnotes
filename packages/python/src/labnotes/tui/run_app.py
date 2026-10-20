@@ -329,8 +329,7 @@ class RunApp(App[None]):
     def redraw_on(self, run: str) -> None:
         table = self.query_one(DataTable)
         self.redraw(table.cursor_row)
-        if run in table.rows:
-            table.move_cursor(row=table.get_row_index(run))
+        table.move_cursor(row=table.get_row_index(run))
 
     def action_toggle_run(self) -> None:
         if (run := self.cursor_run()) is not None:

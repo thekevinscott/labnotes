@@ -295,6 +295,19 @@ h3 {
 .group-toggle[aria-expanded="true"]::before { content: "▾"; }
 .group:not(.open) > :not(.group-row) { display: none; }
 .group.open .run-row td:nth-child(2) { padding-left: 2rem; }
+.run-row { cursor: pointer; }
+.run-link { text-decoration: none; }
+
+/* Run output */
+.run-state.good { color: var(--good); }
+.run-state.bad { color: var(--bad); }
+.run-log { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
+.run-log header { display: flex; gap: 1rem; padding: 0.4rem 1.25rem; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 0.75rem; color: var(--ink-3); }
+.run-log header span::before { content: "■ "; }
+.run-output { margin: 0; padding: 1rem 1.25rem; max-height: 70vh; overflow: auto; font-size: 0.82rem; white-space: pre-wrap; overflow-wrap: anywhere; }
+.run-output:empty::before { content: "No output yet."; color: var(--ink-3); }
+.run-output .stderr, .run-log header .stderr::before { color: var(--bad); }
+.run-log header .stdout::before { color: var(--ink-2); }
 
 /* Notes */
 .note {

@@ -1,0 +1,1 @@
+**Added** — in `labnotes server`, clicking a run on an experiment's Runs tab opens a page for that run with its `stdout.log` and `stderr.log` interleaved as they're written, stderr in red. The page follows the logs while the run is going and stops once its `run.json` records an end, showing the exit code.

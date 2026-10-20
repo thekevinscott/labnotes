@@ -14,6 +14,7 @@ from labnotes.runner.stop_then_kill import stop_then_kill
 from labnotes.runner.param_args import param_args
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
+from labnotes.tui.runs_table import RunsTable
 
 COLUMNS = ("run", "params", "status", "time")
 OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
@@ -25,10 +26,10 @@ class RunApp(App[None]):
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
-        Binding("d", "toggle_run", "Deselect"),
+        Binding("space", "toggle_run", "Deselect"),
         Binding("D", "deselect_shown", "Deselect shown"),
-        Binding("k", "kill_run", "Stop run"),
-        Binding("h", "hide_failed", "Hide failed"),
+        Binding("x", "kill_run", "Stop run"),
+        Binding("f", "hide_failed", "Hide failed"),
         Binding("r", "retry", "Retry"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("e", "switch_output", "stdout/stderr"),
@@ -70,7 +71,7 @@ class RunApp(App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
-        yield DataTable(id="runs", cursor_type="row")
+        yield RunsTable(id="runs", cursor_type="row")
         yield Log(id="output")
         yield Input(id="filter", placeholder="Filter params")
         yield Static(id="status")

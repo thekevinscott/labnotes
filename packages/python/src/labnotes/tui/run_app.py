@@ -17,7 +17,8 @@ from labnotes.tui.format_elapsed import format_elapsed
 
 COLUMNS = ("run", "params", "status", "time")
 OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
-PENDING, RUNNING, PASSED, FAILED = "○", "◐", "✓", "✗"
+PENDING, PASSED, FAILED = "○", "✓", "✗"
+SPINNER = "|/-\\"
 SKIPPED, DESELECTED = "–", "⊘"
 
 
@@ -56,6 +57,7 @@ class RunApp(App[None]):
         self.idle = False
         self.next_run: str | None = None
         self.ended: set[str] = set()
+        self.frame = 0
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
         self.cells: dict[str, list[object]] = {}
@@ -86,6 +88,7 @@ class RunApp(App[None]):
     def on_ready(self) -> None:
         self.set_interval(1, self.tick)
         self.set_interval(0.25, self.follow)
+        self.set_interval(0.1, self.spin)
         self.run_worker(self.drive())
 
     async def drive(self) -> None:
@@ -120,7 +123,7 @@ class RunApp(App[None]):
                 if run == self.next_run:
                     self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                cells = (run, args, RUNNING, format_elapsed(0))
+                cells = (run, args, SPINNER[self.frame], format_elapsed(0))
                 for column, cell in zip(COLUMNS, cells):
                     self.set_cell(run, column, cell)
             case "ended":
@@ -204,6 +207,11 @@ class RunApp(App[None]):
     def tick(self) -> None:
         for run, began in self.started.items():
             self.set_cell(run, "time", format_elapsed(time.monotonic() - began))
+
+    def spin(self) -> None:
+        self.frame = (self.frame + 1) % len(SPINNER)
+        for run in self.started:
+            self.set_cell(run, "status", SPINNER[self.frame])
 
     def show(self, text: str) -> None:
         self.next_run = None

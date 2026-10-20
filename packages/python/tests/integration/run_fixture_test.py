@@ -12,9 +12,12 @@ from labnotes.runner.param_args import param_args
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.run_app import SPINNER, RunApp
 
-# Shared with the Claude Code pane's tests, so the two views stay alike.
+# Shared with the Claude Code pane's tests, so the two views stay alike. A mod
+# test can import only code, so the JSON sits behind "export default".
 FIXTURE = json.loads(
-    (Path(__file__).parents[4] / "skills/labnotes/fixtures/run.json").read_text()
+    (Path(__file__).parents[4] / "skills/labnotes/fixtures/run.ts")
+    .read_text()
+    .removeprefix("export default ")
 )
 
 

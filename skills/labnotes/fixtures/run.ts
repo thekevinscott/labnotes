@@ -1,4 +1,4 @@
-{
+export default {
   "step": 7.0,
   "events": [
     {
@@ -994,6 +994,15 @@
         "word": "with space"
       },
       "--word with space"
+    ],
+    [
+      {
+        "names": [
+          "café",
+          "naïve"
+        ]
+      },
+      "--names [\"caf\\u00e9\", \"na\\u00efve\"]"
     ],
     [
       {},

@@ -1,11 +1,24 @@
 import { describe, expect, test } from 'claude-code/testing'
 
-import { applyEvent, describeDone, parseEvent, splitLines } from './runs'
+import fixture from '../fixtures/run'
+import {
+  applyEvent,
+  cleanLine,
+  describeDone,
+  describeEvent,
+  formatElapsed,
+  paramArgs,
+  parseEvent,
+  rowCells,
+  splitLines,
+} from './runs'
 import type { LabnotesEvent } from './runs'
 
 const planned: LabnotesEvent = {
   event: 'planned',
   experiment: 'exp',
+  title: 'Exp',
+  concurrency: 2,
   runs: [
     { run: 's/a-1', params: { m: 'a' } },
     { run: 's/b-2', params: { m: 'b' } },
@@ -13,12 +26,47 @@ const planned: LabnotesEvent = {
 }
 
 const fold = (...events: LabnotesEvent[]) =>
-  events.reduce((list, event) => applyEvent(list, { experiment: 'exp', ...event }), applyEvent([], planned))
+  events.reduce(
+    (list, event, index) => applyEvent(list, { experiment: 'exp', ...event }, (index + 1) * 1000),
+    applyEvent([], planned, 0),
+  )
+
+describe('the recorded run shared with the Python TUI', () => {
+  test('shows the same rows after every event', () => {
+    const step = fixture.step * 1000
+    let list = applyEvent([], { event: 'none' }, 0)
+    const seen = fixture.events.flatMap((event, index) => {
+      list = applyEvent(list, event, index * step)
+      if (event.event === 'output' || event.event === 'done') return []
+      const [experiment] = list
+      return [
+        {
+          after: index + 1,
+          title: experiment?.title,
+          concurrency: experiment?.concurrency,
+          rows: experiment?.rows.map(row => {
+            const cells = rowCells(row, index * step)
+            return { ...cells, status: cells.status ?? 'running' }
+          }),
+        },
+      ]
+    })
+    expect(seen).toEqual(fixture.checkpoints)
+  })
+
+  test('writes params the same way', () => {
+    for (const [params, args] of fixture.params) expect(paramArgs(params)).toBe(args)
+  })
+
+  test('writes elapsed time the same way', () => {
+    for (const [seconds, text] of fixture.elapsed) expect(formatElapsed(seconds as number)).toBe(text)
+  })
+})
 
 describe('splitLines', () => {
-  test('holds back an unfinished line', () => {
+  test('holds back an unfinished line and keeps blank ones', () => {
     expect(splitLines('', '{"a":1}\n{"b"')).toEqual([['{"a":1}'], '{"b"'])
-    expect(splitLines('{"b"', ':2}\n\n')).toEqual([['{"b":2}'], ''])
+    expect(splitLines('{"b"', ':2}\n\n')).toEqual([['{"b":2}', ''], ''])
   })
 })
 
@@ -31,89 +79,109 @@ describe('parseEvent', () => {
   })
 })
 
+describe('cleanLine', () => {
+  test('keeps what a terminal would show last', () => {
+    expect(cleanLine('\x1b[31mred\x1b[0m')).toBe('red')
+    expect(cleanLine('\x1b]0;title\x07text')).toBe('text')
+    expect(cleanLine('10%\r50%\r')).toBe('50%')
+    expect(cleanLine('a\tb\x07')).toBe('a    b')
+    expect(cleanLine('')).toBe('')
+  })
+})
+
+describe('describeEvent', () => {
+  test('words each event as the TUI does', () => {
+    const said = [
+      { event: 'planned', runs: [1, 2], concurrency: 2 },
+      { event: 'started', run: 'r', params: {} },
+      { event: 'ended', run: 'r', exit_code: 2, error: null },
+      { event: 'ended', run: 'r', exit_code: null, error: 'boom' },
+      { event: 'queued', run: 'r' },
+      { event: 'deselected', run: 'r' },
+      { event: 'reselected', run: 'r' },
+      { event: 'stopping run', run: 'r' },
+      { event: 'killing run', run: 'r' },
+      { event: 'retried', run: 'r', retry: 's' },
+      { event: 'idle' },
+      { event: 'concurrency', concurrency: 3 },
+      { event: 'stopping' },
+      { event: 'killing' },
+    ].map(describeEvent)
+    expect(said).toEqual([
+      '2 runs to go, 2 at a time.',
+      'r started',
+      'r exited 2',
+      'r boom',
+      'r runs next.',
+      'r deselected.',
+      'r back in the queue.',
+      'Stopping r.',
+      'Killing r.',
+      'r retried as s.',
+      'No runs left.',
+      '3 at a time.',
+      'Stopping runs. X again to kill them.',
+      'Killing runs.',
+    ])
+  })
+})
+
 describe('applyEvent', () => {
-  test('lists planned runs as pending', () => {
-    expect(fold()).toEqual([
-      {
-        name: 'exp',
-        isFinished: false,
-        error: null,
-        runs: [
-          { run: 's/a-1', params: { m: 'a' }, state: 'pending' },
-          { run: 's/b-2', params: { m: 'b' }, state: 'pending' },
-        ],
-      },
-    ])
-  })
-
-  test('follows a run from start to end with its latest line', () => {
-    const [experiment] = fold(
-      { event: 'started', run: 's/a-1' },
-      { event: 'output', run: 's/a-1', line: 'tick 1' },
-      { event: 'output', run: 's/a-1', line: 'tick 2' },
-      { event: 'started', run: 's/b-2' },
-      { event: 'stopping run', run: 's/b-2' },
+  test('says what happened, and clears a next-run note once that run starts', () => {
+    const [queued] = fold({ event: 'queued', run: 's/b-2', pending: ['s/b-2', 's/a-1'], held: [] })
+    expect(queued?.message).toBe('s/b-2 runs next.')
+    expect(queued?.nextRun).toBe('s/b-2')
+    expect(queued?.rows.map(row => row.run)).toEqual(['s/b-2', 's/a-1'])
+    const [started] = fold(
+      { event: 'queued', run: 's/b-2', pending: ['s/b-2', 's/a-1'], held: [] },
+      { event: 'started', run: 's/b-2', params: { m: 'b' }, folder: '/f' },
     )
-    expect(experiment?.runs.map(run => [run.state, run.line])).toEqual([
-      ['running', 'tick 2'],
-      ['stopping', undefined],
-    ])
+    expect(started?.message).toBe('')
+    expect(started?.nextRun).toBeNull()
+    const [other] = fold(
+      { event: 'stopping run', run: 's/a-1' },
+      { event: 'started', run: 's/b-2', params: { m: 'b' }, folder: '/f' },
+    )
+    expect(other?.message).toBe('Stopping s/a-1.')
   })
 
-  test('tells passed runs from failed ones', () => {
-    const [experiment] = fold(
+  test('sums up once idle and wakes when a run starts', () => {
+    const [idle] = fold(
+      { event: 'started', run: 's/a-1', params: { m: 'a' }, folder: '/a' },
       { event: 'ended', run: 's/a-1', exit_code: 0, error: null },
-      { event: 'ended', run: 's/b-2', exit_code: 3, error: null },
+      { event: 'idle' },
     )
-    expect(experiment?.runs.map(run => run.state)).toEqual(['passed', 'failed'])
-    const [errored] = fold({ event: 'ended', run: 's/a-1', exit_code: 0, error: 'lost' })
-    expect(errored?.runs[0]?.state).toBe('failed')
+    expect(idle?.isIdle).toBe(true)
+    expect(idle?.message).toBe('1 passed, 0 failed.')
+    expect(idle?.rows[0]?.folder).toBe('/a')
+    const [woken] = fold({ event: 'idle' }, { event: 'started', run: 's/b-2', params: {}, folder: '/b' })
+    expect(woken?.isIdle).toBe(false)
   })
 
-  test('skips, requeues and retries runs', () => {
-    const [experiment] = fold(
-      { event: 'deselected', run: 's/a-1' },
-      { event: 'deselected', run: 's/b-2' },
-      { event: 'reselected', run: 's/b-2' },
-      { event: 'retried', run: 's/b-2', retry: 's/b-3', params: { m: 'b' } },
-    )
-    expect(experiment?.runs.map(run => [run.run, run.state])).toEqual([
-      ['s/a-1', 'skipped'],
-      ['s/b-2', 'pending'],
-      ['s/b-3', 'pending'],
-    ])
-  })
-
-  test('marks the end of a session and the runs it never finished', () => {
-    const [experiment] = fold(
-      { event: 'ended', run: 's/a-1', exit_code: 0, error: null },
-      { event: 'started', run: 's/b-2' },
-      { event: 'done', error: 'boom' },
-    )
-    expect(experiment?.isFinished).toBe(true)
-    expect(experiment?.error).toBe('boom')
-    expect(experiment?.runs.map(run => run.state)).toEqual(['passed', 'skipped'])
+  test('marks the end of a session', () => {
+    const [stopped] = fold({ event: 'done', error: 'boom' })
+    expect(stopped).toMatchObject({ isFinished: true, error: 'boom', message: 'Stopped: boom' })
+    const [finished] = fold({ event: 'idle' }, { event: 'done', error: null })
+    expect(finished).toMatchObject({ isFinished: true, error: null, message: '0 passed, 0 failed.' })
   })
 
   test('starts an experiment over when it is planned again', () => {
     const done = fold({ event: 'done', error: null })
-    const again = applyEvent(done, { ...planned, runs: [{ run: 't/c-1', params: {} }] })
-    expect(again).toEqual([
-      {
-        name: 'exp',
-        isFinished: false,
-        error: null,
-        runs: [{ run: 't/c-1', params: {}, state: 'pending' }],
-      },
-    ])
+    const [again] = applyEvent(done, { ...planned, runs: [{ run: 't/c-1', params: {} }] }, 9)
+    expect(again).toMatchObject({ isFinished: false, rows: [{ run: 't/c-1', params: '' }] })
   })
 
   test('keeps experiments apart and ignores events it cannot place', () => {
-    const list = applyEvent(fold(), { ...planned, experiment: 'other', runs: [] })
+    const list = applyEvent(fold(), { ...planned, experiment: 'other', runs: [] }, 0)
     expect(list.map(one => one.name)).toEqual(['exp', 'other'])
-    expect(applyEvent(list, { event: 'idle' })).toEqual(list)
-    expect(applyEvent(list, { event: 'started', experiment: 'gone', run: 'x' })).toEqual(list)
-    expect(applyEvent(list, { event: 'idle', experiment: 'exp' })).toEqual(list)
+    expect(applyEvent(list, { event: 'idle' }, 0)).toEqual(list)
+    expect(applyEvent(list, { event: 'started', experiment: 'gone', run: 'x' }, 0)).toEqual(list)
+    expect(applyEvent(list, { event: 'output', experiment: 'exp', run: 's/a-1' }, 0)).toEqual(list)
+  })
+
+  test('defaults what an older planned event left out', () => {
+    const [bare] = applyEvent([], { event: 'planned', experiment: 'exp' }, 0)
+    expect(bare).toMatchObject({ title: 'exp', concurrency: 1, rows: [] })
   })
 })
 

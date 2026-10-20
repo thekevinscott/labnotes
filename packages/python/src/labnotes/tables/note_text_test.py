@@ -11,8 +11,10 @@ def test_reads_markdown(tmp_path: Path) -> None:
 
 def test_skips_other_files(tmp_path: Path) -> None:
     (tmp_path / "data.csv").write_text("a,b", encoding="utf-8")
+    (tmp_path / "notes.txt").write_text("hi", encoding="utf-8")
 
     assert note_text(tmp_path / "data.csv") is None
+    assert note_text(tmp_path / "notes.txt") is None
 
 
 def test_skips_markdown_that_is_not_utf8(tmp_path: Path) -> None:

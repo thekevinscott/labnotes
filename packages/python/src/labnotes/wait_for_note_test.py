@@ -35,7 +35,10 @@ def test_waits_for_the_tables_to_hold_the_saved_text() -> None:
     with (
         mock.patch(
             "labnotes.wait_for_note.experiment_notes",
-            side_effect=[[{"content": "old"}], [{"content": "new"}]],
+            side_effect=[
+                [{"content": "abc"}],
+                [{"content": "".join(["n", "ew"])}, {"content": "other"}],
+            ],
         ) as notes,
         mock.patch("labnotes.wait_for_note.asyncio.sleep") as sleep,
     ):

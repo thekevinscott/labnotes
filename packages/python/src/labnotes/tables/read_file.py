@@ -2,16 +2,8 @@ from pathlib import Path
 
 from labnotes.tables.file_prefix import file_prefix
 from labnotes.tables.iso_time import iso_time
+from labnotes.tables.note_text import note_text
 from labnotes.tables.path_pattern import path_pattern
-
-
-def note_text(path: Path) -> str | None:
-    if path.suffix != ".md":
-        return None
-    try:
-        return path.read_text(encoding="utf-8")
-    except UnicodeDecodeError:
-        return None
 
 
 def read_file(root: Path, template: str, path: str) -> list[dict[str, object]]:

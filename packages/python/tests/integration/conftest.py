@@ -7,6 +7,7 @@ import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 
+import pytest
 from playwright.async_api import Page, async_playwright
 
 CONFIG = (
@@ -75,3 +76,8 @@ def browse(
             await browser.close()
 
     asyncio.run(drive())
+
+
+@pytest.fixture
+def site(tmp_path: Path) -> Iterator[str]:
+    yield from serve(project(tmp_path))

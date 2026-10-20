@@ -2,7 +2,7 @@ from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from served import write
+from conftest import write
 from starlette.testclient import TestClient
 
 from labnotes.create_app import create_app

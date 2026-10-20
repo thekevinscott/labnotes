@@ -1,14 +1,7 @@
-from collections.abc import Iterator
 from pathlib import Path
 
-import pytest
 from playwright.async_api import Page, expect
-from served import browse, project, run, serve, write
-
-
-@pytest.fixture
-def site(tmp_path: Path) -> Iterator[str]:
-    yield from serve(project(tmp_path))
+from conftest import browse, run, serve, write
 
 
 def test_shows_the_experiment_toml_on_one_line(site: str) -> None:

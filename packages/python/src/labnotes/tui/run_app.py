@@ -84,11 +84,11 @@ class RunApp(App[None]):
             table.add_column(column, key=column)
         self.query_one(Input).display = False
         self.query_one(Log).display = False
+        table.set_interval(0.1, self.spin)
 
     def on_ready(self) -> None:
         self.set_interval(1, self.tick)
         self.set_interval(0.25, self.follow)
-        self.set_interval(0.1, self.spin)
         self.run_worker(self.drive())
 
     async def drive(self) -> None:

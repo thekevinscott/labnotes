@@ -30,7 +30,7 @@ def test_opens_a_long_experiment_toml_in_a_modal(site: str) -> None:
     browse(f"{site}/experiments/alpha", check, width=420)
 
 
-def test_lists_runs_in_a_table_that_expands_a_run(site: str) -> None:
+def test_lists_runs_in_a_table(site: str) -> None:
     async def check(page: Page) -> None:
         await expect(page.get_by_role("link", name="Runs 2")).to_have_attribute(
             "aria-current", "page"
@@ -38,11 +38,7 @@ def test_lists_runs_in_a_table_that_expands_a_run(site: str) -> None:
         table = page.get_by_role("table")
         header = table.get_by_role("columnheader", name="source-language")
         await expect(header).to_be_visible()
-        await expect(page.get_by_text("boom")).to_be_hidden()
-
-        await table.get_by_role("row").filter(has_text="run2").first.click()
-
-        await expect(page.get_by_text("boom")).to_be_visible()
+        await expect(table.get_by_role("row").filter(has_text="run2")).to_have_count(1)
 
     browse(f"{site}/experiments/alpha", check)
 
@@ -88,9 +84,6 @@ def test_filters_runs_live_while_typing(site: str) -> None:
         await expect(page).to_have_url(re.compile(r"\?f\.id=n2$"))
         await expect(box).to_be_focused()
         assert await box.evaluate("box => box.selectionStart") == 2
-
-        await page.get_by_role("cell", name="run2", exact=True).click()
-        await expect(page.get_by_text("boom")).to_be_visible()
 
         await box.press_sequentially("x")
 
@@ -159,8 +152,6 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
 
         await expect(one).to_be_visible()
         await expect(page.get_by_role("cell", name="three3", exact=True)).to_be_hidden()
-        await one.click()
-        await expect(page.get_by_text(f"{LAKE}/one1", exact=True)).to_be_visible()
 
         await page.get_by_label("Filter m").click()
         await page.get_by_role("checkbox", name="b").check()

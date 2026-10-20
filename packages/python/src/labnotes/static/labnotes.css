@@ -284,11 +284,8 @@ h3 {
 .runs-table .filters .pick input { width: auto; }
 .runs-table .filters input:focus, .runs-table .filters select:focus { outline: none; border-color: var(--accent); }
 .runs-table tbody tr:last-child td { border-bottom: 0; }
-.run-row { cursor: pointer; }
 .run-row td { max-width: 24rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .run-row:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
-.run-row[aria-expanded="true"] { background: color-mix(in srgb, var(--accent) 6%, transparent); }
-.record-row td { background: var(--paper); }
 .group-row { cursor: pointer; background: var(--paper); }
 .group-row td { font-weight: 600; white-space: nowrap; }
 .group-row .good { color: var(--good); }
@@ -349,18 +346,6 @@ h3 {
 .status.good { color: var(--good); }
 .status.bad { color: var(--bad); }
 .counts-error { color: var(--bad); }
-
-.record {
-  display: grid;
-  grid-template-columns: max-content minmax(0, 1fr);
-  gap: 0.45rem 1.5rem;
-  margin: 0;
-  padding: 0.5rem 0 0.75rem 2.25rem;
-}
-.record dt { font-family: var(--mono); font-size: 0.78rem; color: var(--ink-3); }
-.record dd { margin: 0; min-width: 0; }
-.record code { background: none; padding: 0; word-break: break-word; }
-.record pre { margin: 0; white-space: pre-wrap; word-break: break-word; max-height: 22rem; overflow: auto; font-size: 0.78rem; color: var(--ink-2); }
 
 /* Index view toggle */
 .view-toggle {

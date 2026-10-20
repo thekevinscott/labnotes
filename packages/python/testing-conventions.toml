@@ -31,7 +31,7 @@ reason = "quiet counts up by one from zero, so it reaches IDLE_EXIT_SECONDS befo
 [[python.exempt]]
 path = "src/labnotes/daemon/daemon_app.py"
 rules = ["mutation"]
-lines = [117]
+lines = [132]
 reason = "start answers 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
 
 [[python.exempt]]

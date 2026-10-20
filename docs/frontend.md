@@ -12,7 +12,7 @@ One row per experiment. An experiment whose `counts` rule doesn't work is flagge
 
 ## Experiment page
 
-The experiment's name, then its `experiment.toml` on one line. Click it to see the whole file. Below that are two tabs.
+The experiment's name, then its `experiment.toml` on one line. Click it to see the whole file. A broken `counts` rule shows its error there. Below that are two tabs.
 
 **Runs.** A table of the experiment's runs, with when each started and how long it took. Filters above the columns update as you type. Params with several values get a pick list. In `adhoc` mode, runs from the same `run` command group under a collapsed header row, newest first, showing the group's start, run count and passes and failures. When every `run` made a single run, the table stays flat.
 

@@ -1,12 +1,34 @@
 # Config
 
-labnotes reads two kinds of TOML file: one `.labnotes.toml` per project, and one `experiment.toml` per experiment. Unknown keys and bad TOML are errors.
+Assume you have the following structure on disk:
+
+```
+/data
+  /experiment-one
+    /files
+      /readme.md
+      /plan.md
+    /runs
+  /experiment-two
+    /files
+      /readme.md
+    /runs
+```
+
+You can define a configuration file mapping your files to a SQL layout. `init` will create a config file:
+
+```bash
+uvx labnotes init
+```
+
+`labnotes` will automatically pick up `.labnotes.toml` when run from the same folder, or specify it with `uvx labnotes -c /path/to/.labnotes.toml`.
+
+labnotes reads two kinds of TOML file: one `.labnotes.toml` per project, and one `experiment.toml` per experiment. 
 
 ## `.labnotes.toml`
 
-It sits at the project root, and the folder that holds it is the root. labnotes looks for it in the working folder; `-c PATH` points somewhere else. `labnotes init` writes one with the defaults and refuses to overwrite an existing file.
+Must be at the project root. 
 
-```toml
 [experiments]
 path = "{experiment}"            # one folder per experiment
 mode = "adhoc"                   # default for every experiment

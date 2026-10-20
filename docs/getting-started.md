@@ -10,50 +10,13 @@ You can use `labnotes` without installation:
 uvx labnotes
 ```
 
-## Philosophy
+Read a bit [about the `labnotes` philosophy](philosophy). You can also read about how to [configure your filesystem](config) to work with `labnotes`.
 
-`labnotes` is designed to work entirely with local files. 
+`labnotes` offers the following surfaces:
 
+- a [TUI](tui), for running experiments
+- a [frontend](frontend), for analyzing experiments
 
-`labnotes` organizes its data largely by _folder_; folders structure how it views files. (Config can overrule these but this will be the default.)
-
-Let's say you have the following structure:
-
-```
-/data
-  /experiment-one
-    /files
-      /readme.md
-      /plan.md
-    /runs
-  /experiment-two
-    /files
-      /readme.md
-    /runs
-```
-
-You'll want to define a configuration file mapping your files to a SQL layout; start by defining a config file:
-
-```bash
-uvx labnotes init
-```
-
-`labnotes` will automatically pick up `.labnotes.toml` when run from the same folder, or specify it with `uvx labnotes -c /path/to/.labnotes.toml`.
-
-`init` maps the structure above to three SQL tables, `experiments`, `files`, and `runs`:
-
-```toml
-[experiments]
-path = "{experiment}"
-
-[files]
-path = "{experiment}/files/"
-
-[runs]
-path = "{experiment}/runs/{run}"
-```
-
-Change the paths to match how your files are organized.
 
 ## CLI
 

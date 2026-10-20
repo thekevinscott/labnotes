@@ -85,6 +85,12 @@ def test_saves_a_note_to_disk(client: TestClient, tmp_path: Path) -> None:
     assert (tmp_path / "alpha/files/plan.md").read_text(encoding="utf-8") == "# New ✓\n"
 
 
+def test_serves_a_saved_note_straight_after_the_save(client: TestClient) -> None:
+    client.put(NOTE, json={"base": PLAN, "content": "# New ✓\n"})
+
+    assert client.get(NOTE).text == "# New ✓\n"
+
+
 def test_refuses_a_save_based_on_a_stale_note(
     client: TestClient, tmp_path: Path
 ) -> None:

@@ -25,6 +25,7 @@ def test_reads_a_file_row(tmp_path: Path) -> None:
         "ctime": row["ctime"],
         "mtime": "2026-10-18T00:00:00Z",
         "mtime_ns": 1_792_281_600_123_456_789,
+        "content": "x",
     }
     assert str(row["ctime"]).endswith("Z")
 

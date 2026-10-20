@@ -2,6 +2,7 @@ from pathlib import Path
 
 from labnotes.tables.file_prefix import file_prefix
 from labnotes.tables.iso_time import iso_time
+from labnotes.tables.note_text import note_text
 from labnotes.tables.path_pattern import path_pattern
 
 
@@ -20,5 +21,6 @@ def read_file(root: Path, template: str, path: str) -> list[dict[str, object]]:
             "ctime": iso_time(stat.st_ctime),
             "mtime": iso_time(stat.st_mtime),
             "mtime_ns": stat.st_mtime_ns,
+            "content": note_text(Path(path)),
         }
     ]

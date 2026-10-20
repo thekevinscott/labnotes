@@ -101,3 +101,9 @@ def test_files_carry_a_nanosecond_mtime_so_quick_edits_change_the_row(
     open_tables(CONFIG)
 
     assert "mtime_ns INTEGER" in str(tables(dirsql)["files"]["ddl"])
+
+
+def test_files_hold_note_text(dirsql: dict[str, mock.MagicMock]) -> None:
+    open_tables(CONFIG)
+
+    assert "content TEXT" in str(tables(dirsql)["files"]["ddl"])

@@ -12,13 +12,13 @@ async def experiment_notes(
     if note is not None:
         where += f" AND filename = {quote_string(note)}"
     rows = await tables.query(
-        f"SELECT filename, path FROM files WHERE {where} ORDER BY filename"
+        f"SELECT filename, path, content FROM files WHERE {where} ORDER BY filename"
     )
     return [
         {
             "name": str(row["filename"]),
             "path": str(root / str(row["path"])),
-            "content": (root / str(row["path"])).read_text(encoding="utf-8"),
+            "content": str(row["content"] or ""),
         }
         for row in rows
     ]

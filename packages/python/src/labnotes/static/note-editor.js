@@ -228,5 +228,11 @@ export function edit(note, prose, status) {
     }),
   });
   view.focus();
-  return { pull: () => run(pull) };
+  return {
+    pull: () => run(pull),
+    detach: () => {
+      document.removeEventListener("mousedown", outside);
+      save();
+    },
+  };
 }

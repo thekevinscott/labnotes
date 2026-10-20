@@ -18,9 +18,8 @@ def config(tmp_path: Path) -> Any:
 def test_creates_an_untitled_note_in_the_experiments_files_folder(
     config: Any,
 ) -> None:
-    assert create_note(config, "alpha") == "Untitled.md"
-
     note = config.root / "alpha/notes/deep/Untitled.md"
+    assert create_note(config, "alpha") == note
     assert note.read_text(encoding="utf-8") == "# Untitled\n"
 
 
@@ -32,7 +31,7 @@ def test_numbers_the_name_past_existing_notes(config: Any, taken: int) -> None:
     for name in names[:taken]:
         (notes / name).write_text("mine", encoding="utf-8")
 
-    assert create_note(config, "alpha") == names[taken]
+    assert create_note(config, "alpha") == notes / names[taken]
     assert (notes / names[0]).read_text(encoding="utf-8") == "mine"
     assert (notes / names[taken]).read_text(encoding="utf-8") == "# Untitled\n"
 

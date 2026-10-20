@@ -39,6 +39,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
                 }
             ],
         ) as experiment_notes,
+        mock.patch("labnotes.create_app.note_path") as note_path,
         mock.patch(
             "labnotes.create_app.drain_watch", new_callable=mock.AsyncMock
         ) as drain,
@@ -59,6 +60,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         yield {
             "open_tables": open_tables,
             "experiment_notes": experiment_notes,
+            "note_path": note_path,
             "drain_watch": drain,
             "list_experiments": list_experiments,
             "load_experiment": load_experiment,
@@ -378,9 +380,9 @@ def test_put_saves_the_note_over_its_base(
         response = put_note(app, {"base": NOTE, "content": "new"})
 
     assert response.status_code == 204
-    save.assert_called_once_with(Path("/p/project/e/files/PLAN.md"), NOTE, "new")
-    collaborators["experiment_notes"].assert_awaited_with(
-        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md"
+    save.assert_called_once_with(collaborators["note_path"].return_value, NOTE, "new")
+    collaborators["note_path"].assert_called_once_with(
+        CONFIG, "models-effort", "PLAN.md"
     )
 
 
@@ -412,16 +414,19 @@ def test_put_rejects_a_body_without_base_and_content(app: Any, body: object) -> 
 def test_put_rejects_an_unknown_note(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["experiment_notes"].return_value = []
+    collaborators["note_path"].return_value = None
 
-    with pytest.raises(Exception) as raised:
-        put_note(app, {"base": NOTE, "content": "new"})
+    with mock.patch("labnotes.create_app.save_note") as save:
+        with pytest.raises(Exception) as raised:
+            put_note(app, {"base": NOTE, "content": "new"})
     assert getattr(raised.value, "status_code", None) == 404
+    save.assert_not_called()
 
 
-def test_put_requires_json(app: Any) -> None:
+@pytest.mark.parametrize("content_type", ["application/csv", "text/plain"])
+def test_put_requires_json(app: Any, content_type: str) -> None:
     with pytest.raises(Exception) as raised:
-        put_note(app, {"base": NOTE, "content": "new"}, content_type="text/plain")
+        put_note(app, {"base": NOTE, "content": "new"}, content_type=content_type)
     assert getattr(raised.value, "status_code", None) == 415
 
 
@@ -456,10 +461,10 @@ def test_conflict_saves_a_copy_beside_the_note(
     assert response.status_code == 201
     assert json.loads(response.body) == {"name": copy.name}
     save.assert_called_once_with(
-        Path("/p/project/e/files/PLAN.md"), "theirs", clock.now.return_value
+        collaborators["note_path"].return_value, "theirs", clock.now.return_value
     )
-    collaborators["experiment_notes"].assert_awaited_with(
-        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md"
+    collaborators["note_path"].assert_called_once_with(
+        CONFIG, "models-effort", "PLAN.md"
     )
 
 
@@ -475,7 +480,7 @@ def test_conflict_rejects_a_body_without_content(app: Any, body: object) -> None
 def test_conflict_rejects_an_unknown_note(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["experiment_notes"].return_value = []
+    collaborators["note_path"].return_value = None
 
     with pytest.raises(Exception) as raised:
         post_conflict(app, {"content": "theirs"})
@@ -545,35 +550,56 @@ def post_note(app: Any, content_type: str = "application/json") -> Any:
         path_params={"name": "models effort"}, headers={"content-type": content_type}
     )
     request.app = app
-    page = request.url_for.return_value
-    page.include_query_params.return_value = mock.Mock(
-        path="/experiments/models%20effort", query="tab=notebooks&note=Untitled+2.md"
-    )
-    response = asyncio.run(endpoint(request))
-    request.url_for.assert_called_with("experiment", name="models effort")
-    page.include_query_params.assert_called_with(tab="notebooks", note="Untitled 2.md")
-    return response
+    return asyncio.run(endpoint(request)), request
 
 
-def test_post_creates_a_note_and_points_at_it_in_the_editor(app: Any) -> None:
+def test_post_creates_a_note_and_renders_it_for_the_page(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    app = create_app(CONFIG)
+    note = tmp_path / "Untitled 2.md"
+    note.write_text("# Untitled\n\n```python\n1\n```\n", encoding="utf-8")
     with (
+        mock.patch("labnotes.create_app.create_note", return_value=note) as create,
         mock.patch(
-            "labnotes.create_app.create_note", return_value="Untitled 2.md"
-        ) as create,
-        mock.patch(
-            "labnotes.create_app.wait_for_note", new_callable=mock.AsyncMock
-        ) as wait,
+            "labnotes.create_app.render_markdown", return_value="<h1>Untitled</h1>"
+        ) as render,
     ):
-        response = post_note(app)
+        _, request = post_note(app)
 
-    assert response.status_code == 201
-    assert json.loads(response.body) == {
-        "url": "/experiments/models%20effort?tab=notebooks&note=Untitled+2.md#edit"
-    }
     create.assert_called_once_with(CONFIG, "models effort")
-    wait.assert_awaited_once_with(
-        app.state.tables, CONFIG.root, "models effort", "Untitled 2.md"
+    templates = collaborators["templates"]
+    templates.TemplateResponse.assert_called_once_with(
+        request,
+        "note.html",
+        {
+            "e": {"name": "models effort"},
+            "note": {
+                "name": "Untitled 2.md",
+                "content": "# Untitled\n\n```python\n1\n```\n",
+                "html": "<h1>Untitled</h1>",
+                "runnable": True,
+            },
+        },
+        status_code=201,
     )
+    render.assert_called_once_with("# Untitled\n\n```python\n1\n```\n", ())
+
+
+def test_post_marks_a_note_without_python_as_not_runnable(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    app = create_app(CONFIG)
+    note = tmp_path / "Untitled.md"
+    note.write_text("# Untitled\n", encoding="utf-8")
+    with (
+        mock.patch("labnotes.create_app.create_note", return_value=note),
+        mock.patch("labnotes.create_app.render_markdown"),
+    ):
+        post_note(app)
+
+    context = collaborators["templates"].TemplateResponse.call_args.args[2]
+    assert context["note"]["runnable"] is False
 
 
 def test_post_rejects_an_unknown_experiment(app: Any) -> None:

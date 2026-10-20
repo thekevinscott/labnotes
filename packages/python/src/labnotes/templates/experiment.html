@@ -83,7 +83,7 @@
     {% macro run_rows(run) %}
       <tr class="run-row">
         <td><span class="status {{ 'good' if run.labnotes_completed else 'bad' }}" title="{{ 'complete' if run.labnotes_completed else 'not complete' }}">{{ '✓' if run.labnotes_completed else '✕' }}</span></td>
-        {% for column in e.run_columns %}{% if column == 'id' and nested %}<td class="mono">{{ run.id.partition('/')[2] or run.id }}</td><td></td>{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else run[column] | value }}</td>{% endif %}{% endfor %}
+        {% for column in e.run_columns %}{% if column == 'id' and nested %}<td class="mono">{{ run.id.partition('/')[2] or run.id }}</td><td></td>{% else %}<td class="{{ 'mono' if loop.first }}{{ 'num' if column == 'duration' }}">{{ run[column] | duration if column == 'duration' else (run[column] | started if column == 'started' else run[column] | value) }}</td>{% endif %}{% endfor %}
       </tr>
     {% endmacro %}
     {% if nested %}
@@ -93,7 +93,7 @@
         <td class="num" title="{{ group.passed }} passed, {{ group.failed }} failed"><span class="good">{{ group.passed }}✓</span> <span class="bad">{{ group.failed }}✕</span></td>
         <td class="mono"><button type="button" class="group-toggle" aria-expanded="false">{{ group.name }}</button></td>
         <td class="num">{{ group.runs | length }}</td>
-        {% for column in e.run_columns[1:] %}<td>{{ group.started or '' if column == 'started' }}</td>{% endfor %}
+        {% for column in e.run_columns[1:] %}<td>{{ group.started | started if column == 'started' and group.started }}</td>{% endfor %}
       </tr>
       {% for run in group.runs %}{{ run_rows(run) }}{% endfor %}
     </tbody>
@@ -116,4 +116,5 @@
 </section>
 {% endif %}
 <script src="{{ asset('experiment.js') }}" defer></script>
+<script src="{{ asset('local-time.js') }}" defer></script>
 {% endblock %}

@@ -54,14 +54,14 @@ def test_shows_when_each_run_started_and_how_long_it_took(tmp_path: Path) -> Non
         for column in ("started", "duration"):
             await expect(table.get_by_role("columnheader", name=column)).to_be_visible()
         done = table.get_by_role("row").filter(has_text="run1")
-        await expect(done).to_contain_text("2026-10-17 00:00:01")
+        await expect(done).to_contain_text("2026-10-16 20:00:01")
         await expect(done).to_contain_text("8m 20s")
         await expect(table.get_by_role("row").filter(has_text="run2")).to_contain_text(
             "—"
         )
 
     for site in serve(tmp_path):
-        browse(f"{site}/experiments/alpha", check)
+        browse(f"{site}/experiments/alpha", check, timezone_id="America/New_York")
 
 
 def test_filters_runs_by_text(site: str) -> None:
@@ -159,7 +159,7 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
         one = page.get_by_role("cell", name="one1", exact=True)
         await expect(groups).to_have_count(2)
         await expect(groups.first).to_contain_text(LAKE)
-        await expect(groups.first).to_contain_text("2026-10-20 10:50:52")
+        await expect(groups.first).to_contain_text("2026-10-20 06:50:52")
         await expect(
             groups.first.get_by_role("cell", name="2", exact=True)
         ).to_be_visible()
@@ -178,13 +178,17 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
         await expect(one).to_have_count(0)
         await expect(page.get_by_role("cell", name="two2", exact=True)).to_be_visible()
         await expect(groups).to_have_count(1)
+        await expect(groups.first).to_contain_text("2026-10-20 06:50:52")
+        await expect(page.get_by_role("row").filter(has_text="two2")).to_contain_text(
+            "2026-10-16 20:00:02"
+        )
 
         await groups.first.click()
 
         await expect(page.get_by_role("cell", name="two2", exact=True)).to_be_hidden()
 
     for site in serve(tmp_path):
-        browse(f"{site}/experiments/alpha", check)
+        browse(f"{site}/experiments/alpha", check, timezone_id="America/New_York")
 
 
 def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> None:

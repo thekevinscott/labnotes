@@ -279,6 +279,53 @@ def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> 
         browse(f"{site}/experiments/alpha", check)
 
 
+HERON = "20261021-080000-heron"
+
+
+def test_lists_a_lone_flat_adhoc_run_as_a_plain_row(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=0)
+    run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
+    run(tmp_path, HERON, {"m": "b"}, exit_code=0, created="2026-10-21T08:00:00Z")
+
+    async def check(page: Page) -> None:
+        groups = page.locator(".group-row")
+        heron = page.get_by_role("row").filter(has_text=HERON)
+        await expect(groups).to_have_count(2)
+        await expect(groups.filter(has_text=HERON)).to_have_count(0)
+        await expect(heron).to_have_count(1)
+        await expect(heron).to_be_visible()
+        await expect(heron).to_contain_text("b")
+        await expect(page.locator("tbody").first).to_contain_text(HERON)
+        await expect(page.get_by_role("cell", name="one1", exact=True)).to_be_hidden()
+
+        await page.get_by_label("Filter m").click()
+        await page.get_by_role("checkbox", name="a").check()
+
+        await expect(heron).to_have_count(0)
+        await expect(groups).to_have_count(2)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
+def test_lists_flat_adhoc_runs_without_groups(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, HERON, {"m": "a"}, exit_code=0, created="2026-10-21T08:00:00Z")
+    run(tmp_path, f"{POND}/three3", {"m": "b"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        await expect(page.get_by_role("cell", name=HERON, exact=True)).to_be_visible()
+        await expect(page.get_by_role("cell", name=f"{POND}/three3")).to_be_visible()
+        await expect(page.locator(".group-row")).to_have_count(0)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
 def test_switches_between_notebooks(site: str) -> None:
     async def check(page: Page) -> None:
         await page.get_by_role("link", name="Notebooks 2").click()

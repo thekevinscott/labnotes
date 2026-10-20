@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.daemon.watch_daemon import watch_daemon
+from labnotes.daemon.watch_daemon import TAIL_SECONDS, watch_daemon
 
 
 class Gone(Exception):
@@ -134,3 +134,7 @@ def test_stops_when_the_daemon_cannot_be_reached(daemon: dict[str, Any]) -> None
     daemon["client"].stream.side_effect = Gone()
 
     assert watch(follow=True) == []
+
+
+def test_reads_logs_once_a_second() -> None:
+    assert TAIL_SECONDS == 1.0

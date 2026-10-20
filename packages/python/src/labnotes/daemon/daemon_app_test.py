@@ -331,9 +331,9 @@ def test_finishes_a_session_once_its_client_leaves(
         await start(app, client=1)
         await start(app, "mine", client=2)
         await start(app, "anyone")
-        await owner.aclose()  # type: ignore[attr-defined]
-        assert controls.finish.call_count == 1
         await other.aclose()  # type: ignore[attr-defined]
+        assert controls.finish.call_count == 1
+        await owner.aclose()  # type: ignore[attr-defined]
         assert controls.finish.call_count == 2
         controls.interrupt.assert_not_called()
 

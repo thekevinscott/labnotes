@@ -32,6 +32,7 @@ labnotes = "labnotes.cli:main"
 
 [dependency-groups]
 dev = [
+    "curtaincall>=0.3.0",
     "httpx2>=2.13.1",
     "mypy>=2.4.0",
     "pytest>=8.0",
@@ -52,7 +53,7 @@ exclude = ["*_test.py"]
 packages = ["src/labnotes"]
 
 [tool.pytest.ini_options]
-testpaths = ["src/labnotes", "tests"]
+testpaths = ["src/labnotes", "tests/integration"]
 python_files = "*_test.py"
 
 [tool.ruff.lint]

@@ -7,7 +7,6 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from starlette.datastructures import URL
 
 from labnotes.create_app import create_app
 
@@ -504,9 +503,13 @@ def post_note(app: Any, content_type: str = "application/json") -> Any:
         path_params={"name": "models effort"}, headers={"content-type": content_type}
     )
     request.app = app
-    request.url_for.return_value = URL("http://t/experiments/models%20effort")
+    page = request.url_for.return_value
+    page.include_query_params.return_value = mock.Mock(
+        path="/experiments/models%20effort", query="tab=notebooks&note=Untitled+2.md"
+    )
     response = asyncio.run(endpoint(request))
     request.url_for.assert_called_with("experiment", name="models effort")
+    page.include_query_params.assert_called_with(tab="notebooks", note="Untitled 2.md")
     return response
 
 
@@ -540,11 +543,12 @@ def test_post_rejects_an_unknown_experiment(app: Any) -> None:
     assert getattr(raised.value, "status_code", None) == 404
 
 
-def test_post_requires_json(app: Any) -> None:
+@pytest.mark.parametrize("content_type", ["application/csv", "text/plain"])
+def test_post_requires_json(app: Any, content_type: str) -> None:
     with (
         mock.patch("labnotes.create_app.create_note") as create,
         pytest.raises(Exception) as raised,
     ):
-        post_note(app, "application/x-www-form-urlencoded")
+        post_note(app, content_type)
     assert getattr(raised.value, "status_code", None) == 415
     create.assert_not_called()

@@ -24,6 +24,7 @@ from labnotes.drain_watch import drain_watch
 from labnotes.experiment_notes import experiment_notes
 from labnotes.file_changes import file_changes
 from labnotes.format_duration import format_duration
+from labnotes.format_started import format_started
 from labnotes.format_value import format_value
 from labnotes.list_experiments import list_experiments
 from labnotes.load_experiment import load_experiment
@@ -42,6 +43,7 @@ HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
 templates.env.filters["value"] = format_value
 templates.env.filters["duration"] = format_duration
+templates.env.filters["started"] = format_started
 templates.env.globals["asset"] = asset_url
 
 

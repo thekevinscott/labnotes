@@ -38,7 +38,8 @@ def test_summarizes_the_grid_from_params_and_repeats() -> None:
 
 
 @pytest.mark.parametrize(
-    ("config", "project"), [({"mode": "adhoc"}, "fill"), ({}, "adhoc")]
+    ("config", "project"),
+    [({"mode": "adhoc"}, "fill"), ({"mode": "other"}, "fill"), ({}, "adhoc")],
 )
 def test_has_no_target_for_an_adhoc_grid(
     config: dict[str, object], project: str

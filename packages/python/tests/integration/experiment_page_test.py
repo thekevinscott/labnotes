@@ -46,6 +46,27 @@ def test_lists_runs_in_a_table_that_expands_a_run(site: str) -> None:
     browse(f"{site}/experiments/alpha", check)
 
 
+def test_shows_when_each_run_started_and_how_long_it_took(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    run(tmp_path, "run1", {}, exit_code=0, ended="2026-10-17T00:08:21Z")
+    run(tmp_path, "run2", {})
+
+    async def check(page: Page) -> None:
+        table = page.get_by_role("table")
+        for column in ("started", "duration"):
+            await expect(table.get_by_role("columnheader", name=column)).to_be_visible()
+        done = table.get_by_role("row").filter(has_text="run1")
+        await expect(done).to_contain_text("2026-10-17 00:00:01")
+        await expect(done).to_contain_text("8m 20s")
+        await expect(table.get_by_role("row").filter(has_text="run2")).to_contain_text(
+            "—"
+        )
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
 def test_filters_runs_by_a_param(site: str) -> None:
     async def check(page: Page) -> None:
         await page.get_by_label("Filter source-language").fill("fr")

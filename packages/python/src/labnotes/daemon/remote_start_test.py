@@ -61,7 +61,8 @@ def test_runs_the_experiment_through_the_daemon(
     daemon["sent"].extend(
         [
             {"event": "planned", "experiment": "other"},
-            {"event": "planned", "experiment": "exp", "folder": "/r1"},
+            {"event": "planned", "experiment": "abc"},
+            {"event": "planned", "experiment": "".join("exp"), "folder": "/r1"},
             {"event": "ended", "experiment": "exp", "exit_code": 0},
             {"event": "done", "experiment": "exp", "error": None},
             {"event": "planned", "experiment": "exp", "folder": "/late"},

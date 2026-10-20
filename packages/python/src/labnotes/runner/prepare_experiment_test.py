@@ -97,3 +97,11 @@ def test_falls_back_to_the_experiment_concurrency(
     collaborators["read_experiment_config"].return_value.concurrency = 4
 
     assert prepare(tmp_path, concurrency=None)[1] == 4
+
+
+def test_uses_a_runs_folder_that_already_exists(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    (tmp_path / "runs" / "exp").mkdir(parents=True)
+
+    assert prepare(tmp_path)[2].is_dir()

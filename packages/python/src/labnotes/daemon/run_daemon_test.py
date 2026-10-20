@@ -84,3 +84,12 @@ def test_removes_the_socket_when_serving_fails(
         serve(mock.Mock(root=Path("/p")), {})
 
     assert not sock.exists()
+
+
+def test_reports_a_failure_to_serve_before_the_socket_exists(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["server"].return_value.serve.side_effect = RuntimeError("boom")
+
+    with pytest.raises(RuntimeError, match="boom"):
+        serve(mock.Mock(root=Path("/p")), {})

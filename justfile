@@ -15,7 +15,7 @@ py-typecheck:
     cd packages/python && uv run mypy src
 
 py-test:
-    cd packages/python && uv run pytest
+    cd packages/python && uv run pytest src/labnotes tests
 
 py-build:
     cd packages/python && uv build

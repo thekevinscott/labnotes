@@ -25,6 +25,7 @@ def test_reads_a_file_row(tmp_path: Path) -> None:
         "ctime": row["ctime"],
         "mtime": "2026-10-18T00:00:00Z",
         "mtime_ns": 1_792_281_600_123_456_789,
+        "content": "x",
     }
     assert str(row["ctime"]).endswith("Z")
 
@@ -40,3 +41,14 @@ def test_names_a_file_from_its_folder_under_a_glob(tmp_path: Path) -> None:
 @pytest.mark.parametrize("relative", ["exp/other/plan.md", "exp/files", "loose.md"])
 def test_skips_a_path_outside_the_template(tmp_path: Path, relative: str) -> None:
     assert read_file(tmp_path, "{experiment}/files/", touch(tmp_path / relative)) == []
+
+
+def test_holds_text_only_for_readable_markdown(tmp_path: Path) -> None:
+    data = touch(tmp_path / "exp" / "files" / "data.csv")
+    binary = touch(tmp_path / "exp" / "files" / "bad.md")
+    Path(binary).write_bytes(b"\xff\xfe")
+
+    [csv] = read_file(tmp_path, "{experiment}/files/", data)
+    [bad] = read_file(tmp_path, "{experiment}/files/", binary)
+
+    assert (csv["content"], bad["content"]) == (None, None)

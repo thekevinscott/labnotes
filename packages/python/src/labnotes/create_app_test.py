@@ -376,13 +376,21 @@ def put_note(app: Any, body: object, content_type: str = "application/json") -> 
 def test_put_saves_the_note_over_its_base(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    with mock.patch("labnotes.create_app.save_note", return_value=None) as save:
+    with (
+        mock.patch("labnotes.create_app.save_note", return_value=None) as save,
+        mock.patch(
+            "labnotes.create_app.wait_for_note", new_callable=mock.AsyncMock
+        ) as wait,
+    ):
         response = put_note(app, {"base": NOTE, "content": "new"})
 
     assert response.status_code == 204
     save.assert_called_once_with(collaborators["note_path"].return_value, NOTE, "new")
     collaborators["note_path"].assert_called_once_with(
         CONFIG, "models-effort", "PLAN.md"
+    )
+    wait.assert_awaited_once_with(
+        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md", "new"
     )
 
 

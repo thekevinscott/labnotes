@@ -36,6 +36,7 @@ from labnotes.save_conflict_copy import save_conflict_copy
 from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
 from labnotes.tables.open_tables import open_tables
+from labnotes.wait_for_note import wait_for_note
 
 HERE = Path(__file__).parent
 templates = Jinja2Templates(directory=HERE / "templates")
@@ -149,6 +150,13 @@ def create_app(config: LabnotesConfig) -> Starlette:
         current = save_note(path, base, content)
         if current is not None:
             return JSONResponse({"content": current}, status_code=409)
+        await wait_for_note(
+            request.app.state.tables,
+            config.root,
+            request.path_params["name"],
+            request.path_params["note"],
+            content,
+        )
         return Response(status_code=204)
 
     async def post_conflict(request: Request) -> Response:

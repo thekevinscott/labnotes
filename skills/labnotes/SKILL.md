@@ -28,3 +28,7 @@ Stop them with `uvx labnotes run stop`. Check on them with
 `uvx labnotes run control NAME ACTION [ARG]`, e.g.
 `uvx labnotes run control NAME set_concurrency 5`. Don't talk to the daemon's
 socket directly; its location is internal.
+
+In Claude Code, the `show_runs` tool opens a pane with the same live table.
+Call it after starting runs, or when the person asks to watch them. They
+click the pane to use its keys.

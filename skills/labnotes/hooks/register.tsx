@@ -7,6 +7,7 @@ import type { LabnotesEvent } from './runs'
 
 const PANE = 'labnotes'
 const TOOL = 'show_runs'
+const NOT_OPENED = 'The labnotes pane could not open.'
 const STATUS = ['uvx', 'labnotes', 'run', 'status', '--follow', '--json']
 const CONTROL = ['uvx', 'labnotes', 'run', 'control']
 const TAIL = ['tail', '-q', '-n', '500', '-F', 'stdout.log', 'stderr.log']
@@ -78,13 +79,13 @@ export const register: Register = on => {
     return started
   })
 
-  on('tool.call', { tool: `mcp__labnotes__${TOOL}` }, async $ => {
+  on('tool.call', { tool: 'mcp__labnotes__show_runs' }, async $ => {
     const opened = await $.ui.open({ id: PANE, title: 'labnotes' })
     const said = opened.isPlaced
       ? 'labnotes pane opened. Click it to use its keys.'
       : `labnotes pane opened but not shown: ${opened.reason}`
     return { result: said, text: said }
-  })
+  }).catch(() => ({ result: NOT_OPENED, text: NOT_OPENED, isError: true as const }))
 
   on('ui.message', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const message = e.data as PaneMessage

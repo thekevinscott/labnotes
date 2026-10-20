@@ -80,7 +80,7 @@ To exclude a run, add `"excluded": true` and an optional `"reason"` to its
 replaces it; both show as columns in `runs`.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish; `q` quits. Elsewhere, or with `--no-tui`, it prints a
+open when they finish; `q` quits. Elsewhere, it prints a
 line per event instead.
 
 - `--concurrency N` runs N at a time (default 1).

@@ -39,11 +39,6 @@ from labnotes.tui.run_tui import run_tui
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="With run: read this file instead of the experiment's experiment.toml.",
 )
-@click.option(
-    "--no-tui",
-    is_flag=True,
-    help="With run: print a line per event instead of the live view.",
-)
 @click.pass_context
 def experiments(
     ctx: click.Context,
@@ -52,7 +47,6 @@ def experiments(
     output_format: str,
     concurrency: int | None,
     experiment_config: Path | None,
-    no_tui: bool,
 ) -> None:
     config = load_config(ctx)
     if config is None:
@@ -68,7 +62,7 @@ def experiments(
             click.echo(f"Created {path / 'experiment.toml'}")
             return
         case str(), "run":
-            live = sys.stdout.isatty() and sys.stderr.isatty() and not no_tui
+            live = sys.stdout.isatty() and sys.stderr.isatty()
             drive = run_tui if live else lambda start, title: run_headless(start)
             try:
                 results = start_experiment(

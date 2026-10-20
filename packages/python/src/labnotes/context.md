@@ -56,11 +56,10 @@ effort = ["low", "high"]
 `name` is optional: a display name for the experiment, shown in the live view
 and as `display_name` in `experiments`. The folder name stays the key, so
 renaming the experiment means editing `name`.
-Each combination of `[params]` runs `repeats` times, round-robin. Only runs
-that count fill a combination, so running again fills in what failed or never
-ran.
-`mode = "adhoc"` skips that: every `run` runs each combination `repeats` times
-again, whatever is already on disk. The default is `mode = "fill"`.
+Each combination of `[params]` runs `repeats` times, round-robin, on every
+`run`, whatever is already on disk. That is `mode = "adhoc"`, the default.
+`mode = "fill"` counts what is there: only runs that count fill a combination,
+so running again fills in what failed or never ran.
 Each run gets a new run folder. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.

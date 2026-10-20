@@ -45,7 +45,7 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
         config.params,
         config.counts,
         config.mode,
-    ) == (None, 1, {}, "default", "fill")
+    ) == (None, 1, {}, "default", "adhoc")
 
 
 def test_reads_counts(tmp_path: Path) -> None:

@@ -40,7 +40,7 @@ def read_experiment_config(path: Path) -> ExperimentConfig:
     counts = values.get("counts", DEFAULT_COUNTS)
     if not isinstance(counts, str) or not counts.strip():
         raise ValueError(f"{path}: counts must be a SQL condition")
-    mode = values.get("mode", "fill")
+    mode = values.get("mode", "adhoc")
     if mode not in MODES:
         raise ValueError(f"{path}: mode must be fill or adhoc")
     return ExperimentConfig(command, repeats, params, name, counts, mode)

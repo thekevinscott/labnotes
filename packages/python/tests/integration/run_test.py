@@ -33,7 +33,7 @@ def project(tmp_path: Path) -> Path:
     write(
         tmp_path / "exp" / "experiment.toml",
         f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
-        'repeats = 2\n[params]\nm = ["a", "b"]\n',
+        'repeats = 2\nmode = "fill"\n[params]\nm = ["a", "b"]\n',
     )
     return tmp_path
 
@@ -76,6 +76,16 @@ def test_reruns_only_the_runs_that_failed(
 
     recorded = runs(project)
     assert sorted(run["params"]["m"] for run in recorded) == ["a", "a"] + ["b"] * 4
+
+
+def test_reruns_every_combination_without_a_mode(project: Path) -> None:
+    toml = project / "exp" / "experiment.toml"
+    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "fill"\n', ""))
+    labnotes(project, ["experiments", "exp", "run"])
+    labnotes(project, ["experiments", "exp", "run"])
+
+    recorded = runs(project)
+    assert sorted(run["params"]["m"] for run in recorded) == ["a"] * 4 + ["b"] * 4
 
 
 def test_reruns_an_excluded_run(

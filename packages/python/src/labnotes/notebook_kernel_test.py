@@ -145,62 +145,6 @@ def test_stopping_twice_shuts_the_kernel_down_once(manager: mock.MagicMock) -> N
     manager.return_value.client.return_value.stop_channels.assert_called_once()
 
 
-def test_records_when_a_run_finishes(manager: mock.MagicMock) -> None:
-    with mock.patch("labnotes.notebook_kernel.monotonic", side_effect=[5.0, 9.0]):
-        kernel = NotebookKernel(Path("/data"))
-        assert kernel.last_used == 5.0
-        asyncio.run(kernel.run("a"))
-
-    assert kernel.last_used == 9.0
-
-
-def test_records_when_a_failed_run_finishes(manager: mock.MagicMock) -> None:
-    client = manager.return_value.client.return_value
-    client.execute_interactive.side_effect = RuntimeError("boom")
-    with mock.patch("labnotes.notebook_kernel.monotonic", side_effect=[5.0, 9.0]):
-        kernel = NotebookKernel(Path("/data"))
-        with pytest.raises(RuntimeError):
-            asyncio.run(kernel.run("a"))
-
-    assert kernel.last_used == 9.0
-
-
-@pytest.mark.parametrize(
-    ("now", "stopped"),
-    [(120.0, False), (160.0, False), (160.5, True), (1000.0, True)],
-)
-def test_stops_a_kernel_idle_longer_than_the_limit(
-    manager: mock.MagicMock, now: float, stopped: bool
-) -> None:
-    kernel = NotebookKernel(Path("/data"))
-    asyncio.run(kernel.run("a"))
-    kernel.last_used = 100.0
-
-    with mock.patch("labnotes.notebook_kernel.monotonic", return_value=now):
-        asyncio.run(kernel.stop_if_idle(60))
-
-    assert manager.return_value.shutdown_kernel.await_count == int(stopped)
-
-
-def test_never_stops_a_kernel_mid_run(manager: mock.MagicMock) -> None:
-    kernel = NotebookKernel(Path("/data"))
-    checked: list[int] = []
-
-    async def idle_check_while_running(
-        code: str, output_hook: object, **_: object
-    ) -> None:
-        await kernel.stop_if_idle(0)
-        checked.append(manager.return_value.shutdown_kernel.await_count)
-
-    client = manager.return_value.client.return_value
-    client.execute_interactive.side_effect = idle_check_while_running
-    kernel.last_used = -1e9
-
-    asyncio.run(kernel.run("a"))
-
-    assert checked == [0]
-
-
 def test_restart_waits_for_the_running_block_then_stops(
     manager: mock.MagicMock,
 ) -> None:

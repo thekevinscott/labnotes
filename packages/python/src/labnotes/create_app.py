@@ -31,7 +31,6 @@ from labnotes.notebook_kernel import NotebookKernel
 from labnotes.python_blocks import python_blocks
 from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
-from labnotes.stop_idle_kernels import stop_idle_kernels
 from labnotes.tables.open_tables import open_tables
 from labnotes.wait_for_note import wait_for_note
 
@@ -42,20 +41,16 @@ templates.env.filters["duration"] = format_duration
 templates.env.globals["asset"] = asset_url
 
 
-def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
+def create_app(config: LabnotesConfig) -> Starlette:
     kernels: dict[tuple[str, str], NotebookKernel] = {}
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         app.state.tables = open_tables(config)
         await app.state.tables.ready()
-        watchers = [
-            asyncio.create_task(drain_watch(app.state.tables)),
-            asyncio.create_task(stop_idle_kernels(kernels, kernel_idle_minutes)),
-        ]
+        watcher = asyncio.create_task(drain_watch(app.state.tables))
         yield
-        for watcher in watchers:
-            watcher.cancel()
+        watcher.cancel()
         for kernel in kernels.values():
             await kernel.stop()
 

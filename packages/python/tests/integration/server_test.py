@@ -20,7 +20,7 @@ def client(tmp_path: Path) -> Iterator[TestClient]:
         "```python\na = 1\n```\n\n```python\na + 1\n```\n",
     )
     write(tmp_path / "alpha/files/other.md", "```python\nb = 1\n```\n")
-    app = create_app(read_config(tmp_path / ".labnotes.toml"), 30)
+    app = create_app(read_config(tmp_path / ".labnotes.toml"))
     with TestClient(app) as client:
         yield client
 

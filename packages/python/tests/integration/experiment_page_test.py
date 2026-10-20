@@ -1,82 +1,14 @@
-import asyncio
-import json
-import socket
-import subprocess
-import sys
-import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import Iterator
 from pathlib import Path
 
 import pytest
-from playwright.async_api import Page, async_playwright, expect
-
-CONFIG = (
-    'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "fill"\n'
-    '[params]\nsource-language = ["en", "fr"]\n'
-)
-
-
-def write(path: Path, text: str) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    path.write_text(text, encoding="utf-8")
-
-
-def run(project: Path, name: str, params: dict[str, object], **fields: object) -> None:
-    record = {"params": params, "created": f"2026-10-17T00:00:0{name[-1]}Z", **fields}
-    write(project / f"alpha/runs/{name}/run.json", json.dumps(record))
-
-
-def free_port() -> int:
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return int(sock.getsockname()[1])
-
-
-def serve(project: Path) -> Iterator[str]:
-    port = free_port()
-    labnotes = Path(sys.executable).parent / "labnotes"
-    process = subprocess.Popen(
-        [labnotes, "-c", project / ".labnotes.toml", "server", "-p", str(port)],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        for _ in range(100):
-            try:
-                socket.create_connection(("127.0.0.1", port)).close()
-                break
-            except OSError:
-                time.sleep(0.1)
-        yield f"http://127.0.0.1:{port}"
-    finally:
-        process.terminate()
-        process.wait()
+from playwright.async_api import Page, expect
+from served import browse, project, run, serve, write
 
 
 @pytest.fixture
 def site(tmp_path: Path) -> Iterator[str]:
-    write(tmp_path / "beta/files/notes.md", "beta notes")
-    write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", CONFIG)
-    write(tmp_path / "alpha/files/plan.md", "# The plan\n\n```python\n1 + 1\n```\n")
-    write(tmp_path / "alpha/files/results.md", "# Results\n\nAll good.\n")
-    run(tmp_path, "run1", {"source-language": "en"}, exit_code=0)
-    run(tmp_path, "run2", {"source-language": "fr"}, exit_code=1, stdout="boom")
-    yield from serve(tmp_path)
-
-
-def browse(
-    url: str, check: Callable[[Page], Awaitable[None]], width: int = 1280
-) -> None:
-    async def drive() -> None:
-        async with async_playwright() as playwright:
-            browser = await playwright.chromium.launch()
-            page = await browser.new_page(viewport={"width": width, "height": 800})
-            await page.goto(url)
-            await check(page)
-            await browser.close()
-
-    asyncio.run(drive())
+    yield from serve(project(tmp_path))
 
 
 def test_shows_the_experiment_toml_on_one_line(site: str) -> None:
@@ -173,6 +105,46 @@ def test_shows_a_broken_counts_rule(tmp_path: Path) -> None:
         await expect(page.locator(".config-summary")).to_contain_text(
             "nope = doesn't work: SQLite error"
         )
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
+def test_runs_a_block_and_keeps_its_output(site: str) -> None:
+    async def check(page: Page) -> None:
+        await page.get_by_role("link", name="Notebooks 2").click()
+        await page.get_by_role("button", name="Run").click()
+        await expect(page.locator(".cell-output")).to_have_text("2", timeout=30_000)
+
+        await page.reload()
+
+        await expect(page.locator(".cell-output")).to_have_text("2")
+
+    browse(f"{site}/experiments/alpha", check)
+
+
+def test_restart_clears_the_notebook_state(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(
+        tmp_path / "alpha/files/plan.md",
+        "```python\na = 1\n```\n\n```python\na\n```\n",
+    )
+
+    async def check(page: Page) -> None:
+        await page.get_by_role("link", name="Notebooks 1").click()
+        runs = page.get_by_role("button", name="Run")
+        outputs = page.locator(".cell-output")
+        await runs.first.click()
+        await runs.last.click()
+        await expect(outputs.last).to_have_text("1", timeout=30_000)
+
+        await page.get_by_role("button", name="Restart").click()
+        await expect(page.get_by_role("button", name="Restarted")).to_be_visible(
+            timeout=30_000
+        )
+        await runs.last.click()
+
+        await expect(outputs.last).to_contain_text("NameError", timeout=30_000)
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)

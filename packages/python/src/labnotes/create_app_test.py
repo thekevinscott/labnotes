@@ -12,50 +12,7 @@ from labnotes.create_app import create_app
 CONFIG = mock.Mock(root=Path("/p/project"), mode="fill")
 
 
-def make_view(
-    sort: str | None = None,
-    descending: bool = False,
-    status: str | None = None,
-    filters: dict[str, str] | None = None,
-) -> mock.Mock:
-    return mock.Mock(
-        sort=sort, descending=descending, status=status, filters=filters or {}
-    )
-
-
-EXPERIMENT: dict[str, object] = {
-    "name": "models-effort",
-    "display_name": "Models by effort",
-    "fixed": {"tests": True},
-    "varies": {"model": ["opus", "haiku"]},
-    "cell_count": 2,
-    "runs_per_cell": 3,
-    "target": 6,
-    "completed_run": "exit_code = 0",
-    "mode": "fill",
-    "other": {"command": "uv run run.py"},
-    "runs": 4,
-    "completed": 3,
-    "filled": 3,
-    "cells": [
-        {"values": {"model": "opus"}, "runs": 3, "completed": 3},
-        {"values": {"model": "haiku"}, "runs": 1, "completed": 0},
-    ],
-    "notes": [
-        {"name": "PLAN.md", "html": "<h1>The plan</h1>", "runnable": True},
-        {"name": "READ.md", "html": "<p>Prose</p>", "runnable": False},
-    ],
-    "runs_list": [
-        {"labnotes_completed": 1, "id": "r1", "model": "opus", "stdout": "x" * 100}
-    ],
-    "run_columns": ["id", "model"],
-    "run_view": make_view(sort="model", descending=True, filters={"model": "op"}),
-    "sort_hrefs": {
-        "status": "?sort=status#runs",
-        "id": "?sort=id#runs",
-        "model": "?sort=model#runs",
-    },
-}
+EXPERIMENT: dict[str, object] = {"name": "models-effort"}
 
 
 NOTE = "# Plan\n\n```python\na = 1\n```\n\n```python\na + 1\n```\n"
@@ -86,7 +43,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value=EXPERIMENT,
         ) as load_experiment,
+        mock.patch("labnotes.create_app.templates") as templates,
     ):
+        templates.TemplateResponse.return_value = mock.Mock(status_code=200, body=b"")
         open_tables.return_value.ready = mock.AsyncMock()
         yield {
             "open_tables": open_tables,
@@ -95,6 +54,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "stop_idle_kernels": stop_idle_kernels,
             "list_experiments": list_experiments,
             "load_experiment": load_experiment,
+            "templates": templates,
         }
 
 
@@ -118,11 +78,6 @@ def call(app: Any, path: str, **path_params: str) -> tuple[int, str]:
         scope={"type": "http"}, path_params=path_params, query_params={"sort": "model"}
     )
     request.app = app
-    request.url_for = (
-        lambda route,
-        /,
-        **params: f"/{route}/{params.get('name', params.get('path', ''))}"
-    )
     response = asyncio.run(endpoint(request))
     return response.status_code, response.body.decode()
 
@@ -140,21 +95,13 @@ def test_opens_the_tables_and_watches_them(
 def test_index_lists_experiments_with_progress(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    status, text = call(app, "/")
+    status, _ = call(app, "/")
 
     assert status == 200
     collaborators["list_experiments"].assert_awaited_once_with(app.state.tables, "fill")
-    assert 'href="/experiment/models-effort">Models by effort</a>' in text
-    assert '<span class="crumb">project</span>' in text
-    assert "50%" in text
-    assert "--share: 0.5000" in text
-    assert "1 experiment," in text
-    assert "4 runs recorded" in text
-    assert '<table class="ledger" data-view="table">' in text
-    assert 'data-view="cards"' in text
-    assert "/static/view-toggle.js" in text
-    assert "/static/row-link.js" in text
-    assert "/static/row-link.js?v=" in text
+    collaborators["templates"].TemplateResponse.assert_called_once_with(
+        mock.ANY, "index.html", {"experiments": [EXPERIMENT], "folder": "project"}
+    )
 
 
 def test_experiment_page_loads_the_named_experiment(
@@ -169,6 +116,9 @@ def test_experiment_page_loads_the_named_experiment(
         "fill",
         "models-effort",
         {"sort": "model"},
+    )
+    collaborators["templates"].TemplateResponse.assert_called_once_with(
+        mock.ANY, "experiment.html", {"experiment": EXPERIMENT}
     )
 
 

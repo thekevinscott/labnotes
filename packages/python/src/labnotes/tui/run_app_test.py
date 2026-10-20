@@ -348,7 +348,7 @@ def test_puts_reselected_runs_back_in_the_queue() -> None:
     asyncio.run(drive())
 
 
-def test_d_toggles_the_row_under_the_cursor() -> None:
+def test_space_toggles_the_row_under_the_cursor() -> None:
     toggle = mock.Mock()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
@@ -360,13 +360,13 @@ def test_d_toggles_the_row_under_the_cursor() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("down", "d")
+            await pilot.press("down", "space")
             toggle.assert_called_once_with("r2")
 
     asyncio.run(drive())
 
 
-def test_d_leaves_the_cursor_on_the_next_row() -> None:
+def test_space_leaves_the_cursor_on_the_next_row() -> None:
     reports: list[Report] = []
 
     def deselect(run: str) -> None:
@@ -384,7 +384,7 @@ def test_d_leaves_the_cursor_on_the_next_row() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("down", "d")
+            await pilot.press("down", "space")
             await pilot.pause()
             table: Any = app.query_one("#runs")
             assert [row[0] for row in rows(app)] == ["r1", "r3", "r2"]
@@ -393,7 +393,7 @@ def test_d_leaves_the_cursor_on_the_next_row() -> None:
     asyncio.run(drive())
 
 
-def test_d_does_nothing_without_rows() -> None:
+def test_space_does_nothing_without_rows() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
@@ -401,7 +401,7 @@ def test_d_does_nothing_without_rows() -> None:
         app = RunApp(start, "exp")
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
-                await pilot.press("d")
+                await pilot.press("space")
             controls.toggle.assert_not_called()
 
     asyncio.run(drive())
@@ -770,7 +770,7 @@ def test_shift_d_deselects_the_shown_pending_runs() -> None:
     asyncio.run(drive())
 
 
-def test_k_stops_the_run_under_the_cursor() -> None:
+def test_x_stops_the_run_under_the_cursor() -> None:
     kill = mock.Mock()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
@@ -782,13 +782,13 @@ def test_k_stops_the_run_under_the_cursor() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("down", "k")
+            await pilot.press("down", "x")
             kill.assert_called_once_with("r2")
 
     asyncio.run(drive())
 
 
-def test_k_does_nothing_without_rows() -> None:
+def test_x_does_nothing_without_rows() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
@@ -796,13 +796,13 @@ def test_k_does_nothing_without_rows() -> None:
         app = RunApp(start, "exp")
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
-                await pilot.press("k")
+                await pilot.press("x")
             controls.kill.assert_not_called()
 
     asyncio.run(drive())
 
 
-def test_h_hides_and_shows_failed_runs() -> None:
+def test_f_hides_and_shows_failed_runs() -> None:
     reports: list[Report] = []
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
@@ -825,7 +825,7 @@ def test_h_hides_and_shows_failed_runs() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("h")
+            await pilot.press("f")
             assert [row[0] for row in rows(app)] == ["r1", "r3"]
             assert status(app) == "Failed runs hidden."
             reports[0](
@@ -839,7 +839,7 @@ def test_h_hides_and_shows_failed_runs() -> None:
             reports[0]({"event": "ended", "run": "r3", "exit_code": 2, "error": None})
             await pilot.pause()
             assert [row[0] for row in rows(app)] == ["r1"]
-            await pilot.press("h")
+            await pilot.press("f")
             assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
             assert status(app) == "Failed runs shown."
 
@@ -1047,5 +1047,25 @@ def test_opens_a_lone_adhoc_run_in_its_output(
                 assert output(app)[0] == "hi"
                 await pilot.press("escape")
                 assert [row[0] for row in rows(app)] == ["r1"]
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize(
+    ("keys", "row"),
+    [(("j",), 1), (("j", "j", "k"), 1), (("G",), 2), (("G", "g"), 0)],
+)
+def test_moves_the_cursor_with_vim_keys(keys: tuple[str, ...], row: int) -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press(*keys)
+            table: Any = app.query_one("#runs")
+            assert table.cursor_row == row
 
     asyncio.run(drive())

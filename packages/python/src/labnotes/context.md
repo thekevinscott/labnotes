@@ -92,13 +92,14 @@ A script run by labnotes should:
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish. Failed runs show their status in red; `h` hides or shows them, and `r` on one
-runs it again under a new id. Runs not started yet show grayed as `pending`, and as
+open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one
+runs it again under a new id. `j` and `k` move the cursor, `g` and `G` jump to the
+first and last row. Runs not started yet show grayed as `pending`, and as
 `skipped` once stopped. Move the cursor to a pending run and press `n` to run it
-next. `d` deselects a pending run so it won't run; `d` again puts it back at
+next. Space deselects a pending run so it won't run; Space again puts it back at
 the end of the queue. `/` filters rows by params text; Enter keeps the filter,
-Escape clears it. `D` deselects every pending run the filter shows. `k` stops the
-running run under the cursor; `k` again kills it. `+` and
+Escape clears it. `D` deselects every pending run the filter shows. `x` stops the
+running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log`; `e` switches to
 `stderr.log` and back, and Escape returns to the table. An `adhoc` experiment that

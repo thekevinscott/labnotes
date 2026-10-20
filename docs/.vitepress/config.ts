@@ -13,7 +13,7 @@ export default defineConfig({
   // (one file per PR, see docs/internals/repo.md); they never publish either.
   // internals/ is contributor/agent-facing material, also excluded.
   // migrations.md is a pointer stub at the conventional path.
-  srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**', 'migrations.md'],
+  srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**', 'migrations.md', 'demos/**'],
   themeConfig: {
     siteTitle: false,
     sidebar: [

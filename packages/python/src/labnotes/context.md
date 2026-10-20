@@ -56,7 +56,7 @@ effort = ["low", "high"]
 `name` is optional: a display name for the experiment, shown in the live view
 and as `display_name` in `experiments`. The folder name stays the key, so
 renaming the experiment means editing `name`.
-Each combination of `[params]` runs `repeats` times, round-robin, on every
+Each combination of `[params]` runs `repeats` times (1 if omitted), round-robin, on every
 `run`, whatever is already on disk. That is `mode = "adhoc"`, the default.
 `mode = "fill"` counts what is there: only runs that count fill a combination,
 so running again fills in what failed or never ran.

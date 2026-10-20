@@ -17,6 +17,10 @@ py-typecheck:
 py-test:
     cd packages/python && uv run pytest
 
+# Drives the live view in a real terminal. Not run by CI.
+py-test-e2e:
+    cd packages/python && uv run pytest tests/e2e
+
 py-build:
     cd packages/python && uv build
 
@@ -44,6 +48,7 @@ lint: py-lint gha-lint
 format: py-format
 typecheck: py-typecheck
 test: py-test
+test-e2e: py-test-e2e
 build: py-build
 
 ci: lint typecheck test

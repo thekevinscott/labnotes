@@ -425,6 +425,69 @@ def test_put_requires_json(app: Any) -> None:
     assert getattr(raised.value, "status_code", None) == 415
 
 
+def post_conflict(
+    app: Any, body: object, content_type: str = "application/json"
+) -> Any:
+    [endpoint] = [
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None)
+        == "/experiments/{name}/notes/{note:path}/conflict"
+    ]
+    request = mock.Mock(
+        path_params={"name": "models-effort", "note": "PLAN.md"},
+        headers={"content-type": content_type},
+    )
+    request.app = app
+    request.json = mock.AsyncMock(return_value=body)
+    return asyncio.run(endpoint(request))
+
+
+def test_conflict_saves_a_copy_beside_the_note(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    copy = Path("/p/project/e/files/PLAN (Conflicted copy 202610200905).md")
+    with (
+        mock.patch("labnotes.create_app.save_conflict_copy", return_value=copy) as save,
+        mock.patch("labnotes.create_app.datetime") as clock,
+    ):
+        response = post_conflict(app, {"content": "theirs"})
+
+    assert response.status_code == 201
+    assert json.loads(response.body) == {"name": copy.name}
+    save.assert_called_once_with(
+        Path("/p/project/e/files/PLAN.md"), "theirs", clock.now.return_value
+    )
+    collaborators["experiment_notes"].assert_awaited_with(
+        app.state.tables, Path("/p/project"), "models-effort", "PLAN.md"
+    )
+
+
+@pytest.mark.parametrize("body", [{}, {"content": 1}])
+def test_conflict_rejects_a_body_without_content(app: Any, body: object) -> None:
+    with mock.patch("labnotes.create_app.save_conflict_copy") as save:
+        with pytest.raises(Exception) as raised:
+            post_conflict(app, body)
+    assert getattr(raised.value, "status_code", None) == 400
+    save.assert_not_called()
+
+
+def test_conflict_rejects_an_unknown_note(
+    app: Any, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["experiment_notes"].return_value = []
+
+    with pytest.raises(Exception) as raised:
+        post_conflict(app, {"content": "theirs"})
+    assert getattr(raised.value, "status_code", None) == 404
+
+
+def test_conflict_requires_json(app: Any) -> None:
+    with pytest.raises(Exception) as raised:
+        post_conflict(app, {"content": "theirs"}, content_type="text/plain")
+    assert getattr(raised.value, "status_code", None) == 415
+
+
 def test_get_returns_the_note_markdown_without_requiring_json(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:

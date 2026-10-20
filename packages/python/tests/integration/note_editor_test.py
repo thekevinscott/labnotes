@@ -126,6 +126,79 @@ def test_merges_an_outside_edit_into_the_open_editor(site: str, root: Path) -> N
     browse(f"{site}{NOTE}", check)
 
 
+def test_reloads_a_clean_editor_without_a_notice(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await open_editor(page)
+
+        write(root / PLAN, "# The plan\n\nTheirs.\n")
+
+        await expect(page.get_by_role("textbox", name="Note")).to_contain_text(
+            "Theirs."
+        )
+        await expect(page.locator(".edit-status")).to_be_hidden()
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_tells_of_a_merge_into_unsaved_edits_and_keeps_the_cursor(
+    site: str, root: Path
+) -> None:
+    async def check(page: Page) -> None:
+        await open_editor(page)
+        await page.keyboard.press("End")
+        await page.keyboard.type(" mine")
+
+        write(root / PLAN, "# The plan\n\nTheirs.\n\n```python\n1 + 1\n```\n")
+
+        await expect(
+            page.get_by_text(
+                "plan.md was modified externally, merging changes automatically"
+            )
+        ).to_be_visible()
+        await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
+        await page.keyboard.type(" too")
+        await on_disk(
+            root / PLAN, "# The plan mine too\n\nTheirs.\n\n```python\n1 + 1\n```\n"
+        )
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_keeps_both_versions_when_edits_will_not_merge(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await page.route("**/changes", lambda route: route.abort())
+        await page.reload()
+        await open_editor(page)
+        write(root / PLAN, "# Theirs\n\n```python\n1 + 1\n```\n")
+        await page.keyboard.press("Control+a")
+        await page.keyboard.type("# Mine")
+
+        status = page.locator(".edit-status")
+        await expect(status).to_contain_text("could not be merged")
+        await on_disk(root / PLAN, "# Mine")
+        [copy] = (root / "alpha/files").glob("plan (Conflicted copy *).md")
+        assert copy.read_text(encoding="utf-8") == "# Theirs\n\n```python\n1 + 1\n```\n"
+        await expect(status).to_contain_text(copy.name)
+        await expect(page.get_by_role("textbox", name="Note")).to_have_text("# Mine")
+        await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_saves_during_continuous_typing(site: str, root: Path) -> None:
+    async def check(page: Page) -> None:
+        await open_editor(page)
+        await page.keyboard.press("End")
+        typing = asyncio.create_task(page.keyboard.type(" " + "x" * 40, delay=100))
+
+        await on_disk(root / PLAN, "# The plan xxxx")
+
+        assert not typing.done()
+        await typing
+
+    browse(f"{site}{NOTE}", check)
+
+
 def test_merges_when_a_save_finds_the_file_changed(site: str, root: Path) -> None:
     async def check(page: Page) -> None:
         await page.route("**/changes", lambda route: route.abort())

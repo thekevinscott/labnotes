@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
+from datetime import datetime
 from pathlib import Path
 
 from starlette.applications import Starlette
@@ -29,6 +30,7 @@ from labnotes.load_experiment import load_experiment
 from labnotes.models import LabnotesConfig
 from labnotes.notebook_kernel import NotebookKernel
 from labnotes.python_blocks import python_blocks
+from labnotes.save_conflict_copy import save_conflict_copy
 from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
 from labnotes.tables.open_tables import open_tables
@@ -127,6 +129,14 @@ def create_app(config: LabnotesConfig) -> Starlette:
             return JSONResponse({"content": current}, status_code=409)
         return Response(status_code=204)
 
+    async def post_conflict(request: Request) -> Response:
+        note = await find_note(request)
+        content = (await request.json()).get("content")
+        if not isinstance(content, str):
+            raise HTTPException(400, "Send content as a string")
+        copy = save_conflict_copy(Path(note["path"]), content, datetime.now())
+        return JSONResponse({"name": copy.name}, status_code=201)
+
     async def run_block(request: Request) -> Response:
         blocks = python_blocks((await find_note(request))["content"])
         key = (request.path_params["name"], request.path_params["note"])
@@ -152,6 +162,11 @@ def create_app(config: LabnotesConfig) -> Starlette:
             Route("/experiments/{name}/notes", post_note, methods=["POST"]),
             Route("/experiments/{name}/notes/{note:path}", get_note),
             Route("/experiments/{name}/notes/{note:path}", put_note, methods=["PUT"]),
+            Route(
+                "/experiments/{name}/notes/{note:path}/conflict",
+                post_conflict,
+                methods=["POST"],
+            ),
             Route(
                 "/experiments/{name}/notes/{note:path}/run",
                 run_block,

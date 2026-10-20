@@ -105,9 +105,6 @@ function show(status, message) {
 
 const dmp = new diff_match_patch();
 
-// Three-way: what changed on disk since base, applied onto the editor's text.
-const merge = (base, ours, theirs) => dmp.patch_apply(dmp.patch_make(base, theirs), ours)[0];
-
 // Minimal changes, so the cursor and undo history survive.
 function setText(view, text) {
   const changes = [];
@@ -125,22 +122,52 @@ function setText(view, text) {
 export function edit(note, prose, status) {
   let base = JSON.parse(note.querySelector(".note-source").textContent);
   let timer;
+  let deadline;
   let queue = Promise.resolve();
 
   const host = document.createElement("div");
   host.className = "editor";
   prose.replaceWith(host);
 
+  const notice = (message) => {
+    show(status, message);
+    setTimeout(() => {
+      if (status.textContent === message) status.hidden = true;
+    }, 4000);
+  };
+
   const run = (task) =>
     (queue = queue.then(task).catch((error) => show(status, `Not saved: ${error.message}`)));
 
-  const absorb = (theirs) => {
-    setText(view, merge(base, view.state.doc.toString(), theirs));
+  // Three-way: what changed on disk since base, applied onto the editor's text.
+  // A patch that will not apply leaves the editor alone and keeps the disk
+  // version in a sibling file, as Obsidian Sync does.
+  const absorb = async (theirs) => {
+    const ours = view.state.doc.toString();
+    const [merged, applied] = dmp.patch_apply(dmp.patch_make(base, theirs), ours);
+    const name = note.dataset.note;
+    if (applied.every(Boolean)) {
+      setText(view, merged);
+      if (ours !== base) notice(`${name} was modified externally, merging changes automatically`);
+    } else {
+      const response = await fetch(note.dataset.conflictUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content: theirs }),
+      });
+      if (!response.ok) throw new Error(`${response.status} ${response.statusText}`);
+      const copy = (await response.json()).name;
+      show(
+        status,
+        `${name} was modified externally and could not be merged. The outside version is saved as ${copy}.`,
+      );
+    }
     base = theirs;
   };
 
   const push = async () => {
     clearTimeout(timer);
+    deadline = undefined;
     for (;;) {
       const content = view.state.doc.toString();
       if (content === base) return;
@@ -154,7 +181,7 @@ export function edit(note, prose, status) {
         else show(status, `Not saved: ${response.status} ${response.statusText}`);
         return;
       }
-      absorb((await response.json()).content);
+      await absorb((await response.json()).content);
     }
   };
 
@@ -163,7 +190,7 @@ export function edit(note, prose, status) {
     if (!response.ok) return show(status, `Not synced: ${response.status} ${response.statusText}`);
     const theirs = await response.text();
     if (theirs === base) return;
-    absorb(theirs);
+    await absorb(theirs);
     await push();
   };
 
@@ -194,7 +221,8 @@ export function edit(note, prose, status) {
         EditorView.updateListener.of((update) => {
           if (!update.docChanged) return;
           clearTimeout(timer);
-          timer = setTimeout(save, 500);
+          deadline ??= Date.now() + 2000;
+          timer = setTimeout(save, Math.min(500, deadline - Date.now()));
         }),
       ],
     }),

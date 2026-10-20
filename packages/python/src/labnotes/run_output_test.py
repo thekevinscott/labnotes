@@ -11,8 +11,14 @@ from labnotes.run_output import run_output
 RUN = {"folder": "alpha/runs/r1", "ended": None, "exit_code": None}
 
 
+def built(text: str) -> str:
+    # A string made at runtime, so `is` against a literal fails where `==` holds.
+    return "".join(list(text))
+
+
 def event(table: str, **row: object) -> mock.Mock:
-    return mock.Mock(table=table, row=row)
+    fields = {key: built(v) if isinstance(v, str) else v for key, v in row.items()}
+    return mock.Mock(table=built(table), row=fields)
 
 
 def log(text: str, stream: str = "stdout") -> str:
@@ -235,3 +241,103 @@ def test_finishes_with_what_is_on_disk_if_the_watch_stops(
     )
 
     assert messages == [log("late\n"), end(None)]
+
+
+def test_reads_only_on_its_own_runs_events(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    stdout = folder / "stdout.log"
+    stdout.write_text("")
+
+    def later(data: bytes) -> Step:
+        return lambda: append(stdout, data)
+
+    ours = {"experiment": "alpha", "run": "r1", "stream": "stdout"}
+    messages = collect(
+        tmp_path,
+        [
+            (later(b"a"), event("files", **ours)),
+            (later(b"b"), event("logs", **{**ours, "run": "r0"})),
+            (later(b"c"), event("logs", **{**ours, "run": "r2"})),
+            (later(b"d"), event("logs", **{**ours, "experiment": "aardvark"})),
+            (later(b"e"), event("logs", **{**ours, "experiment": "beta"})),
+            (later(b"f\n"), event("logs", **ours)),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r0", ended="t", exit_code=1),
+            ),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r2", ended="t", exit_code=1),
+            ),
+            (
+                lambda: None,
+                event("zzz", experiment="alpha", id="r1", ended="t", exit_code=1),
+            ),
+            (later(b"g\n"), event("logs", **ours)),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+            (later(b"after\n"), event("logs", **ours)),
+        ],
+    )
+
+    assert messages == [log("abcdef\n"), log("g\n"), end(0)]
+
+
+def test_breaks_an_unfinished_stderr_line_when_stdout_writes(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    stderr = folder / "stderr.log"
+    stdout = folder / "stdout.log"
+    stderr.write_text("")
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: append(stderr, b"50%"),
+                event("logs", experiment="alpha", run="r1", stream="stderr"),
+            ),
+            (
+                lambda: append(stdout, b"ok\n"),
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [log("50%", "stderr"), log("\nok\n"), end(0)]
+
+
+def test_keeps_one_streams_line_whole_across_reads(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    stdout = folder / "stdout.log"
+    stdout.write_text("")
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: append(stdout, b"50%"),
+                event("logs", experiment="alpha", run="r1", stream="stdout"),
+            ),
+            (
+                lambda: append(stdout, b" 60%\n"),
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [log("50%"), log(" 60%\n"), end(0)]
+
+
+def test_reads_stderr_when_stdout_holds_half_a_character(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    loaded.return_value = {**RUN, "ended": "t", "exit_code": 0}
+    (folder / "stdout.log").write_bytes("✓".encode()[:1])
+    (folder / "stderr.log").write_text("boom")
+
+    assert collect(tmp_path, []) == [log("boom", "stderr"), end(0)]

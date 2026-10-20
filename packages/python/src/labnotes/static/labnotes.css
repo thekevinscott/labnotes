@@ -243,6 +243,8 @@ h3 {
 .tabs a[aria-current="page"] { color: var(--ink); border-bottom-color: var(--accent); }
 .tabs .count { font-size: 0.8rem; color: var(--ink-3); margin-left: 0.3rem; }
 .tabs.sub { gap: 1.2rem; margin-top: -0.4rem; font-family: var(--mono); font-size: 0.8rem; }
+.new-note { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0 0.2rem; cursor: pointer; }
+.new-note:hover { color: var(--ink); }
 
 /* Runs table */
 .narrowed { color: var(--ink-2); font-size: 0.88rem; margin: 0 0 0.75rem; }

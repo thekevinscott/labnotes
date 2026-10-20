@@ -1,0 +1,1 @@
+**Added** — A **+** button in the Notebooks tab of `labnotes server` creates `Untitled.md` (or `Untitled 2.md`, and so on) in the experiment's files folder and opens it in the editor. `POST /experiments/{name}/notes` does the same and returns the new note's URL.

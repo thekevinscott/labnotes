@@ -157,3 +157,41 @@ def test_reads_and_runs_offline_without_the_editor(site: str) -> None:
         await expect(page.locator(".cell-output")).to_contain_text("2")
 
     browse(f"{site}{NOTE}", check)
+
+
+def test_plus_creates_a_note_and_opens_it_for_editing(site: str, root: Path) -> None:
+    write(root / "alpha/files/Untitled.md", "# Taken\n")
+
+    async def check(page: Page) -> None:
+        await page.get_by_role("button", name="New note").click()
+
+        await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
+        await expect(page.get_by_role("link", name="Untitled 2.md")).to_have_attribute(
+            "aria-current", "page"
+        )
+        await page.keyboard.press("End")
+        await page.keyboard.type(" notes")
+        await on_disk(root / "alpha/files/Untitled 2.md", "# Untitled notes\n")
+        assert (root / "alpha/files/Untitled.md").read_text(
+            encoding="utf-8"
+        ) == "# Taken\n"
+
+    browse(f"{site}{NOTE}", check)
+
+
+def test_plus_starts_the_first_note(tmp_path: Path) -> None:
+    root = project(tmp_path)
+    for note in (root / "alpha/files").iterdir():
+        note.unlink()
+
+    async def check(page: Page) -> None:
+        await expect(page.get_by_text("No notebooks yet.")).to_be_visible()
+        await page.get_by_role("button", name="New note").click()
+
+        await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
+        assert (root / "alpha/files/Untitled.md").read_text(
+            encoding="utf-8"
+        ) == "# Untitled\n"
+
+    for site in serve(root):
+        browse(f"{site}/experiments/alpha?tab=notebooks", check)

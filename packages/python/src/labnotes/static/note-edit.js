@@ -23,6 +23,10 @@ if (note) {
     editing = edit(note, prose, status);
   };
   prose.addEventListener("click", open);
+  if (location.hash === "#edit") {
+    history.replaceState(null, "", location.pathname + location.search);
+    open({ target: prose });
+  }
 
   new EventSource(note.dataset.changesUrl).addEventListener("message", (event) => {
     if (JSON.parse(event.data) !== note.dataset.note) return;

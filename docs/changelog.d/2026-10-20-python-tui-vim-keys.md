@@ -1,0 +1,1 @@
+**Changed** — in the `labnotes experiments NAME run` live view, `j`/`k` move the cursor and `g`/`G` jump to the first and last row. Space now deselects a run (was `d`), `x` stops one (was `k`), and `f` hides failed runs (was `h`).

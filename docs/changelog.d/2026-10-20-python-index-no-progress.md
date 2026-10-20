@@ -1,0 +1,1 @@
+**Removed** — The experiments index in `labnotes server` no longer has the Design and Grid filled columns. Each experiment shows its name and run count; a broken `counts` rule is still flagged under the name.

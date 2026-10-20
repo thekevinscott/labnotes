@@ -105,7 +105,7 @@ running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
 they're written, and Escape returns to the table. An `adhoc` experiment that
-plans a single run opens straight on its output. `q` quits. Elsewhere, or with `--no-tui`, it prints a
+plans a single run opens straight on its output. `q` quits. Elsewhere, it prints a
 line per event instead.
 
 - `--concurrency N` runs N at a time to start with. Without it, `concurrency`

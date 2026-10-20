@@ -1,0 +1,1 @@
+**Removed** — **BREAKING** `labnotes experiments NAME run` drops `--no-tui`. It still prints a line per event when stdout or stderr isn't a terminal. See [the migration](../migrations.d/2026-10-20-python-remove-no-tui.md).

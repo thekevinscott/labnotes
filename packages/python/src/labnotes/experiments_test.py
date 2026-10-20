@@ -251,18 +251,6 @@ def test_shows_the_live_view_in_a_terminal(
     assert start_experiment.call_args.args[4] is drivers["run_tui"]
 
 
-def test_prints_events_with_no_tui(
-    collaborators: dict[str, mock.MagicMock],
-    drivers: dict[str, mock.MagicMock],
-    start_experiment: mock.MagicMock,
-) -> None:
-    drivers["sys"].stdout.isatty.return_value = True
-
-    run(["a", "run", "--no-tui"])
-
-    assert_headless(start_experiment, drivers)
-
-
 @pytest.mark.parametrize(
     ("argv", "name"), [(["new"], None), (["new", "study"], "study")]
 )

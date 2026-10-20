@@ -27,6 +27,7 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
             'name = "Study"\ncommand = "run"\nrepeats = 3\n[params]\nm = ["a", "b"]\n',
         ),
         "adhoc",
+        1,
     )
 
     assert (config.name, config.command, config.repeats, config.params) == (
@@ -38,7 +39,7 @@ def test_reads_command_repeats_and_params(tmp_path: Path) -> None:
 
 
 def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
-    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "adhoc")
+    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "adhoc", 1)
 
     assert (
         config.name,
@@ -46,18 +47,27 @@ def test_defaults_to_one_repeat_and_no_params(tmp_path: Path) -> None:
         config.params,
         config.counts,
         config.mode,
-    ) == (None, 1, {}, "default", "adhoc")
+        config.concurrency,
+    ) == (None, 1, {}, "default", "adhoc", 1)
 
 
-def test_falls_back_to_the_project_mode(tmp_path: Path) -> None:
-    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "fill")
+def test_falls_back_to_the_project_mode_and_concurrency(tmp_path: Path) -> None:
+    config = read_experiment_config(write(tmp_path, 'command = "run"\n'), "fill", 3)
 
-    assert config.mode == "fill"
+    assert (config.mode, config.concurrency) == ("fill", 3)
+
+
+def test_reads_concurrency_over_the_project_concurrency(tmp_path: Path) -> None:
+    config = read_experiment_config(
+        write(tmp_path, 'command = "run"\nconcurrency = 2\n'), "adhoc", 3
+    )
+
+    assert config.concurrency == 2
 
 
 def test_reads_counts(tmp_path: Path) -> None:
     config = read_experiment_config(
-        write(tmp_path, 'command = "run"\ncounts = "exit_code = 0"\n'), "adhoc"
+        write(tmp_path, 'command = "run"\ncounts = "exit_code = 0"\n'), "adhoc", 1
     )
 
     assert config.counts == "exit_code = 0"
@@ -68,7 +78,7 @@ def test_reads_mode_over_the_project_mode(
     tmp_path: Path, mode: str, project: str
 ) -> None:
     config = read_experiment_config(
-        write(tmp_path, f'command = "run"\nmode = "{mode}"\n'), project
+        write(tmp_path, f'command = "run"\nmode = "{mode}"\n'), project, 1
     )
 
     assert config.mode == mode
@@ -92,12 +102,13 @@ def test_reads_mode_over_the_project_mode(
         ('command = "run"\ncounts = 1\n', "counts must be a SQL condition"),
         ('command = "run"\ncounts = " "\n', "counts must be a SQL condition"),
         ('command = "run"\nmode = "once"\n', "mode must be fill or adhoc"),
+        ('command = "run"\nconcurrency = 0\n', "concurrency must be a positive"),
     ],
 )
 def test_rejects_a_bad_config(tmp_path: Path, text: str, message: str) -> None:
     path = write(tmp_path, text)
 
     with pytest.raises(ValueError, match=message) as error:
-        read_experiment_config(path, "adhoc")
+        read_experiment_config(path, "adhoc", 1)
 
     assert str(error.value).startswith(f"{path}: ")

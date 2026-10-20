@@ -72,6 +72,27 @@ def test_rejects_an_unknown_mode(tmp_path: Path, read_path: mock.MagicMock) -> N
     assert str(error.value) == f"{path}: [experiments] mode must be fill or adhoc"
 
 
+@pytest.mark.parametrize(
+    ("text", "concurrency"),
+    [("", 1), ("[experiments]\nconcurrency = 4\n", 4)],
+)
+def test_reads_the_project_concurrency(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, concurrency: int
+) -> None:
+    assert read_config(write(tmp_path, text)).concurrency == concurrency
+
+
+def test_rejects_a_bad_concurrency(tmp_path: Path, read_path: mock.MagicMock) -> None:
+    path = write(tmp_path, "[experiments]\nconcurrency = 0\n")
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == (
+        f"{path}: [experiments] concurrency must be a positive integer"
+    )
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 

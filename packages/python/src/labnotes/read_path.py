@@ -12,7 +12,7 @@ PLACEHOLDERS = {
     "runs": {"experiment", "run"},
 }
 # Keys other readers own, so the path check lets them through.
-OTHER_KEYS = {"experiments": {"mode"}}
+OTHER_KEYS = {"experiments": {"mode", "concurrency"}}
 PLACEHOLDER = re.compile(r"\{([^}]*)\}")
 
 

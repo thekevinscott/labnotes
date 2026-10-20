@@ -2,6 +2,7 @@ import tomllib
 from pathlib import Path
 
 from labnotes.models import LabnotesConfig
+from labnotes.is_positive_int import is_positive_int
 from labnotes.modes import DEFAULT_MODE, MODES
 from labnotes.read_path import DEFAULT_PATHS, read_path
 
@@ -20,8 +21,16 @@ def read_config(path: Path) -> LabnotesConfig:
     paths = {
         table: read_path(path, table, values.get(table, {})) for table in DEFAULT_PATHS
     }
-    mode = values.get("experiments", {}).get("mode", DEFAULT_MODE)
+    experiments = values.get("experiments", {})
+    mode = experiments.get("mode", DEFAULT_MODE)
     if mode not in MODES:
         raise ValueError(f"{path}: [experiments] mode must be fill or adhoc")
+    concurrency = experiments.get("concurrency", 1)
+    if not is_positive_int(concurrency):
+        raise ValueError(
+            f"{path}: [experiments] concurrency must be a positive integer"
+        )
     path = path.resolve()
-    return LabnotesConfig(path, path.parent, **paths, mode=mode)
+    return LabnotesConfig(
+        path, path.parent, **paths, mode=mode, concurrency=concurrency
+    )

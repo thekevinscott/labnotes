@@ -26,7 +26,7 @@ def run_tui(terminal, tmp_path: Path, repeats: int) -> Terminal:
 
 def test_escape_backs_out_of_a_runs_output(terminal, tmp_path: Path) -> None:
     term = run_tui(terminal, tmp_path, 2)
-    expect(term.get_by_text("2 runs to go")).to_be_visible()
+    expect(term.get_by_text("1 at a time")).to_be_visible()
 
     term.key_enter()
     expect(term.get_by_text("line 3")).to_be_visible()

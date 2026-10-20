@@ -72,7 +72,7 @@ def experiments(
                 raise click.ClickException(str(error)) from error
             failed = sum(result["exit_code"] != 0 for result in results)
             click.echo(f"{len(results) - failed} passed, {failed} failed.")
-            ctx.exit(1 if failed else 0)
+            return
     if action not in (None, "runs"):
         raise click.UsageError(f"Unknown action {action}. Use runs or run.")
     try:

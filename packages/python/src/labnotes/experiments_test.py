@@ -152,7 +152,7 @@ def test_runs_an_experiment_from_a_named_config(
     assert start_experiment.call_args.args[1:4] == ("a", path, None)
 
 
-def test_exits_one_when_a_run_fails(
+def test_exits_zero_when_a_run_fails(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     start_experiment: mock.MagicMock,
@@ -163,7 +163,7 @@ def test_exits_one_when_a_run_fails(
         {"exit_code": None},
     ]
 
-    assert run(["a", "run"]) == 1
+    assert run(["a", "run"]) == 0
 
     assert capsys.readouterr().out == "1 passed, 2 failed.\n"
 

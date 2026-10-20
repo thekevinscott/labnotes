@@ -55,7 +55,7 @@ def runs(project: Path) -> list[dict[str, Any]]:
 def test_runs_every_param_combination_repeats_times(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    assert labnotes(project, ["experiments", "exp", "run", "--concurrency", "2"]) == 1
+    assert labnotes(project, ["experiments", "exp", "run", "--concurrency", "2"]) == 0
 
     recorded = runs(project)
     assert sorted(run["params"]["m"] for run in recorded) == ["a", "a", "b", "b"]

@@ -1,0 +1,1 @@
+**Changed** — in the `labnotes experiments NAME run` live view, a run's output shows the run's name in the header, and only Escape (back) and `q` (quit) work there. The table's keys no longer act on a row you can't see.

@@ -1,0 +1,1 @@
+**Changed** — run folders started by `labnotes experiments NAME run` are named with a UTC timestamp prefix, e.g. `20261020-000429-brave-fox`, so they sort by start time in folder listings. Existing runs keep their names.

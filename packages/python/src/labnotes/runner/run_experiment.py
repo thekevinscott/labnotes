@@ -13,7 +13,7 @@ from labnotes.models import (
 )
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.new_invocation_id import new_invocation_id
-from labnotes.runner.new_run_id import new_run_id
+from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.run_folder import run_folder
@@ -49,7 +49,7 @@ async def run_experiment(
     for params in plan_runs(
         param_grid(experiment.params), experiment.repeats, finished
     ):
-        run = new_run_id(taken)
+        run = new_stamped_run_id(taken)
         planned.add(run)
         plan.append((run, params))
     runs = [{"run": run, "params": params} for run, params in plan]
@@ -131,7 +131,7 @@ async def run_experiment(
     def retry(run: str) -> None:
         if stopping.is_set() or run not in ended:
             return
-        again = new_run_id(taken)
+        again = new_stamped_run_id(taken)
         planned.add(again)
         plan.append((again, ended[run]))
         report({"event": "retried", "run": run, "retry": again, "params": ended[run]})

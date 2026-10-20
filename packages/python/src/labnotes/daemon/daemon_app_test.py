@@ -412,8 +412,12 @@ def test_forgets_the_owner_of_an_ended_session(
     asyncio.run(go())
 
 
+class Parsed(str):
+    """A query value that is equal to, but not the same object as, a literal."""
+
+
 async def watch(app: Any, client: int) -> AsyncIterator[str]:
-    response = await call(app, "/events", query={"watch": "1"})
+    response = await call(app, "/events", query={"watch": Parsed("1")})
     stream: AsyncIterator[str] = response.body_iterator
     assert await next_event(stream) == {"event": "connected", "client": client}
     return stream

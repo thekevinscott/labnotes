@@ -36,6 +36,7 @@ def test_reports_only_lines_written_since_the_last_read(tmp_path: Path) -> None:
     with log.open("ab") as more:
         more.write(b"ree\n")
     assert logs.latest() == [output("r1", "stdout", "three")]
+    assert logs.latest() == []
 
 
 def test_skips_blank_lines_and_keeps_the_end_of_a_progress_bar(

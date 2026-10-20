@@ -164,6 +164,8 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
             Route("/experiments/{name}/{action}", control, methods=["POST"]),
         ]
     )
-    app.state.idle = lambda: clients.keys() <= watchers and not sessions
+    app.state.idle = (
+        lambda: all(client in watchers for client in clients) and not sessions
+    )
     app.state.stop = stop_all
     return app

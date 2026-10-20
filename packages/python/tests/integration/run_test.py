@@ -33,7 +33,7 @@ def make_project(root: Path) -> Path:
     write(
         root / "exp" / "experiment.toml",
         f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
-        'repeats = 2\nmode = "fill"\n[params]\nm = ["a", "b"]\n',
+        'repeats = 2\nmode = "matrix"\n[params]\nm = ["a", "b"]\n',
     )
     return root
 
@@ -85,7 +85,7 @@ def test_reruns_only_the_runs_that_failed(
 
 def test_reruns_every_combination_without_a_mode(project: Path) -> None:
     toml = project / "exp" / "experiment.toml"
-    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "fill"\n', ""))
+    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
     labnotes(project, ["experiments", "exp", "run"])
     labnotes(project, ["experiments", "exp", "run"])
 
@@ -95,10 +95,10 @@ def test_reruns_every_combination_without_a_mode(project: Path) -> None:
     assert sorted(groups.count(group) for group in set(groups)) == [4, 4]
 
 
-def test_fills_by_the_project_mode(project: Path) -> None:
+def test_runs_the_matrix_by_the_project_mode(project: Path) -> None:
     toml = project / "exp" / "experiment.toml"
-    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "fill"\n', ""))
-    (project / ".labnotes.toml").write_text('[experiments]\nmode = "fill"\n')
+    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
+    (project / ".labnotes.toml").write_text('[experiments]\nmode = "matrix"\n')
     labnotes(project, ["experiments", "exp", "run"])
     labnotes(project, ["experiments", "exp", "run"])
 
@@ -240,7 +240,7 @@ def test_writes_a_lone_adhoc_run_to_one_stamped_folder(project: Path) -> None:
     assert (recorded["folder"] / "out.txt").read_text() == "--m a"
 
 
-def test_keeps_stamped_haiku_names_for_fill_runs(project: Path) -> None:
+def test_keeps_stamped_haiku_names_for_matrix_runs(project: Path) -> None:
     labnotes(project, ["experiments", "exp", "run"])
 
     names = [run["folder"].name for run in runs(project)]

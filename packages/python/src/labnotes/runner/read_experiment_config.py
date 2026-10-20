@@ -44,7 +44,7 @@ def read_experiment_config(
         raise ValueError(f"{path}: counts must be a SQL condition")
     mode = values.get("mode", mode)
     if mode not in MODES:
-        raise ValueError(f"{path}: mode must be fill or adhoc")
+        raise ValueError(f"{path}: mode must be matrix or adhoc")
     concurrency = values.get("concurrency", concurrency)
     if not is_positive_int(concurrency):
         raise ValueError(f"{path}: concurrency must be a positive integer")

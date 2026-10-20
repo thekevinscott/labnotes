@@ -12,7 +12,7 @@ from labnotes.load_experiment import load_experiment
 CONFIG = {
     "command": "go",
     "repeats": 2,
-    "mode": "fill",
+    "mode": "matrix",
     "params": {"x": [1, 2], "y": ["a"]},
 }
 ROOT = Path("/p")
@@ -170,11 +170,13 @@ def test_falls_back_to_the_project_mode(
     config = {key: value for key, value in CONFIG.items() if key != "mode"}
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(config)), ROOT, "fill", "a", mock.Mock())
+        load_experiment(
+            make_tables(experiment(config)), ROOT, "matrix", "a", mock.Mock()
+        )
     )
 
     assert loaded is not None
-    assert loaded["mode"] == "fill"
+    assert loaded["mode"] == "matrix"
 
 
 def test_returns_none_for_an_unknown_experiment(
@@ -280,7 +282,7 @@ def test_groups_adhoc_runs_by_invocation_once_any_has_several(
     config = {**CONFIG, "mode": "adhoc"}
     tables = make_tables(experiment(config))
 
-    loaded = asyncio.run(load_experiment(tables, ROOT, "fill", "a", mock.Mock()))
+    loaded = asyncio.run(load_experiment(tables, ROOT, "matrix", "a", mock.Mock()))
 
     assert loaded is not None
     source = collaborators["list_runs"].await_args.args[1]

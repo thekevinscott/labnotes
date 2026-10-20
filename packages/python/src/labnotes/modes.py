@@ -1,2 +1,2 @@
-MODES = ("fill", "adhoc")
+MODES = ("matrix", "adhoc")
 DEFAULT_MODE = "adhoc"

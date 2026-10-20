@@ -54,7 +54,7 @@ def test_the_root_is_the_config_folder(
     [
         ("", "adhoc"),
         ("[experiments]\n", "adhoc"),
-        ('[experiments]\nmode = "fill"\n', "fill"),
+        ('[experiments]\nmode = "matrix"\n', "matrix"),
     ],
 )
 def test_reads_the_project_mode(
@@ -69,7 +69,7 @@ def test_rejects_an_unknown_mode(tmp_path: Path, read_path: mock.MagicMock) -> N
     with pytest.raises(ValueError) as error:
         read_config(path)
 
-    assert str(error.value) == f"{path}: [experiments] mode must be fill or adhoc"
+    assert str(error.value) == f"{path}: [experiments] mode must be matrix or adhoc"
 
 
 @pytest.mark.parametrize(

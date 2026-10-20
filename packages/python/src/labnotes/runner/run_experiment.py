@@ -65,6 +65,7 @@ async def run_experiment(
     report(
         {
             "event": "planned",
+            "title": experiment.name or name,
             "runs": runs,
             "concurrency": concurrency,
             "mode": experiment.mode,

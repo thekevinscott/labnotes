@@ -105,23 +105,21 @@ running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
 they're written, and Escape returns to the table. An `adhoc` experiment that
-plans a single run opens straight on its output. `q` quits. Elsewhere, it prints a
-line per event instead.
+plans a single run opens straight on its output. `q` quits and leaves the runs
+going. Elsewhere, it prints a line per event instead.
 
 - `--concurrency N` runs N at a time to start with. Without it, `concurrency`
   in `experiment.toml` sets it, then `concurrency` under `[experiments]` in
   `.labnotes.toml`, then 1.
 - `-e PATH` reads another file instead of `experiment.toml`.
+- `run` hands its runs to the project's labnotes daemon, starting it if
+  needed, and shows or waits for them. The daemon listens on `.labnotes.sock`
+  in the project folder and exits once nothing is running and no client has
+  been connected for 15 seconds. Runs belong to the daemon, so quitting the
+  live view, closing its terminal, or killing `run` outright leaves them going.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
-  kills them. Closing the terminal or sending SIGTERM stops them the same way,
-  then kills any still going 5 seconds later. Once the runs are done, either
-  one closes the live view.
-- Outside a terminal, `run` hands its runs to the project's labnotes daemon,
-  starting it if needed, and waits for them. The daemon listens on
-  `.labnotes.sock` in the project folder and exits once nothing is running and
-  no client has been connected for 15 seconds. Runs belong to the daemon, so
-  killing the waiting `run` outright leaves them going. Ctrl-C or SIGTERM to it
-  still stops them.
+  kills them. SIGTERM stops them the same way, then kills any still going 5
+  seconds later. Once the runs are done, either one closes the live view.
 - `labnotes run stop` stops every run the daemon has going: SIGTERM, then
   SIGKILL 5 seconds later.
 - A second `run` of the same experiment fails while the first is going.

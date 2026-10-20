@@ -25,10 +25,11 @@ def remote_start(
             client.stream("GET", "/events") as response,
         ):
             events = aiter(httpx2.EventSource(response))
-            await anext(events)
+            connected: dict[str, object] = (await anext(events)).json()  # type: ignore[assignment]
             reply = await client.post(
                 f"/experiments/{name}/run",
                 json={
+                    "client": connected["client"],
                     "experiment_config": None
                     if experiment_config is None
                     else str(experiment_config.resolve()),

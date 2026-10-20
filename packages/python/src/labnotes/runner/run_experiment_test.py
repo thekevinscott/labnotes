@@ -14,9 +14,11 @@ SIGKILL, SIGTERM = 9, 15
 
 
 def experiment(mode: str = "fill") -> mock.Mock:
-    return mock.Mock(
+    config = mock.Mock(
         command="run", params={"m": ["a", "b"]}, repeats=2, counts="c", mode=mode
     )
+    config.name = None
+    return config
 
 
 @pytest.fixture
@@ -147,6 +149,7 @@ def test_runs_each_planned_run_in_a_new_folder(
     assert [c.args[0] for c in report.call_args_list] == [
         {
             "event": "planned",
+            "title": "exp",
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
             "mode": "fill",
@@ -167,6 +170,27 @@ def test_runs_each_planned_run_in_a_new_folder(
         {"event": "ended", "run": "r2", **ended},
         {"event": "idle"},
     ]
+
+
+def test_titles_the_plan_with_the_experiments_name(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    report = mock.Mock()
+    named = experiment()
+    named.name = "Model effort"
+
+    asyncio.run(
+        run_experiment(
+            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            "exp",
+            named,
+            1,
+            report,
+            lambda controls: controls.finish(),  # type: ignore[attr-defined]
+        )
+    )
+
+    assert report.call_args_list[0].args[0]["title"] == "Model effort"
 
 
 def test_checks_new_stamped_run_ids_against_existing_runs(

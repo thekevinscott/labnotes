@@ -1,0 +1,1 @@
+**Changed** — the `labnotes experiments NAME run` live view is now a client of the project's daemon. `q` quits at any time and leaves the runs going, and closing the terminal leaves them going too. Ctrl-C still stops them.

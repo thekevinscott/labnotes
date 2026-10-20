@@ -221,3 +221,17 @@ def test_replaces_bytes_that_are_not_utf8(
     (folder / "stdout.log").write_bytes(b"\xffok")
 
     assert collect(tmp_path, [])[0] == log("�ok")
+
+
+def test_finishes_with_what_is_on_disk_if_the_watch_stops(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    stdout = folder / "stdout.log"
+    stdout.write_text("")
+
+    messages = collect(
+        tmp_path,
+        [(lambda: append(stdout, b"late\n"), mock.Mock(table="files", row=None))],
+    )
+
+    assert messages == [log("late\n"), end(None)]

@@ -1,28 +1,58 @@
 # CLI
 
-`labnotes experiments NAME run` in a terminal opens a live table of the experiment's runs, with status and time for each. It stays open after the last run finishes. Outside a terminal, `run` prints one line per event instead.
+All commands take a `--format` flag, with `table` (default) and `json`.
 
-Pending runs show grayed. Running runs spin. Finished runs show `✓`, failed runs a red `✗` with the exit code or error, skipped runs `–` and deselected runs `⊘`. The header shows how many runs go at once.
+View experiments with:
 
-## Keys
+```bash
+uvx labnotes experiments
+```
 
-| Key | Action |
-| --- | --- |
-| `j` / `k` | Move the cursor down / up. |
-| `g` / `G` | Jump to the first / last row. |
-| `n` | Run the pending run under the cursor next. |
-| Space | Deselect a pending run so it won't run. Press again to put it back at the end of the queue. |
-| `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
-| `D` | Deselect every pending run the filter shows. |
-| `x` | Stop the running run under the cursor. Press again to kill it. |
-| `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
-| `f` | Hide or show failed runs. |
-| `r` | Run a failed run again under a new id. |
-| Enter | Follow the run's `stdout.log` and `stderr.log` as they're written. |
-| Escape | Back to the table from a run's output. |
-| `q` | Quit. |
-| Ctrl-C | Stop every running script and record its end. A second Ctrl-C kills them. |
+Which returns name, last run, created, files (num), runs (num). 
 
-An `adhoc` run that plans a single run opens straight on its output.
+View a particular experiment with:
 
-Closing the terminal or sending SIGTERM stops the runs like Ctrl-C, then kills any still going 5 seconds later.
+```bash
+uvx labnotes experiments foo
+```
+
+Which shows metadata about the experiment along with the above fields. You can see runs with:
+
+```bash
+uvx labnotes experiments foo runs
+```
+
+You can run an experiment with:
+
+```bash
+uvx labnotes experiments foo run
+```
+
+To run an experiment needs a script and parameters defined. This should be defined in an `experiment.toml` file in the experiment folder; it can also be provided on the command line (`uvx labnotes experiments foo run --experiment-config ./foo.toml`).
+
+The TOML file defines the dynamic parameters along with the script to run:
+
+```toml
+command = "uv run python run.py --output {run_dir}"
+repeats = 5
+
+[params]
+model = ["opus", "sonnet"]
+effort = ["low", "high"]
+```
+
+The script can be any command. Each combination of parameters runs `repeats` times. Dynamic parameters will be passed as arguments to the script (`--model opus --effort low`). The script runs from the project root. Each run gets its own run folder; `{run_dir}` in the command becomes that folder's absolute path, so the script knows where to write its output.
+
+Dynamic parameters get recorded for a particular run in a run.json file in the run folder, along with when it started, when it ended, and its exit code. The script's stdout and stderr are saved alongside.
+
+Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI allows you to queue specific runs to go next, or filter by a parameter and deselect pending runs so they don't run. You can also raise or lower concurrency dynamically. You can also kill specific runs. Failed runs show in red; you can retry them or hide them.
+
+ctrl-c stops all runs and cleans up. A second ctrl-c kills them immediately.
+
+## Skill
+
+You can install the `labnotes` skill with:
+
+```bash
+npx skills add thekevinscott/labnotes
+```

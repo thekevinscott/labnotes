@@ -23,11 +23,10 @@ export default defineConfig({
           { text: 'Getting Started', link: '/getting-started' },
           {
             text: 'CLI',
-            link: '/cli/',
             items: [
-              { text: 'Viewing Experiments', link: '/cli/viewing' },
-              { text: 'Running Experiments', link: '/cli/running' },
-              { text: 'Modes', link: '/cli/modes' },
+              { text: 'Working with Experiments', link: '/cli/experiments' },
+              { text: 'Adhoc', link: '/cli/adhoc' },
+              { text: 'Grid', link: '/cli/grid' },
             ],
           },
           { text: 'Frontend', link: '/frontend' },

@@ -5,6 +5,7 @@ import click
 from labnotes.daemon.stop_runs import stop_runs
 from labnotes.load_config import load_config
 from labnotes.read_config import CONFIG_FILE
+from labnotes.run_status import run_status
 
 
 @click.group(name="run", help="Control the runs going in this project.")
@@ -24,3 +25,6 @@ def stop(ctx: click.Context) -> None:
         )
     stopping = asyncio.run(stop_runs(config.root))
     click.echo("Stopping runs." if stopping else "Nothing is running.")
+
+
+run_command.add_command(run_status)

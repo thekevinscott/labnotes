@@ -103,8 +103,8 @@ the end of the queue. `/` filters rows by params text; Enter keeps the filter,
 Escape clears it. `D` deselects every pending run the filter shows. `x` stops the
 running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
-finish. Enter on a run follows its `stdout.log`; `e` switches to
-`stderr.log` and back, and Escape returns to the table. An `adhoc` experiment that
+finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
+they're written, and Escape returns to the table. An `adhoc` experiment that
 plans a single run opens straight on its output. `q` quits. Elsewhere, or with `--no-tui`, it prints a
 line per event instead.
 
@@ -119,4 +119,4 @@ line per event instead.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 1 if any run failed.
 
-`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. A grid cell is full once it has `repeats` runs that count.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.

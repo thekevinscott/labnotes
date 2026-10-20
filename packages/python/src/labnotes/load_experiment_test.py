@@ -22,10 +22,10 @@ ROOT = Path("/p")
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch(
-            "labnotes.load_experiment.experiment_progress",
+            "labnotes.load_experiment.count_runs",
             new_callable=mock.AsyncMock,
-            return_value={"runs": 3, "filled": 2},
-        ) as experiment_progress,
+            return_value=[{"runs": 3, "completed": 2}],
+        ) as count_runs,
         mock.patch(
             "labnotes.load_experiment.experiment_notes",
             new_callable=mock.AsyncMock,
@@ -58,7 +58,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as python_blocks,
     ):
         yield {
-            "experiment_progress": experiment_progress,
+            "count_runs": count_runs,
             "experiment_notes": experiment_notes,
             "list_runs": list_runs,
             "parse_run_view": parse_run_view,
@@ -76,7 +76,7 @@ def make_tables(found: list[dict[str, object]]) -> mock.Mock:
 
 def experiment(config: dict[str, object] | None = CONFIG) -> list[dict[str, object]]:
     text = None if config is None else json.dumps(config)
-    return [{"name": "a", "display_name": "Alpha", "config": text}]
+    return [{"name": "a", "display_name": "Alpha", "config": text, "source": "toml"}]
 
 
 def test_loads_config_notes_progress_and_runs(
@@ -93,14 +93,16 @@ def test_loads_config_notes_progress_and_runs(
         "Alpha",
         4,
     )
-    assert (loaded["runs"], loaded["filled"]) == (3, 2)
+    assert (loaded["runs"], loaded["completed"]) == (3, 2)
+    assert (loaded["config_source"], loaded["counts_set"]) == ("toml", False)
     assert loaded["notes"] == [
         {"name": "PLAN.md", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
     assert loaded["run_columns"] == ["id", "x", "y"]
     assert tables.query.await_args.args[0] == (
-        "SELECT name, display_name, config FROM experiments WHERE name = 'it''s'"
+        "SELECT name, display_name, config, source FROM experiments"
+        " WHERE name = 'it''s'"
     )
     collaborators["experiment_notes"].assert_awaited_once_with(tables, ROOT, "it's")
     view = collaborators["parse_run_view"].return_value
@@ -114,9 +116,7 @@ def test_loads_config_notes_progress_and_runs(
     assert checked[2]["completed_run"] == (
         "exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)"
     )
-    assert collaborators["experiment_progress"].await_args.args[2]["completed_run"] == (
-        "checked"
-    )
+    collaborators["count_runs"].assert_awaited_once_with(tables, source, "checked")
     assert loaded["run_view"] is view
     assert loaded["sort_hrefs"] == {
         "status": "?sort=status",
@@ -125,10 +125,6 @@ def test_loads_config_notes_progress_and_runs(
         "y": "?sort=y",
     }
     assert collaborators["sort_href"].call_args_list[0].args == (view, "status")
-    progress_args = collaborators["experiment_progress"].await_args.args
-    assert progress_args[0] is tables
-    assert progress_args[1] == source
-    assert progress_args[2]["target"] == 4
 
 
 def test_shows_only_id_without_a_config(
@@ -209,3 +205,27 @@ def test_marks_notes_without_python_blocks_as_not_runnable(
     notes = cast(list[dict[str, object]], loaded["notes"])
     assert notes[0]["runnable"] is False
     collaborators["python_blocks"].assert_called_once_with("plan")
+
+
+def test_notes_a_counts_rule_set_in_the_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    config = {**CONFIG, "counts": "exit_code = 0"}
+
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(config)), ROOT, "adhoc", "a", {})
+    )
+
+    assert loaded is not None
+    assert loaded["counts_set"] is True
+
+
+def test_has_no_counts_rule_without_a_config(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(None)), ROOT, "adhoc", "a", {})
+    )
+
+    assert loaded is not None
+    assert loaded["counts_set"] is False

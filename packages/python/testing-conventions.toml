@@ -5,6 +5,12 @@ lines = [12]
 reason = "LOCK_EX and LOCK_NB are disjoint bits, so | equals + and ^"
 
 [[python.exempt]]
+path = "src/labnotes/tui/run_app.py"
+rules = ["mutation"]
+lines = [311]
+reason = "last_stream is always the same str object taken from STREAMS, so is not equals !="
+
+[[python.exempt]]
 path = "src/labnotes/runner/run_experiment.py"
 rules = ["mutation"]
 lines = [47]

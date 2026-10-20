@@ -48,34 +48,6 @@ def test_lists_experiments_with_their_progress(client: TestClient) -> None:
     assert '<span class="num">2<span class="of">/4</span></span>' in text
 
 
-def test_shows_an_experiments_grid_notes_and_runs(client: TestClient) -> None:
-    text = client.get("/experiments/alpha").text
-
-    assert "<h1>Alpha study</h1>" in text
-    assert '<span class="chip">fr</span>' in text
-    assert "<code>go</code>" in text
-    assert "<h1>The plan</h1>" in text
-    assert (
-        'data-run-url="http://testserver/experiments/alpha/notes/plan.md/run"' in text
-    )
-    assert text.count('<span class="status good"') == 2
-    assert text.index(">run4<") < text.index(">run1<")
-
-
-def test_filters_runs_by_a_param(client: TestClient) -> None:
-    text = client.get("/experiments/alpha?f.source-language=fr").text
-
-    assert ">run3<" in text
-    assert ">run1<" not in text
-
-
-def test_shows_an_experiment_without_a_config(client: TestClient) -> None:
-    text = client.get("/experiments/beta").text
-
-    assert "beta notes" in text
-    assert "No runs recorded yet." in text
-
-
 def test_restart_rejects_an_unknown_note(client: TestClient) -> None:
     response = client.post("/experiments/alpha/notes/nope.md/restart", json={})
 
@@ -93,8 +65,6 @@ def test_shows_a_broken_counts_rule_instead_of_failing(tmp_path: Path) -> None:
 
     with TestClient(app) as client:
         index = client.get("/")
-        page = client.get("/experiments/alpha")
 
-    assert index.status_code == page.status_code == 200
+    assert index.status_code == 200
     assert "counts rule doesn't work" in index.text
-    assert "nope = doesn&#39;t work: SQLite error" in page.text

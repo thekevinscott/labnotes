@@ -10,6 +10,12 @@ def read_experiment(root: Path, template: str, path: str) -> list[dict[str, obje
     found = path_pattern(f"{template}/experiment.toml").fullmatch(relative)
     if found is None:
         return []
-    with Path(path).open("rb") as file:
-        config = tomllib.load(file)
-    return [{"experiment": found["experiment"], "config": json.dumps(config)}]
+    source = Path(path).read_text(encoding="utf-8")
+    config = tomllib.loads(source)
+    return [
+        {
+            "experiment": found["experiment"],
+            "config": json.dumps(config),
+            "source": source,
+        }
+    ]

@@ -10,12 +10,16 @@ def group_runs(
     totals: Mapping[str, int],
 ) -> list[dict[str, object]]:
     groups: dict[str, list[dict[str, object]]] = {}
+    flat: set[str] = set()
     for run in runs:
-        groups.setdefault(str(run["id"]).partition("/")[0], []).append(run)
+        name, nested, _ = str(run["id"]).partition("/")
+        groups.setdefault(name, []).append(run)
+        if not nested:
+            flat.add(name)
     return [
         {
             "name": name,
-            "flat": [run["id"] for run in members] == [name],
+            "flat": name in flat,
             "started": invocation_started(name),
             "runs": members,
             "total": totals.get(name, len(members)),

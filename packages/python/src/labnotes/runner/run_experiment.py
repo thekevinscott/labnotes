@@ -46,8 +46,10 @@ async def run_experiment(
         return run in planned or run in existing
 
     cells = plan_runs(param_grid(experiment.params), experiment.repeats, finished)
-    nested = experiment.mode == "adhoc" and len(cells) > 1
-    group = new_stamped_run_id(taken) if nested else None
+    group = None
+    match experiment.mode:
+        case "adhoc" if len(cells) > 1:
+            group = new_stamped_run_id(taken)
 
     def new_id(params: dict[str, object]) -> str:
         if group is None:

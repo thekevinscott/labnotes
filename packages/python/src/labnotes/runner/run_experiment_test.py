@@ -251,6 +251,16 @@ def test_gives_a_lone_adhoc_run_its_own_stamped_folder(
     collaborators["new_param_run_id"].assert_not_called()
 
 
+def test_stamps_no_folder_when_an_adhoc_command_plans_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = []
+
+    run(tmp_path, mock.Mock(), mode="adhoc")
+
+    collaborators["new_stamped_run_id"].assert_not_called()
+
+
 def test_names_every_run_before_the_first_starts(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

@@ -1,16 +1,16 @@
 from datetime import datetime
+from itertools import chain, count
 from pathlib import Path
 
 
 def save_conflict_copy(path: Path, content: str, now: datetime) -> Path:
     stamp = f"Conflicted copy {now:%Y%m%d%H%M}"
-    n = 1
+    tags = chain([stamp], (f"{stamp} {n}" for n in count(2)))
     while True:
-        tag = stamp if n == 1 else f"{stamp} {n}"
-        copy = path.with_name(f"{path.stem} ({tag}){path.suffix}")
+        copy = path.with_name(f"{path.stem} ({next(tags)}){path.suffix}")
         try:
             with copy.open("x", encoding="utf-8") as file:
                 file.write(content)
             return copy
         except FileExistsError:
-            n += 1
+            pass

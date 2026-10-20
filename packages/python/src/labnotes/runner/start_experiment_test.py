@@ -44,6 +44,7 @@ def make_config(root: Path) -> mock.Mock:
         experiments="notes/{experiment}",
         runs="data/{experiment}/{run}",
         mode="fill",
+        concurrency=3,
     )
 
 
@@ -57,7 +58,7 @@ def test_runs_the_experiment_under_a_lock(
 
     assert start_experiment(config, "exp", None, 2, drive()) == [{"exit_code": 0}]
 
-    collaborators["read_experiment_config"].assert_called_once_with(path, "fill")
+    collaborators["read_experiment_config"].assert_called_once_with(path, "fill", 3)
     collaborators["runs_parent"].assert_called_once_with(tmp_path, config.runs, "exp")
     collaborators["hold_folder"].assert_called_once_with(tmp_path / "runs" / "exp")
     assert (tmp_path / "runs" / "exp").is_dir()
@@ -97,7 +98,7 @@ def test_reads_the_named_experiment_config(
 
     start_experiment(make_config(tmp_path), "exp", path, 1, drive())
 
-    collaborators["read_experiment_config"].assert_called_once_with(path, "fill")
+    collaborators["read_experiment_config"].assert_called_once_with(path, "fill", 3)
 
 
 def test_needs_an_experiment_config(
@@ -125,3 +126,16 @@ def test_refuses_to_run_twice(
     )
 
     collaborators["run_experiment"].assert_not_awaited()
+
+
+def test_falls_back_to_the_experiment_concurrency(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    path = tmp_path / "notes" / "exp" / "experiment.toml"
+    path.parent.mkdir(parents=True)
+    path.touch()
+    collaborators["read_experiment_config"].return_value.concurrency = 4
+
+    start_experiment(make_config(tmp_path), "exp", None, None, drive())
+
+    assert collaborators["run_experiment"].await_args.args[3] == 4

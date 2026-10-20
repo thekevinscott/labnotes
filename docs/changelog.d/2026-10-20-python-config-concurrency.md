@@ -1,0 +1,1 @@
+**Added** — `concurrency` in `experiment.toml`, or under `[experiments]` in `.labnotes.toml`, sets how many runs go at once when `--concurrency` isn't passed. `experiment.toml` wins over `.labnotes.toml`; with neither, it is 1.

@@ -149,7 +149,7 @@ def test_runs_an_experiment_from_a_named_config(
 
     assert run(["a", "run", "-e", str(path)]) == 0
 
-    assert start_experiment.call_args.args[1:4] == ("a", path, 1)
+    assert start_experiment.call_args.args[1:4] == ("a", path, None)
 
 
 def test_exits_one_when_a_run_fails(
@@ -180,12 +180,12 @@ def test_reports_an_experiment_that_cannot_run(
     assert "a is already running" in capsys.readouterr().err
 
 
-def test_help_shows_the_default_concurrency(
+def test_help_says_concurrency_falls_back_to_config(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["--help"]) == 0
 
-    assert "[default: 1;" in capsys.readouterr().out
+    assert "1 if none" in capsys.readouterr().out
 
 
 def test_needs_a_concurrency_of_at_least_one(

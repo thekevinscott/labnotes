@@ -6,7 +6,13 @@ from pathlib import Path
 from starlette.applications import Starlette
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
-from starlette.responses import HTMLResponse, JSONResponse, Response
+from starlette.responses import (
+    HTMLResponse,
+    JSONResponse,
+    PlainTextResponse,
+    Response,
+    StreamingResponse,
+)
 from starlette.routing import Mount, Route
 from starlette.staticfiles import StaticFiles
 from starlette.templating import Jinja2Templates
@@ -14,6 +20,7 @@ from starlette.templating import Jinja2Templates
 from labnotes.asset_url import asset_url
 from labnotes.drain_watch import drain_watch
 from labnotes.experiment_notes import experiment_notes
+from labnotes.file_changes import file_changes
 from labnotes.format_duration import format_duration
 from labnotes.format_value import format_value
 from labnotes.list_experiments import list_experiments
@@ -74,9 +81,7 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
             request, "experiment.html", {"experiment": loaded}
         )
 
-    async def find_note(request: Request) -> dict[str, str]:
-        if request.headers.get("content-type") != "application/json":
-            raise HTTPException(415, "Send JSON")
+    async def read_note(request: Request) -> dict[str, str]:
         name = request.path_params["name"]
         note = request.path_params["note"]
         found = await experiment_notes(
@@ -86,6 +91,21 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
             raise HTTPException(404, "No such note")
         [note] = found
         return note
+
+    async def find_note(request: Request) -> dict[str, str]:
+        if request.headers.get("content-type") != "application/json":
+            raise HTTPException(415, "Send JSON")
+        return await read_note(request)
+
+    async def get_note(request: Request) -> Response:
+        note = await read_note(request)
+        return PlainTextResponse(note["content"], media_type="text/markdown")
+
+    async def changes(request: Request) -> Response:
+        return StreamingResponse(
+            file_changes(request.app.state.tables, request.path_params["name"]),
+            media_type="text/event-stream",
+        )
 
     async def put_note(request: Request) -> Response:
         note = await find_note(request)
@@ -119,6 +139,8 @@ def create_app(config: LabnotesConfig, kernel_idle_minutes: float) -> Starlette:
         routes=[
             Route("/", index),
             Route("/experiments/{name}", experiment),
+            Route("/experiments/{name}/changes", changes),
+            Route("/experiments/{name}/notes/{note:path}", get_note),
             Route("/experiments/{name}/notes/{note:path}", put_note, methods=["PUT"]),
             Route(
                 "/experiments/{name}/notes/{note:path}/run",

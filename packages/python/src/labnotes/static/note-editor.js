@@ -12,6 +12,7 @@ import { EditorState, RangeSetBuilder } from "@codemirror/state";
 import { Decoration, EditorView, ViewPlugin, keymap } from "@codemirror/view";
 import { tags } from "@lezer/highlight";
 import { GFM, parseCode, parser } from "@lezer/markdown";
+import { DIFF_DELETE, DIFF_EQUAL, diff_match_patch } from "diff-match-patch";
 
 // Built from @lezer/markdown rather than @codemirror/lang-markdown, which
 // imports HTML, CSS and JavaScript support that notes never use.
@@ -102,9 +103,27 @@ function show(status, message) {
   status.hidden = false;
 }
 
+const dmp = new diff_match_patch();
+
+// Three-way: what changed on disk since base, applied onto the editor's text.
+const merge = (base, ours, theirs) => dmp.patch_apply(dmp.patch_make(base, theirs), ours)[0];
+
+// Minimal changes, so the cursor and undo history survive.
+function setText(view, text) {
+  const changes = [];
+  let at = 0;
+  for (const [op, chunk] of dmp.diff_main(view.state.doc.toString(), text)) {
+    if (op === DIFF_EQUAL) at += chunk.length;
+    else if (op === DIFF_DELETE) {
+      changes.push({ from: at, to: at + chunk.length });
+      at += chunk.length;
+    } else changes.push({ from: at, insert: chunk });
+  }
+  if (changes.length) view.dispatch({ changes });
+}
+
 export function edit(note, prose, status) {
   let base = JSON.parse(note.querySelector(".note-source").textContent);
-  let stale = false;
   let timer;
   let queue = Promise.resolve();
 
@@ -112,31 +131,46 @@ export function edit(note, prose, status) {
   host.className = "editor";
   prose.replaceWith(host);
 
-  const save = () =>
-    (queue = queue
-      .then(async () => {
-        clearTimeout(timer);
-        const content = view.state.doc.toString();
-        if (stale || content === base) return;
-        const response = await fetch(note.dataset.saveUrl, {
-          method: "PUT",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ base, content }),
-        });
-        if (response.status === 409) {
-          stale = true;
-          show(status, "This note changed on disk, so your edits are not saved. Copy them, then reload.");
-        } else if (response.ok) {
-          base = content;
-        } else {
-          show(status, `Not saved: ${response.status} ${response.statusText}`);
-        }
-      })
-      .catch((error) => show(status, `Not saved: ${error.message}`)));
+  const run = (task) =>
+    (queue = queue.then(task).catch((error) => show(status, `Not saved: ${error.message}`)));
+
+  const absorb = (theirs) => {
+    setText(view, merge(base, view.state.doc.toString(), theirs));
+    base = theirs;
+  };
+
+  const push = async () => {
+    clearTimeout(timer);
+    for (;;) {
+      const content = view.state.doc.toString();
+      if (content === base) return;
+      const response = await fetch(note.dataset.saveUrl, {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ base, content }),
+      });
+      if (response.status !== 409) {
+        if (response.ok) base = content;
+        else show(status, `Not saved: ${response.status} ${response.statusText}`);
+        return;
+      }
+      absorb((await response.json()).content);
+    }
+  };
+
+  const pull = async () => {
+    const response = await fetch(note.dataset.saveUrl, { cache: "no-store" });
+    if (!response.ok) return show(status, `Not synced: ${response.status} ${response.statusText}`);
+    const theirs = await response.text();
+    if (theirs === base) return;
+    absorb(theirs);
+    await push();
+  };
+
+  const save = () => run(push);
 
   const close = async () => {
     await save();
-    if (stale) return;
     document.removeEventListener("mousedown", outside);
     location.reload();
   };
@@ -166,4 +200,5 @@ export function edit(note, prose, status) {
     }),
   });
   view.focus();
+  return { pull: () => run(pull) };
 }

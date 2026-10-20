@@ -22,6 +22,8 @@ export default defineConfig({
           { text: 'Getting Started', link: '/getting-started' },
           { text: 'Philosophy', link: '/philosophy' },
           { text: 'Config', link: '/config' },
+          { text: 'TUI', link: '/tui' },
+          { text: 'Frontend', link: '/frontend' },
         ],
       },
     ],

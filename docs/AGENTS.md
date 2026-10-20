@@ -1,6 +1,6 @@
 # Docs — agent contract
 
-The site is the home page (`index.md`), `getting-started.md`, `philosophy.md` and `config.md`.
+The site is the home page (`index.md`), `getting-started.md`, `philosophy.md`, `config.md`, `tui.md` and `frontend.md`.
 Don't add pages unless asked.
 
 `internals/`, `changelog.d/`, `migrations.d/`, `migrations.md` and `AGENTS.md`

@@ -58,9 +58,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         ),
         mock.patch("labnotes.runner.run_experiment.os.killpg") as killpg,
         mock.patch(
-            "labnotes.runner.run_experiment.new_run_id",
-            side_effect=lambda taken: next(names),
-        ) as new_run_id,
+            "labnotes.runner.run_experiment.new_param_run_id",
+            side_effect=lambda params, choices, taken: next(names),
+        ) as new_param_run_id,
     ):
         yield {
             "open_tables": open_tables,
@@ -68,7 +68,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "param_grid": param_grid,
             "plan_runs": plan_runs,
             "new_stamped_run_id": new_stamped_run_id,
-            "new_run_id": new_run_id,
+            "new_param_run_id": new_param_run_id,
             "execute_run": execute_run,
             "killpg": killpg,
         }
@@ -192,8 +192,11 @@ def test_nests_adhoc_runs_in_one_folder_per_command(
     assert collaborators["new_stamped_run_id"].call_count == 1
     group_taken = collaborators["new_stamped_run_id"].call_args.args[0]
     assert (group_taken("r1"), group_taken("free")) == (True, False)
-    taken = collaborators["new_run_id"].call_args.args[0]
+    taken = collaborators["new_param_run_id"].call_args.args[2]
     assert (taken("taken"), taken("n1"), taken("free")) == (True, True, False)
+    named = [c.args[:2] for c in collaborators["new_param_run_id"].call_args_list]
+    choices = {"m": ["a", "b"]}
+    assert named == [(A, choices), (B, choices), (A, choices)]
 
 
 def test_names_every_run_before_the_first_starts(

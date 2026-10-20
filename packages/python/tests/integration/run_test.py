@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -131,3 +132,16 @@ def test_counts_runs_by_the_experiments_rule(
 
     assert len(runs(project)) == 4
     assert capsys.readouterr().out.endswith("0 passed, 0 failed.\n")
+
+
+def test_names_adhoc_runs_by_the_params_that_vary(project: Path) -> None:
+    write(
+        project / "exp" / "experiment.toml",
+        f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
+        'mode = "adhoc"\n[params]\nm = ["data/x 1", "data/y"]\nk = ["same"]\n',
+    )
+    labnotes(project, ["experiments", "exp", "run"])
+
+    names = sorted(run["folder"].name for run in runs(project))
+    assert [name[:-5] for name in names] == ["x-1", "y"]
+    assert all(re.fullmatch(r"[a-z0-9-]+-[0-9a-f]{4}", name) for name in names)

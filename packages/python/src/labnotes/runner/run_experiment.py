@@ -12,7 +12,7 @@ from labnotes.models import (
     Report,
 )
 from labnotes.runner.execute_run import execute_run
-from labnotes.runner.new_run_id import new_run_id
+from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
@@ -46,16 +46,18 @@ async def run_experiment(
 
     group = new_stamped_run_id(taken) if experiment.mode == "adhoc" else None
 
-    def new_id() -> str:
+    def new_id(params: dict[str, object]) -> str:
         if group is None:
             return new_stamped_run_id(taken)
-        return f"{group}/" + new_run_id(lambda run: taken(f"{group}/{run}"))
+        return f"{group}/" + new_param_run_id(
+            params, experiment.params, lambda run: taken(f"{group}/{run}")
+        )
 
     plan: list[Entry] = []
     for params in plan_runs(
         param_grid(experiment.params), experiment.repeats, finished
     ):
-        run = new_id()
+        run = new_id(params)
         planned.add(run)
         plan.append((run, params))
     runs = [{"run": run, "params": params} for run, params in plan]
@@ -137,7 +139,7 @@ async def run_experiment(
     def retry(run: str) -> None:
         if stopping.is_set() or run not in ended:
             return
-        again = new_id()
+        again = new_id(ended[run])
         planned.add(again)
         plan.append((again, ended[run]))
         report({"event": "retried", "run": run, "retry": again, "params": ended[run]})

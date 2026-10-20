@@ -1249,3 +1249,36 @@ def test_moves_the_cursor_with_vim_keys(keys: tuple[str, ...], row: int) -> None
             assert table.cursor_row == row
 
     asyncio.run(drive())
+
+
+def test_keeps_the_error_that_stopped_the_runs() -> None:
+    failure = ValueError("no daemon")
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        raise failure
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.is_running
+            assert app.error is failure
+            assert app.results == []
+
+    asyncio.run(drive())
+
+
+def test_has_no_error_when_the_runs_finish() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return [{"exit_code": 0}]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        assert app.error is None
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.is_running
+            assert app.error is None
+            assert app.results == [{"exit_code": 0}]
+
+    asyncio.run(drive())

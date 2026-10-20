@@ -127,6 +127,7 @@ going. Elsewhere, it prints a line per event instead.
   waits for a daemon when none is up. `--json` prints one JSON object per line.
   Following doesn't keep the daemon up.
 - A second `run` of the same experiment fails while the first is going.
-- It exits 0 even if runs fail; the summary line counts failures.
+- It exits 0 even if runs fail; the summary line counts failures. If it can't
+  start or reach the daemon, it prints the cause on one line and exits 1.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.

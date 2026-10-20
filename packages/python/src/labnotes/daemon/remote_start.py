@@ -17,6 +17,13 @@ def remote_start(
     concurrency: int | None,
 ) -> Start:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        try:
+            return await follow(report, listen)
+        except (OSError, httpx2.TransportError) as error:
+            cause = str(error) or type(error).__name__
+            raise ValueError(f"Can't reach the labnotes daemon: {cause}") from error
+
+    async def follow(report: Report, listen: Listen) -> list[dict[str, object]]:
         await ensure_daemon(config)
         sending: set[asyncio.Task[httpx2.Response]] = set()
         results: list[dict[str, object]] = []
@@ -25,7 +32,10 @@ def remote_start(
             client.stream("GET", "/events") as response,
         ):
             events = aiter(httpx2.EventSource(response))
-            connected: dict[str, object] = (await anext(events)).json()  # type: ignore[assignment]
+            first = await anext(events, None)
+            if first is None:
+                raise ValueError("Lost the labnotes daemon.")
+            connected: dict[str, object] = first.json()  # type: ignore[assignment]
             reply = await client.post(
                 f"/experiments/{name}/run",
                 json={

@@ -1,0 +1,1 @@
+**Fixed** — `labnotes experiments NAME run` failed with `OSError: AF_UNIX path too long` in a project whose path is long. The daemon's socket now lives under `$XDG_RUNTIME_DIR/labnotes/`, or `labnotes-<uid>` in the temp folder, named by a hash of the project root. `.labnotes.sock` no longer appears in the project folder.

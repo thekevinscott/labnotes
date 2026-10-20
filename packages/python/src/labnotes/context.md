@@ -113,8 +113,8 @@ going. Elsewhere, it prints a line per event instead.
   `.labnotes.toml`, then 1.
 - `-e PATH` reads another file instead of `experiment.toml`.
 - `run` hands its runs to the project's labnotes daemon, starting it if
-  needed, and shows or waits for them. The daemon listens on `.labnotes.sock`
-  in the project folder and exits once nothing is running and no client has
+  needed, and shows or waits for them. The daemon listens on a socket under
+  `$XDG_RUNTIME_DIR/labnotes/` (or a per-user temp folder) and exits once nothing is running and no client has
   been connected for 15 seconds. Runs belong to the daemon, so quitting the
   live view, closing its terminal, or killing `run` outright leaves them going.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C

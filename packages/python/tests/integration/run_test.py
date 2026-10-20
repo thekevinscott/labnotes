@@ -243,7 +243,7 @@ def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     deep = make_project(tmp_path / ("optimizing-llms-with-small-updates-" * 3))
-    assert len(str(deep / ".labnotes.sock")) > 107
+    assert len(str(deep)) > 107
 
     assert labnotes(deep, ["experiments", "exp", "run"]) == 0
 

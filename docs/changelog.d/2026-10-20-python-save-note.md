@@ -1,0 +1,1 @@
+**Added** — `labnotes server` saves a note with `PUT /experiments/<name>/notes/<note>` and a JSON body `{"base": ..., "content": ...}`. `base` is the markdown the client last loaded. If the file on disk no longer matches it, the server writes nothing and answers 409 with the current file as `{"content": ...}`.

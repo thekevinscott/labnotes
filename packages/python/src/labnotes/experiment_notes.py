@@ -17,6 +17,7 @@ async def experiment_notes(
     return [
         {
             "name": str(row["filename"]),
+            "path": str(root / str(row["path"])),
             "content": (root / str(row["path"])).read_text(encoding="utf-8"),
         }
         for row in rows

@@ -115,7 +115,9 @@ def browse() -> Iterator[dict[str, mock.MagicMock]]:
         yield {"browse_tui": browse_tui, "sys": sys}
 
 
-@pytest.mark.parametrize(("argv", "name"), [([], None), (["a"], "a")])
+@pytest.mark.parametrize(
+    ("argv", "name"), [([], None), (["a"], "a"), (["a", "runs"], "a")]
+)
 def test_browses_in_a_terminal_when_format_is_unset(
     argv: list[str],
     name: str | None,
@@ -132,19 +134,23 @@ def test_browses_in_a_terminal_when_format_is_unset(
 
 
 @pytest.mark.parametrize("output_format", ["table", "json"])
+@pytest.mark.parametrize("argv", [[], ["a"], ["a", "runs"]])
 def test_prints_in_a_terminal_when_format_is_given(
+    argv: list[str],
     output_format: str,
     collaborators: dict[str, mock.MagicMock],
     browse: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(["--format", output_format]) == 0
+    assert run([*argv, "--format", output_format]) == 0
 
     browse["browse_tui"].assert_not_called()
     collaborators["print_rows"].assert_called_once_with([{"name": "a"}], output_format)
 
 
 @pytest.mark.parametrize(("stdout", "stderr"), [(False, True), (True, False)])
+@pytest.mark.parametrize("argv", [[], ["a"], ["a", "runs"]])
 def test_prints_a_table_when_either_stream_is_not_a_terminal(
+    argv: list[str],
     stdout: bool,
     stderr: bool,
     collaborators: dict[str, mock.MagicMock],
@@ -153,17 +159,7 @@ def test_prints_a_table_when_either_stream_is_not_a_terminal(
     browse["sys"].stdout.isatty.return_value = stdout
     browse["sys"].stderr.isatty.return_value = stderr
 
-    assert run([]) == 0
-
-    browse["browse_tui"].assert_not_called()
-    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")
-
-
-def test_prints_runs_in_a_terminal(
-    collaborators: dict[str, mock.MagicMock],
-    browse: dict[str, mock.MagicMock],
-) -> None:
-    assert run(["a", "runs"]) == 0
+    assert run(argv) == 0
 
     browse["browse_tui"].assert_not_called()
     collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")

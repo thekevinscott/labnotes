@@ -2,6 +2,7 @@ import json
 import sys
 from pathlib import Path
 
+import pytest
 from curtaincall import Terminal, expect
 
 
@@ -52,8 +53,11 @@ def test_browses_from_the_list_into_an_experiment_and_back(
     term.wait()
 
 
-def test_opens_straight_on_a_named_experiment(terminal, tmp_path: Path) -> None:
-    term = labnotes(terminal, project(tmp_path), "alpha")
+@pytest.mark.parametrize("argv", ["alpha", "alpha runs"])
+def test_opens_straight_on_a_named_experiment(
+    terminal, tmp_path: Path, argv: str
+) -> None:
+    term = labnotes(terminal, project(tmp_path), argv)
     expect(term.get_by_text("2✓ 0✕")).to_be_visible()
 
     term.write("q")

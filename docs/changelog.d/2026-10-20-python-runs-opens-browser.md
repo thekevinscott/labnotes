@@ -1,0 +1,1 @@
+**Changed** — **BREAKING** in a terminal, `labnotes experiments NAME runs` opens the browser on that experiment instead of printing, the same as `labnotes experiments NAME`. `--format table` or `--format json` still prints and exits, and piped output still prints a table. See [the migration](../migrations.d/2026-10-20-python-runs-opens-browser.md).

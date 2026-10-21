@@ -67,7 +67,13 @@ def run_now(root: Path) -> list[dict[str, object]]:
             controls.finish()
 
         return await run_experiment(
-            config, "exp", experiment, concurrency, events.append, listen, 0.01
+            config,
+            "exp",
+            experiment,
+            concurrency,
+            events.append,
+            listen,
+            retry_seconds=0.01,
         )
 
     asyncio.run(go())

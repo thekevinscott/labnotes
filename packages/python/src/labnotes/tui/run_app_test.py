@@ -125,8 +125,8 @@ def test_shows_each_run_and_the_outcome(
                 ["r3", "--m c", "✗ exited 1", "0 seconds"],
             ]
             assert [row[2] for row in styles(app)] == ["", "red", "red"]
-            assert status(app) == "1 passed, 2 failed. q to quit."
-            await pilot.press("q")
+            assert status(app) == "1 passed, 2 failed. Ctrl-C to quit."
+            await pilot.press("ctrl+c")
             await pilot.pause()
             assert not app.is_running
             assert len(app.results) == 4
@@ -592,16 +592,144 @@ def test_spins_the_status_of_running_runs() -> None:
     asyncio.run(drive())
 
 
-def test_ctrl_c_interrupts_the_runs_then_finishes_once_idle(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    interrupt = mock.Mock()
+def started(*runs: str) -> list[dict[str, object]]:
+    return [
+        {"event": "started", "run": run, "params": {"m": run}, "folder": "/runs"}
+        for run in runs
+    ]
+
+
+def going(controls: mock.Mock, *runs: str) -> Any:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(controls)
+        report(planned(*runs))
+        for event in started(*runs):
+            report(event)
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    return start
+
+
+def prompt(app: RunApp) -> str:
+    widget: Any = app.screen.query_one("#prompt")
+    return str(widget.content)
+
+
+def test_ctrl_c_asks_before_leaving_runs_going() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls, "r1", "r2"), "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert prompt(app).startswith("2 runs still going.")
+            await pilot.press("enter")
+            await pilot.pause()
+            assert not app.is_running
+        assert controls.method_calls == []
+
+    asyncio.run(drive())
+
+
+def test_ctrl_c_twice_leaves_the_runs_going() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls, "r1"), "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+c", "ctrl+c")
+            await pilot.pause()
+            assert not app.is_running
+        assert controls.method_calls == []
+
+    asyncio.run(drive())
+
+
+def test_s_at_the_prompt_stops_the_runs_then_kills_them() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls, "r1"), "exp")
+        with mock.patch("labnotes.tui.run_app.GRACE_SECONDS", 0.01):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.press("ctrl+c", "s")
+                await pilot.pause()
+                assert controls.interrupt.call_count == 1
+                await asyncio.sleep(0.05)
+                await pilot.pause()
+                assert controls.interrupt.call_count == 2
+                assert app.is_running
+                assert not app.query("#prompt")
+
+    asyncio.run(drive())
+
+
+def test_escape_at_the_prompt_keeps_the_tui_open() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls, "r1"), "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+c", "escape")
+            await pilot.pause()
+            assert app.is_running
+            assert not app.screen.query("#prompt")
+            assert controls.method_calls == []
+
+    asyncio.run(drive())
+
+
+def test_table_keys_wait_while_the_prompt_is_open() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls, "r1"), "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+c", "x", "n", "j", "m")
+            await pilot.pause()
+            assert controls.method_calls == []
+            assert app.screen.query("#prompt")
+
+    asyncio.run(drive())
+
+
+def test_ctrl_c_with_nothing_running_quits_and_leaves_the_queue_going() -> None:
+    controls = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(controls)
+        report(planned("r1"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.title == "Exp"
+            await pilot.press("q")
+            await pilot.pause()
+            assert app.is_running
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert not app.is_running
+        assert controls.method_calls == []
+
+    asyncio.run(drive())
+
+
+def test_ctrl_c_finishes_once_idle() -> None:
     finished = asyncio.Event()
     reports: list[Report] = []
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         reports.append(report)
-        listen(mock.Mock(interrupt=interrupt, finish=finished.set))
+        listen(mock.Mock(finish=finished.set))
         await finished.wait()
         return []
 
@@ -609,38 +737,30 @@ def test_ctrl_c_interrupts_the_runs_then_finishes_once_idle(
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("ctrl+c")
-            await pilot.press("ctrl+c")
-            assert interrupt.call_count == 2
-            assert app.is_running
             reports[0]({"event": "idle"})
             await pilot.press("ctrl+c")
             await pilot.pause()
             assert not app.is_running
-            assert interrupt.call_count == 2
-            collaborators["stop_then_kill"].assert_called_once_with(
-                app.action_interrupt, 15
-            )
 
     asyncio.run(drive())
 
 
-def test_quitting_leaves_the_runs_going() -> None:
+def test_sigterm_stops_the_runs_then_finishes_once_idle(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
     controls = mock.Mock()
 
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(controls)
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(going(controls), "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert app.title == "exp"
-            await pilot.press("q")
-            await pilot.pause()
-            assert not app.is_running
-        assert controls.method_calls == []
+            collaborators["stop_then_kill"].assert_called_once_with(app.stop_runs, 15)
+            app.stop_runs()
+            controls.interrupt.assert_called_once_with()
+            app.show_event({"event": "idle"})
+            app.stop_runs()
+            controls.finish.assert_called_once_with()
+            assert controls.interrupt.call_count == 1
 
     asyncio.run(drive())
 
@@ -931,7 +1051,7 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
         app = RunApp(start, "exp")
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert status(app) == "1 passed, 1 failed. q to quit."
+            assert status(app) == "1 passed, 1 failed. Ctrl-C to quit."
             await pilot.press("r", "down", "r")
             retry.assert_called_once_with("r2")
             again = {"event": "retried", "run": "r2", "retry": "r3"}
@@ -948,7 +1068,7 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
                     "folder": "/runs/r3",
                 }
             )
-            await pilot.press("q")
+            await pilot.press("ctrl+c", "enter")
             await pilot.pause()
             assert not app.is_running
             controls.finish.assert_not_called()
@@ -1034,7 +1154,7 @@ def test_only_back_and_quit_work_while_following_output() -> None:
                 await pilot.press("enter")
                 actions = [binding.action for binding in RunApp.BINDINGS]  # type: ignore[union-attr]
                 live = [action for action in actions if app.check_action(action, ())]
-                assert live == ["interrupt", "leave", "quit"]
+                assert live == ["interrupt", "leave"]
                 assert app.check_action("command_palette", ())
                 await pilot.press("n", "space", "x", "plus")
                 controls.run_next.assert_not_called()
@@ -1096,7 +1216,7 @@ def test_escape_brings_back_the_summary_once_idle() -> None:
             async with app.run_test() as pilot:
                 await pilot.pause()
                 await pilot.press("enter", "escape")
-                assert status(app) == "0 passed, 1 failed. q to quit."
+                assert status(app) == "0 passed, 1 failed. Ctrl-C to quit."
 
     asyncio.run(drive())
 
@@ -1385,7 +1505,7 @@ def test_only_grab_keys_work_while_grabbed() -> None:
             await pilot.press("j", "m")
             actions = [binding.action for binding in RunApp.BINDINGS]  # type: ignore[union-attr]
             live = [action for action in actions if app.check_action(action, ())]
-            assert live == ["interrupt", "grab", "drop", "put_back", "quit"]
+            assert live == ["interrupt", "grab", "drop", "put_back"]
             assert app.check_action("shift", (1,))
             assert app.check_action("command_palette", ())
             await pilot.press("n", "space", "x", "plus", "slash")

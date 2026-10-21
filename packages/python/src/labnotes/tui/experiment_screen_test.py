@@ -81,13 +81,13 @@ def test_shows_a_table_between_the_header_and_footer(
     collaborators["runs_table"].assert_called_once_with(id="runs", cursor_type="row")
 
 
-def test_binds_space_and_escape() -> None:
+def test_binds_enter_and_escape() -> None:
     assert [
-        (binding.key, binding.action, binding.description)  # type: ignore[union-attr]
+        (binding.key, binding.action, binding.description, binding.priority)  # type: ignore[union-attr]
         for binding in ExperimentScreen.BINDINGS
     ] == [
-        ("space", "open_invocation", "Open invocation"),
-        ("escape", "app.pop_screen", "Back"),
+        ("enter", "toggle_invocation", "Expand", True),
+        ("escape", "app.pop_screen", "Back", False),
     ]
 
 
@@ -128,36 +128,36 @@ def test_rejects_an_unknown_experiment(
         asyncio.run(screen.load())
 
 
-def test_space_opens_and_closes_an_invocation(
+def test_enter_opens_and_closes_an_invocation(
     screen: ExperimentScreen, table: mock.MagicMock
 ) -> None:
     asyncio.run(screen.load())
     table.reset_mock()
 
-    screen.action_open_invocation()
+    screen.action_toggle_invocation()
 
     assert added(table) == [("inv", "inv"), ("inv", "inv"), ("lone", "lone")]
 
     table.reset_mock()
-    screen.action_open_invocation()
+    screen.action_toggle_invocation()
 
     assert added(table) == [("inv", "inv"), ("lone", "lone")]
 
 
-def test_space_leaves_a_lone_run_alone(
+def test_enter_leaves_a_lone_run_alone(
     screen: ExperimentScreen, table: mock.MagicMock
 ) -> None:
     asyncio.run(screen.load())
     table.reset_mock()
     table.coordinate_to_cell_key.return_value.row_key.value = "lone"
 
-    screen.action_open_invocation()
+    screen.action_toggle_invocation()
 
     table.add_row.assert_not_called()
     assert screen.opened == set()
 
 
-def test_space_ignores_runs_that_are_not_grouped(
+def test_enter_ignores_runs_that_are_not_grouped(
     screen: ExperimentScreen,
     table: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
@@ -166,17 +166,17 @@ def test_space_ignores_runs_that_are_not_grouped(
     asyncio.run(screen.load())
     table.reset_mock()
 
-    screen.action_open_invocation()
+    screen.action_toggle_invocation()
 
     table.add_row.assert_not_called()
 
 
-def test_space_does_nothing_without_rows(
+def test_enter_does_nothing_without_rows(
     screen: ExperimentScreen, table: mock.MagicMock
 ) -> None:
     table.row_count = 0
 
-    screen.action_open_invocation()
+    screen.action_toggle_invocation()
 
     table.coordinate_to_cell_key.assert_not_called()
 

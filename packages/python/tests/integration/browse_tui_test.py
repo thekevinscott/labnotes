@@ -42,7 +42,7 @@ def test_browses_from_the_list_into_an_experiment_and_back(
     expect(term.get_by_text("20261017-000000")).to_be_visible()
     expect(term.get_by_text("2✓ 0✕")).to_be_visible()
 
-    term.write(" ")
+    term.key_enter()
     expect(term.get_by_text("second")).to_be_visible()
 
     term.key_escape()

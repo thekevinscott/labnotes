@@ -20,7 +20,7 @@ def test_loads_one_run_with_its_experiments_name() -> None:
     assert run == {"id": "g1/r1", "display_name": "Alpha", "params": {"model": "opus"}}
     assert tables.query.await_args.args[0] == (
         "SELECT runs.experiment, experiments.display_name, runs.id, runs.folder,"
-        " runs.created, runs.ended, runs.exit_code, runs.params"
+        " runs.created, runs.ended, runs.exit_code, runs.error, runs.params"
         " FROM runs JOIN experiments ON experiments.name = runs.experiment"
         " WHERE runs.experiment = 'it''s' AND runs.id = 'g1/r''1'"
     )

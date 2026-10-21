@@ -5,7 +5,7 @@
 <section class="intro">
   <h1 class="mono">{{ run.id }}</h1>
   <p class="config-summary">
-    {% if run.ended is none %}<span class="chip run-state">running</span>{% elif run.exit_code is none %}<span class="chip run-state bad">ended</span>{% else %}<span class="chip run-state {{ 'good' if run.exit_code == 0 else 'bad' }}">exit {{ run.exit_code }}</span>{% endif %}
+    {% if run.ended is none %}<span class="chip run-state">running</span>{% elif run.error %}<span class="chip run-state bad">{{ run.error }}</span>{% elif run.exit_code is none %}<span class="chip run-state bad">ended</span>{% else %}<span class="chip run-state {{ 'good' if run.exit_code == 0 else 'bad' }}">exit {{ run.exit_code }}</span>{% endif %}
     {% if run.created %}<span class="setting">started <code>{{ run.created }}</code></span>{% endif %}
     {% for key, value in run.params.items() %}<span class="setting">{{ key }} <code>{{ value | value }}</code></span>{% endfor %}
   </p>

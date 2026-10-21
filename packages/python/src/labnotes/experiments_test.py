@@ -206,7 +206,7 @@ def test_runs_an_experiment_through_the_daemon(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3
+        collaborators["load_config"].return_value, "a", None, 3, None
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["remote_start"].return_value
@@ -312,7 +312,7 @@ def test_shows_the_live_view_in_a_terminal(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3
+        collaborators["load_config"].return_value, "a", None, 3, None
     )
     drivers["run_tui"].assert_called_once_with(
         drivers["remote_start"].return_value, "a"
@@ -352,3 +352,39 @@ def test_reports_an_experiment_that_cannot_be_created(
         assert run(["new", "study"]) == 1
 
     assert "study already exists" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(("given", "seconds"), [("90", 90), ("10m", 600), ("1.5", 1.5)])
+def test_sends_the_timeout_in_seconds(
+    given: str,
+    seconds: float,
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--timeout", given]) == 0
+
+    assert drivers["remote_start"].call_args.args[4] == seconds
+
+
+@pytest.mark.parametrize("given", ["soon", "0", "-5m"])
+def test_needs_a_timeout_over_zero(
+    given: str,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--timeout", given]) == 2
+
+    assert "use a duration over 0" in capsys.readouterr().err
+    drivers["remote_start"].assert_not_called()
+
+
+def test_help_says_runs_have_no_timeout_by_default(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["--help"]) == 0
+
+    out = " ".join(capsys.readouterr().out.split())
+    assert "--timeout DURATION" in out
+    assert "stop any run still going after this long, like 90, 30s, 10m or 1h30m" in out
+    assert "Unset, runs have no time limit." in out

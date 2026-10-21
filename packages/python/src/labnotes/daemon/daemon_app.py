@@ -102,6 +102,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                     concurrency,
                     lambda event: record({**event, "experiment": name}),
                     listen,
+                    body.get("timeout"),  # type: ignore[arg-type]
                 )
             # Clients hear why the session ended; the daemon keeps serving.
             except Exception as failure:  # noqa: BLE001

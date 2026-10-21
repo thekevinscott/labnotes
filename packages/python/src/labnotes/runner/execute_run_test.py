@@ -43,7 +43,11 @@ TREE: set[object] = {"orphan"}
 
 
 def run(
-    tmp_path: Path, running: set[object] | None = None, stopping: bool = False
+    tmp_path: Path,
+    running: set[object] | None = None,
+    stopping: bool = False,
+    timeout: float | None = None,
+    stop: mock.Mock | None = None,
 ) -> dict[str, object]:
     async def go() -> dict[str, object]:
         event = asyncio.Event()
@@ -57,6 +61,8 @@ def run(
             set() if running is None else running,  # type: ignore[arg-type]
             event,
             TREE,  # type: ignore[arg-type]
+            timeout=timeout,
+            stop=mock.Mock() if stop is None else stop,
         )
 
     return asyncio.run(go())
@@ -189,3 +195,97 @@ def test_keeps_color_settings_the_user_chose(
     env = collaborators["spawn"].await_args.kwargs["env"]
     assert env["FORCE_COLOR"] == "0"
     assert env["CLICOLOR_FORCE"] == "0"
+
+
+def exits_after(process: mock.Mock, stop: mock.Mock, calls: int) -> None:
+    exited = asyncio.Event()
+
+    def stopped() -> None:
+        if stop.call_count == calls:
+            exited.set()
+
+    async def wait() -> int:
+        await exited.wait()
+        return -15
+
+    stop.side_effect = stopped
+    process.wait = wait
+
+
+def test_stops_a_run_that_outlasts_its_timeout(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    stop = mock.Mock()
+    exits_after(collaborators["process"], stop, 1)
+
+    result = run(tmp_path, timeout=0.01, stop=stop)
+
+    stop.assert_called_once_with()
+    assert (result["exit_code"], result["error"]) == (-15, "timed out after 0s")
+    collaborators["wait_for_tree"].assert_awaited_once_with(TREE)
+
+
+def test_kills_a_timed_out_run_after_the_grace(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    stop = mock.Mock()
+    exits_after(collaborators["process"], stop, 2)
+
+    with mock.patch("labnotes.runner.execute_run.GRACE_SECONDS", 0.01):
+        result = run(tmp_path, timeout=0.01, stop=stop)
+
+    assert stop.call_count == 2
+    assert result["error"] == "timed out after 0s"
+
+
+def test_cancels_the_kill_once_a_timed_out_run_ends(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    stop = mock.Mock()
+    exits_after(collaborators["process"], stop, 1)
+
+    async def go() -> None:
+        with mock.patch("labnotes.runner.execute_run.GRACE_SECONDS", 0.05):
+            await execute_run(
+                tmp_path / "root",
+                tmp_path,
+                "uv run x.py",
+                PARAMS,
+                set(),
+                asyncio.Event(),
+                TREE,  # type: ignore[arg-type]
+                timeout=0.01,
+                stop=stop,
+            )
+            await asyncio.sleep(0.1)
+
+    asyncio.run(go())
+
+    stop.assert_called_once_with()
+
+
+def test_names_the_timeout_in_the_error(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    stop = mock.Mock()
+    exits_after(collaborators["process"], stop, 1)
+
+    with mock.patch(
+        "labnotes.runner.execute_run.asyncio.wait",
+        new=mock.AsyncMock(return_value=(set(), set())),
+    ):
+        result = run(tmp_path, timeout=1800, stop=stop)
+
+    assert result["error"] == "timed out after 30m 00s"
+
+
+def test_leaves_a_run_inside_its_timeout_alone(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    stop = mock.Mock()
+
+    result = run(tmp_path, timeout=60, stop=stop)
+
+    stop.assert_not_called()
+    collaborators["wait_for_tree"].assert_not_awaited()
+    assert (result["exit_code"], result["error"]) == (3, None)

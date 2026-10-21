@@ -32,6 +32,7 @@ async def run_experiment(
     concurrency: int,
     report: Report,
     listen: Listen,
+    timeout: float | None = None,
 ) -> list[dict[str, object]]:
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
@@ -203,6 +204,8 @@ async def run_experiment(
             running[run],
             stopping,
             trees[run],
+            timeout=timeout,
+            stop=lambda: kill(run),
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})

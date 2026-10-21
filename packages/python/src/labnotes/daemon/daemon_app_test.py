@@ -32,6 +32,7 @@ class Session:
         concurrency: int,
         report: Callable[[dict[str, object]], None],
         listen: Callable[[object], None],
+        timeout: float | None,
     ) -> list[object]:
         self.report = report
         self.end = asyncio.Event()
@@ -116,7 +117,9 @@ def test_starts_a_session_and_streams_its_events(
         app = daemon_app(CONFIG)
         stream = await connect(app)
 
-        response = await start(app, experiment_config="/x.toml", concurrency=2)
+        response = await start(
+            app, experiment_config="/x.toml", concurrency=2, timeout=90
+        )
 
         assert response.status_code == 202
         collaborators["prepare_experiment"].assert_awaited_once_with(
@@ -124,6 +127,7 @@ def test_starts_a_session_and_streams_its_events(
         )
         args = collaborators["run_experiment"].call_args.args
         assert args[:4] == (CONFIG, "exp", EXPERIMENT, 3)
+        assert args[6] == 90
         assert await next_event(stream) == {
             "event": "planned",
             "folder": "/runs/r1",
@@ -152,6 +156,7 @@ def test_reads_the_default_experiment_config(
         collaborators["prepare_experiment"].assert_awaited_once_with(
             CONFIG, "exp", None, None
         )
+        assert collaborators["run_experiment"].call_args.args[6] is None
 
     asyncio.run(go())
 

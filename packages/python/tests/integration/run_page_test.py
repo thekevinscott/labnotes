@@ -133,3 +133,23 @@ def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha/runs/run1", check)
+
+
+def test_shows_why_a_run_failed(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    run(
+        tmp_path,
+        "run1",
+        {},
+        exit_code=-15,
+        error="timed out after 30s",
+        ended="2026-10-17T00:00:09Z",
+    )
+
+    async def check(page: Page) -> None:
+        await page.get_by_role("link", name="run1").click()
+        await expect(page.locator(".run-state")).to_have_text("timed out after 30s")
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)

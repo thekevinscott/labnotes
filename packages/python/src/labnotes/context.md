@@ -117,6 +117,10 @@ going. Elsewhere, it prints a line per event instead.
   in `experiment.toml` sets it, then `concurrency` under `[experiments]` in
   `.labnotes.toml`, then 1.
 - `-e PATH` reads another file instead of `experiment.toml`.
+- `--timeout DURATION` stops any one run still going after that long (`90`,
+  `30s`, `10m`, `1h30m`): SIGTERM, then SIGKILL 5 seconds later. Its
+  `run.json` gets `"error": "timed out after ..."` next to its exit code.
+  Unset, runs have no time limit.
 - `run` hands its runs to the project's labnotes daemon, starting it if
   needed, and shows or waits for them. The daemon listens on a socket in
   `/tmp/labnotes-<uid>/` and exits once nothing is running and no client has

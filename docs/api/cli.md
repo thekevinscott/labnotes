@@ -49,7 +49,7 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 | `-e, --experiment-config FILE` | With `run`: read this file instead of the experiment's `experiment.toml`. |
 | `--timeout SECONDS` | With `run`: stop any one run still going after this many seconds, the same way as [`run stop`](#run-stop). Takes a whole number over 0, like `600`. No default: unset, runs have no time limit. |
 
-`run` exits after printing `N passed, M failed.`
+`run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75 is retried on its own; see [`retries`](config#retries-1).
 
 A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
@@ -68,7 +68,7 @@ Shows what each experiment is running and the latest line each running run logge
 | Option | Description |
 | --- | --- |
 | `-f, --follow` | Keep reporting until interrupted. |
-| `--json` | One JSON event per line. |
+| `--json` | One JSON event per line. Retries show as `retrying` (with `attempt`, `retries` and `seconds`), `retried`, `gave up` and `retry cancelled`. |
 
 ### `run stop`
 
@@ -91,8 +91,8 @@ Sends one control to an experiment's runs, the same as a [TUI](tui) key.
 | `run_next` | run | Runs this pending run next. |
 | `toggle` | run | Deselects a pending run, or puts it back. |
 | `move` | run, place | Moves a pending run to that place in the queue, counted from 0. |
-| `kill` | run | Stops a running run. A second `kill` kills it. |
-| `retry` | run | Runs a failed run again under a new id. |
+| `kill` | run | Stops a running run. A second `kill` kills it. On a run waiting to retry, cancels the retry. |
+| `retry` | run | Runs a failed run again under a new id, with `retry_of` in its `run.json`. On a run waiting to retry, starts the retry now. |
 | `set_concurrency` | number | Sets how many run at once. |
 | `finish` | | Lets running runs finish and starts no more. |
 | `interrupt` | | Stops every running run. |

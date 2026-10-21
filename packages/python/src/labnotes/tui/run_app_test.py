@@ -1640,3 +1640,111 @@ def test_shows_log_blocks_above_the_output(tmp_path: Path) -> None:
                 assert list(blocks.children) == []
 
     asyncio.run(drive())
+
+
+def test_shows_tempfail_retries_counting_down_then_their_outcome(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        listen(mock.Mock())
+        report(planned("r1", "r3"))
+        for run in ("r1", "r3"):
+            report(
+                {"event": "started", "run": run, "params": {"m": run}, "folder": "/"}
+            )
+            report({"event": "ended", "run": run, "exit_code": 75, "error": None})
+            report({"event": "retrying", "run": run, "seconds": 30.0})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert [row[2] for row in rows(app)] == [
+                "✗ exited 75, retry in 30 seconds"
+            ] * 2
+            assert [row[2] for row in styles(app)] == ["yellow"] * 2
+            assert status(app) == "said retrying"
+            collaborators["time"].monotonic.return_value = 25.0
+            app.tick()
+            assert rows(app)[0][2] == "✗ exited 75, retry in 15 seconds"
+            collaborators["time"].monotonic.return_value = 50.0
+            app.tick()
+            assert rows(app)[0][2] == "✗ exited 75, retry in 0 seconds"
+            report = reports[0]
+            report(
+                {"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}}
+            )
+            report({"event": "retry cancelled", "run": "r3"})
+            report(
+                {"event": "started", "run": "r2", "params": {"m": "a"}, "folder": "/"}
+            )
+            report({"event": "ended", "run": "r2", "exit_code": 75, "error": None})
+            report({"event": "gave up", "run": "r2", "retries": 2})
+            assert status(app) == "said gave up"
+            app.tick()
+            assert [row[2] for row in rows(app)] == [
+                "✗ exited 75, retried",
+                "✗ exited 75",
+                "✗ gave up (exit 75)",
+            ]
+            assert [row[2] for row in styles(app)] == ["red"] * 3
+            report({"event": "idle"})
+            assert status(app) == "0 passed, 2 failed. 1 retried. Ctrl-C to quit."
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())
+
+
+def test_a_manual_retry_keeps_the_runs_status() -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        listen(mock.Mock())
+        report(planned("r1", "r2"))
+        for run, code in (("r1", 1), ("r2", 0)):
+            report(
+                {"event": "started", "run": run, "params": {"m": run}, "folder": "/"}
+            )
+            report({"event": "ended", "run": run, "exit_code": code, "error": None})
+        report({"event": "retried", "run": "r1", "retry": "r3", "params": {"m": "a"}})
+        report({"event": "started", "run": "r3", "params": {"m": "a"}, "folder": "/"})
+        report({"event": "ended", "run": "r3", "exit_code": 0, "error": None})
+        report({"event": "idle"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert [row[2] for row in rows(app)] == ["✗ exited 1", "✓", "✓"]
+            assert status(app) == "2 passed, 0 failed. 1 retried. Ctrl-C to quit."
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())
+
+
+def test_a_retried_run_that_passed_counts_as_retried_not_failed() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock())
+        report(planned("r1"))
+        report({"event": "started", "run": "r1", "params": {"m": "a"}, "folder": "/"})
+        report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        report({"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}})
+        report({"event": "started", "run": "r2", "params": {"m": "a"}, "folder": "/"})
+        report({"event": "ended", "run": "r2", "exit_code": 0, "error": None})
+        report({"event": "idle"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert status(app) == "1 passed, 0 failed. 1 retried. Ctrl-C to quit."
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())

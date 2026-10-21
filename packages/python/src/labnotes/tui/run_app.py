@@ -9,6 +9,7 @@ from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from labnotes.models import Controls, Start
+from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.runner.param_args import param_args
@@ -75,6 +76,8 @@ class RunApp(App[None]):
         self.cells: dict[str, list[object]] = {}
         self.filter = ""
         self.failed: set[str] = set()
+        self.retried: set[str] = set()
+        self.waiting: dict[str, float] = {}
         self.hiding = False
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
@@ -178,7 +181,24 @@ class RunApp(App[None]):
                 self.set_cell(run, "status", dim(PENDING))
                 self.reorder(event, table.cursor_row)
                 self.show(describe_event(event))
+            case "retrying":
+                self.waiting[run] = time.monotonic() + float(event["seconds"])  # type: ignore[arg-type]
+                self.tick()
+                self.show(describe_event(event))
+            case "gave up":
+                gave_up = f"{FAILED} gave up (exit {RETRY_EXIT_CODE})"
+                self.set_cell(run, "status", Text(gave_up, style="red"))
+                self.show(describe_event(event))
+            case "retry cancelled":
+                del self.waiting[run]
+                outcome = f"{FAILED} exited {RETRY_EXIT_CODE}"
+                self.set_cell(run, "status", Text(outcome, style="red"))
+                self.show(describe_event(event))
             case "retried":
+                if self.waiting.pop(run, None) is not None:
+                    outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retried"
+                    self.set_cell(run, "status", Text(outcome, style="red"))
+                self.retried.add(run)
                 again = str(event["retry"])
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 self.cells[again] = [
@@ -200,9 +220,11 @@ class RunApp(App[None]):
                 self.show(describe_event(event))
 
     def show_summary(self) -> None:
-        failed = len(self.failed)
-        passed = len(self.ended) - failed
-        self.show(f"{passed} passed, {failed} failed. Ctrl-C to quit.")
+        retried = len(self.retried)
+        failed = len(self.failed - self.retried)
+        passed = len(self.ended) - failed - retried
+        again = f" {retried} retried." if retried else ""
+        self.show(f"{passed} passed, {failed} failed.{again} Ctrl-C to quit.")
 
     def reposition(self, event: dict[str, object], run: str) -> None:
         table = self.query_one(DataTable)
@@ -246,8 +268,13 @@ class RunApp(App[None]):
         self.query_one("#concurrency", Static).update(f"{self.concurrency} at a time")
 
     def tick(self) -> None:
+        now = time.monotonic()
         for run, began in self.started.items():
-            self.set_cell(run, "time", format_elapsed(time.monotonic() - began))
+            self.set_cell(run, "time", format_elapsed(now - began))
+        for run, due in self.waiting.items():
+            wait = format_elapsed(max(0, due - now))
+            outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retry in {wait}"
+            self.set_cell(run, "status", Text(outcome, style="yellow"))
 
     def spin(self) -> None:
         self.frame = (self.frame + 1) % len(SPINNER)

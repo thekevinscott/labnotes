@@ -1,4 +1,6 @@
+from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.param_args import param_args
+from labnotes.tui.format_elapsed import format_elapsed
 
 
 def describe_event(event: dict[str, object]) -> str:
@@ -28,6 +30,15 @@ def describe_event(event: dict[str, object]) -> str:
             return f"Killing {event['run']}."
         case "retried":
             return f"{event['run']} retried as {event['retry']}."
+        case "retrying":
+            wait = format_elapsed(event["seconds"])  # type: ignore[arg-type]
+            attempt = f"{event['attempt']} of {event['retries']}"
+            return f"{event['run']} retries in {wait} (retry {attempt})."
+        case "gave up":
+            tried = f"after {event['retries']} retries"
+            return f"{event['run']} gave up (exit {RETRY_EXIT_CODE}) {tried}."
+        case "retry cancelled":
+            return f"{event['run']} won't retry."
         case "idle":
             return "No runs left."
         case "concurrency":

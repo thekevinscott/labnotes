@@ -32,6 +32,21 @@ def param_args() -> Iterator[mock.MagicMock]:
             "r3 moved to 1 of 2 in the queue.",
         ),
         ({"event": "retried", "run": "r1", "retry": "r2"}, "r1 retried as r2."),
+        (
+            {
+                "event": "retrying",
+                "run": "r1",
+                "attempt": 2,
+                "retries": 3,
+                "seconds": 60.0,
+            },
+            "r1 retries in 1m 00s (retry 2 of 3).",
+        ),
+        (
+            {"event": "gave up", "run": "r1", "retries": 2},
+            "r1 gave up (exit 75) after 2 retries.",
+        ),
+        ({"event": "retry cancelled", "run": "r1"}, "r1 won't retry."),
         ({"event": "idle"}, "No runs left."),
         ({"event": "stopping run", "run": "r1"}, "Stopping r1."),
         ({"event": "killing run", "run": "r1"}, "Killing r1."),

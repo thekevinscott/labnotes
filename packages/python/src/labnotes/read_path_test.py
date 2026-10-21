@@ -25,7 +25,9 @@ def test_reads_a_path(table: str, template: str) -> None:
     assert read_path(CONFIG, table, {"path": template}) == template
 
 
-@pytest.mark.parametrize("section", [{"mode": "matrix"}, {"concurrency": 2}])
+@pytest.mark.parametrize(
+    "section", [{"mode": "matrix"}, {"concurrency": 2}, {"retries": 0}]
+)
 def test_lets_settings_through_in_experiments(section: dict[str, object]) -> None:
     assert read_path(CONFIG, "experiments", section) == "{experiment}"
 

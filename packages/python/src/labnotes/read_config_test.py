@@ -93,6 +93,28 @@ def test_rejects_a_bad_concurrency(tmp_path: Path, read_path: mock.MagicMock) ->
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "retries"),
+    [("", 2), ("[experiments]\nretries = 0\n", 0), ("[experiments]\nretries = 5\n", 5)],
+)
+def test_reads_the_project_retries(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, retries: int
+) -> None:
+    assert read_config(write(tmp_path, text)).retries == retries
+
+
+@pytest.mark.parametrize("value", ["-1", '"2"'])
+def test_rejects_bad_retries(
+    tmp_path: Path, read_path: mock.MagicMock, value: str
+) -> None:
+    path = write(tmp_path, f"[experiments]\nretries = {value}\n")
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == f"{path}: [experiments] retries must be 0 or more"
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 
@@ -137,10 +159,15 @@ def test_reads_the_experiment_defaults(
     tmp_path: Path, read_path: mock.MagicMock
 ) -> None:
     path = write(
-        tmp_path, '[experiment]\ncommand = "go"\n[experiment.params]\nm = [1]\n'
+        tmp_path,
+        '[experiment]\ncommand = "go"\nretries = 3\n[experiment.params]\nm = [1]\n',
     )
 
-    assert read_config(path).defaults == {"command": "go", "params": {"m": [1]}}
+    assert read_config(path).defaults == {
+        "command": "go",
+        "retries": 3,
+        "params": {"m": [1]},
+    }
 
 
 def test_has_no_defaults_without_an_experiment_table(

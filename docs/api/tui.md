@@ -10,6 +10,9 @@
 | spinner | Running |
 | `✓` | Passed |
 | `✗`, red | Failed, with the exit code or error |
+| `✗ exited 75, retry in 30s`, yellow | Exited 75; retries when the countdown ends |
+| `✗ exited 75, retried`, red | Exited 75 and was retried in a new row |
+| `✗ gave up (exit 75)`, red | Exited 75 with no retries left |
 | `–` | Skipped |
 | `⊘` | Deselected |
 
@@ -26,10 +29,10 @@ The header shows the experiment's name and how many runs go at once.
 | Space | Deselect a pending run so it won't run. Press again to put it back at the end of the queue. |
 | `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
 | `D` | Deselect every pending run the filter shows. |
-| `x` | Stop the running run under the cursor. Press again to kill it. |
+| `x` | Stop the running run under the cursor. Press again to kill it. On a run waiting to retry, cancel the retry. |
 | `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
 | `f` | Hide or show failed runs. |
-| `r` | Run a failed run again under a new id. |
+| `r` | Run a failed run again under a new id. On a run waiting to retry, retry it now. |
 | Enter | Open the run's output. |
 | Ctrl-p | Open the command palette. |
 | Ctrl-C | Quit. With runs going, it asks first. |

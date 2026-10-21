@@ -57,6 +57,8 @@ Dynamic parameters get recorded for a particular run in a run.json file in the r
 
 Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI allows you to queue specific runs to go next, or filter by a parameter and deselect pending runs so they don't run. You can also raise or lower concurrency dynamically. You can also kill specific runs. Failed runs show in red; you can retry them or hide them.
 
+A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (2 by default). Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone. See [`retries`](../api/config#retries-1).
+
 ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) leaves them running, `s` stops them, and esc goes back.
 
 `--timeout 1800` stops any run still going after 1800 seconds (30 minutes), with SIGTERM and then SIGKILL 5 seconds later. Each run gets its own 30 minutes. Its `run.json` records `"error": "timed out after 30m 00s"`, so a timeout reads differently from a crash.

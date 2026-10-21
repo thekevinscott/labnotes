@@ -26,4 +26,6 @@ my-experiment
 
 When nothing varies but `repeats` is more than 1, the nested runs get haiku names instead, like `quiet-river`.
 
+A run that exits 75 is [retried](../api/config#retries-1) in a new run folder: inside the same invocation folder when there is one, or a new stamped folder for a lone run.
+
 The frontend groups an `adhoc` experiment's runs by the invocation that made them. When an invocation plans a single run, the CLI opens straight on its output.

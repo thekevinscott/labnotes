@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.modes import DEFAULT_MODE
+from labnotes.retries import DEFAULT_RETRIES
 
 Report = Callable[[dict[str, object]], None]
 
@@ -47,6 +48,7 @@ class LabnotesConfig:
     runs: str
     mode: str = DEFAULT_MODE
     concurrency: int = 1
+    retries: int = DEFAULT_RETRIES
     # Set when the config's folder is itself the one experiment.
     experiment: str | None = None
     # [experiment] in .labnotes.toml, under each experiment.toml.
@@ -62,3 +64,4 @@ class ExperimentConfig:
     counts: str = DEFAULT_COUNTS
     mode: str = DEFAULT_MODE
     concurrency: int = 1
+    retries: int = DEFAULT_RETRIES

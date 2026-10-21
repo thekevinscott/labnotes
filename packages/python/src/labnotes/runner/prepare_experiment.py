@@ -26,6 +26,7 @@ async def prepare_experiment(
         source or "",
         config.mode,
         config.concurrency,
+        config.retries,
         config.defaults,
     )
     return experiment, experiment.concurrency if concurrency is None else concurrency

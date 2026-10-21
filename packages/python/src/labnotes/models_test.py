@@ -2,7 +2,7 @@ import typing
 from collections.abc import Callable
 from pathlib import Path
 
-from labnotes.models import Controls, LabnotesConfig, RunView
+from labnotes.models import Controls, ExperimentConfig, LabnotesConfig, RunView
 
 
 def test_a_run_view_starts_unsorted_and_unfiltered() -> None:
@@ -36,3 +36,10 @@ def test_configs_do_not_share_their_defaults() -> None:
     config.defaults["command"] = "go"
 
     assert LabnotesConfig(Path("/p"), Path("/p"), "e", "f", "r").defaults == {}
+
+
+def test_configs_default_to_the_default_retries() -> None:
+    project = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
+    experiment = ExperimentConfig("run", 1, {})
+
+    assert (project.retries, experiment.retries) == (2, 2)

@@ -245,6 +245,23 @@ def test_exits_zero_when_a_run_fails(
     assert capsys.readouterr().out == "1 passed, 2 failed.\n"
 
 
+def test_counts_a_retried_run_once(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["run_headless"].return_value = [
+        {"run": "r1", "exit_code": 75},
+        {"run": "r2", "exit_code": 1},
+        {"run": "r3", "exit_code": 0, "retry_of": "r1"},
+        {"run": "r4", "exit_code": 0},
+    ]
+
+    assert run(["a", "run"]) == 0
+
+    assert capsys.readouterr().out == "2 passed, 1 failed. 1 retried.\n"
+
+
 @pytest.mark.parametrize("terminal", [True, False])
 def test_reports_an_experiment_that_cannot_run(
     capsys: pytest.CaptureFixture[str],

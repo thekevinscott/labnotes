@@ -79,8 +79,15 @@ def experiments(
                     results = run_headless(start)
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
-            failed = sum(result["exit_code"] != 0 for result in results)
-            click.echo(f"{len(results) - failed} passed, {failed} failed.")
+            superseded = {r["retry_of"] for r in results if "retry_of" in r}
+            retried = sum(result.get("run") in superseded for result in results)
+            failed = sum(
+                result["exit_code"] != 0 and result.get("run") not in superseded
+                for result in results
+            )
+            again = f" {retried} retried." if retried else ""
+            passed = len(results) - failed - retried
+            click.echo(f"{passed} passed, {failed} failed.{again}")
             return
     if action not in (None, "runs"):
         raise click.UsageError(f"Unknown action {action}. Use runs or run.")

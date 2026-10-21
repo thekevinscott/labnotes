@@ -48,6 +48,7 @@ def run(
     stopping: bool = False,
     timeout: float | None = None,
     stop: mock.Mock | None = None,
+    **retry_of: str,
 ) -> dict[str, object]:
     async def go() -> dict[str, object]:
         event = asyncio.Event()
@@ -63,6 +64,7 @@ def run(
             TREE,  # type: ignore[arg-type]
             timeout=timeout,
             stop=mock.Mock() if stop is None else stop,
+            **retry_of,
         )
 
     return asyncio.run(go())
@@ -105,6 +107,20 @@ def test_records_the_run_before_and_after(
     assert snapshots == [started, {**started, "ended": "end", "exit_code": 3}]
     assert result == snapshots[-1]
     assert collaborators["write_run_json"].call_args.args[0] == tmp_path
+
+
+def test_records_which_run_a_retry_retries(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    snapshots: list[dict[str, object]] = []
+    collaborators["write_run_json"].side_effect = lambda _, run: snapshots.append(
+        dict(run)
+    )
+
+    result = run(tmp_path, retry_of="r1")
+
+    assert [snapshot["retry_of"] for snapshot in snapshots] == ["r1", "r1"]
+    assert result["retry_of"] == "r1"
 
 
 def test_tracks_the_process_while_it_runs(

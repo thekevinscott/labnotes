@@ -1,0 +1,1 @@
+**Fixed** — the browsing TUI (`labnotes experiments`) now says "Live updates stopped" in its header, with the reason, when the file watch fails. Before, the screen went quiet and kept showing stale data.

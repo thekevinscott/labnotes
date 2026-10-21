@@ -16,6 +16,7 @@ from labnotes.tui.invocation_rows import invocation_rows
 from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.run_screen import RunScreen
 from labnotes.tui.runs_table import RunsTable
+from labnotes.tui.stopped_title import stopped_title
 from labnotes.watch_rows import watch_rows
 
 WATCHED = {"runs", "experiment_configs"}
@@ -44,7 +45,9 @@ class ExperimentScreen(Screen[None]):
         self.sub_title = self.experiment_name
         self.run_worker(
             reload_on_change(
-                watch_rows(self.tables, WATCHED, self.experiment_name), self.load
+                watch_rows(self.tables, WATCHED, self.experiment_name),
+                self.load,
+                self.stopped,
             ),
             exit_on_error=False,
         )
@@ -52,6 +55,9 @@ class ExperimentScreen(Screen[None]):
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state == WorkerState.ERROR:
             self.app.exit(event.worker.error)
+
+    def stopped(self, error: BaseException | None) -> None:
+        self.sub_title = stopped_title(self.sub_title, error)
 
     async def load(self) -> None:
         loaded = await load_experiment(

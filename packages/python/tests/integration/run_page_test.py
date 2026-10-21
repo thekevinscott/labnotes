@@ -46,6 +46,55 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check)
 
 
+def test_shows_log_blocks_as_lines_that_open_on_click(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    run(tmp_path, "run1", {})
+    folder = tmp_path / "alpha/runs/run1"
+    write(folder / "stdout.log", "printed\n")
+
+    def logged(*records: object) -> None:
+        with (folder / "log.jsonl").open("a") as log:
+            for record in records:
+                log.write(json.dumps(record) + "\n")
+
+    async def check(page: Page) -> None:
+        blocks = page.locator(".run-blocks")
+        await expect(page.locator(".run-output")).to_have_text("printed\n")
+        await expect(blocks).to_be_hidden()
+
+        logged(
+            {"content": "first line\nsecond line", "timestamp": "t"},
+            {"id": "t1", "phase": "start", "type": "thinking"},
+            {"id": "t1", "phase": "delta", "content": "think"},
+        )
+        lines = blocks.get_by_role("button")
+        await expect(lines).to_have_text(["first line\nsecond line", "think"])
+        first = lines.first
+        await expect(first).to_have_css("white-space", "nowrap")
+        await expect(first).to_have_css("text-overflow", "ellipsis")
+        box = await first.bounding_box()
+
+        await first.click()
+        await expect(first).to_have_attribute("aria-expanded", "true")
+        await expect(first).to_have_css("white-space", "pre-wrap")
+        opened = await first.bounding_box()
+        assert box is not None
+        assert opened is not None
+        assert opened["height"] > box["height"]
+        await first.click()
+        await expect(first).to_have_attribute("aria-expanded", "false")
+
+        logged(
+            {"id": "t1", "phase": "delta", "content": "ing"},
+            {"id": "t1", "phase": "stop"},
+        )
+        await expect(lines).to_have_text(["first line\nsecond line", "thinking"])
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha/runs/run1", check)
+
+
 def test_opens_a_nested_runs_page(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(tmp_path / "alpha/experiment.toml", 'command = "true"\nmode = "adhoc"\n')

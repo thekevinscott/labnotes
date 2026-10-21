@@ -44,6 +44,7 @@ def test_globs_each_table_from_its_path(dirsql: dict[str, mock.MagicMock]) -> No
         "files": "notes/*/*.md",
         "runs": "data/*/**/run.json",
         "logs": "data/*/**/std*.log",
+        "blocks": "data/*/**/log.jsonl",
         "experiment_configs": "notes/*/experiment.toml",
     }
 
@@ -59,6 +60,7 @@ def test_reads_each_table_with_the_root_and_its_path(
         "files": (Path("/p"), "notes/{experiment}/*.md"),
         "runs": (Path("/p"), "data/{experiment}/{run}"),
         "logs": (Path("/p"), "data/{experiment}/{run}"),
+        "blocks": (Path("/p"), "data/{experiment}/{run}"),
         "experiment_configs": (Path("/p"), "notes/{experiment}"),
     }
 
@@ -117,3 +119,11 @@ def test_logs_carry_only_their_size(dirsql: dict[str, mock.MagicMock]) -> None:
     ddl = str(tables(dirsql)["logs"]["ddl"])
     assert "stream TEXT, size INTEGER" in ddl
     assert "PRIMARY KEY (experiment, run, stream)" in ddl
+
+
+def test_block_logs_carry_only_their_size(dirsql: dict[str, mock.MagicMock]) -> None:
+    open_tables(CONFIG)
+
+    ddl = str(tables(dirsql)["blocks"]["ddl"])
+    assert "run TEXT, size INTEGER" in ddl
+    assert "PRIMARY KEY (experiment, run)" in ddl

@@ -341,3 +341,76 @@ def test_reads_stderr_when_stdout_holds_half_a_character(
     (folder / "stderr.log").write_text("boom")
 
     assert collect(tmp_path, []) == [log("boom", "stderr"), end(0)]
+
+
+def block(record: dict[str, object]) -> str:
+    return f"event: block\ndata: {json.dumps(record)}\n\n"
+
+
+def test_sends_each_whole_block_line_as_it_is_logged(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    blocks = folder / "log.jsonl"
+    whole = json.dumps({"id": "t", "phase": "delta", "content": "✓"}).encode()
+    blocks.write_bytes(b'{"content": "a"}\nnot json\n[1]\n' + whole[:-3])
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: append(blocks, whole[-3:]),
+                event("blocks", experiment="alpha", run="r1"),
+            ),
+            (
+                lambda: append(blocks, b"\n"),
+                event("blocks", experiment="alpha", run="r1"),
+            ),
+            (
+                lambda: append(blocks, b'{"content": "last"}\n'),
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [
+        block({"content": "a"}),
+        block({"id": "t", "phase": "delta", "content": "✓"}),
+        block({"content": "last"}),
+        end(0),
+    ]
+
+
+def test_reads_the_block_log_only_on_its_own_runs_events(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    blocks = folder / "log.jsonl"
+    stdout = folder / "stdout.log"
+    blocks.write_text("")
+    stdout.write_text("")
+
+    def later(content: str) -> Step:
+        line = json.dumps({"content": content}) + "\n"
+        return lambda: append(blocks, line.encode())
+
+    ours = {"experiment": "alpha", "run": "r1", "stream": "stdout"}
+    messages = collect(
+        tmp_path,
+        [
+            (later("a"), event("blocks", experiment="alpha", run="r2")),
+            (later("b"), event("blocks", experiment="beta", run="r1")),
+            (lambda: append(stdout, b"x\n"), event("logs", **ours)),
+            (later("c"), event("blocks", experiment="alpha", run="r1")),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [
+        log("x\n"),
+        block({"content": "a"}),
+        block({"content": "b"}),
+        block({"content": "c"}),
+        end(0),
+    ]

@@ -12,19 +12,21 @@ View experiments with:
 uvx labnotes experiments
 ```
 
-Which returns name, last run, created, files (num), runs (num).
+In a terminal, this opens a [browser](tui#browsing) that lists each experiment's name, last run, created, files (num) and runs (num). Open an experiment to see its runs, and open a run to read its output. The browser updates as runs start and finish.
 
-View a particular experiment with:
+Start on a particular experiment with:
 
 ```bash
 uvx labnotes experiments foo
 ```
 
-Which shows metadata about the experiment along with the above fields. You can see runs with:
+Pass `--format table` or `--format json` to print instead. `foo runs` prints the experiment's runs:
 
 ```bash
-uvx labnotes experiments foo runs
+uvx labnotes experiments foo runs --format table
 ```
+
+Piped output and scripts always get a table, but agents may run under a terminal, so they should always pass `--format`.
 
 ## Running Experiments
 

@@ -1,6 +1,6 @@
 # TUI
 
-`labnotes experiments NAME run` opens the TUI when stdout and stderr are both a terminal.
+`labnotes experiments NAME run` opens the TUI when stdout and stderr are both a terminal. The listing forms open a read-only [browser](#browsing) the same way.
 
 ## Statuses
 
@@ -49,3 +49,19 @@ The output view follows the run's `stdout.log` and `stderr.log` as they're writt
 Quitting the TUI leaves the runs going. They belong to the project's daemon, so `run` again reopens the same table, and [`labnotes run status`](cli#run-status) reports on them from any shell.
 
 Closing the terminal or sending SIGTERM stops the runs like Ctrl-C, then kills any still going 5 seconds later.
+
+## Browsing
+
+`labnotes experiments`, `labnotes experiments NAME` and `labnotes experiments NAME runs` open the browser when `--format` is unset and stdout and stderr are both a terminal. Naming an experiment starts on its screen, with the list underneath.
+
+The experiments screen has the same columns as `--format table`. The experiment screen mirrors the runs tab of the [frontend](../frontend): runs from one `adhoc` invocation collapse into one row with pass, fail and running counts; other runs get a row each. Both screens update live and keep the cursor and expanded rows. An experiment removed while open empties its screen with a note in the header.
+
+| Key | Action |
+| --- | --- |
+| `j` / `k` | Move the cursor down / up. |
+| `g` / `G` | Jump to the first / last row. |
+| Enter | Open the experiment. On an experiment, expand or collapse an invocation, or open a run's output. |
+| Escape | Back. |
+| `q` | Quit. |
+
+A run's output follows its `stdout.log` and `stderr.log` like the run view's, with the run id in the header.

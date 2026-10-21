@@ -40,9 +40,11 @@ labnotes experiments [NAME] [runs|run]
 | `labnotes experiments NAME run` | Runs the experiment. Opens the [TUI](tui) in a terminal; otherwise prints a line per event and blocks until the runs end. |
 | `labnotes experiments new [NAME]` | Creates an experiment folder with a starter `experiment.toml`. Picks a random name if you give none. |
 
+With `--format` unset, the three listing forms open the [browser](tui#browsing) when stdout and stderr are both a terminal, starting on the experiment if you name one. Otherwise they print a table.
+
 | Option | Description |
 | --- | --- |
-| `--format table\|json` | Output format for the listing forms. Default `table`. |
+| `--format table\|json` | Print the listing forms in this format and exit, even in a terminal. No default. |
 | `--concurrency N` | With `run`: how many runs at once. Overrides `experiment.toml` and `.labnotes.toml`; 1 if none sets it. |
 | `-e, --experiment-config FILE` | With `run`: read this file instead of the experiment's `experiment.toml`. |
 

@@ -4,6 +4,7 @@ from dirsql import DirSQL, Table
 
 from labnotes.models import LabnotesConfig
 from labnotes.tables.path_glob import path_glob
+from labnotes.tables.read_blocks import read_blocks
 from labnotes.tables.read_experiment import read_experiment
 from labnotes.tables.read_file import read_file
 from labnotes.tables.read_log import read_log
@@ -48,6 +49,12 @@ CREATE TABLE logs (
   PRIMARY KEY (experiment, run, stream)
 )
 """
+BLOCKS = """
+CREATE TABLE blocks (
+  experiment TEXT, run TEXT, size INTEGER,
+  PRIMARY KEY (experiment, run)
+)
+"""
 
 
 def open_tables(config: LabnotesConfig) -> DirSQL:
@@ -72,6 +79,12 @@ def open_tables(config: LabnotesConfig) -> DirSQL:
                 ddl=LOGS,
                 glob=path_glob(f"{config.runs}/std*.log"),
                 on_file=partial(read_log, root, config.runs),
+            ),
+            Table(
+                name="blocks",
+                ddl=BLOCKS,
+                glob=path_glob(f"{config.runs}/log.jsonl"),
+                on_file=partial(read_blocks, root, config.runs),
             ),
             Table(
                 name="experiment_configs",

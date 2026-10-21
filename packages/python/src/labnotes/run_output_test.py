@@ -341,3 +341,108 @@ def test_reads_stderr_when_stdout_holds_half_a_character(
     (folder / "stderr.log").write_text("boom")
 
     assert collect(tmp_path, []) == [log("boom", "stderr"), end(0)]
+
+
+def block(record: dict[str, object]) -> str:
+    return f"event: block\ndata: {json.dumps(record)}\n\n"
+
+
+def test_sends_each_whole_block_line_as_it_is_logged(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    blocks = folder / "log.jsonl"
+    stdout = folder / "stdout.log"
+    stdout.write_text("")
+    whole = json.dumps({"id": "t", "phase": "delta", "content": "✓"}).encode()
+    blocks.write_bytes(b'not json\n{"content": "a"}\n[1]\n' + whole[:-3])
+    printed = event("logs", experiment="alpha", run="r1", stream="stdout")
+    logged = event("blocks", experiment="alpha", run="r1")
+
+    messages = collect(
+        tmp_path,
+        [
+            (lambda: append(stdout, b"x\n"), printed),
+            (lambda: append(blocks, whole[-3:]), logged),
+            (lambda: append(blocks, b"\n"), logged),
+            (lambda: append(stdout, b"y\n"), printed),
+            (
+                lambda: append(blocks, b'{"content": "last"}\n'),
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [
+        block({"content": "a"}),
+        log("x\n"),
+        block({"id": "t", "phase": "delta", "content": "✓"}),
+        log("y\n"),
+        block({"content": "last"}),
+        end(0),
+    ]
+
+
+def test_holds_a_first_block_line_until_it_ends(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    blocks = folder / "log.jsonl"
+    blocks.write_bytes(b'{"content": "a"')
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: append(blocks, b"}\n"),
+                event("blocks", experiment="alpha", run="r1"),
+            ),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [block({"content": "a"}), end(0)]
+
+
+def test_reads_the_block_log_only_on_its_own_runs_events(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    blocks = folder / "log.jsonl"
+    stdout = folder / "stdout.log"
+    blocks.write_text("")
+    stdout.write_text("")
+
+    def later(content: str) -> Step:
+        line = json.dumps({"content": content}) + "\n"
+        return lambda: append(blocks, line.encode())
+
+    def printed(text: bytes) -> tuple[Step, mock.Mock]:
+        return (
+            lambda: append(stdout, text),
+            event("logs", experiment="alpha", run="r1", stream="stdout"),
+        )
+
+    messages = collect(
+        tmp_path,
+        [
+            (later("a"), event("blocks", experiment="alpha", run="r2")),
+            (later("b"), event("blocks", experiment="alpha", run="r0")),
+            (later("c"), event("blocks", experiment="beta", run="r1")),
+            (later("d"), event("aardvark", experiment="alpha", run="r1")),
+            printed(b"x\n"),
+            (later("e"), event("blocks", experiment="alpha", run="r1")),
+            printed(b"y\n"),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [
+        log("x\n"),
+        *(block({"content": c}) for c in "abcde"),
+        log("y\n"),
+        end(0),
+    ]

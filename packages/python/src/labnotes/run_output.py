@@ -43,7 +43,29 @@ async def run_output(
             last, mid_line = stream, not text.endswith("\n")
             yield f"data: {json.dumps({'stream': stream, 'text': text})}\n\n"
 
+    blocks_read = 0
+
+    def read_blocks() -> Iterator[str]:
+        nonlocal blocks_read
+        path = folder / "log.jsonl"
+        if not path.exists():
+            return
+        with path.open("rb") as log:
+            log.seek(blocks_read)
+            data = log.read()
+        whole = data[: data.rfind(b"\n") + 1]
+        blocks_read += len(whole)
+        for line in whole.splitlines():
+            try:
+                record = json.loads(line)
+            except json.JSONDecodeError:
+                continue
+            if isinstance(record, dict):
+                yield f"event: block\ndata: {json.dumps(record)}\n\n"
+
     for message in read(STREAMS):
+        yield message
+    for message in read_blocks():
         yield message
     exit_code = run["exit_code"]
     if run["ended"] is None:
@@ -54,6 +76,9 @@ async def run_output(
             if event.table == "logs" and row["run"] == run_id:
                 for message in read([row["stream"]]):
                     yield message
+            elif event.table == "blocks" and row["run"] == run_id:
+                for message in read_blocks():
+                    yield message
             elif (
                 event.table == "runs"
                 and row["id"] == run_id
@@ -62,5 +87,7 @@ async def run_output(
                 exit_code = row["exit_code"]
                 break
         for message in read(STREAMS):
+            yield message
+        for message in read_blocks():
             yield message
     yield f"event: end\ndata: {json.dumps(exit_code)}\n\n"

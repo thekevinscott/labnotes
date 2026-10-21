@@ -302,6 +302,13 @@ h3 {
 /* Run output */
 .run-state.good { color: var(--good); }
 .run-state.bad { color: var(--bad); }
+.run-blocks { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; margin-bottom: 1rem; padding: 0.5rem 0; max-height: 50vh; overflow: auto; }
+.run-blocks[hidden] { display: none; }
+.log-block { display: block; width: 100%; padding: 0.2rem 1.25rem; border: 0; background: none; color: inherit; font: inherit; font-family: var(--mono); font-size: 0.82rem; text-align: left; cursor: pointer; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.log-block::before { content: "▸ "; color: var(--ink-3); }
+.log-block[aria-expanded="true"] { white-space: pre-wrap; overflow-wrap: anywhere; }
+.log-block[aria-expanded="true"]::before { content: "▾ "; }
+.log-block:hover { background: color-mix(in srgb, var(--accent) 4%, transparent); }
 .run-log { background: var(--surface); border: 1px solid var(--rule); border-radius: 6px; }
 .run-log header { display: flex; gap: 1rem; padding: 0.4rem 1.25rem; border-bottom: 1px solid var(--rule); font-family: var(--mono); font-size: 0.75rem; color: var(--ink-3); }
 .run-log header span::before { content: "■ "; }

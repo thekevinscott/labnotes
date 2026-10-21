@@ -4,12 +4,14 @@ import {
   HighlightStyle,
   Language,
   defineLanguageFacet,
+  ensureSyntaxTree,
   languageDataProp,
   syntaxHighlighting,
   syntaxTree,
 } from "@codemirror/language";
-import { EditorState, RangeSetBuilder } from "@codemirror/state";
-import { Decoration, EditorView, ViewPlugin, keymap } from "@codemirror/view";
+import { EditorState, StateField } from "@codemirror/state";
+import { Decoration, EditorView, WidgetType, keymap } from "@codemirror/view";
+import { inlinePreview } from "@atomic-editor/editor/inline-preview";
 import { tags } from "@lezer/highlight";
 import { GFM, parseCode, parser } from "@lezer/markdown";
 import { DIFF_DELETE, DIFF_EQUAL, diff_match_patch } from "diff-match-patch";
@@ -31,16 +33,6 @@ const markdown = new Language(
 );
 
 const style = HighlightStyle.define([
-  { tag: tags.heading1, class: "md-h1" },
-  { tag: tags.heading2, class: "md-h2" },
-  { tag: tags.heading3, class: "md-h3" },
-  { tag: [tags.heading4, tags.heading5, tags.heading6], class: "md-h4" },
-  { tag: tags.strong, class: "md-strong" },
-  { tag: tags.emphasis, class: "md-em" },
-  { tag: tags.strikethrough, class: "md-strike" },
-  { tag: [tags.link, tags.url], class: "md-link" },
-  { tag: tags.monospace, class: "md-code" },
-  { tag: tags.quote, class: "md-quote" },
   { tag: [tags.processingInstruction, tags.contentSeparator], class: "md-mark" },
   { tag: [tags.keyword, tags.operatorKeyword, tags.bool, tags.null], class: "py-keyword" },
   { tag: [tags.string, tags.special(tags.string)], class: "py-string" },
@@ -49,54 +41,86 @@ const style = HighlightStyle.define([
   { tag: [tags.function(tags.variableName), tags.definition(tags.variableName)], class: "py-name" },
 ]);
 
-// Markup is hidden except on the lines the cursor is on, as in Obsidian.
-const HIDDEN = new Set(["HeaderMark", "EmphasisMark", "CodeMark", "StrikethroughMark"]);
-const hide = Decoration.replace({});
-const codeLine = Decoration.line({ class: "md-code-line" });
-
-function decorate(view) {
-  const builder = new RangeSetBuilder();
-  const { state } = view;
-  const active = new Set();
-  for (const range of state.selection.ranges) {
-    for (let n = state.doc.lineAt(range.from).number; n <= state.doc.lineAt(range.to).number; n++) active.add(n);
+class RunButton extends WidgetType {
+  constructor(block, run) {
+    super();
+    this.block = block;
+    this.run = run;
   }
-  for (const { from, to } of view.visibleRanges) {
-    syntaxTree(state).iterate({
-      from,
-      to,
-      enter(node) {
-        if (node.name === "FencedCode") {
-          for (let at = node.from; at <= node.to; ) {
-            const line = state.doc.lineAt(at);
-            builder.add(line.from, line.from, codeLine);
-            at = line.to + 1;
-          }
-          return false;
-        }
-        if (!HIDDEN.has(node.name) || active.has(state.doc.lineAt(node.from).number)) return;
-        let end = node.to;
-        if (node.name === "HeaderMark" && state.doc.sliceString(end, end + 1) === " ") end += 1;
-        builder.add(node.from, end, hide);
-      },
-    });
+  eq(other) {
+    return other.block === this.block;
   }
-  return builder.finish();
+  toDOM() {
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "run";
+    button.textContent = "Run";
+    button.addEventListener("click", () => this.run(this.block, button));
+    return button;
+  }
+  ignoreEvent() {
+    return true;
+  }
 }
 
-const livePreview = ViewPlugin.fromClass(
-  class {
-    constructor(view) {
-      this.decorations = decorate(view);
+class CellOutput extends WidgetType {
+  constructor(block, outputs) {
+    super();
+    this.block = block;
+    this.outputs = outputs;
+  }
+  eq(other) {
+    return other.block === this.block;
+  }
+  toDOM() {
+    const cell = document.createElement("div");
+    cell.className = "cell-below";
+    if (!this.outputs.has(this.block)) {
+      const output = document.createElement("output");
+      output.className = "cell-output";
+      this.outputs.set(this.block, output);
     }
-    update(update) {
-      if (update.docChanged || update.selectionSet || update.viewportChanged) {
-        this.decorations = decorate(update.view);
+    cell.append(this.outputs.get(this.block));
+    return cell;
+  }
+  ignoreEvent() {
+    return true;
+  }
+}
+
+// Numbered in document order, as python_blocks numbers them on the server.
+function cellWidgets(state, run, outputs) {
+  const widgets = [];
+  let block = 0;
+  const tree = ensureSyntaxTree(state, state.doc.length, 200) ?? syntaxTree(state);
+  tree.iterate({
+    enter(node) {
+      if (node.name !== "FencedCode") return;
+      const info = node.node.getChild("CodeInfo");
+      if (info && state.doc.sliceString(info.from, info.to).split(/\s/)[0] === "python") {
+        const open = state.doc.lineAt(node.from);
+        widgets.push(Decoration.widget({ widget: new RunButton(block, run), side: 1 }).range(open.to));
+        widgets.push(
+          Decoration.widget({ widget: new CellOutput(block, outputs), block: true, side: 1 }).range(node.to),
+        );
+        block += 1;
       }
-    }
-  },
-  { decorations: (plugin) => plugin.decorations },
-);
+      return false;
+    },
+  });
+  return Decoration.set(widgets, true);
+}
+
+function cells(run, outputs) {
+  return StateField.define({
+    create: (state) => cellWidgets(state, run, outputs),
+    update(widgets, tr) {
+      if (!tr.docChanged && syntaxTree(tr.state) === syntaxTree(tr.startState)) return widgets;
+      return cellWidgets(tr.state, run, outputs);
+    },
+    provide: (field) => EditorView.decorations.from(field),
+  });
+}
 
 function show(status, message) {
   status.textContent = message;
@@ -196,15 +220,33 @@ export function edit(note, prose, status) {
 
   const save = () => run(push);
 
-  const close = async () => {
-    await save();
-    document.removeEventListener("mousedown", outside);
-    location.reload();
+  // The rendered note's outputs move into the editor, so a run started
+  // before the editor loaded still shows its result.
+  const outputs = new Map();
+  for (const cell of prose.querySelectorAll(".cell")) {
+    outputs.set(Number(cell.dataset.block), cell.querySelector(".cell-output"));
+  }
+
+  // The server runs the block from the file, so unsaved edits go first.
+  const runCell = async (block, button) => {
+    button.disabled = true;
+    button.textContent = "Running";
+    try {
+      await save();
+      const response = await fetch(note.dataset.runUrl, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ block }),
+      });
+      outputs.get(block).innerHTML = response.ok
+        ? await response.text()
+        : `<pre class="error">${response.status} ${response.statusText}</pre>`;
+      view.requestMeasure();
+    } finally {
+      button.disabled = false;
+      button.textContent = "Run";
+    }
   };
-  const outside = (event) => {
-    if (!note.contains(event.target)) close();
-  };
-  document.addEventListener("mousedown", outside);
 
   const view = new EditorView({
     parent: host,
@@ -212,10 +254,15 @@ export function edit(note, prose, status) {
       doc: base,
       extensions: [
         history(),
-        keymap.of([{ key: "Escape", run: () => (close(), true) }, ...defaultKeymap, ...historyKeymap]),
+        keymap.of([
+          { key: "Escape", run: () => (view.contentDOM.blur(), true) },
+          ...defaultKeymap,
+          ...historyKeymap,
+        ]),
         markdown,
         syntaxHighlighting(style),
-        livePreview,
+        inlinePreview({ onLinkClick: (url) => location.assign(new URL(url, location.href)) }),
+        cells(runCell, outputs),
         EditorView.lineWrapping,
         EditorView.contentAttributes.of({ "aria-label": "Note" }),
         EditorView.updateListener.of((update) => {
@@ -227,12 +274,9 @@ export function edit(note, prose, status) {
       ],
     }),
   });
-  view.focus();
   return {
+    view,
     pull: () => run(pull),
-    detach: () => {
-      document.removeEventListener("mousedown", outside);
-      save();
-    },
+    detach: () => save(),
   };
 }

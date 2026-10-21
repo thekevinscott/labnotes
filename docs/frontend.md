@@ -33,7 +33,7 @@ The `experiment.toml` button opens the experiment's config.
 
 ## Notebooks
 
-The Notebooks tab shows the experiment's markdown files. Click into a note to edit it in place; it saves as you type. The `+` button makes a new note.
+The Notebooks tab shows the experiment's markdown files. Notes render as you'd read them and stay editable, as in Obsidian's live preview: click anywhere to put the cursor there, and the markdown syntax shows on that line only. Edits save as you type. Escape leaves the editor. The `+` button makes a new note.
 
 Python code blocks in a note run in place. Each note gets its own Python kernel, so later blocks see what earlier ones defined. Restart stops the kernel, and the next run starts a fresh one. Output is saved with the note.
 

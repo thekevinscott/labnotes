@@ -418,7 +418,7 @@ h3 {
   top: 0.5rem;
   right: 0.5rem;
 }
-.cell .run, .note-name .restart {
+.cell .run, .editor .run, .note-name .restart {
   font: inherit;
   font-family: var(--sans);
   font-size: 0.75rem;
@@ -429,8 +429,8 @@ h3 {
   color: var(--ink-2);
   cursor: pointer;
 }
-.cell .run:hover, .note-name .restart:hover { color: var(--accent); border-color: var(--accent); }
-.cell .run:disabled, .note-name .restart:disabled { cursor: progress; opacity: 0.6; }
+.cell .run:hover, .editor .run:hover, .note-name .restart:hover { color: var(--accent); border-color: var(--accent); }
+.cell .run:disabled, .editor .run:disabled, .note-name .restart:disabled { cursor: progress; opacity: 0.6; }
 .note-name:has(.restart) { display: flex; align-items: center; justify-content: flex-end; padding-top: 0.45rem; padding-bottom: 0.45rem; }
 .cell-output { display: block; }
 .cell-output:not(:empty) { margin-top: 0.4rem; padding-left: 0.9rem; border-left: 2px solid var(--accent-soft); overflow-x: auto; }
@@ -438,25 +438,57 @@ h3 {
 .cell-output .stderr, .cell-output .error { color: var(--bad); }
 .cell-output img, .cell-output svg { max-width: 100%; height: auto; }
 
-/* Editing a note in place */
-.prose.editable { cursor: text; }
+/* Editing a note in place: CodeMirror styled to match .prose */
 .edit-status { margin: 0; padding: 0.45rem 1.75rem; font-family: var(--sans); font-size: 0.8rem; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
 .editor { padding: 0.5rem 1.75rem 1.5rem; max-width: 46rem; }
 .editor .cm-editor.cm-focused { outline: none; }
-.editor .cm-content { font-family: var(--serif); font-size: 1.06rem; line-height: 1.68; caret-color: var(--ink); }
+.editor .cm-content { padding: 0.8em 0; font-family: var(--serif); font-size: 1.06rem; line-height: 1.68; caret-color: var(--ink); }
 .editor .cm-line { padding: 0; }
-.editor .md-h1 { font-size: 1.6rem; font-weight: 600; }
-.editor .md-h2 { font-size: 1.3rem; font-weight: 600; }
-.editor .md-h3 { font-size: 1.1rem; font-weight: 600; }
-.editor .md-h4 { font-weight: 600; }
-.editor .md-strong { font-weight: 700; }
-.editor .md-em { font-style: italic; }
-.editor .md-strike { text-decoration: line-through; }
-.editor .md-link { color: var(--accent); }
-.editor .md-code { font-family: var(--mono); font-size: 0.86em; }
-.editor .md-quote { color: var(--ink-2); }
+.editor .cm-line:has(> br:only-child):not(.cm-atomic-fenced-code) { line-height: 0.8em; }
+.editor .cm-atomic-h1, .editor .cm-atomic-h2, .editor .cm-atomic-h3, .editor .cm-atomic-h4, .editor .cm-atomic-h5, .editor .cm-atomic-h6 { font-weight: 600; letter-spacing: -0.01em; line-height: 1.3; padding: 1em 0 0.5em; }
+.editor .cm-line.cm-atomic-h1 { font-size: 1.6rem; }
+.editor .cm-line.cm-atomic-h2 { font-size: 1.3rem; }
+.editor .cm-line.cm-atomic-h3 { font-size: 1.1rem; }
+.editor .cm-line.cm-atomic-h4, .editor .cm-line.cm-atomic-h5, .editor .cm-line.cm-atomic-h6 { font-size: 1rem; }
+.editor .cm-atomic-strong { font-weight: 700; }
+.editor .cm-atomic-em { font-style: italic; }
+.editor .cm-atomic-strike { text-decoration: line-through; }
+.editor .cm-atomic-inline-code { font-family: var(--mono); font-size: 0.86em; background: var(--chip); padding: 0.1em 0.35em; border-radius: 4px; }
+.editor .cm-atomic-link { text-decoration: underline; text-decoration-color: var(--rule-strong); text-underline-offset: 3px; }
+.editor .cm-atomic-link::after {
+  content: "↗";
+  margin-left: 0.15em;
+  font-family: var(--sans);
+  font-size: 0.75em;
+  color: var(--ink-3);
+  cursor: pointer;
+}
+.editor .cm-atomic-link:hover::after { color: var(--accent); }
+.editor .cm-line.cm-atomic-blockquote { padding-left: 1rem; border-left: 2px solid var(--rule-strong); color: var(--ink-2); }
+.editor .cm-atomic-list-marker { display: inline-block; width: 0.9em; margin-right: 0.3em; text-align: right; }
+.editor .cm-atomic-list-marker, .editor .cm-atomic-list-marker .md-mark { color: var(--ink); }
+.editor .cm-line.cm-atomic-hr { position: relative; }
+.editor .cm-line.cm-atomic-hr::after { content: ""; position: absolute; left: 0; right: 0; top: 50%; border-top: 1px solid var(--rule); }
+.editor .cm-line.cm-atomic-fenced-code {
+  position: relative;
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  line-height: 1.5;
+  background: var(--paper);
+  padding: 0 1rem;
+  border: solid var(--rule);
+  border-width: 0 1px;
+}
+.editor .cm-line:not(.cm-atomic-fenced-code) + .cm-atomic-fenced-code, .editor .cm-atomic-fenced-code:first-child { border-top-width: 1px; border-radius: 6px 6px 0 0; }
+.editor .cm-atomic-fenced-code:not(:has(+ .cm-atomic-fenced-code)) { border-bottom-width: 1px; border-radius: 0 0 6px 6px; }
+.editor .cm-line:not(.cm-atomic-fenced-code) + .cm-atomic-fenced-code:not(:has(+ .cm-atomic-fenced-code)) { border-radius: 6px; }
+.editor .cm-atomic-fenced-selection { background: var(--accent-soft); }
+.editor .run { position: absolute; z-index: 1; top: 0.5rem; right: 0.5rem; }
+/* CodeMirror measures block widgets without their margins. */
+.editor .cell-below { display: flow-root; padding-bottom: 0.8em; }
+.editor .cell-output pre { margin: 0; font-size: 0.8rem; line-height: 1.5; }
+.editor .cm-line .cm-widgetBuffer { vertical-align: top; }
 .editor .md-mark { color: var(--ink-3); }
-.editor .md-code-line { font-family: var(--mono); font-size: 0.8rem; line-height: 1.5; background: var(--paper); padding: 0 1rem; }
 .editor .py-keyword { color: var(--accent); }
 .editor .py-string { color: var(--good); }
 .editor .py-comment { color: var(--ink-3); font-style: italic; }

@@ -30,11 +30,45 @@ async def on_disk(path: Path, text: str) -> None:
 
 
 async def open_editor(page: Page) -> None:
-    await page.get_by_role("heading", name="The plan").click()
+    await page.get_by_role("textbox", name="Note").get_by_text("The plan").click()
     await expect(page.get_by_role("textbox", name="Note")).to_be_focused()
 
 
-def test_saves_edits_to_the_file_and_shows_them(site: str, root: Path) -> None:
+async def click_into(page: Page, text: str, offset: int) -> None:
+    """Click just inside the character at offset in the first rendered text."""
+    await expect(page.get_by_role("textbox", name="Note")).to_be_visible()
+    x, y = await page.evaluate(
+        """([text, offset]) => {
+            const editor = document.querySelector(".cm-content");
+            const walk = document.createTreeWalker(editor, NodeFilter.SHOW_TEXT);
+            for (let node; (node = walk.nextNode()); ) {
+                const at = node.textContent.indexOf(text);
+                if (at < 0) continue;
+                const range = document.createRange();
+                range.setStart(node, at + offset);
+                range.setEnd(node, at + offset + 1);
+                const box = range.getBoundingClientRect();
+                return [box.left + 1, box.top + box.height / 2];
+            }
+        }""",
+        [text, offset],
+    )
+    await page.mouse.click(x, y)
+
+
+LINE_TOPS = (
+    "() => [...document.querySelectorAll('.cm-line, .cell-below')]"
+    ".map((line) => line.getBoundingClientRect().top)"
+)
+
+LIVE = (
+    "# The plan\n\nSome `inline code` and a [link](https://example.com).\n\n"
+    "- First item\n- Second item\n\n> Quoted\n\n## Code\n\n"
+    "```python\n1 + 1\n```\n\nAfter.\n"
+)
+
+
+def test_saves_edits_to_the_file(site: str, root: Path) -> None:
     async def check(page: Page) -> None:
         await open_editor(page)
         await page.keyboard.press("End")
@@ -43,12 +77,94 @@ def test_saves_edits_to_the_file_and_shows_them(site: str, root: Path) -> None:
         await on_disk(root / PLAN, "# The plan revised\n")
         await page.keyboard.press("Escape")
 
-        await expect(
-            page.get_by_role("heading", name="The plan revised")
-        ).to_be_visible()
-        await expect(page.get_by_role("textbox", name="Note")).to_have_count(0)
+        editor = page.get_by_role("textbox", name="Note")
+        await expect(editor).not_to_be_focused()
+        await expect(editor.locator(".cm-line").first).to_have_text("The plan revised")
 
     browse(f"{site}{NOTE}", check)
+
+
+def test_renders_the_note_in_the_editor_with_markup_hidden(root: Path) -> None:
+    write(root / PLAN, LIVE)
+
+    async def check(page: Page) -> None:
+        editor = page.get_by_role("textbox", name="Note")
+        await expect(editor).to_be_visible()
+        await expect(editor).not_to_be_focused()
+        await expect(page.locator(".prose")).to_have_count(0)
+        lines = editor.locator(".cm-line")
+        await expect(lines.first).to_have_text("The plan")
+        await expect(editor).not_to_contain_text("`")
+        await expect(editor).not_to_contain_text("](")
+        await expect(editor).not_to_contain_text("> Quoted")
+
+    for site in serve(root):
+        browse(f"{site}{NOTE}", check)
+
+
+def test_shows_markup_only_on_the_line_with_the_cursor(root: Path) -> None:
+    write(root / PLAN, LIVE)
+
+    async def check(page: Page) -> None:
+        editor = page.get_by_role("textbox", name="Note")
+        await click_into(page, "Code", 1)
+
+        await expect(editor.locator(".cm-line").nth(9)).to_have_text("## Code")
+        await expect(editor.locator(".cm-line").first).to_have_text("The plan")
+
+    for site in serve(root):
+        browse(f"{site}{NOTE}", check)
+
+
+def test_puts_the_cursor_where_the_click_lands(root: Path) -> None:
+    write(root / PLAN, LIVE)
+
+    async def check(page: Page) -> None:
+        await click_into(page, "Second item", 3)
+        await page.keyboard.type("X")
+
+        await on_disk(root / PLAN, "- SecXond item\n")
+
+    for site in serve(root):
+        browse(f"{site}{NOTE}", check)
+
+
+def test_keeps_the_layout_when_clicked(root: Path) -> None:
+    write(root / PLAN, LIVE)
+
+    async def check(page: Page) -> None:
+        editor = page.get_by_role("textbox", name="Note")
+        await expect(editor.locator(".cm-line").first).to_have_text("The plan")
+        for text in ["The plan", "Code", "Second item", "inline code", "Quoted", "+"]:
+            before = await page.evaluate(LINE_TOPS)
+            await click_into(page, text, 1)
+            await expect(editor).to_be_focused()
+            await page.wait_for_timeout(200)
+            assert await page.evaluate(LINE_TOPS) == before, text
+
+    for site in serve(root):
+        browse(f"{site}{NOTE}", check)
+
+
+def test_leaves_the_file_alone_until_edited(root: Path) -> None:
+    write(root / PLAN, LIVE)
+    saved = (root / PLAN).read_bytes()
+
+    async def check(page: Page) -> None:
+        puts: list[str] = []
+        page.on("request", lambda r: puts.append(r.url) if r.method == "PUT" else None)
+        editor = page.get_by_role("textbox", name="Note")
+        await expect(editor).to_be_visible()
+        await click_into(page, "Second item", 2)
+        await page.keyboard.press("ArrowDown")
+        await page.keyboard.press("Escape")
+        await page.wait_for_timeout(1500)
+
+        assert puts == []
+
+    for site in serve(root):
+        browse(f"{site}{NOTE}", check)
+    assert (root / PLAN).read_bytes() == saved
 
 
 def test_edits_markdown_that_looks_like_html(root: Path) -> None:
@@ -56,7 +172,6 @@ def test_edits_markdown_that_looks_like_html(root: Path) -> None:
 
     async def check(page: Page) -> None:
         await open_editor(page)
-        await page.keyboard.press("ArrowDown")
         await page.keyboard.press("End")
         await page.keyboard.type("!")
 
@@ -84,19 +199,18 @@ def test_runs_a_block_as_edited(site: str, root: Path) -> None:
 
 def test_shows_an_outside_edit_in_the_rendered_note(site: str, root: Path) -> None:
     async def check(page: Page) -> None:
-        await expect(page.get_by_role("heading", name="The plan")).to_be_visible()
+        editor = page.get_by_role("textbox", name="Note")
+        await expect(editor).to_contain_text("The plan")
         write(root / PLAN, "# Changed elsewhere\n")
 
-        await expect(
-            page.get_by_role("heading", name="Changed elsewhere")
-        ).to_be_visible()
+        await expect(editor).to_have_text("Changed elsewhere")
 
     browse(f"{site}{NOTE}", check)
 
 
 def test_keeps_the_page_when_the_file_is_touched(site: str, root: Path) -> None:
     async def check(page: Page) -> None:
-        await expect(page.get_by_role("heading", name="The plan")).to_be_visible()
+        await expect(page.get_by_role("textbox", name="Note")).to_be_visible()
         await page.evaluate("window.loaded = true")
 
         async with page.expect_response(lambda r: r.url.endswith("/notes/plan.md")):
@@ -276,7 +390,9 @@ def test_plus_starts_the_first_note(tmp_path: Path) -> None:
         await page.keyboard.type(" first")
         await on_disk(root / "alpha/files/Untitled.md", "# Untitled first\n")
         await page.keyboard.press("Escape")
-        await expect(page.get_by_role("heading", name="Untitled first")).to_be_visible()
+        await expect(page.get_by_role("textbox", name="Note")).to_have_text(
+            "Untitled first"
+        )
 
     for site in serve(root):
         browse(f"{site}/experiments/alpha?tab=notebooks", check)

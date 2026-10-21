@@ -370,13 +370,13 @@ def test_lists_flat_adhoc_runs_without_groups(tmp_path: Path) -> None:
 def test_switches_between_notebooks(site: str) -> None:
     async def check(page: Page) -> None:
         await page.get_by_role("link", name="Notebooks 2").click()
-        await expect(page.get_by_role("heading", name="The plan")).to_be_visible()
+        await expect(page.get_by_text("The plan")).to_be_visible()
         await expect(page.get_by_role("table")).to_have_count(0)
 
         await page.get_by_role("link", name="results.md").click()
 
-        await expect(page.get_by_role("heading", name="Results")).to_be_visible()
-        await expect(page.get_by_role("heading", name="The plan")).to_have_count(0)
+        await expect(page.get_by_text("Results", exact=True)).to_be_visible()
+        await expect(page.get_by_text("The plan")).to_have_count(0)
         await expect(page.get_by_role("link", name="results.md")).to_have_attribute(
             "aria-current", "page"
         )

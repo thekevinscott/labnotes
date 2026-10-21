@@ -22,8 +22,6 @@ function show(note, button) {
 }
 
 for (const button of document.querySelectorAll(".new-note")) {
-  // An open editor closes, and reloads the page, on a mousedown outside it.
-  button.addEventListener("mousedown", (event) => event.stopPropagation());
   button.addEventListener("click", async () => {
     button.disabled = true;
     const response = await fetch(button.dataset.url, {

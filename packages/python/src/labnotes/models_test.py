@@ -1,4 +1,7 @@
-from labnotes.models import RunView
+import typing
+from collections.abc import Callable
+
+from labnotes.models import Controls, RunView
 
 
 def test_a_run_view_starts_unsorted_and_unfiltered() -> None:
@@ -13,3 +16,9 @@ def test_run_views_do_not_share_their_picks() -> None:
     view.picked["model"] = {"a": '"a"'}
 
     assert RunView().picked == {}
+
+
+def test_move_takes_a_run_and_its_new_place() -> None:
+    hint = typing.get_type_hints(Controls)["move"]
+
+    assert hint == Callable[[str, int], None]

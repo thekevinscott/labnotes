@@ -18,6 +18,7 @@ class Controls:
     kill: Callable[[str], None]
     retry: Callable[[str], None]
     finish: Callable[[], None]
+    move: Callable[[str, int], None]
 
 
 Listen = Callable[[Controls], None]

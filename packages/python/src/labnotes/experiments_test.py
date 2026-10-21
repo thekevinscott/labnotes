@@ -96,12 +96,89 @@ def test_rejects_an_unknown_action(
     collaborators["experiment_rows"].assert_not_called()
 
 
-def test_help_shows_the_default_format(
+def test_help_says_format_prints_and_exits(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["--help"]) == 0
 
-    assert "[default: table]" in capsys.readouterr().out
+    assert "Print rows and exit." in capsys.readouterr().out
+
+
+@pytest.fixture
+def browse() -> Iterator[dict[str, mock.MagicMock]]:
+    with (
+        mock.patch("labnotes.experiments.browse_tui") as browse_tui,
+        mock.patch("labnotes.experiments.sys") as sys,
+    ):
+        sys.stdout.isatty.return_value = True
+        sys.stderr.isatty.return_value = True
+        yield {"browse_tui": browse_tui, "sys": sys}
+
+
+@pytest.mark.parametrize(("argv", "name"), [([], None), (["a"], "a")])
+def test_browses_in_a_terminal_when_format_is_unset(
+    argv: list[str],
+    name: str | None,
+    collaborators: dict[str, mock.MagicMock],
+    browse: dict[str, mock.MagicMock],
+) -> None:
+    assert run(argv) == 0
+
+    browse["browse_tui"].assert_called_once_with(
+        collaborators["load_config"].return_value, name
+    )
+    collaborators["experiment_rows"].assert_not_awaited()
+    collaborators["print_rows"].assert_not_called()
+
+
+@pytest.mark.parametrize("output_format", ["table", "json"])
+def test_prints_in_a_terminal_when_format_is_given(
+    output_format: str,
+    collaborators: dict[str, mock.MagicMock],
+    browse: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["--format", output_format]) == 0
+
+    browse["browse_tui"].assert_not_called()
+    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], output_format)
+
+
+@pytest.mark.parametrize(("stdout", "stderr"), [(False, True), (True, False)])
+def test_prints_a_table_when_either_stream_is_not_a_terminal(
+    stdout: bool,
+    stderr: bool,
+    collaborators: dict[str, mock.MagicMock],
+    browse: dict[str, mock.MagicMock],
+) -> None:
+    browse["sys"].stdout.isatty.return_value = stdout
+    browse["sys"].stderr.isatty.return_value = stderr
+
+    assert run([]) == 0
+
+    browse["browse_tui"].assert_not_called()
+    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")
+
+
+def test_prints_runs_in_a_terminal(
+    collaborators: dict[str, mock.MagicMock],
+    browse: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "runs"]) == 0
+
+    browse["browse_tui"].assert_not_called()
+    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")
+
+
+def test_reports_an_experiment_the_browser_cannot_find(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    browse: dict[str, mock.MagicMock],
+) -> None:
+    browse["browse_tui"].side_effect = ValueError("No experiment named zz.")
+
+    assert run(["zz"]) == 1
+
+    assert "No experiment named zz." in capsys.readouterr().err
 
 
 @pytest.fixture

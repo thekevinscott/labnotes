@@ -419,6 +419,42 @@ def test_moves_a_pending_run_to_the_front(
     assert events(report).count("queued") == 1
 
 
+@pytest.mark.parametrize(
+    ("place", "started", "pending"),
+    [
+        (1, ["r1", "r3", "r2", "r4"], ["r3", "r2", "r4"]),
+        (-1, ["r1", "r2", "r3", "r4"], ["r2", "r3", "r4"]),
+        (0, ["r1", "r2", "r3", "r4"], ["r2", "r3", "r4"]),
+        (9, ["r1", "r3", "r4", "r2"], ["r3", "r4", "r2"]),
+    ],
+)
+def test_moves_a_pending_run_to_a_place_in_the_queue(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    place: int,
+    started: list[str],
+    pending: list[str],
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 4)
+
+    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+        if folder.name == "r1":
+            controls = listen.call_args.args[0]
+            controls.move("r1", 0)
+            controls.move("".join(["r", "2"]), place)
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == started
+    moved = {"event": "moved", "run": "r2", "pending": pending, "held": []}
+    assert moved in reported(report)
+    assert events(report).count("moved") == 1
+
+
 def changing_concurrency(listen: mock.Mock, to: int, widths: list[int]) -> object:
     live = 0
 

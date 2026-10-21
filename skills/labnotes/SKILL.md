@@ -20,6 +20,9 @@ runs end and prints a line per event:
 uvx labnotes experiments NAME run
 ```
 
+Always pass `--format json` (or `--format table`) to `labnotes experiments`.
+Without it, a terminal gets an interactive browser that waits for keys.
+
 Stop them with `uvx labnotes run stop`. Check on them with
 `uvx labnotes run status`. Change them while they run with
 `uvx labnotes run control NAME ACTION [ARG]`, e.g.

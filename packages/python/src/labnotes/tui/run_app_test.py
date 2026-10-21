@@ -1224,3 +1224,242 @@ def test_has_no_error_when_the_runs_finish() -> None:
             assert app.results == [{"exit_code": 0}]
 
     asyncio.run(drive())
+
+
+def grabbing(
+    move: Callable[[str, int], None] | None = None,
+) -> tuple[Callable[..., Any], list[Report], mock.Mock]:
+    reports: list[Report] = []
+    controls = mock.Mock()
+    if move is not None:
+        controls.move.side_effect = move
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        listen(controls)
+        report(planned("r1", "r2", "r3", "r4"))
+        report({"event": "started", "run": "r1", "params": {"m": "a"}, "folder": "/r1"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    return start, reports, controls
+
+
+def order(app: RunApp) -> list[object]:
+    return [row[0] for row in rows(app)]
+
+
+def cursor(app: RunApp) -> int:
+    table: Any = app.query_one("#runs")
+    return int(table.cursor_row)
+
+
+def test_enter_drops_a_grabbed_run_where_j_moved_it() -> None:
+    start, _, controls = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m")
+            assert status(app) == (
+                "Moving r2. j/k moves it, Enter drops it, Escape puts it back."
+            )
+            await pilot.press("j")
+            assert order(app) == ["r1", "r3", "r2", "r4"]
+            assert cursor(app) == 2
+            await pilot.press("down")
+            assert order(app) == ["r1", "r3", "r4", "r2"]
+            assert cursor(app) == 3
+            controls.move.assert_not_called()
+            await pilot.press("enter")
+            controls.move.assert_called_once_with("r2", 2)
+            assert app.grabbed is None
+            assert status(app) == ""
+            assert app.query_one("#runs").display
+
+    asyncio.run(drive())
+
+
+def test_m_drops_a_grabbed_run_where_k_moved_it() -> None:
+    start, _, controls = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("G", "m", "k", "up", "m")
+            assert order(app) == ["r1", "r4", "r2", "r3"]
+            controls.move.assert_called_once_with("r4", 0)
+
+    asyncio.run(drive())
+
+
+def test_a_grabbed_run_stays_inside_the_pending_runs() -> None:
+    start, _, controls = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m", "k")
+            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 1)
+            await pilot.press("enter", "G", "m", "j")
+            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 3)
+
+    asyncio.run(drive())
+
+
+def test_escape_puts_a_grabbed_run_back() -> None:
+    start, _, controls = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m", "j", "j", "escape")
+            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 1)
+            assert status(app) == ""
+            assert app.grabbed is None
+            controls.move.assert_not_called()
+            await pilot.press("j")
+            assert cursor(app) == 2
+
+    asyncio.run(drive())
+
+
+def test_putting_back_keeps_runs_added_while_grabbed_last() -> None:
+    start, reports, _ = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m", "j")
+            reports[0](
+                {"event": "retried", "run": "r1", "retry": "r5", "params": {"m": "e"}}
+            )
+            await pilot.press("escape")
+            assert order(app) == ["r1", "r2", "r3", "r4", "r5"]
+
+    asyncio.run(drive())
+
+
+def test_only_pending_runs_can_be_grabbed() -> None:
+    start, _, _ = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("m")
+            assert app.grabbed is None
+            await pilot.press("j")
+            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 1)
+
+    asyncio.run(drive())
+
+
+def test_m_does_nothing_without_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.press("m")
+            assert app.grabbed is None
+
+    asyncio.run(drive())
+
+
+def test_only_grab_keys_work_while_grabbed() -> None:
+    start, _, controls = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.check_action("shift", (1,))
+            assert not app.check_action("drop", ())
+            assert not app.check_action("put_back", ())
+            await pilot.press("j", "m")
+            actions = [binding.action for binding in RunApp.BINDINGS]  # type: ignore[union-attr]
+            live = [action for action in actions if app.check_action(action, ())]
+            assert live == ["interrupt", "grab", "drop", "put_back", "quit"]
+            assert app.check_action("shift", (1,))
+            assert app.check_action("command_palette", ())
+            await pilot.press("n", "space", "x", "plus", "slash")
+            assert controls.method_calls == []
+            assert not app.query_one("#filter").display
+            app.on_data_table_row_selected(mock.Mock())
+            assert app.viewing is None
+
+    asyncio.run(drive())
+
+
+def test_a_grabbed_run_that_starts_goes_back_and_lets_go() -> None:
+    start, reports, controls = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m", "j")
+            run = "".join(["r", "2"])
+            reports[0](
+                {"event": "started", "run": run, "params": {"m": "b"}, "folder": "/"}
+            )
+            assert app.grabbed is None
+            assert order(app) == ["r1", "r2", "r3", "r4"]
+            await pilot.press("m")
+            assert app.grabbed is None
+            controls.move.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def test_a_reorder_from_the_daemon_lets_go_of_the_grabbed_run() -> None:
+    start, reports, _ = grabbing()
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m", "j")
+            reports[0](
+                {
+                    "event": "queued",
+                    "run": "r4",
+                    "pending": ["r4", "r2", "r3"],
+                    "held": [],
+                }
+            )
+            assert app.grabbed is None
+            assert order(app) == ["r1", "r4", "r2", "r3"]
+            assert app.check_action("run_next", ())
+
+    asyncio.run(drive())
+
+
+def test_shows_where_the_daemon_moved_a_run() -> None:
+    def move(run: str, place: int) -> None:
+        reports[0](
+            {"event": "moved", "run": run, "pending": ["r3", "r2", "r4"], "held": []}
+        )
+
+    start, reports, _ = grabbing(move)
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("j", "m", "j", "enter")
+            await pilot.pause()
+            assert (order(app), cursor(app)) == (["r1", "r3", "r2", "r4"], 2)
+            assert status(app) == "said moved"
+            reports[0](
+                {"event": "started", "run": "r3", "params": {"m": "c"}, "folder": "/"}
+            )
+            assert status(app) == "said moved"
+
+    asyncio.run(drive())

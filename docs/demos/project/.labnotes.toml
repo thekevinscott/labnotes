@@ -1,0 +1,8 @@
+[experiments]
+path = "{experiment}"
+
+[files]
+path = "{experiment}/files/"
+
+[runs]
+path = "{experiment}/runs/{run}"

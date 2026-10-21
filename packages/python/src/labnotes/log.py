@@ -16,7 +16,7 @@ def log(block: dict[str, object]) -> None:
     path = log_path()
     if path is None:
         if "content" in block:
-            print(block["content"], flush=True)
+            print(block["content"])
         return
     line = json.dumps({**block, "timestamp": now()})
     with path.open("a", encoding="utf-8") as file:

@@ -8,6 +8,8 @@ def create_note(config: LabnotesConfig, experiment: str) -> Path | None:
     def folder(template: str) -> Path:
         return config.root / template.replace("{experiment}", experiment)
 
+    if config.experiment not in (None, experiment):
+        return None
     if experiment.startswith(".") or not folder(config.experiments).is_dir():
         return None
     notes = folder(file_prefix(config.files))

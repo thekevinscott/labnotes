@@ -18,6 +18,10 @@ def create_experiment(config: LabnotesConfig, name: str | None) -> Path:
     def folder(candidate: str) -> Path:
         return config.root / config.experiments.replace("{experiment}", candidate)
 
+    if config.experiment is not None:
+        raise ValueError(
+            f"{config.root} is the experiment {config.experiment}; it can't hold others."
+        )
     if name is None:
         name = new_run_id(lambda candidate: folder(candidate).exists())
     if name == "new":

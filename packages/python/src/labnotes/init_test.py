@@ -38,3 +38,16 @@ def test_refuses_to_overwrite_a_config(
 
     assert (folder / ".labnotes.toml").read_text(encoding="utf-8") == "mine\n"
     assert "already exists" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize("single", [False, True])
+def test_writes_the_one_experiment_layout_beside_experiment_toml(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, single: bool
+) -> None:
+    monkeypatch.chdir(tmp_path)
+    if single:
+        (tmp_path / "experiment.toml").write_text("", encoding="utf-8")
+    with mock.patch("labnotes.init.default_config_text", return_value="") as text:
+        run()
+
+    text.assert_called_once_with(single=single)

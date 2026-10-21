@@ -8,6 +8,7 @@ import pytest
 from labnotes.tables.open_tables import open_tables
 
 CONFIG = mock.Mock(
+    experiment=None,
     root=Path("/p"),
     experiments="notes/{experiment}",
     files="notes/{experiment}/*.md",
@@ -127,3 +128,23 @@ def test_block_logs_carry_only_their_size(dirsql: dict[str, mock.MagicMock]) -> 
     ddl = str(tables(dirsql)["blocks"]["ddl"])
     assert "run TEXT, size INTEGER" in ddl
     assert "PRIMARY KEY (experiment, run)" in ddl
+
+
+def test_names_rows_after_the_one_experiment(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
+    config = mock.Mock(
+        experiment="study",
+        root=Path("/p"),
+        experiments="",
+        files="notes/",
+        runs="runs/{run}",
+    )
+
+    open_tables(config)
+
+    found = tables(dirsql)
+    assert found["experiment_configs"]["glob"] == "experiment.toml"
+    assert {name: t["on_file"].keywords for name, t in found.items()} == {  # type: ignore[attr-defined]
+        name: {"experiment": "study"} for name in found
+    }

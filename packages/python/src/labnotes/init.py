@@ -11,7 +11,8 @@ def init() -> None:
     path = Path.cwd() / CONFIG_FILE
     try:
         with path.open("x", encoding="utf-8") as file:
-            file.write(default_config_text())
+            single = (path.parent / "experiment.toml").is_file()
+            file.write(default_config_text(single=single))
     except FileExistsError as error:
         raise click.ClickException(f"{path} already exists.") from error
     click.echo(f"Wrote {path}")

@@ -17,8 +17,12 @@ def context_guide(config: LabnotesConfig | None, cwd: Path) -> str:
         project = (
             f"Config: {config.path}\n"
             f"Root: {config.root}\n"
-            f"Experiments: {config.experiments}\n"
-            f"Files: {config.files}\n"
+            + (
+                f"Experiment: {config.experiment} (the root is the one experiment)\n"
+                if config.experiment
+                else f"Experiments: {config.experiments}\n"
+            )
+            + f"Files: {config.files}\n"
             f"Runs: {config.runs}"
         )
     return f"labnotes {version('labnotes')}\n\n{project}\n\n{guide}"

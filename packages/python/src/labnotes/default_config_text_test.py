@@ -12,3 +12,9 @@ def test_writes_one_table_per_path() -> None:
         assert default_config_text() == (
             '[a]\npath = "{experiment}"\n\n[b]\npath = "{experiment}/{run}"\n'
         )
+
+
+def test_one_experiment_writes_the_paths_it_can_set() -> None:
+    assert default_config_text(single=True) == (
+        '[files]\npath = "files/"\n\n[runs]\npath = "runs/{run}"\n'
+    )

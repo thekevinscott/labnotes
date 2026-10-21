@@ -15,6 +15,8 @@ path = "{experiment}/runs/{run}" # one folder per run
 
 Paths are relative to the root. `{experiment}` and `{run}` stand for folder names; the experiments and files paths use `{experiment}`, the runs path both. A project laid out differently keeps its folders and changes the paths: look at where its experiments, notes and runs live, then write the templates that match.
 
+When `experiment.toml` sits next to `.labnotes.toml`, the root is the one experiment, named after its folder. Paths then drop `{experiment}`: files default to `files/`, runs to `runs/{run}`, and `[experiments] path` is rejected.
+
 `labnotes experiments` reads three tables from those paths:
 
 - `experiments`: `name`, and `config`, the experiment's `experiment.toml` as

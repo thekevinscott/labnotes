@@ -10,7 +10,7 @@ from labnotes.read_config import read_config
 @pytest.fixture
 def read_path() -> Iterator[mock.MagicMock]:
     with mock.patch(
-        "labnotes.read_config.read_path", side_effect=lambda _, table, __: table
+        "labnotes.read_config.read_path", side_effect=lambda _, table, __, **___: table
     ) as read_path:
         yield read_path
 
@@ -32,9 +32,9 @@ def test_reads_each_table_path(tmp_path: Path, read_path: mock.MagicMock) -> Non
         "runs",
     )
     assert read_path.call_args_list == [
-        mock.call(path, "experiments", {}),
-        mock.call(path, "files", {}),
-        mock.call(path, "runs", {"path": "x"}),
+        mock.call(path, "experiments", {}, single=False),
+        mock.call(path, "files", {}, single=False),
+        mock.call(path, "runs", {"path": "x"}, single=False),
     ]
 
 
@@ -109,3 +109,25 @@ def test_rejects_invalid_toml(tmp_path: Path, read_path: mock.MagicMock) -> None
         read_config(path)
 
     assert str(error.value).startswith(f"{path}: ")
+
+
+def test_a_project_without_experiment_toml_holds_many(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    assert read_config(write(tmp_path, "")).experiment is None
+
+
+def test_experiment_toml_beside_the_config_makes_one_experiment(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    project = tmp_path / "surprisals"
+    project.mkdir()
+    (project / "experiment.toml").write_text('command = "x"\n', encoding="utf-8")
+    path = write(project, "")
+
+    config = read_config(path)
+
+    assert config.experiment == "surprisals"
+    assert read_path.call_args_list[0] == mock.call(
+        path, "experiments", {}, single=True
+    )

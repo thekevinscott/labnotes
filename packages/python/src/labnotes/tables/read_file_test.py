@@ -41,3 +41,11 @@ def test_names_a_file_from_its_folder_under_a_glob(tmp_path: Path) -> None:
 @pytest.mark.parametrize("relative", ["exp/other/plan.md", "exp/files", "loose.md"])
 def test_skips_a_path_outside_the_template(tmp_path: Path, relative: str) -> None:
     assert read_file(tmp_path, "{experiment}/files/", touch(tmp_path / relative)) == []
+
+
+def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> None:
+    path = touch(tmp_path / "notes/plan.md")
+
+    [row] = read_file(tmp_path, "notes/", path, experiment="study")
+
+    assert (row["experiment"], row["filename"]) == ("study", "plan.md")

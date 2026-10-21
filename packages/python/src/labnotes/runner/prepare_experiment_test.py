@@ -27,6 +27,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
 
 def make_config(root: Path) -> mock.Mock:
     return mock.Mock(
+        experiment=None,
         root=root,
         experiments="notes/{experiment}",
         runs="data/{experiment}/{run}",
@@ -85,3 +86,26 @@ def test_falls_back_to_the_experiment_concurrency(
     collaborators["read_experiment_config"].return_value.concurrency = 4
 
     assert prepare(tmp_path, concurrency=None)[1] == 4
+
+
+def test_reads_the_root_experiment_toml_for_the_one_experiment(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    config = mock.Mock(
+        experiment="exp", root=tmp_path, experiments="", mode="adhoc", concurrency=1
+    )
+
+    asyncio.run(prepare_experiment(config, "exp", None, None))
+
+    collaborators["file_text"].assert_awaited_once_with(
+        tmp_path, tmp_path / "experiment.toml"
+    )
+
+
+def test_refuses_another_name_for_the_one_experiment(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    config = mock.Mock(experiment="exp", root=tmp_path, experiments="")
+
+    with pytest.raises(ValueError, match="No experiment other; this project is"):
+        asyncio.run(prepare_experiment(config, "other", None, None))

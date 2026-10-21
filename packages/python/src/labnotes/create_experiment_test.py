@@ -7,7 +7,7 @@ from labnotes.create_experiment import STARTER, create_experiment
 
 
 def make_config(root: Path) -> mock.Mock:
-    return mock.Mock(root=root, experiments="notes/{experiment}")
+    return mock.Mock(experiment=None, root=root, experiments="notes/{experiment}")
 
 
 def test_creates_the_folder_with_a_starter_config(tmp_path: Path) -> None:
@@ -52,3 +52,10 @@ def test_refuses_an_existing_experiment(tmp_path: Path) -> None:
         create_experiment(make_config(tmp_path), "study")
 
     assert not (tmp_path / "notes" / "study" / "experiment.toml").exists()
+
+
+def test_refuses_when_the_root_is_one_experiment(tmp_path: Path) -> None:
+    config = mock.Mock(experiment="study", root=tmp_path, experiments="")
+
+    with pytest.raises(ValueError, match="is the experiment study; it can't hold"):
+        create_experiment(config, "other")

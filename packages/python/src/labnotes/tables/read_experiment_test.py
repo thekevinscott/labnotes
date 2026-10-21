@@ -26,3 +26,12 @@ def test_skips_a_config_outside_the_template(tmp_path: Path) -> None:
     path = write_config(tmp_path / "other" / "exp", "")
 
     assert read_experiment(tmp_path, "notes/{experiment}", path) == []
+
+
+def test_names_the_root_config_after_the_one_experiment(tmp_path: Path) -> None:
+    path = tmp_path / "experiment.toml"
+    path.write_text('name = "Study"\n', encoding="utf-8")
+
+    [row] = read_experiment(tmp_path, "", str(path), experiment="study")
+
+    assert row["experiment"] == "study"

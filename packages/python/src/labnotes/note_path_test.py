@@ -15,7 +15,7 @@ def config(tmp_path: Path) -> Any:
     (notes / "deep/inner.md").write_text("# Inner\n", encoding="utf-8")
     (notes / "data.csv").write_text("a,b\n", encoding="utf-8")
     (tmp_path / "secret.md").write_text("# Secret\n", encoding="utf-8")
-    return mock.Mock(root=tmp_path, files="{experiment}/notes/")
+    return mock.Mock(experiment=None, root=tmp_path, files="{experiment}/notes/")
 
 
 def test_finds_a_note_on_disk_without_the_index(config: Any) -> None:
@@ -48,7 +48,7 @@ def test_refuses_anything_but_an_existing_note(
 def test_refuses_a_path_outside_the_files_pattern(tmp_path: Path) -> None:
     (tmp_path / "alpha/other").mkdir(parents=True)
     (tmp_path / "alpha/other/plan.md").write_text("# Plan\n", encoding="utf-8")
-    config = mock.Mock(root=tmp_path, files="{experiment}/notes/*.md")
+    config = mock.Mock(experiment=None, root=tmp_path, files="{experiment}/notes/*.md")
 
     assert note_path(config, "alpha", "../other/plan.md") is None
     assert note_path(config, "alpha", "deep/plan.md") is None
@@ -67,7 +67,7 @@ def test_matches_the_experiment_the_pattern_reads(
 ) -> None:
     (tmp_path / note).parent.mkdir(parents=True)
     (tmp_path / note).write_text("# Note\n", encoding="utf-8")
-    config = mock.Mock(root=tmp_path, files="**/{experiment}/*.md")
+    config = mock.Mock(experiment=None, root=tmp_path, files="**/{experiment}/*.md")
 
     found = note_path(config, experiment, note)
     assert found == (tmp_path / note if expected else None)
@@ -78,6 +78,17 @@ def test_refuses_an_absolute_note_outside_the_root(tmp_path: Path) -> None:
     outside.parent.mkdir(parents=True)
     outside.write_text("# Outside\n", encoding="utf-8")
     (tmp_path / "project").mkdir()
-    config = mock.Mock(root=tmp_path / "project", files="**/{experiment}/*.md")
+    config = mock.Mock(
+        experiment=None, root=tmp_path / "project", files="**/{experiment}/*.md"
+    )
 
     assert note_path(config, "alpha", str(outside)) is None
+
+
+def test_finds_a_note_of_the_one_experiment(tmp_path: Path) -> None:
+    (tmp_path / "notes").mkdir()
+    (tmp_path / "notes/plan.md").write_text("# Plan\n", encoding="utf-8")
+    config = mock.Mock(experiment="study", root=tmp_path, files="notes/")
+
+    assert note_path(config, "study", "plan.md") == tmp_path / "notes/plan.md"
+    assert note_path(config, "other", "plan.md") is None

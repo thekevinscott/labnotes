@@ -56,3 +56,11 @@ def test_skips_a_run_json_outside_the_template(tmp_path: Path) -> None:
     path = write_run(tmp_path / "exp" / "runs" / "a" / "b" / "c", {})
 
     assert read_run(tmp_path, "{experiment}/runs/{run}", path) == []
+
+
+def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> None:
+    path = write_run(tmp_path / "runs" / "brave-fox", {})
+
+    [row] = read_run(tmp_path, "runs/{run}", path, experiment="study")
+
+    assert (row["experiment"], row["id"]) == ("study", "brave-fox")

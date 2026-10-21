@@ -11,7 +11,10 @@ from labnotes.create_note import create_note
 def config(tmp_path: Path) -> Any:
     (tmp_path / "alpha").mkdir()
     return mock.Mock(
-        root=tmp_path, experiments="{experiment}", files="{experiment}/notes/deep/*.md"
+        experiment=None,
+        root=tmp_path,
+        experiments="{experiment}",
+        files="{experiment}/notes/deep/*.md",
     )
 
 
@@ -46,3 +49,12 @@ def test_refuses_an_experiment_that_is_not_a_folder_under_the_root(
     assert not (config.root.parent / "notes").exists()
     assert not (config.root / "missing").exists()
     assert not (config.root / ".hidden/notes").exists()
+
+
+def test_writes_into_the_one_experiments_files(tmp_path: Path) -> None:
+    config = mock.Mock(
+        experiment="study", root=tmp_path, experiments="", files="notes/"
+    )
+
+    assert create_note(config, "study") == tmp_path / "notes/Untitled.md"
+    assert create_note(config, "other") is None

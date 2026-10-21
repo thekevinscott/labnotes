@@ -1,7 +1,8 @@
 import typing
 from collections.abc import Callable
+from pathlib import Path
 
-from labnotes.models import Controls, RunView
+from labnotes.models import Controls, LabnotesConfig, RunView
 
 
 def test_a_run_view_starts_unsorted_and_unfiltered() -> None:
@@ -22,3 +23,9 @@ def test_move_takes_a_run_and_its_new_place() -> None:
     hint = typing.get_type_hints(Controls)["move"]
 
     assert hint == Callable[[str, int], None]
+
+
+def test_a_config_holds_many_experiments_by_default() -> None:
+    config = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
+
+    assert config.experiment is None

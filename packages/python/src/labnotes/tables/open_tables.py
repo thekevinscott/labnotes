@@ -3,6 +3,7 @@ from functools import partial
 from dirsql import DirSQL, Table
 
 from labnotes.models import LabnotesConfig
+from labnotes.tables.experiment_toml import experiment_toml
 from labnotes.tables.path_glob import path_glob
 from labnotes.tables.read_blocks import read_blocks
 from labnotes.tables.read_experiment import read_experiment
@@ -66,31 +67,44 @@ def open_tables(config: LabnotesConfig) -> DirSQL:
                 name="files",
                 ddl=FILES,
                 glob=path_glob(config.files),
-                on_file=partial(read_file, root, config.files),
+                on_file=partial(
+                    read_file, root, config.files, experiment=config.experiment
+                ),
             ),
             Table(
                 name="runs",
                 ddl=RUNS,
                 glob=path_glob(f"{config.runs}/run.json"),
-                on_file=partial(read_run, root, config.runs),
+                on_file=partial(
+                    read_run, root, config.runs, experiment=config.experiment
+                ),
             ),
             Table(
                 name="logs",
                 ddl=LOGS,
                 glob=path_glob(f"{config.runs}/std*.log"),
-                on_file=partial(read_log, root, config.runs),
+                on_file=partial(
+                    read_log, root, config.runs, experiment=config.experiment
+                ),
             ),
             Table(
                 name="blocks",
                 ddl=BLOCKS,
                 glob=path_glob(f"{config.runs}/log.jsonl"),
-                on_file=partial(read_blocks, root, config.runs),
+                on_file=partial(
+                    read_blocks, root, config.runs, experiment=config.experiment
+                ),
             ),
             Table(
                 name="experiment_configs",
                 ddl=EXPERIMENTS,
-                glob=path_glob(f"{config.experiments}/experiment.toml"),
-                on_file=partial(read_experiment, root, config.experiments),
+                glob=path_glob(experiment_toml(config.experiments)),
+                on_file=partial(
+                    read_experiment,
+                    root,
+                    config.experiments,
+                    experiment=config.experiment,
+                ),
             ),
         ],
         # Run folders are often gitignored (DVC, large outputs); scan them anyway.

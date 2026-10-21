@@ -15,5 +15,5 @@
   <header><span class="stdout">stdout</span><span class="stderr">stderr</span></header>
   <pre class="run-output" data-url="{{ url_for('output', name=run.experiment, run=run.id) }}"></pre>
 </section>
-<script src="{{ asset('run-output.js') }}" defer></script>
+<script type="module" src="{{ asset('run-output.js') }}"></script>
 {% endblock %}

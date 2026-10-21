@@ -23,7 +23,7 @@ An experiment's Runs tab shows a table of its runs, with each param as a column,
 - Click a column header to sort by it. Click again to reverse.
 - Each param column has a filter. Pick the values you want to see, or type to match. Clear filters resets them all.
 - Runs still going show as running, with a ticking duration. A run whose script died without recording an end shows as interrupted.
-- Click a run to see its `stdout.log` and `stderr.log`. If the run is still going, its output streams in as it's written.
+- Click a run to see its `stdout.log` and `stderr.log`. If the run is still going, its output streams in as it's written. ANSI color and styles show as styled text.
 
 In [`adhoc`](cli/adhoc) mode, runs are grouped by the invocation that made them. Each group row shows its counts and the param values its runs share. Groups start collapsed; while a filter is on, the groups with matches open and show how many of their runs matched.
 

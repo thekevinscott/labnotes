@@ -139,7 +139,7 @@ def test_counts_runs_by_the_experiments_rule(
 
 
 HASH = r"-[0-9a-f]{4}"
-STAMP = r"\d{8}-\d{6}-[a-z]+-[a-z]+"
+STAMP = r"\d{8}-\d{6}-[a-z]+-[a-z]+(-\d+)?"
 HAIKU = r"[a-z]+-[a-z]+(-\d+)?"
 
 

@@ -2,7 +2,8 @@ import { atom, read, update } from 'claude-code'
 import type { EngineInterface, Register } from 'claude-code'
 
 import type { PaneMessage } from './pane'
-import { applyEvent, cleanLine, describeDone, parseEvent, splitLines } from './runs'
+import type { Log } from '../types'
+import { applyBlock, applyEvent, cleanLine, describeDone, parseEvent, splitLines } from './runs'
 import type { LabnotesEvent } from './runs'
 
 const PANE = 'labnotes'
@@ -11,6 +12,7 @@ const NOT_OPENED = 'The labnotes pane could not open.'
 const STATUS = ['uvx', 'labnotes', 'run', 'status', '--follow', '--json']
 const CONTROL = ['uvx', 'labnotes', 'run', 'control']
 const TAIL = ['tail', '-q', '-n', '500', '-F', 'stdout.log', 'stderr.log']
+const BLOCK_TAIL = ['tail', '-n', '+1', '-F', 'log.jsonl']
 const LOG_LINES = 200
 const experiments = atom({ plugin: 'labnotes', key: 'experiments' } as const, [])
 const log = atom({ plugin: 'labnotes', key: 'log' } as const, null)
@@ -23,20 +25,26 @@ let stopTail = () => {}
 const follow = ($: EngineInterface, run: string, folder: string) => {
   stopTail()
   const tail = $.process.spawn({ argv: TAIL, cwd: folder })
+  const blockTail = $.process.spawn({ argv: BLOCK_TAIL, cwd: folder })
   stopTail = () => {
     void tail.return(undefined as never)
+    void blockTail.return(undefined as never)
   }
-  void (async () => {
+  const read = async (from: typeof tail, add: (now: Log, lines: string[]) => Log) => {
     let held = ''
-    await update($, log, now => (now?.run === run ? { run, lines: [] } : now))
-    for await (const { stream, text } of tail) {
+    for await (const { stream, text } of from) {
       if (stream !== 'stdout') continue
       const [lines, rest] = splitLines(held, text)
       held = rest
-      await update($, log, now =>
-        now?.run === run ? { run, lines: [...now.lines, ...lines.map(cleanLine)].slice(-LOG_LINES) } : now,
-      )
+      await update($, log, now => (now?.run === run ? add(now, lines) : now))
     }
+  }
+  void (async () => {
+    await update($, log, now => (now?.run === run ? { run, lines: [], blocks: [] } : now))
+    await Promise.all([
+      read(tail, (now, lines) => ({ ...now, lines: [...now.lines, ...lines.map(cleanLine)].slice(-LOG_LINES) })),
+      read(blockTail, (now, lines) => ({ ...now, blocks: lines.reduce(applyBlock, now.blocks).slice(-LOG_LINES) })),
+    ])
   })().catch(() => {})
 }
 
@@ -68,7 +76,7 @@ export const register: Register = on => {
           if (isLoneAdhoc(event)) {
             const [only] = event.runs as { run: string }[]
             stopTail()
-            await update($, log, () => ({ run: only?.run ?? '', lines: [] }))
+            await update($, log, () => ({ run: only?.run ?? '', lines: [], blocks: [] }))
           }
           const viewing = await read($, log)
           if (event.event === 'started' && viewing?.run === event.run) {
@@ -95,7 +103,7 @@ export const register: Register = on => {
       await update($, log, () => null)
     } else if ('view' in message) {
       const run = message.view
-      await update($, log, () => ({ run, lines: [] }))
+      await update($, log, () => ({ run, lines: [], blocks: [] }))
       const folder = (await read($, experiments)).flatMap(one => one.rows).find(row => row.run === run)?.folder
       if (folder === undefined) stopTail()
       else follow($, run, folder)

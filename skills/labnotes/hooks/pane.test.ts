@@ -144,6 +144,37 @@ test('opens the log under the cursor and leaves it with q', SLOW, async ($, on) 
   expect(back).toContain('1 at a time')
 })
 
+test('shows log blocks above the output, one line each until clicked', SLOW, async ($, on) => {
+  const started = await start($, on)
+  started.tail.push('printed\n')
+  started.blockTail.push(
+    lines({ content: 'first line\nsecond line' }, { id: 't1', phase: 'start', content: 'think' }),
+  )
+  started.send(lines(PLANNED, { event: 'started', experiment: 'exp', run: 's/a-1', params: { m: 'a' }, folder: '/r/a' }))
+  await started.settle()
+  const pane = await mountPane($)
+  await pane.post({ view: 's/a-1' })
+  await started.settle()
+  const rows = async () => (await shown(pane)).split('\n')
+  const click = (y: number) => pane.pointer({ type: 'down', x: 2, y, button: 'left' })
+
+  expect(await rows()).toEqual([
+    's/a-1',
+    '▸ first line second line',
+    '▸ think',
+    'printed',
+    'q back · X stop all · click a block to open it',
+  ])
+  await click(1)
+  expect((await rows()).slice(1, 4)).toEqual(['▾ first line', 'second line', '▸ think'])
+  await click(3)
+  await pane.pointer({ type: 'up', x: 2, y: 1, button: 'left' })
+  await click(5)
+  expect((await rows()).slice(1, 5)).toEqual(['▾ first line', 'second line', '▾ think', 'printed'])
+  await click(2)
+  expect((await rows()).slice(1, 4)).toEqual(['▸ first line second line', '▾ think', 'printed'])
+})
+
 test('follows a run sent to the front of the queue', SLOW, async ($, on) => {
   const { started, press, cursor } = await open($, on)
   await press('j')

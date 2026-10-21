@@ -35,6 +35,7 @@ export type Started = {
   tools: string[]
   send: (text: string) => void
   tail: string[]
+  blockTail: string[]
   opened: string[]
   isPlaced: boolean
   settle: () => Promise<void>
@@ -73,6 +74,7 @@ export const start = async (
     tools: [],
     send: () => {},
     tail: [],
+    blockTail: [],
     opened: [],
     isPlaced: true,
     settle: clock.settle,
@@ -101,7 +103,8 @@ export const start = async (
   on('process.spawn', async function* (_, e, next) {
     started.spawned.push({ argv: e.argv, cwd: e.cwd })
     if (e.argv[0] === 'tail') {
-      for (const text of started.tail) yield { stream: 'stdout' as const, text }
+      const texts = e.argv.includes('log.jsonl') ? started.blockTail : started.tail
+      for (const text of texts) yield { stream: 'stdout' as const, text }
       return { value: { code: 0, signal: null } }
     }
     yield { stream: 'stderr' as const, text: 'warning\n' }

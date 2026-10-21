@@ -66,6 +66,7 @@ test('follows a run’s output once it has a folder, and stops on leaving', SLOW
     argv: ['tail', '-q', '-n', '500', '-F', 'stdout.log', 'stderr.log'],
     cwd: '/r/b',
   })
+  expect(started.spawned[2]).toEqual({ argv: ['tail', '-n', '+1', '-F', 'log.jsonl'], cwd: '/r/b' })
   expect(await shown(pane)).toContain('hello')
   expect(await shown(pane)).toContain('world')
 
@@ -75,7 +76,7 @@ test('follows a run’s output once it has a folder, and stops on leaving', SLOW
 
   await pane.post({ view: 's/b-2' })
   await started.settle()
-  expect(started.spawned).toHaveLength(3)
+  expect(started.spawned).toHaveLength(5)
 })
 
 test('opens a lone adhoc run straight into its output', SLOW, async ($, on) => {

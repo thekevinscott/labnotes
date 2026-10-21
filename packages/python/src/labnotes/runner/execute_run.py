@@ -1,4 +1,5 @@
 import asyncio
+import os
 import time
 from pathlib import Path
 
@@ -35,6 +36,7 @@ async def execute_run(
             process = await asyncio.create_subprocess_shell(
                 shell_command(command, folder, params),
                 cwd=root,
+                env={"FORCE_COLOR": "1", "CLICOLOR_FORCE": "1", **os.environ},
                 stdout=stdout,
                 stderr=stderr,
             )

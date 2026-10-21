@@ -144,3 +144,35 @@ def test_records_a_command_that_cannot_start(
         "no shell",
         "end",
     )
+
+
+def test_forces_color_in_the_child(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("FORCE_COLOR", raising=False)
+    monkeypatch.delenv("CLICOLOR_FORCE", raising=False)
+    monkeypatch.setenv("KEPT", "1")
+
+    run(tmp_path)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["FORCE_COLOR"] == "1"
+    assert env["CLICOLOR_FORCE"] == "1"
+    assert env["KEPT"] == "1"
+
+
+def test_keeps_color_settings_the_user_chose(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("FORCE_COLOR", "0")
+    monkeypatch.setenv("CLICOLOR_FORCE", "0")
+
+    run(tmp_path)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["FORCE_COLOR"] == "0"
+    assert env["CLICOLOR_FORCE"] == "0"

@@ -11,15 +11,9 @@ lines = [37]
 reason = "last_stream is always the same str object taken from STREAMS, so is not equals !="
 
 [[python.exempt]]
-path = "src/labnotes/runner/run_experiment.py"
-rules = ["mutation"]
-lines = [47]
-reason = "mode is validated to matrix or adhoc; \"matrix\" <= \"adhoc\" is false like ==, and both are interned literals so is equals =="
-
-[[python.exempt]]
 path = "src/labnotes/load_experiment.py"
 rules = ["mutation"]
-lines = [59]
+lines = [61]
 reason = "summarize_config returns mode matrix or adhoc; \"matrix\" <= \"adhoc\" is false like ==, and both are interned literals so is equals =="
 
 [[python.exempt]]
@@ -43,7 +37,7 @@ reason = "the daemon answers a run with 202, 400, 409 or 500, so every status bu
 [[python.exempt]]
 path = "src/labnotes/run_control.py"
 rules = ["mutation"]
-lines = [38]
+lines = [39]
 reason = "argument counts are small ints, which CPython caches, so is not equals !="
 
 [[python.exempt]]
@@ -67,5 +61,5 @@ reason = "WorkerState members are singletons, so is equals =="
 [[python.exempt]]
 path = "src/labnotes/tui/experiments_screen.py"
 rules = ["mutation"]
-lines = [28, 37]
-reason = "WorkerState members are singletons, so is equals ==; every row of one query has the same keys, so any row names the columns"
+lines = [36]
+reason = "WorkerState members are singletons, so is equals =="

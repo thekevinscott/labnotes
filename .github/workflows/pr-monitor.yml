@@ -13,7 +13,7 @@ jobs:
     name: 'CI Gate'
     runs-on: ubuntu-latest
     # Backstop for a slow lane only; pr-monitor fails a run that never
-    # starts on its own. Mutation can queue for a runner, then take ~18 min.
-    timeout-minutes: 45
+    # starts on its own. Mutation can queue for a runner, then take ~55 min.
+    timeout-minutes: 90
     steps:
       - uses: thekevinscott/pr-monitor@v1

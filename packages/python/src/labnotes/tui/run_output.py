@@ -25,7 +25,7 @@ class RunOutput(RichLog):
 
     @property
     def mid_line(self) -> bool:
-        return self.unfinished != ""
+        return bool(self.unfinished)
 
     def follow(self, folder: Path) -> None:
         for stream in STREAMS:

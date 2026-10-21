@@ -1,0 +1,1 @@
+**Changed** — runs now start with `FORCE_COLOR=1` and `CLICOLOR_FORCE=1` in their environment, so tools such as rich and click write color to `stdout.log` and `stderr.log` even though those are files. A value already set in the environment wins, so `FORCE_COLOR=0` turns it back off.

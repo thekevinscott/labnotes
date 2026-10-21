@@ -8,7 +8,7 @@ from labnotes.tui.experiments_screen import ExperimentsScreen
 
 
 class BrowseApp(App[BaseException | None]):
-    BINDINGS = [Binding("q", "quit", "Quit")]
+    BINDINGS = [Binding("ctrl+c", "quit", "Quit")]
 
     def __init__(self, config: LabnotesConfig, name: str | None) -> None:
         super().__init__()

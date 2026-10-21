@@ -43,6 +43,10 @@ Conventions, supervision rules, and per-language style live under
   genuinely internal refactors, and `breaking: <reason>` marks a breaking
   change, which then also requires the `docs/migrations.d/` fragment.
 - Pre-commit hooks (`just hooks` to install) gate formatting, gitleaks, and ruff.
+- Remove a worktree as soon as its PR merges or its branch is abandoned; don't
+  ask first. Check for uncommitted work, `cd` to the repo root, then
+  `git worktree remove <path>`. Stale worktrees under `.worktrees/` and
+  `.claude/worktrees/` pin branches and block `gh pr merge --delete-branch`.
 
 ## First-publish prerequisites
 

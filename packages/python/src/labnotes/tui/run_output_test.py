@@ -181,7 +181,7 @@ def test_drops_a_deferred_write_before_the_size_is_known() -> None:
 def test_drops_the_last_rendered_line() -> None:
     output = RunOutput()
     output._size_known = True
-    output.lines = ["kept", "dropped"]  # type: ignore[list-item]
+    output.lines = ["first", "kept", "dropped"]  # type: ignore[list-item]
     output._line_cache = mock.Mock()
     with (
         mock.patch.object(RunOutput, "virtual_size", mock.Mock(width=9)),
@@ -190,7 +190,7 @@ def test_drops_the_last_rendered_line() -> None:
     ):
         DROP_LAST_LINE(output)
         assert output.virtual_size is size.return_value
-    size.assert_called_once_with(9, 1)
-    assert output.lines == ["kept"]
+    size.assert_called_once_with(9, 2)
+    assert output.lines == ["first", "kept"]
     output._line_cache.clear.assert_called_once_with()
     refresh.assert_called_once_with()

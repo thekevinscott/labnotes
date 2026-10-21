@@ -12,6 +12,10 @@ TABLES = mock.Mock()
 LOADED = {
     "display_name": "Alpha study",
     "run_groups": [{"name": "inv", "flat": False}, {"name": "lone", "flat": True}],
+    "runs_list": [
+        {"id": "inv/first", "folder": "alpha/runs/inv/first"},
+        {"id": "lone", "folder": "alpha/runs/lone"},
+    ],
 }
 
 
@@ -40,6 +44,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as runs_table,
         mock.patch("labnotes.tui.experiment_screen.fill_table") as fill_table,
         mock.patch(
+            "labnotes.tui.experiment_screen.RunScreen", return_value="run screen"
+        ) as run_screen,
+        mock.patch(
             "labnotes.tui.experiment_screen.watch_rows", return_value="changes"
         ) as watch_rows,
         mock.patch(
@@ -58,6 +65,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "invocation_rows": invocation_rows,
             "runs_table": runs_table,
             "fill_table": fill_table,
+            "run_screen": run_screen,
             "watch_rows": watch_rows,
             "reload_on_change": reload_on_change,
             "app": app,
@@ -98,7 +106,7 @@ def test_binds_enter_and_escape() -> None:
         (binding.key, binding.action, binding.description, binding.priority)  # type: ignore[union-attr]
         for binding in ExperimentScreen.BINDINGS
     ] == [
-        ("enter", "toggle_invocation", "Expand", True),
+        ("enter", "open_row", "Open", True),
         ("escape", "app.pop_screen", "Back", False),
     ]
 
@@ -164,7 +172,7 @@ def test_keeps_opened_invocations_across_reloads(
     screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     asyncio.run(screen.load())
-    screen.action_toggle_invocation()
+    screen.action_open_row()
 
     asyncio.run(screen.load())
 
@@ -176,40 +184,65 @@ def test_enter_opens_and_closes_an_invocation(
 ) -> None:
     asyncio.run(screen.load())
 
-    screen.action_toggle_invocation()
+    screen.action_open_row()
 
     assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
 
-    screen.action_toggle_invocation()
+    screen.action_open_row()
 
     assert filled(collaborators["fill_table"]) == ["inv", "lone"]
 
 
-def test_enter_leaves_a_lone_run_alone(
+@pytest.mark.parametrize(
+    "key,folder", [("lone", "alpha/runs/lone"), ("inv/first", "alpha/runs/inv/first")]
+)
+def test_enter_opens_a_run_without_touching_the_rows(
     screen: ExperimentScreen,
     table: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
+    key: str,
+    folder: str,
 ) -> None:
     asyncio.run(screen.load())
     collaborators["fill_table"].reset_mock()
-    table.coordinate_to_cell_key.return_value.row_key.value = "lone"
+    table.coordinate_to_cell_key.return_value.row_key.value = key
 
-    screen.action_toggle_invocation()
+    screen.action_open_row()
 
+    collaborators["run_screen"].assert_called_once_with(
+        key, Path("/p/project") / folder
+    )
+    collaborators["app"].return_value.push_screen.assert_called_once_with("run screen")
     collaborators["fill_table"].assert_not_called()
     assert screen.opened == set()
 
 
-def test_enter_ignores_runs_that_are_not_grouped(
+def test_enter_on_an_invocation_opens_no_run(
     screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    asyncio.run(screen.load())
+
+    screen.action_open_row()
+
+    collaborators["app"].return_value.push_screen.assert_not_called()
+
+
+def test_enter_opens_runs_that_are_not_grouped(
+    screen: ExperimentScreen,
+    table: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
 ) -> None:
     collaborators["load_experiment"].return_value = {**LOADED, "run_groups": None}
     asyncio.run(screen.load())
     collaborators["fill_table"].reset_mock()
+    table.coordinate_to_cell_key.return_value.row_key.value = "lone"
 
-    screen.action_toggle_invocation()
+    screen.action_open_row()
 
     collaborators["fill_table"].assert_not_called()
+    collaborators["run_screen"].assert_called_once_with(
+        "lone", Path("/p/project/alpha/runs/lone")
+    )
 
 
 def test_enter_does_nothing_without_rows(
@@ -217,7 +250,7 @@ def test_enter_does_nothing_without_rows(
 ) -> None:
     table.row_count = 0
 
-    screen.action_toggle_invocation()
+    screen.action_open_row()
 
     table.coordinate_to_cell_key.assert_not_called()
 

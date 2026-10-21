@@ -94,6 +94,37 @@ def test_lists_an_experiment_that_appears_while_open(terminal, tmp_path: Path) -
     term.wait()
 
 
+def test_opens_a_run_and_follows_its_output(terminal, tmp_path: Path) -> None:
+    root = project(tmp_path)
+    run = root / "alpha/runs/20261017-000000/second"
+    write(run / "stdout.log", "hello from second\n")
+    write(run / "stderr.log", "warned on stderr\n")
+    term = labnotes(terminal, root, "alpha")
+    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+
+    term.key_enter()
+    expect(term.get_by_text("second")).to_be_visible()
+    term.key_down()
+    term.key_enter()
+    expect(term.get_by_text("20261017-000000/second")).to_be_visible()
+    expect(term.get_by_text("hello from second")).to_be_visible()
+    expect(term.get_by_text("warned on stderr")).to_be_visible()
+
+    with (run / "stdout.log").open("a", encoding="utf-8") as log:
+        log.write("appended later\n")
+    expect(term.get_by_text("appended later")).to_be_visible()
+
+    term.key_escape()
+    expect(term.get_by_text("first")).to_be_visible()
+    expect(term.get_by_text("hello from second")).not_to_be_visible()
+
+    term.key_enter()
+    expect(term.get_by_text("appended later")).to_be_visible()
+
+    term.write("q")
+    term.wait()
+
+
 def test_prints_and_exits_when_format_is_given(terminal, tmp_path: Path) -> None:
     term = labnotes(terminal, project(tmp_path), "--format json")
     expect(term.get_by_text('"display_name": "alpha"')).to_be_visible()

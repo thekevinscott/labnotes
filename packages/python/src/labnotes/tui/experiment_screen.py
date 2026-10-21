@@ -14,6 +14,7 @@ from labnotes.tui.fill_table import fill_table
 from labnotes.tui.invocation_columns import invocation_columns
 from labnotes.tui.invocation_rows import invocation_rows
 from labnotes.tui.reload_on_change import reload_on_change
+from labnotes.tui.run_screen import RunScreen
 from labnotes.tui.runs_table import RunsTable
 from labnotes.watch_rows import watch_rows
 
@@ -22,7 +23,7 @@ WATCHED = {"runs", "experiment_configs"}
 
 class ExperimentScreen(Screen[None]):
     BINDINGS = [
-        Binding("enter", "toggle_invocation", "Expand", priority=True),
+        Binding("enter", "open_row", "Open", priority=True),
         Binding("escape", "app.pop_screen", "Back"),
     ]
 
@@ -77,7 +78,7 @@ class ExperimentScreen(Screen[None]):
             invocation_rows(self.experiment, self.opened),
         )
 
-    def action_toggle_invocation(self) -> None:
+    def action_open_row(self) -> None:
         table = self.query_one(DataTable)
         if not table.row_count:
             return
@@ -90,3 +91,7 @@ class ExperimentScreen(Screen[None]):
         if key in groups:
             self.opened ^= {key}
             self.redraw()
+            return
+        runs = {str(run["id"]): run for run in self.experiment["runs_list"]}
+        folder = self.config.root / str(runs[key]["folder"])
+        self.app.push_screen(RunScreen(key, folder))

@@ -2,7 +2,9 @@ import { describe, expect, test } from 'claude-code/testing'
 
 import fixture from '../fixtures/run'
 import {
+  applyBlock,
   applyEvent,
+  blockRows,
   cleanLine,
   describeDone,
   describeEvent,
@@ -12,6 +14,7 @@ import {
   rowCells,
   splitLines,
 } from './runs'
+import type { Block } from '../types'
 import type { LabnotesEvent } from './runs'
 
 const planned: LabnotesEvent = {
@@ -86,6 +89,79 @@ describe('cleanLine', () => {
     expect(cleanLine('10%\r50%\r')).toBe('50%')
     expect(cleanLine('a\tb\x07')).toBe('a    b')
     expect(cleanLine('')).toBe('')
+  })
+})
+
+const logged = (...records: unknown[]) =>
+  records.reduce<Block[]>(
+    (blocks, record) => applyBlock(blocks, typeof record === 'string' ? record : JSON.stringify(record)),
+    [],
+  )
+
+describe('applyBlock', () => {
+  test('adds a complete block and skips lines that are not blocks', () => {
+    expect(logged({ content: 'a', timestamp: 't' }, 'not json', '[1]', 'null', { content: 3 })).toEqual([
+      { id: 'null', body: 'a', isOpen: false },
+      { id: 'null', body: '3', isOpen: false },
+    ])
+  })
+
+  test('grows a streaming block in place until it stops', () => {
+    expect(
+      logged(
+        { id: 't1', phase: 'start', type: 'thinking' },
+        { id: 't1', phase: 'delta', content: 'par' },
+        { content: 'between' },
+        { id: 't1', phase: 'delta', content: 'tial' },
+        { id: 't1', phase: 'stop', content: '.' },
+      ),
+    ).toEqual([
+      { id: '"t1"', body: 'partial.', isOpen: false },
+      { id: 'null', body: 'between', isOpen: false },
+    ])
+  })
+
+  test('keeps streams apart by id and leaves an unstopped one open', () => {
+    expect(
+      logged(
+        { id: 'a', phase: 'start', content: 'A' },
+        { id: 'b', phase: 'delta', content: 'B' },
+        { id: 'a', phase: 'delta', content: 'a' },
+        { id: 'b', phase: 'stop' },
+      ),
+    ).toEqual([
+      { id: '"a"', body: 'Aa', isOpen: true },
+      { id: '"b"', body: 'B', isOpen: false },
+    ])
+  })
+
+  test('ignores a stray stop and opens anew after one', () => {
+    expect(
+      logged(
+        { id: 't1', phase: 'stop', content: 'lost' },
+        { id: 't1', phase: 'start', content: 'one' },
+        { id: 't1', phase: 'stop' },
+        { id: 't1', phase: 'delta', content: 'two' },
+        { id: 't1', phase: 'update', content: 'three' },
+      ),
+    ).toEqual([
+      { id: '"t1"', body: 'one', isOpen: false },
+      { id: '"t1"', body: 'two', isOpen: true },
+      { id: '"t1"', body: 'three', isOpen: false },
+    ])
+  })
+})
+
+describe('blockRows', () => {
+  const block = { id: 'null', body: '\x1b[1mfirst\x1b[0m line\nsecond', isOpen: false }
+
+  test('folds a block onto one line', () => {
+    expect(blockRows(block, false, 8)).toEqual(['▸ first line second'])
+  })
+
+  test('opens a block over as many rows as its lines take', () => {
+    expect(blockRows(block, true, 8)).toEqual(['▾ first ', 'line', 'second'])
+    expect(blockRows({ ...block, body: 'a\n\nb' }, true, 0)).toEqual(['▾', ' ', 'a', '', 'b'])
   })
 })
 

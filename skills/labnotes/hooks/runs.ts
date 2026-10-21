@@ -1,4 +1,4 @@
-import type { Experiment, Row, RunStatus } from '../types'
+import type { Block, Experiment, Row, RunStatus } from '../types'
 
 export type LabnotesEvent = { event: string; [field: string]: unknown }
 
@@ -254,3 +254,44 @@ export const cleanLine = (line: string): string =>
     .pop()
     ?.replace(/\t/g, '    ')
     .replace(/[\x00-\x1f\x7f]/g, '') ?? ''
+
+const parseRecord = (line: string): Record<string, unknown> | undefined => {
+  try {
+    const record: unknown = JSON.parse(line)
+    if (typeof record === 'object' && record !== null && !Array.isArray(record)) {
+      return record as Record<string, unknown>
+    }
+  } catch {}
+  return undefined
+}
+
+// The TUI's rules: start and delta open a block by id, delta and stop grow it, stop closes it.
+export const applyBlock = (blocks: readonly Block[], line: string): Block[] => {
+  const record = parseRecord(line)
+  if (record === undefined) return [...blocks]
+  const { phase } = record
+  const id = JSON.stringify(record.id ?? null)
+  const body = record.content === undefined ? '' : String(record.content)
+  const at = blocks.findLastIndex(block => block.isOpen && block.id === id)
+  if (at !== -1 && (phase === 'delta' || phase === 'stop')) {
+    return blocks.map((block, index) =>
+      index === at ? { id, body: block.body + body, isOpen: phase === 'delta' } : block,
+    )
+  }
+  if (phase === 'stop') return [...blocks]
+  return [...blocks, { id, body, isOpen: phase === 'start' || phase === 'delta' }]
+}
+
+const chunks = (line: string, width: number): string[] => {
+  if (line === '') return ['']
+  const size = Math.max(width, 1)
+  return Array.from({ length: Math.ceil(line.length / size) }, (_, index) =>
+    line.slice(index * size, (index + 1) * size),
+  )
+}
+
+export const blockRows = (block: Block, isExpanded: boolean, width: number): string[] => {
+  const lines = block.body.split('\n').map(cleanLine)
+  if (!isExpanded) return [`▸ ${lines.join(' ')}`]
+  return `▾ ${lines.join('\n')}`.split('\n').flatMap(line => chunks(line, width))
+}

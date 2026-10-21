@@ -1,7 +1,7 @@
 import type { ClientKeyEvent, ClientModule, JsonValue } from 'claude-code'
 
 import type { Experiment, Log, Row } from '../types'
-import { SPINNER, rowCells } from './runs'
+import { SPINNER, blockRows, rowCells } from './runs'
 
 export type PaneProps = { experiments: Experiment[]; log: Log | null; rows: number }
 
@@ -19,6 +19,7 @@ type PaneState = {
   now: number
   nextRuns: string
   grab: Grab | null
+  opened: string[]
 }
 
 type Grab = { experiment: string; run: string; place: number }
@@ -70,6 +71,7 @@ const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
     now: Date.now(),
     nextRuns: nextRunsOf(props.experiments),
     grab: null,
+    opened: [],
   }
   const grabbed = props.experiments
     .find(one => one.name === fresh.grab?.experiment)
@@ -217,18 +219,35 @@ const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
     })
   }
   surface.onKey(onKey)
+  surface.onPointer(() => {})
 
   if (log !== null) {
     const room = Math.max(props.rows - 2, 1)
+    const width = surface.columns || 80
+    const allBlockRows = log.blocks.flatMap((block, index) => {
+      const key = `${log.run}#${index}`
+      return blockRows(block, state.opened.includes(key), width).map(text => ({ key, text }))
+    })
+    const shownBlocks = allBlockRows.slice(-Math.floor(room / 2) || allBlockRows.length)
+    surface.onPointer(event => {
+      const key = event.type === 'down' ? shownBlocks[event.y - 1]?.key : undefined
+      if (key === undefined) return
+      set({ opened: state.opened.includes(key) ? state.opened.filter(one => one !== key) : [...state.opened, key] })
+    })
     return (
       <Box flexDirection="column">
         <Text bold>{log.run}</Text>
-        {log.lines.slice(-room).map((line, index) => (
+        {shownBlocks.map(({ key, text }, index) => (
+          <Text key={`${key}:${index}`} wrap="truncate-end">
+            {text === '' ? ' ' : text}
+          </Text>
+        ))}
+        {log.lines.slice(-(room - shownBlocks.length) || log.lines.length).map((line, index) => (
           <Text key={String(index)} wrap="truncate-end">
             {line === '' ? ' ' : line}
           </Text>
         ))}
-        <Text dimColor>q back · X stop all</Text>
+        <Text dimColor>q back · X stop all{log.blocks.length > 0 ? ' · click a block to open it' : ''}</Text>
       </Box>
     )
   }

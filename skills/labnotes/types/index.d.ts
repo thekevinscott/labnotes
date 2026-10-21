@@ -23,7 +23,9 @@ export type Experiment = {
   error: string | null
 }
 
-export type Log = { run: string; lines: string[] }
+export type Block = { id: string; body: string; isOpen: boolean }
+
+export type Log = { run: string; lines: string[]; blocks: Block[] }
 
 declare module 'claude-code' {
   interface PluginState {

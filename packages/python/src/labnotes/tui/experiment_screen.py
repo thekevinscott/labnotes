@@ -10,9 +10,14 @@ from textual.worker import Worker, WorkerState
 
 from labnotes.load_experiment import load_experiment
 from labnotes.models import LabnotesConfig
+from labnotes.tui.fill_table import fill_table
 from labnotes.tui.invocation_columns import invocation_columns
 from labnotes.tui.invocation_rows import invocation_rows
+from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.runs_table import RunsTable
+from labnotes.watch_rows import watch_rows
+
+WATCHED = {"runs", "experiment_configs"}
 
 
 class ExperimentScreen(Screen[None]):
@@ -36,7 +41,12 @@ class ExperimentScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.sub_title = self.experiment_name
-        self.run_worker(self.load(), exit_on_error=False)
+        self.run_worker(
+            reload_on_change(
+                watch_rows(self.tables, WATCHED, self.experiment_name), self.load
+            ),
+            exit_on_error=False,
+        )
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state == WorkerState.ERROR:
@@ -50,20 +60,22 @@ class ExperimentScreen(Screen[None]):
             self.experiment_name,
             QueryParams(),
         )
-        if loaded is None:
+        if loaded is None and not self.experiment:
             raise ValueError(f"No experiment named {self.experiment_name}.")
+        if loaded is None:
+            self.sub_title = f"{self.experiment_name} was removed."
+            fill_table(self.query_one(DataTable), [], [])
+            return
         self.experiment = loaded
         self.sub_title = str(loaded["display_name"])
-        self.query_one(DataTable).add_columns(*invocation_columns(loaded))
         self.redraw()
 
     def redraw(self) -> None:
-        table = self.query_one(DataTable)
-        row = table.cursor_row
-        table.clear()
-        for key, cells in invocation_rows(self.experiment, self.opened):
-            table.add_row(*cells, key=key)
-        table.move_cursor(row=row)
+        fill_table(
+            self.query_one(DataTable),
+            invocation_columns(self.experiment),
+            invocation_rows(self.experiment, self.opened),
+        )
 
     def action_toggle_invocation(self) -> None:
         table = self.query_one(DataTable)

@@ -7,7 +7,12 @@ from textual.worker import Worker, WorkerState
 from labnotes.models import LabnotesConfig
 from labnotes.tables.summarize_experiments import summarize_experiments
 from labnotes.tui.experiment_screen import ExperimentScreen
+from labnotes.tui.fill_table import fill_table
+from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.runs_table import RunsTable
+from labnotes.watch_rows import watch_rows
+
+WATCHED = {"files", "runs", "experiment_configs"}
 
 
 class ExperimentsScreen(Screen[None]):
@@ -22,7 +27,10 @@ class ExperimentsScreen(Screen[None]):
         yield Footer()
 
     def on_mount(self) -> None:
-        self.run_worker(self.load(), exit_on_error=False)
+        self.run_worker(
+            reload_on_change(watch_rows(self.tables, WATCHED), self.load),
+            exit_on_error=False,
+        )
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state == WorkerState.ERROR:
@@ -30,16 +38,18 @@ class ExperimentsScreen(Screen[None]):
 
     async def load(self) -> None:
         rows = await summarize_experiments(self.tables)
-        if not rows:
-            self.sub_title = "No experiments."
-            return
-        table = self.query_one(DataTable)
-        table.add_columns(*rows[0])
-        for row in rows:
-            table.add_row(
-                *("" if value is None else str(value) for value in row.values()),
-                key=str(row["name"]),
-            )
+        self.sub_title = "" if rows else "No experiments."
+        fill_table(
+            self.query_one(DataTable),
+            list(rows[0]) if rows else [],
+            [
+                (
+                    str(row["name"]),
+                    ["" if value is None else str(value) for value in row.values()],
+                )
+                for row in rows
+            ],
+        )
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.app.push_screen(

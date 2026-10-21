@@ -1,5 +1,4 @@
 import asyncio
-import codecs
 import signal
 import time
 from pathlib import Path
@@ -7,7 +6,7 @@ from pathlib import Path
 from rich.text import Text
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import DataTable, Footer, Header, Input, Log, Static
+from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from labnotes.models import Controls, Start
 from labnotes.runner.describe_event import describe_event
@@ -15,10 +14,10 @@ from labnotes.runner.stop_then_kill import stop_then_kill
 from labnotes.runner.param_args import param_args
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
+from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 
 COLUMNS = ("run", "params", "status", "time")
-STREAMS = ("stdout", "stderr")
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED, DESELECTED = "–", "⊘"
@@ -70,18 +69,11 @@ class RunApp(App[None]):
         self.hiding = False
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
-        self.offsets: dict[str, int]
-        self.decoders = {
-            stream: codecs.getincrementaldecoder("utf-8")(errors="replace")
-            for stream in STREAMS
-        }
-        self.last_stream: str | None
-        self.mid_line: bool
 
     def compose(self) -> ComposeResult:
         yield Header()
         yield RunsTable(id="runs", cursor_type="row")
-        yield Log(id="output")
+        yield RunOutput(id="output")
         yield Input(id="filter", placeholder="Filter params")
         yield Static(id="status")
         yield Footer()
@@ -91,7 +83,7 @@ class RunApp(App[None]):
         for column in COLUMNS:
             table.add_column(column, key=column)
         self.query_one(Input).display = False
-        self.query_one(Log).display = False
+        self.query_one(RunOutput).display = False
         self.query_one(Header).mount(Static(id="concurrency"))
         table.set_interval(0.1, self.spin)
 
@@ -298,44 +290,22 @@ class RunApp(App[None]):
 
     def view(self, run: str) -> None:
         self.viewing = run
-        self.offsets = dict.fromkeys(STREAMS, 0)
-        for decoder in self.decoders.values():
-            decoder.reset()
-        self.last_stream = None
-        self.mid_line = False
-        self.query_one(Log).clear()
+        self.query_one(RunOutput).reset()
         self.query_one(DataTable).display = False
-        self.query_one(Log).display = True
+        self.query_one(RunOutput).display = True
         self.sub_title = run
         self.show("")
         self.refresh_bindings()
         self.follow()
 
     def follow(self) -> None:
-        if self.viewing not in self.folders:
-            return
-        for stream in STREAMS:
-            path = self.folders[self.viewing] / f"{stream}.log"
-            if not path.exists():
-                continue
-            with path.open("rb") as log:
-                log.seek(self.offsets[stream])
-                data = log.read()
-            self.offsets[stream] += len(data)
-            text = self.decoders[stream].decode(data)
-            if not text:
-                continue
-            # Don't glue one stream's unfinished line onto the other's output.
-            if self.mid_line and stream != self.last_stream:
-                text = "\n" + text
-            self.query_one(Log).write(text)
-            self.last_stream = stream
-            self.mid_line = not text.endswith("\n")
+        if self.viewing in self.folders:
+            self.query_one(RunOutput).follow(self.folders[self.viewing])
 
     def action_leave(self) -> None:
         if self.viewing is not None:
             self.viewing = None
-            self.query_one(Log).display = False
+            self.query_one(RunOutput).display = False
             self.query_one(DataTable).display = True
             self.sub_title = ""
             self.refresh_bindings()

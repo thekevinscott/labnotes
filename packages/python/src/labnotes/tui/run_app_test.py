@@ -996,7 +996,9 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                 assert not app.query_one("#runs").display
                 assert (app.sub_title, status(app)) == ("r2", "")
                 assert output(app) == []
-                (tmp_path / "stdout.log").write_bytes("caf\xc3".encode("latin-1"))
+                app.follow()
+                assert output(app) == []
+                (tmp_path / "stdout.log").write_text("hi\n")
                 reports[0](
                     {
                         "event": "started",
@@ -1006,26 +1008,11 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                     }
                 )
                 app.follow()
-                await pilot.pause()
-                with (tmp_path / "stdout.log").open("ab") as log:
-                    log.write("\xa9 done\nnext".encode("latin-1"))
-                (tmp_path / "stderr.log").write_text("oops\n")
-                app.follow()
-                await pilot.pause()
-                assert output(app) == ["café done", "next", "oops", ""]
                 with (tmp_path / "stdout.log").open("a") as log:
                     log.write("more\n")
                 app.follow()
                 await pilot.pause()
-                assert output(app) == ["café done", "next", "oops", "more", ""]
-                with (tmp_path / "stderr.log").open("a") as log:
-                    log.write("warn")
-                app.follow()
-                with (tmp_path / "stdout.log").open("a") as log:
-                    log.write("end\n")
-                app.follow()
-                await pilot.pause()
-                assert output(app)[-4:] == ["more", "warn", "end", ""]
+                assert output(app) == ["hi", "more", ""]
                 await pilot.press("escape")
                 assert not app.query_one("#output").display
                 assert app.query_one("#runs").display
@@ -1062,53 +1049,8 @@ def test_only_back_and_quit_work_while_following_output() -> None:
     asyncio.run(drive())
 
 
-def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1"))
-        report(
-            {"event": "started", "run": "r1", "params": {"m": "r1"}, "folder": tmp_path}
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp")
-        with mock.patch.object(app, "set_interval"):
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                await pilot.press("enter")
-                app.follow()
-                assert output(app) == []
-
-    asyncio.run(drive())
-
-
-@pytest.mark.parametrize("stdout", [None, ""])
-def test_follows_stderr_without_stdout(tmp_path: Path, stdout: str | None) -> None:
-    if stdout is not None:
-        (tmp_path / "stdout.log").write_text(stdout)
-    (tmp_path / "stderr.log").write_text("oops\n")
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1"))
-        report(
-            {"event": "started", "run": "r1", "params": {"m": "r1"}, "folder": tmp_path}
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp")
-        with mock.patch.object(app, "set_interval"):
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                await pilot.press("enter")
-                await pilot.pause()
-                assert output(app) == ["oops", ""]
-
-    asyncio.run(drive())
-
-
-def test_starts_each_run_with_fresh_decoders(tmp_path: Path) -> None:
-    for run, data in (("r1", b"cut \xe2\x82"), ("r2", b"hi\n")):
+def test_starts_over_when_viewing_another_run(tmp_path: Path) -> None:
+    for run, data in (("r1", b"old\n"), ("r2", b"hi\n")):
         (tmp_path / run).mkdir()
         (tmp_path / run / "stdout.log").write_bytes(data)
 

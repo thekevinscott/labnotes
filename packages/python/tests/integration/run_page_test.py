@@ -70,7 +70,7 @@ def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
     run(tmp_path, "run1", {}, exit_code=0, ended="2026-10-17T00:00:09Z")
     folder = tmp_path / "alpha/runs/run1"
     write(folder / "stdout.log", "\x1b[31mred\x1b[0m <b>plain</b>\n")
-    write(folder / "stderr.log", "\x1b[1mbold\x1b[0m\x1b]0;title\x07\n")
+    write(folder / "stderr.log", "\x1b[1mbo\x1b[2Kld\x1b[0m\n")
 
     async def check(page: Page) -> None:
         output = page.locator(".run-output")
@@ -78,8 +78,9 @@ def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
         red = output.locator(".stdout span", has_text="red")
         await expect(red).to_have_css("color", "rgb(187, 0, 0)")
         await expect(output.locator("b")).to_have_count(0)
-        bold = output.locator(".stderr span", has_text="bold")
-        await expect(bold).to_have_css("font-weight", "700")
+        bold = output.locator(".stderr span")
+        await expect(bold).to_have_text(["bo", "ld"])
+        await expect(bold.last).to_have_css("font-weight", "700")
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha/runs/run1", check)

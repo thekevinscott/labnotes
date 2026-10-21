@@ -27,6 +27,14 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.tui.experiments_screen.RunsTable", return_value="runs table"
         ) as runs_table,
+        mock.patch("labnotes.tui.experiments_screen.fill_table") as fill_table,
+        mock.patch(
+            "labnotes.tui.experiments_screen.watch_rows", return_value="changes"
+        ) as watch_rows,
+        mock.patch(
+            "labnotes.tui.experiments_screen.reload_on_change",
+            new=mock.Mock(return_value="reloading"),
+        ) as reload_on_change,
         mock.patch("labnotes.tui.experiments_screen.Header", return_value="header"),
         mock.patch("labnotes.tui.experiments_screen.Footer", return_value="footer"),
         mock.patch.object(
@@ -37,6 +45,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "summarize_experiments": summarize_experiments,
             "experiment_screen": experiment_screen,
             "runs_table": runs_table,
+            "fill_table": fill_table,
+            "watch_rows": watch_rows,
+            "reload_on_change": reload_on_change,
             "app": app,
         }
 
@@ -65,12 +76,18 @@ def test_shows_a_table_between_the_header_and_footer(
     )
 
 
-def test_loads_the_experiments_on_mount(screen: ExperimentsScreen) -> None:
+def test_reloads_the_experiments_on_each_change(
+    screen: ExperimentsScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
     screen.on_mount()
 
-    [call] = getattr(screen.run_worker, "call_args_list")
-    assert call.kwargs == {"exit_on_error": False}
-    call.args[0].close()
+    collaborators["watch_rows"].assert_called_once_with(
+        TABLES, {"files", "runs", "experiment_configs"}
+    )
+    collaborators["reload_on_change"].assert_called_once_with("changes", screen.load)
+    getattr(screen.run_worker, "assert_called_once_with")(
+        "reloading", exit_on_error=False
+    )
 
 
 def test_lists_the_experiments_with_the_table_columns(
@@ -78,14 +95,17 @@ def test_lists_the_experiments_with_the_table_columns(
     table: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
+    screen.sub_title = "No experiments."
+
     asyncio.run(screen.load())
 
     collaborators["summarize_experiments"].assert_awaited_once_with(TABLES)
-    table.add_columns.assert_called_once_with("name", "last_run", "files")
-    assert table.add_row.call_args_list == [
-        mock.call("alpha", "2026-10-17", "2", key="alpha"),
-        mock.call("beta", "", "0", key="beta"),
-    ]
+    assert screen.sub_title == ""
+    collaborators["fill_table"].assert_called_once_with(
+        table,
+        ["name", "last_run", "files"],
+        [("alpha", ["alpha", "2026-10-17", "2"]), ("beta", ["beta", "", "0"])],
+    )
 
 
 def test_says_when_there_are_no_experiments(
@@ -98,7 +118,7 @@ def test_says_when_there_are_no_experiments(
     asyncio.run(screen.load())
 
     assert screen.sub_title == "No experiments."
-    table.add_columns.assert_not_called()
+    collaborators["fill_table"].assert_called_once_with(table, [], [])
 
 
 def test_enter_opens_the_selected_experiment(

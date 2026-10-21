@@ -38,6 +38,14 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.tui.experiment_screen.RunsTable", return_value="runs table"
         ) as runs_table,
+        mock.patch("labnotes.tui.experiment_screen.fill_table") as fill_table,
+        mock.patch(
+            "labnotes.tui.experiment_screen.watch_rows", return_value="changes"
+        ) as watch_rows,
+        mock.patch(
+            "labnotes.tui.experiment_screen.reload_on_change",
+            new=mock.Mock(return_value="reloading"),
+        ) as reload_on_change,
         mock.patch("labnotes.tui.experiment_screen.Header", return_value="header"),
         mock.patch("labnotes.tui.experiment_screen.Footer", return_value="footer"),
         mock.patch.object(
@@ -49,6 +57,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "invocation_columns": invocation_columns,
             "invocation_rows": invocation_rows,
             "runs_table": runs_table,
+            "fill_table": fill_table,
+            "watch_rows": watch_rows,
+            "reload_on_change": reload_on_change,
             "app": app,
         }
 
@@ -70,8 +81,9 @@ def screen(table: mock.MagicMock) -> Iterator[ExperimentScreen]:
         yield shown
 
 
-def added(table: mock.MagicMock) -> list[tuple[object, ...]]:
-    return [(call.kwargs["key"], *call.args) for call in table.add_row.call_args_list]
+def filled(fill_table: mock.MagicMock) -> list[str]:
+    [table, columns, rows] = fill_table.call_args.args
+    return [key for key, _ in rows]
 
 
 def test_shows_a_table_between_the_header_and_footer(
@@ -91,13 +103,19 @@ def test_binds_enter_and_escape() -> None:
     ]
 
 
-def test_names_the_experiment_and_loads_it(screen: ExperimentScreen) -> None:
+def test_names_the_experiment_and_reloads_it_on_each_change(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
     screen.on_mount()
 
     assert screen.sub_title == "alpha"
-    [call] = getattr(screen.run_worker, "call_args_list")
-    assert call.kwargs == {"exit_on_error": False}
-    call.args[0].close()
+    collaborators["watch_rows"].assert_called_once_with(
+        TABLES, {"runs", "experiment_configs"}, "alpha"
+    )
+    collaborators["reload_on_change"].assert_called_once_with("changes", screen.load)
+    getattr(screen.run_worker, "assert_called_once_with")(
+        "reloading", exit_on_error=False
+    )
 
 
 def test_lists_the_runs_by_invocation(
@@ -111,12 +129,11 @@ def test_lists_the_runs_by_invocation(
         TABLES, CONFIG.root, "matrix", "alpha", "no params"
     )
     assert screen.sub_title == "Alpha study"
-    table.add_columns.assert_called_once_with("", "id")
     collaborators["invocation_columns"].assert_called_once_with(LOADED)
     collaborators["invocation_rows"].assert_called_once_with(LOADED, set())
-    table.clear.assert_called_once_with()
-    assert added(table) == [("inv", "inv"), ("lone", "lone")]
-    table.move_cursor.assert_called_once_with(row=1)
+    collaborators["fill_table"].assert_called_once_with(
+        table, ["", "id"], [("inv", ["inv"]), ("lone", ["lone"])]
+    )
 
 
 def test_rejects_an_unknown_experiment(
@@ -128,47 +145,71 @@ def test_rejects_an_unknown_experiment(
         asyncio.run(screen.load())
 
 
-def test_enter_opens_and_closes_an_invocation(
-    screen: ExperimentScreen, table: mock.MagicMock
-) -> None:
-    asyncio.run(screen.load())
-    table.reset_mock()
-
-    screen.action_toggle_invocation()
-
-    assert added(table) == [("inv", "inv"), ("inv", "inv"), ("lone", "lone")]
-
-    table.reset_mock()
-    screen.action_toggle_invocation()
-
-    assert added(table) == [("inv", "inv"), ("lone", "lone")]
-
-
-def test_enter_leaves_a_lone_run_alone(
-    screen: ExperimentScreen, table: mock.MagicMock
-) -> None:
-    asyncio.run(screen.load())
-    table.reset_mock()
-    table.coordinate_to_cell_key.return_value.row_key.value = "lone"
-
-    screen.action_toggle_invocation()
-
-    table.add_row.assert_not_called()
-    assert screen.opened == set()
-
-
-def test_enter_ignores_runs_that_are_not_grouped(
+def test_empties_when_the_experiment_is_removed(
     screen: ExperimentScreen,
     table: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    collaborators["load_experiment"].return_value = {**LOADED, "run_groups": None}
     asyncio.run(screen.load())
-    table.reset_mock()
+    collaborators["load_experiment"].return_value = None
+
+    asyncio.run(screen.load())
+
+    assert screen.sub_title == "alpha was removed."
+    collaborators["fill_table"].assert_called_with(table, [], [])
+    assert screen.experiment == LOADED
+
+
+def test_keeps_opened_invocations_across_reloads(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    asyncio.run(screen.load())
+    screen.action_toggle_invocation()
+
+    asyncio.run(screen.load())
+
+    assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
+
+
+def test_enter_opens_and_closes_an_invocation(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    asyncio.run(screen.load())
 
     screen.action_toggle_invocation()
 
-    table.add_row.assert_not_called()
+    assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
+
+    screen.action_toggle_invocation()
+
+    assert filled(collaborators["fill_table"]) == ["inv", "lone"]
+
+
+def test_enter_leaves_a_lone_run_alone(
+    screen: ExperimentScreen,
+    table: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    asyncio.run(screen.load())
+    collaborators["fill_table"].reset_mock()
+    table.coordinate_to_cell_key.return_value.row_key.value = "lone"
+
+    screen.action_toggle_invocation()
+
+    collaborators["fill_table"].assert_not_called()
+    assert screen.opened == set()
+
+
+def test_enter_ignores_runs_that_are_not_grouped(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["load_experiment"].return_value = {**LOADED, "run_groups": None}
+    asyncio.run(screen.load())
+    collaborators["fill_table"].reset_mock()
+
+    screen.action_toggle_invocation()
+
+    collaborators["fill_table"].assert_not_called()
 
 
 def test_enter_does_nothing_without_rows(

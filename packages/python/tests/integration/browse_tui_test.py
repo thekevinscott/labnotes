@@ -64,6 +64,36 @@ def test_opens_straight_on_a_named_experiment(
     term.wait()
 
 
+def test_shows_a_run_that_lands_while_the_experiment_is_open(
+    terminal, tmp_path: Path
+) -> None:
+    root = project(tmp_path)
+    term = labnotes(terminal, root, "alpha")
+    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+
+    write(
+        root / "alpha/runs/20261018-000000/first/run.json",
+        json.dumps({"created": "2026-10-18T00:00:00Z", "exit_code": 1}),
+    )
+    expect(term.get_by_text("20261018-000000")).to_be_visible()
+    expect(term.get_by_text("0✓ 1✕")).to_be_visible()
+
+    term.write("q")
+    term.wait()
+
+
+def test_lists_an_experiment_that_appears_while_open(terminal, tmp_path: Path) -> None:
+    root = project(tmp_path)
+    term = labnotes(terminal, root, "")
+    expect(term.get_by_text("beta")).to_be_visible()
+
+    write(root / "gamma/files/notes.md", "notes")
+    expect(term.get_by_text("gamma")).to_be_visible()
+
+    term.write("q")
+    term.wait()
+
+
 def test_prints_and_exits_when_format_is_given(terminal, tmp_path: Path) -> None:
     term = labnotes(terminal, project(tmp_path), "--format json")
     expect(term.get_by_text('"display_name": "alpha"')).to_be_visible()

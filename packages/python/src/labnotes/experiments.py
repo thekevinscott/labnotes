@@ -11,6 +11,7 @@ from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
 from labnotes.runner.run_headless import run_headless
 from labnotes.tables.experiment_rows import experiment_rows
+from labnotes.tui.browse_tui import browse_tui
 from labnotes.tui.run_tui import run_tui
 
 
@@ -24,8 +25,8 @@ from labnotes.tui.run_tui import run_tui
     "--format",
     "output_format",
     type=click.Choice(["table", "json"]),
-    default="table",
-    show_default=True,
+    help="Print rows and exit. Unset, a terminal browses them instead;"
+    " anything else gets table.",
 )
 @click.option(
     "--concurrency",
@@ -44,7 +45,7 @@ def experiments(
     ctx: click.Context,
     name: str | None,
     action: str | None,
-    output_format: str,
+    output_format: str | None,
     concurrency: int | None,
     experiment_config: Path | None,
 ) -> None:
@@ -75,10 +76,21 @@ def experiments(
             return
     if action not in (None, "runs"):
         raise click.UsageError(f"Unknown action {action}. Use runs or run.")
+    if (
+        action is None
+        and output_format is None
+        and sys.stdout.isatty()
+        and sys.stderr.isatty()
+    ):
+        try:
+            browse_tui(config, name)
+        except ValueError as error:
+            raise click.ClickException(str(error)) from error
+        return
     try:
         rows = asyncio.run(experiment_rows(config, name, action))
     except ValueError as error:
         raise click.ClickException(str(error)) from error
     if rows is None:
         raise click.ClickException(f"No experiment named {name}.")
-    print_rows(rows, output_format)
+    print_rows(rows, output_format or "table")

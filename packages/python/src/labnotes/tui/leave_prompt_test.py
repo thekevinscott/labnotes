@@ -17,6 +17,7 @@ def static() -> Iterator[mock.MagicMock]:
 @pytest.mark.parametrize(
     ("count", "text"),
     [
+        (0, "0 runs still going."),
         (1, "1 run still going."),
         (3, "3 runs still going."),
     ],

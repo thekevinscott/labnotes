@@ -151,6 +151,7 @@ def test_names_rows_after_the_one_experiment(
         "files": {"experiment": "study"},
         "runs": {"experiment": "study"},
         "logs": {"experiment": "study"},
+        "blocks": {"experiment": "study"},
         "experiment_configs": {"experiment": "study", "defaults": {}},
     }
 

@@ -1,0 +1,1 @@
+**Added** — In the live view, `m` grabs a pending run; `j` / `k` move it through the queue, Enter or `m` drops it, and Escape puts it back. The daemon starts runs in the new order. `labnotes run control NAME move RUN PLACE` does the same from a shell, with places counted from 0.

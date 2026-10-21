@@ -23,6 +23,8 @@ PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED, DESELECTED = "–", "⊘"
 VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette"}
+GRABBED_ACTIONS = {"shift", "drop", "put_back"}
+GRABBING_ACTIONS = {*GRABBED_ACTIONS, "grab", "quit", "interrupt", "command_palette"}
 
 
 class RunApp(App[None]):
@@ -30,6 +32,11 @@ class RunApp(App[None]):
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
+        Binding("m", "grab", "Move"),
+        Binding("j,down", "shift(1)", priority=True),
+        Binding("k,up", "shift(-1)", priority=True),
+        Binding("enter", "drop", "Drop", priority=True),
+        Binding("escape", "put_back", "Put back"),
         Binding("space", "toggle_run", "Deselect"),
         Binding("D", "deselect_shown", "Deselect shown"),
         Binding("x", "kill_run", "Stop run"),
@@ -56,6 +63,7 @@ class RunApp(App[None]):
             lambda run: None,
             lambda run: None,
             lambda: None,
+            lambda run, place: None,
         )
         self.concurrency = 1
         self.idle = False
@@ -70,6 +78,8 @@ class RunApp(App[None]):
         self.hiding = False
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
+        self.grabbed: str | None = None
+        self.grabbed_from: list[str] = []
         self.offsets: dict[str, int]
         self.decoders = {
             stream: codecs.getincrementaldecoder("utf-8")(errors="replace")
@@ -129,6 +139,8 @@ class RunApp(App[None]):
                     case "adhoc", [only]:
                         self.view(only["run"])  # type: ignore[index]
             case "started":
+                if run == self.grabbed:
+                    self.action_put_back()
                 self.idle = False
                 self.pending.discard(run)
                 self.started[run] = time.monotonic()
@@ -158,10 +170,10 @@ class RunApp(App[None]):
                 del self.started[run]
                 self.redraw(table.cursor_row)
             case "queued":
-                self.reorder(event, table.cursor_row)
-                table.move_cursor(row=table.get_row_index(run))
-                self.show(describe_event(event))
+                self.reposition(event, run)
                 self.next_run = run
+            case "moved":
+                self.reposition(event, run)
             case "deselected":
                 self.pending.discard(run)
                 self.set_cell(run, "status", dim(DESELECTED))
@@ -198,7 +210,14 @@ class RunApp(App[None]):
         passed = len(self.ended) - failed
         self.show(f"{passed} passed, {failed} failed. q to quit.")
 
+    def reposition(self, event: dict[str, object], run: str) -> None:
+        table = self.query_one(DataTable)
+        self.reorder(event, table.cursor_row)
+        table.move_cursor(row=table.get_row_index(run))
+        self.show(describe_event(event))
+
     def reorder(self, event: dict[str, object], row: int) -> None:
+        self.release()
         waiting: list[str] = [*event["pending"], *event["held"]]  # type: ignore[misc]
         for run in waiting:
             self.cells[run] = self.cells.pop(run)
@@ -220,6 +239,10 @@ class RunApp(App[None]):
             table.update_cell(run, column, cell, update_width=True)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        if self.grabbed is not None:
+            return action in GRABBING_ACTIONS
+        if action in GRABBED_ACTIONS:
+            return False
         return self.viewing is None or action in VIEWING_ACTIONS
 
     def show_concurrency(self, event: dict[str, object]) -> None:
@@ -262,6 +285,57 @@ class RunApp(App[None]):
         if (run := self.cursor_run()) is not None:
             self.controls.run_next(run)
 
+    def queue(self) -> list[str]:
+        return [run for run in self.cells if run in self.pending]
+
+    def action_grab(self) -> None:
+        if self.grabbed is not None:
+            self.action_drop()
+            return
+        run = self.cursor_run()
+        if run not in self.pending:
+            return
+        self.grabbed = run
+        self.grabbed_from = list(self.cells)
+        self.refresh_bindings()
+        self.show(f"Moving {run}. j/k moves it, Enter drops it, Escape puts it back.")
+
+    def action_shift(self, step: int) -> None:
+        run = str(self.grabbed)
+        queue = self.queue()
+        place = queue.index(run) + step
+        if place not in range(len(queue)):
+            return
+        order = list(self.cells)
+        here, there = order.index(run), order.index(queue[place])
+        order[here], order[there] = order[there], order[here]
+        self.cells = {key: self.cells[key] for key in order}
+        self.redraw_on(run)
+
+    def action_drop(self) -> None:
+        run = str(self.grabbed)
+        self.release()
+        self.show("")
+        self.controls.move(run, self.queue().index(run))
+
+    def action_put_back(self) -> None:
+        run = str(self.grabbed)
+        self.release()
+        places = {key: place for place, key in enumerate(self.grabbed_from)}
+        ordered = sorted(self.cells, key=lambda key: places.get(key, len(places)))
+        self.cells = {key: self.cells[key] for key in ordered}
+        self.redraw_on(run)
+        self.show("")
+
+    def release(self) -> None:
+        self.grabbed = None
+        self.refresh_bindings()
+
+    def redraw_on(self, run: str) -> None:
+        table = self.query_one(DataTable)
+        self.redraw(table.cursor_row)
+        table.move_cursor(row=table.get_row_index(run))
+
     def action_toggle_run(self) -> None:
         if (run := self.cursor_run()) is not None:
             self.controls.toggle(run)
@@ -294,7 +368,8 @@ class RunApp(App[None]):
         field.focus()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        self.view(str(event.row_key.value))
+        if self.grabbed is None:
+            self.view(str(event.row_key.value))
 
     def view(self, run: str) -> None:
         self.viewing = run

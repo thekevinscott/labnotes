@@ -17,13 +17,17 @@ Type "uvx labnotes experiments"
 Sleep 500ms
 Enter
 Sleep 3s
-Type "uvx labnotes experiments sweep"
-Sleep 500ms
+Enter
+Sleep 3s
+Enter
+Sleep 2s
+Type "j"
+Sleep 600ms
 Enter
 Sleep 4s
-Type "clear"
-Enter
-Type "uvx labnotes experiments sweep runs"
-Sleep 500ms
-Enter
-Sleep 6s
+Escape
+Sleep 1.5s
+Escape
+Sleep 1.5s
+Type "q"
+Sleep 1s

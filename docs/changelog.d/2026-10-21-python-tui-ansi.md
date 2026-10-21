@@ -1,0 +1,1 @@
+**Fixed** — the TUI run output now renders ANSI color and styles from a run's logs instead of passing the raw escape codes through, and drops other escape codes. A `\r` progress line shows only its latest state.

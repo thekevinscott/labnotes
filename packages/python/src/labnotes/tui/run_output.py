@@ -1,12 +1,14 @@
 import codecs
 from pathlib import Path
 
-from textual.widgets import Log
+from rich.text import Text
+from textual.geometry import Size
+from textual.widgets import RichLog
 
 STREAMS = ("stdout", "stderr")
 
 
-class RunOutput(Log):
+class RunOutput(RichLog):
     def __init__(self, id: str | None = None) -> None:
         super().__init__(id=id)
         self.reset()
@@ -18,8 +20,12 @@ class RunOutput(Log):
             for stream in STREAMS
         }
         self.last_stream: str | None = None
-        self.mid_line = False
+        self.unfinished = ""
         self.clear()
+
+    @property
+    def mid_line(self) -> bool:
+        return self.unfinished != ""
 
     def follow(self, folder: Path) -> None:
         for stream in STREAMS:
@@ -33,9 +39,23 @@ class RunOutput(Log):
             text = self.decoders[stream].decode(data)
             if not text:
                 continue
-            # Don't glue one stream's unfinished line onto the other's output.
-            if self.mid_line and stream != self.last_stream:
-                text = "\n" + text
-            self.write(text)
+            # A stream's unfinished line is redrawn as it grows, but the
+            # other stream's output starts below it.
+            if self.mid_line and stream == self.last_stream:
+                self.drop_last_line()
+                text = self.unfinished + text
+            *complete, self.unfinished = text.split("\n")
+            if complete:
+                self.write(Text.from_ansi("\n".join(complete)))
+            if self.unfinished:
+                self.write(Text.from_ansi(self.unfinished))
             self.last_stream = stream
-            self.mid_line = not text.endswith("\n")
+
+    def drop_last_line(self) -> None:
+        if not self._size_known:
+            self._deferred_renders.pop()
+            return
+        del self.lines[-1]
+        self._line_cache.clear()
+        self.virtual_size = Size(self.virtual_size.width, len(self.lines))
+        self.refresh()

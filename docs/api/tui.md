@@ -37,7 +37,7 @@ The header shows the experiment's name and how many runs go at once.
 
 ## Output keys
 
-The output view follows the run's `stdout.log` and `stderr.log` as they're written.
+The output view follows the run's `stdout.log` and `stderr.log` as they're written. ANSI color and bold show as styled text; other escape codes are dropped.
 
 | Key | Action |
 | --- | --- |

@@ -138,7 +138,7 @@ def test_renders_ansi_color(tmp_path: Path) -> None:
             for s in line
             if s.text.strip()
         }
-        assert colors == {"red": "red", "plain": None, "bold": None}
+        assert colors == {"red": "color(1)", "plain": None, "bold": None}
         bold = [s.style for s in output.lines[1] if s.text == "bold"]
         assert bold[0] is not None
         assert bold[0].bold
@@ -164,9 +164,7 @@ def test_redraws_an_unfinished_line_written_before_the_size_is_known(
     output.follow(tmp_path)
     append(tmp_path / "stdout.log", b"tial\n")
     output.follow(tmp_path)
-    assert [str(render.content) for render in output._deferred_renders] == [
-        "partial"
-    ]
+    assert [str(render.content) for render in output._deferred_renders] == ["partial"]
 
 
 def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:

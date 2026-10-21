@@ -17,7 +17,7 @@ from labnotes.tui.runs_table import RunsTable
 
 class ExperimentScreen(Screen[None]):
     BINDINGS = [
-        Binding("space", "open_invocation", "Open invocation"),
+        Binding("enter", "toggle_invocation", "Expand", priority=True),
         Binding("escape", "app.pop_screen", "Back"),
     ]
 
@@ -65,7 +65,7 @@ class ExperimentScreen(Screen[None]):
             table.add_row(*cells, key=key)
         table.move_cursor(row=row)
 
-    def action_open_invocation(self) -> None:
+    def action_toggle_invocation(self) -> None:
         table = self.query_one(DataTable)
         if not table.row_count:
             return

@@ -47,8 +47,8 @@ labnotes experiments foo runs   # foo's runs, oldest first
 Each takes `--format table` or `--format json`, which print rows and exit.
 Without `--format`, they open a browser in a terminal: the experiment list,
 Enter to open one, Escape to go back. `foo` and `foo runs` open straight on
-`foo`, which shows its runs grouped by invocation; Space opens one. Piped,
-they print a table.
+`foo`, which shows its runs grouped by invocation; Enter expands or collapses
+one. Piped, they print a table.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't

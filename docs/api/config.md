@@ -129,4 +129,4 @@ Runs at once. `--concurrency` on the command line overrides it.
 - Type: string, a SQL condition over `runs`
 - Default: `exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)`
 
-Which runs count toward `repeats`. `labnotes experiments NAME runs` shows the result as `counted`.
+Which runs count toward `repeats`. `labnotes experiments NAME runs --format table` shows the result as `counted`.

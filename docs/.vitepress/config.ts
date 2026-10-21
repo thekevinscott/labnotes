@@ -51,6 +51,7 @@ export default defineConfig({
           { text: 'Config', link: '/api/config' },
           { text: 'CLI', link: '/api/cli' },
           { text: 'TUI', link: '/api/tui' },
+          { text: 'SDK', link: '/api/sdk' },
         ],
       },
     ],

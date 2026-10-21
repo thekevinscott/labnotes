@@ -1,83 +1,108 @@
-import asyncio
-from collections.abc import Callable
-
-from textual.app import App, ComposeResult
-from textual.widgets import DataTable
+from typing import Any
+from unittest import mock
 
 from labnotes.tui.fill_table import fill_table
 
 
-class Host(App[None]):
-    def compose(self) -> ComposeResult:
-        yield DataTable()
+class FakeTable:
+    def __init__(self) -> None:
+        self.labels: list[str] = []
+        self.rows: list[tuple[str, list[object]]] = []
+        self.cursor_row = 0
+        self.cursor_coordinate = "cursor"
+
+    @property
+    def columns(self) -> dict[str, mock.Mock]:
+        return {label: mock.Mock(label=label) for label in self.labels}
+
+    @property
+    def row_count(self) -> int:
+        return len(self.rows)
+
+    def coordinate_to_cell_key(self, coordinate: str) -> mock.Mock:
+        assert coordinate == "cursor"
+        key = mock.Mock()
+        key.row_key.value = self.rows[self.cursor_row][0]
+        return key
+
+    def clear(self, columns: bool = False) -> None:
+        self.rows = []
+        self.cursor_row = 0
+        if columns:
+            self.labels = []
+
+    def add_columns(self, *labels: str) -> None:
+        self.labels += labels
+
+    def add_row(self, *cells: object, key: str) -> None:
+        self.rows.append((key, list(cells)))
+
+    def move_cursor(self, *, row: int) -> None:
+        self.cursor_row = min(row, max(len(self.rows) - 1, 0))
 
 
-def on_table[T](steps: Callable[[DataTable[object]], T]) -> T:
-    async def drive() -> T:
-        app = Host()
-        async with app.run_test():
-            return steps(app.query_one(DataTable))
-
-    return asyncio.run(drive())
+def fill(table: FakeTable, columns: list[str], *keys: str) -> None:
+    rows: Any = [(key, [key, len(key)]) for key in keys]
+    fill_table(table, columns, rows)  # type: ignore[arg-type]
 
 
-def shown(table: DataTable[object]) -> tuple[list[str], list[list[object]], int]:
-    return (
-        [str(column.label) for column in table.columns.values()],
-        [table.get_row_at(index) for index in range(table.row_count)],
-        table.cursor_row,
-    )
-
-
-def rows(*keys: str) -> list[tuple[str, list[object]]]:
-    return [(key, [key, len(key)]) for key in keys]
+def shown(table: FakeTable) -> tuple[list[str], list[str], int]:
+    return table.labels, [key for key, _ in table.rows], table.cursor_row
 
 
 def test_fills_an_empty_table() -> None:
-    def steps(table: DataTable[object]) -> object:
-        fill_table(table, ["name", "size"], rows("ab", "c"))
-        return shown(table)
+    table = FakeTable()
 
-    assert on_table(steps) == (["name", "size"], [["ab", 2], ["c", 1]], 0)
+    fill(table, ["name", "size"], "ab", "c")
+
+    assert shown(table) == (["name", "size"], ["ab", "c"], 0)
+    assert table.rows[0] == ("ab", ["ab", 2])
 
 
 def test_keeps_the_cursor_on_its_row_when_rows_arrive_above() -> None:
-    def steps(table: DataTable[object]) -> object:
-        fill_table(table, ["name", "size"], rows("b", "c"))
-        table.move_cursor(row=1)
-        fill_table(table, ["name", "size"], rows("a", "b", "c"))
-        return shown(table)
+    table = FakeTable()
+    fill(table, ["name", "size"], "b", "c")
+    table.move_cursor(row=1)
 
-    assert on_table(steps) == (
-        ["name", "size"],
-        [["a", 1], ["b", 1], ["c", 1]],
-        2,
-    )
+    fill(table, ["name", "size"], "a", "b", "c")
+
+    assert shown(table) == (["name", "size"], ["a", "b", "c"], 2)
 
 
 def test_keeps_the_cursor_row_when_its_row_goes() -> None:
-    def steps(table: DataTable[object]) -> object:
-        fill_table(table, ["name", "size"], rows("a", "b", "c"))
-        table.move_cursor(row=1)
-        fill_table(table, ["name", "size"], rows("a", "c"))
-        return shown(table)
+    table = FakeTable()
+    fill(table, ["name", "size"], "a", "b", "c")
+    table.move_cursor(row=1)
 
-    assert on_table(steps) == (["name", "size"], [["a", 1], ["c", 1]], 1)
+    fill(table, ["name", "size"], "a", "c")
+
+    assert shown(table) == (["name", "size"], ["a", "c"], 1)
+
+
+def test_keeps_the_columns_when_they_match() -> None:
+    table = FakeTable()
+    fill(table, ["name", "size"], "a")
+    table.add_columns = mock.Mock()  # type: ignore[method-assign]
+
+    fill(table, ["name", "size"], "b")
+
+    table.add_columns.assert_not_called()
+    assert shown(table) == (["name", "size"], ["b"], 0)
 
 
 def test_replaces_the_columns_when_they_change() -> None:
-    def steps(table: DataTable[object]) -> object:
-        fill_table(table, ["name", "size"], rows("a"))
-        fill_table(table, ["name", "length"], rows("a"))
-        return shown(table)
+    table = FakeTable()
+    fill(table, ["name", "size"], "a")
 
-    assert on_table(steps) == (["name", "length"], [["a", 1]], 0)
+    fill(table, ["name", "length"], "a")
+
+    assert shown(table) == (["name", "length"], ["a"], 0)
 
 
 def test_empties_the_table() -> None:
-    def steps(table: DataTable[object]) -> object:
-        fill_table(table, ["name", "size"], rows("a"))
-        fill_table(table, [], [])
-        return shown(table)
+    table = FakeTable()
+    fill(table, ["name", "size"], "a")
 
-    assert on_table(steps) == ([], [], 0)
+    fill(table, [])
+
+    assert shown(table) == ([], [], 0)

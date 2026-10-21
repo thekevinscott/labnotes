@@ -972,7 +972,7 @@ def test_r_does_nothing_without_rows() -> None:
 
 def output(app: RunApp) -> list[str]:
     log: Any = app.query_one("#output")
-    return [str(line) for line in log.lines]
+    return [line.text.rstrip() for line in log.lines]
 
 
 def test_enter_follows_the_output_of_the_run_under_the_cursor(
@@ -1012,7 +1012,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                     log.write("more\n")
                 app.follow()
                 await pilot.pause()
-                assert output(app) == ["hi", "more", ""]
+                assert output(app) == ["hi", "more"]
                 await pilot.press("escape")
                 assert not app.query_one("#output").display
                 assert app.query_one("#runs").display
@@ -1075,7 +1075,7 @@ def test_starts_over_when_viewing_another_run(tmp_path: Path) -> None:
                 app.view("r1")
                 app.view("r2")
                 await pilot.pause()
-                assert output(app) == ["hi", ""]
+                assert output(app) == ["hi"]
 
     asyncio.run(drive())
 

@@ -14,6 +14,7 @@ from labnotes.runner.stop_then_kill import stop_then_kill
 from labnotes.runner.param_args import param_args
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
+from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 
@@ -83,6 +84,7 @@ class RunApp(App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         yield RunsTable(id="runs", cursor_type="row")
+        yield LogBlocks(id="blocks")
         yield RunOutput(id="output")
         yield Input(id="filter", placeholder="Filter params")
         yield Static(id="status")
@@ -365,6 +367,7 @@ class RunApp(App[None]):
 
     def view(self, run: str) -> None:
         self.viewing = run
+        self.query_one(LogBlocks).reset()
         self.query_one(RunOutput).reset()
         self.query_one(DataTable).display = False
         self.query_one(RunOutput).display = True
@@ -375,11 +378,13 @@ class RunApp(App[None]):
 
     def follow(self) -> None:
         if self.viewing in self.folders:
+            self.query_one(LogBlocks).follow(self.folders[self.viewing])
             self.query_one(RunOutput).follow(self.folders[self.viewing])
 
     def action_leave(self) -> None:
         if self.viewing is not None:
             self.viewing = None
+            self.query_one(LogBlocks).display = False
             self.query_one(RunOutput).display = False
             self.query_one(DataTable).display = True
             self.sub_title = ""

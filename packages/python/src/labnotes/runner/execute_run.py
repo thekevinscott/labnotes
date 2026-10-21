@@ -23,7 +23,6 @@ async def execute_run(
     running: set[asyncio.subprocess.Process],
     stopping: asyncio.Event,
     tree: set[psutil.Process],
-    *,
     timeout: float | None = None,
     stop: Callable[[], None] = lambda: None,
 ) -> dict[str, object]:

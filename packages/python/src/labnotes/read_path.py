@@ -13,23 +13,25 @@ PLACEHOLDERS = {
     "files": {"experiment"},
     "runs": {"experiment", "run"},
 }
+# experiments is missing: one experiment has no folder to point at.
+SINGLE_PLACEHOLDERS: dict[str, set[str]] = {"files": set(), "runs": {"run"}}
 # Keys other readers own, so the path check lets them through.
 OTHER_KEYS = {"experiments": {"mode", "concurrency"}}
 PLACEHOLDER = re.compile(r"\{([^}]*)\}")
 SINGLE = "experiment.toml sits next to .labnotes.toml, so this folder is the experiment"
 
 
-def read_path(
-    config: Path, table: str, section: object, *, single: bool = False
-) -> str:
+def read_path(config: Path, table: str, section: object, single: bool = False) -> str:
     if not isinstance(section, dict):
         raise ValueError(f"{config}: {table} must be a table, like [{table}]")
     unknown = sorted(section.keys() - {"path", *OTHER_KEYS.get(table, ())})
     if unknown:
         raise ValueError(f"{config}: unknown keys in [{table}]: {', '.join(unknown)}")
     defaults = SINGLE_PATHS if single else DEFAULT_PATHS
-    if single and table == "experiments" and "path" in section:
-        raise ValueError(f"{config}: [experiments] path doesn't apply; {SINGLE}")
+    if single and table not in SINGLE_PLACEHOLDERS:
+        if "path" in section:
+            raise ValueError(f"{config}: [experiments] path doesn't apply; {SINGLE}")
+        return SINGLE_PATHS[table]
     template = section.get("path", defaults[table])
     if not isinstance(template, str):
         raise ValueError(f"{config}: [{table}] path must be a string")
@@ -40,7 +42,7 @@ def read_path(
     used = set(PLACEHOLDER.findall(template))
     if single and "experiment" in used:
         raise ValueError(f"{config}: [{table}] path can't use {{experiment}}; {SINGLE}")
-    required = PLACEHOLDERS[table] - ({"experiment"} if single else set())
+    required = SINGLE_PLACEHOLDERS[table] if single else PLACEHOLDERS[table]
     if used != required:
         expected = " and ".join(f"{{{name}}}" for name in sorted(required))
         if not expected:

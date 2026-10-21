@@ -112,7 +112,7 @@ You can install the `labnotes` skill with:
 npx skills add thekevinscott/labnotes
 ```
 
-In Claude Code the skill also brings a pane with the run table and its keys. The agent opens it with its `show_runs` tool. `q` goes back and `X` stops all runs there, since the pane never sees escape or ctrl-c.
+In Claude Code the skill also brings a pane with the run table and its keys. The agent opens it with its `show_runs` tool. `q` goes back (or puts a moved run back) and `X` stops all runs there, since the pane never sees escape or ctrl-c.
 
 ## Frontend
 

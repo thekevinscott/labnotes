@@ -18,7 +18,11 @@ const open = async ($: Engine, on: On, ...events: object[]) => {
     const rows = await pane.findAll({ type: 'Text', in: 'runs' })
     return rows.find(row => row.props.inverse === true)?.text.split(' ')[0]
   }
-  return { started, pane, press, cursor }
+  const order = async () => {
+    const rows = await pane.findAll({ type: 'Text', in: 'runs' })
+    return [...new Set(rows.map(row => row.text.split(' ')[0]).filter(name => /^[abc]-\d$/.test(name ?? '')))]
+  }
+  return { started, pane, press, cursor, order }
 }
 
 test('moves the cursor as the TUI does', SLOW, async ($, on) => {
@@ -146,4 +150,42 @@ test('follows a run sent to the front of the queue', SLOW, async ($, on) => {
   started.send(lines({ event: 'queued', experiment: 'exp', run: 's/c-3', pending: ['s/c-3', 's/a-1', 's/b-2'], held: [] }))
   await started.settle()
   expect(await cursor()).toBe('c-3')
+})
+
+test('moves a pending run through the queue and drops it there', SLOW, async ($, on) => {
+  const { started, pane, press, cursor, order } = await open($, on)
+  await press('m')
+  expect(await shown(pane)).toContain('Moving s/a-1.')
+  await press('j')
+  await press('j')
+  await press('j')
+  expect(await cursor()).toBe('a-1')
+  expect(await order()).toEqual(['b-2', 'c-3', 'a-1'])
+  await press('x')
+  await press('k')
+  await press('return')
+  expect(started.ran).toEqual([[...CONTROL, 'move', 's/a-1', '1']])
+})
+
+test('puts a grabbed run back with q, and grabs only pending runs', SLOW, async ($, on) => {
+  const { started, press, cursor, order } = await open($, on, {
+    event: 'started',
+    experiment: 'exp',
+    run: 's/a-1',
+    params: { m: 'a' },
+    folder: '/r/a',
+  })
+  await press('m')
+  await press('j')
+  expect(await cursor()).toBe('b-2')
+  await press('m')
+  await press('j')
+  expect(await order()).toEqual(['a-1', 'c-3', 'b-2'])
+  expect(await cursor()).toBe('b-2')
+  await press('q')
+  expect(await order()).toEqual(['a-1', 'b-2', 'c-3'])
+  expect(await cursor()).toBe('b-2')
+  await press('m')
+  await press('m')
+  expect(started.ran).toEqual([[...CONTROL, 'move', 's/b-2', '0']])
 })

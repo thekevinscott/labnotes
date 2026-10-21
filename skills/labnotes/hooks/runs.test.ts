@@ -97,6 +97,7 @@ describe('describeEvent', () => {
       { event: 'ended', run: 'r', exit_code: 2, error: null },
       { event: 'ended', run: 'r', exit_code: null, error: 'boom' },
       { event: 'queued', run: 'r' },
+      { event: 'moved', run: 'r', pending: ['q', 'r', 's'] },
       { event: 'deselected', run: 'r' },
       { event: 'reselected', run: 'r' },
       { event: 'stopping run', run: 'r' },
@@ -113,6 +114,7 @@ describe('describeEvent', () => {
       'r exited 2',
       'r boom',
       'r runs next.',
+      'r moved to 2 of 3 in the queue.',
       'r deselected.',
       'r back in the queue.',
       'Stopping r.',
@@ -132,6 +134,10 @@ describe('applyEvent', () => {
     expect(queued?.message).toBe('s/b-2 runs next.')
     expect(queued?.nextRun).toBe('s/b-2')
     expect(queued?.rows.map(row => row.run)).toEqual(['s/b-2', 's/a-1'])
+    const [moved] = fold({ event: 'moved', run: 's/b-2', pending: ['s/b-2', 's/a-1'], held: [] })
+    expect(moved?.message).toBe('s/b-2 moved to 1 of 2 in the queue.')
+    expect(moved?.nextRun).toBeNull()
+    expect(moved?.rows.map(row => row.run)).toEqual(['s/b-2', 's/a-1'])
     const [started] = fold(
       { event: 'queued', run: 's/b-2', pending: ['s/b-2', 's/a-1'], held: [] },
       { event: 'started', run: 's/b-2', params: { m: 'b' }, folder: '/f' },

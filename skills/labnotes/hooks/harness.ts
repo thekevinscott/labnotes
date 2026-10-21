@@ -21,7 +21,7 @@ export const PLANNED = {
   experiment: 'exp',
   title: 'Exp',
   concurrency: 1,
-  mode: 'fill',
+  mode: 'matrix',
   runs: [
     { run: 's/a-1', params: { m: 'a' } },
     { run: 's/b-2', params: { m: 'b' } },

@@ -1,1 +1,0 @@
-**Changed** — the labnotes skill's Claude Code pane now mirrors the `labnotes experiments NAME run` table: the same columns, spinner, log view, `/` filter and keys, steering runs through `labnotes run control`. The agent opens it with the `show_runs` tool, and `/labnotes-runs` is gone. In the pane `q` goes back and `X` stops all runs.

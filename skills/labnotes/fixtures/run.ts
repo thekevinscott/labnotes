@@ -63,6 +63,18 @@ export default {
       "experiment": "exp"
     },
     {
+      "event": "moved",
+      "run": "20261020-183756-odd-grass/c-7343",
+      "pending": [
+        "20261020-183756-odd-grass/c-7343",
+        "20261020-183756-odd-grass/b-7ec3"
+      ],
+      "held": [
+        "20261020-183756-odd-grass/d-aaa8"
+      ],
+      "experiment": "exp"
+    },
+    {
       "event": "queued",
       "run": "20261020-183756-odd-grass/c-7343",
       "pending": [
@@ -377,7 +389,7 @@ export default {
         {
           "run": "a-91ac",
           "params": "--m a",
-          "status": "✓",
+          "status": "running",
           "statusStyle": "",
           "dim": false,
           "time": "28s"
@@ -419,15 +431,15 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",
           "params": "--m c",
-          "status": "running",
-          "statusStyle": "",
-          "dim": false,
-          "time": "0s"
+          "status": "○",
+          "statusStyle": "dim",
+          "dim": true,
+          "time": ""
         },
         {
           "run": "b-7ec3",
@@ -448,7 +460,7 @@ export default {
       ]
     },
     {
-      "after": 9,
+      "after": 8,
       "title": "exp",
       "concurrency": 1,
       "rows": [
@@ -458,7 +470,7 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -466,7 +478,7 @@ export default {
           "status": "running",
           "statusStyle": "",
           "dim": false,
-          "time": "14s"
+          "time": "0s"
         },
         {
           "run": "b-7ec3",
@@ -497,15 +509,15 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",
           "params": "--m c",
-          "status": "✗ exited -15",
-          "statusStyle": "red",
+          "status": "running",
+          "statusStyle": "",
           "dim": false,
-          "time": "21s"
+          "time": "14s"
         },
         {
           "run": "b-7ec3",
@@ -536,7 +548,46 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
+        },
+        {
+          "run": "c-7343",
+          "params": "--m c",
+          "status": "✗ exited -15",
+          "statusStyle": "red",
+          "dim": false,
+          "time": "21s"
+        },
+        {
+          "run": "b-7ec3",
+          "params": "--m b",
+          "status": "○",
+          "statusStyle": "dim",
+          "dim": true,
+          "time": ""
+        },
+        {
+          "run": "d-aaa8",
+          "params": "--m d",
+          "status": "⊘",
+          "statusStyle": "dim",
+          "dim": true,
+          "time": ""
+        }
+      ]
+    },
+    {
+      "after": 12,
+      "title": "exp",
+      "concurrency": 1,
+      "rows": [
+        {
+          "run": "a-91ac",
+          "params": "--m a",
+          "status": "✓",
+          "statusStyle": "",
+          "dim": false,
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -565,7 +616,7 @@ export default {
       ]
     },
     {
-      "after": 12,
+      "after": 13,
       "title": "exp",
       "concurrency": 1,
       "rows": [
@@ -575,7 +626,7 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -592,53 +643,6 @@ export default {
           "statusStyle": "",
           "dim": false,
           "time": "7s"
-        },
-        {
-          "run": "d-aaa8",
-          "params": "--m d",
-          "status": "⊘",
-          "statusStyle": "dim",
-          "dim": true,
-          "time": ""
-        },
-        {
-          "run": "c-7ea3",
-          "params": "--m c",
-          "status": "○",
-          "statusStyle": "dim",
-          "dim": true,
-          "time": ""
-        }
-      ]
-    },
-    {
-      "after": 14,
-      "title": "exp",
-      "concurrency": 1,
-      "rows": [
-        {
-          "run": "a-91ac",
-          "params": "--m a",
-          "status": "✓",
-          "statusStyle": "",
-          "dim": false,
-          "time": "28s"
-        },
-        {
-          "run": "c-7343",
-          "params": "--m c",
-          "status": "✗ exited -15",
-          "statusStyle": "red",
-          "dim": false,
-          "time": "21s"
-        },
-        {
-          "run": "b-7ec3",
-          "params": "--m b",
-          "status": "✗ exited 3",
-          "statusStyle": "red",
-          "dim": false,
-          "time": "21s"
         },
         {
           "run": "d-aaa8",
@@ -669,7 +673,54 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
+        },
+        {
+          "run": "c-7343",
+          "params": "--m c",
+          "status": "✗ exited -15",
+          "statusStyle": "red",
+          "dim": false,
+          "time": "21s"
+        },
+        {
+          "run": "b-7ec3",
+          "params": "--m b",
+          "status": "✗ exited 3",
+          "statusStyle": "red",
+          "dim": false,
+          "time": "21s"
+        },
+        {
+          "run": "d-aaa8",
+          "params": "--m d",
+          "status": "⊘",
+          "statusStyle": "dim",
+          "dim": true,
+          "time": ""
+        },
+        {
+          "run": "c-7ea3",
+          "params": "--m c",
+          "status": "○",
+          "statusStyle": "dim",
+          "dim": true,
+          "time": ""
+        }
+      ]
+    },
+    {
+      "after": 16,
+      "title": "exp",
+      "concurrency": 1,
+      "rows": [
+        {
+          "run": "a-91ac",
+          "params": "--m a",
+          "status": "✓",
+          "statusStyle": "",
+          "dim": false,
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -706,7 +757,7 @@ export default {
       ]
     },
     {
-      "after": 16,
+      "after": 17,
       "title": "exp",
       "concurrency": 1,
       "rows": [
@@ -716,7 +767,7 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -753,7 +804,7 @@ export default {
       ]
     },
     {
-      "after": 18,
+      "after": 19,
       "title": "exp",
       "concurrency": 1,
       "rows": [
@@ -763,7 +814,7 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -788,53 +839,6 @@ export default {
           "statusStyle": "",
           "dim": false,
           "time": "21s"
-        },
-        {
-          "run": "d-aaa8",
-          "params": "--m d",
-          "status": "–",
-          "statusStyle": "dim",
-          "dim": true,
-          "time": ""
-        }
-      ]
-    },
-    {
-      "after": 19,
-      "title": "exp",
-      "concurrency": 2,
-      "rows": [
-        {
-          "run": "a-91ac",
-          "params": "--m a",
-          "status": "✓",
-          "statusStyle": "",
-          "dim": false,
-          "time": "28s"
-        },
-        {
-          "run": "c-7343",
-          "params": "--m c",
-          "status": "✗ exited -15",
-          "statusStyle": "red",
-          "dim": false,
-          "time": "21s"
-        },
-        {
-          "run": "b-7ec3",
-          "params": "--m b",
-          "status": "✗ exited 3",
-          "statusStyle": "red",
-          "dim": false,
-          "time": "21s"
-        },
-        {
-          "run": "c-7ea3",
-          "params": "--m c",
-          "status": "running",
-          "statusStyle": "",
-          "dim": false,
-          "time": "28s"
         },
         {
           "run": "d-aaa8",
@@ -857,7 +861,54 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
+          "time": "35s"
+        },
+        {
+          "run": "c-7343",
+          "params": "--m c",
+          "status": "✗ exited -15",
+          "statusStyle": "red",
+          "dim": false,
+          "time": "21s"
+        },
+        {
+          "run": "b-7ec3",
+          "params": "--m b",
+          "status": "✗ exited 3",
+          "statusStyle": "red",
+          "dim": false,
+          "time": "21s"
+        },
+        {
+          "run": "c-7ea3",
+          "params": "--m c",
+          "status": "running",
+          "statusStyle": "",
+          "dim": false,
           "time": "28s"
+        },
+        {
+          "run": "d-aaa8",
+          "params": "--m d",
+          "status": "–",
+          "statusStyle": "dim",
+          "dim": true,
+          "time": ""
+        }
+      ]
+    },
+    {
+      "after": 21,
+      "title": "exp",
+      "concurrency": 2,
+      "rows": [
+        {
+          "run": "a-91ac",
+          "params": "--m a",
+          "status": "✓",
+          "statusStyle": "",
+          "dim": false,
+          "time": "35s"
         },
         {
           "run": "c-7343",
@@ -894,7 +945,7 @@ export default {
       ]
     },
     {
-      "after": 21,
+      "after": 22,
       "title": "exp",
       "concurrency": 2,
       "rows": [
@@ -904,7 +955,7 @@ export default {
           "status": "✓",
           "statusStyle": "",
           "dim": false,
-          "time": "28s"
+          "time": "35s"
         },
         {
           "run": "c-7343",

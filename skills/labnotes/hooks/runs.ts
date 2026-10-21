@@ -83,6 +83,10 @@ export const describeEvent = (event: LabnotesEvent): string => {
       return `${event.run} ${event.error || `exited ${event.exit_code}`}`
     case 'queued':
       return `${event.run} runs next.`
+    case 'moved': {
+      const pending = event.pending as string[]
+      return `${event.run} moved to ${pending.indexOf(String(event.run)) + 1} of ${pending.length} in the queue.`
+    }
     case 'deselected':
       return `${event.run} deselected.`
     case 'reselected':
@@ -157,6 +161,8 @@ const applyRun = (experiment: Experiment, event: LabnotesEvent, now: number): Ex
     }
     case 'queued':
       return { ...say(experiment, event, reorder(rows, event)), nextRun: String(event.run) }
+    case 'moved':
+      return say(experiment, event, reorder(rows, event))
     case 'deselected':
       return say(experiment, event, reorder(setRow(rows, event.run, { status: 'deselected' }), event))
     case 'reselected':

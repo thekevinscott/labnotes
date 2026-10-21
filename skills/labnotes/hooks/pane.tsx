@@ -18,14 +18,17 @@ type PaneState = {
   frame: number
   now: number
   nextRuns: string
+  grab: Grab | null
 }
+
+type Grab = { experiment: string; run: string; place: number }
 
 type Shown = { experiment: Experiment; row: Row }
 
 const COLUMNS = ['run', 'params', 'status', 'time'] as const
 
 const KEYS =
-  'enter log · n next · space deselect · D deselect shown · x stop · X stop all · f hide failed · r retry · +/- at once · / filter · q back'
+  'enter log · n next · m move · space deselect · D deselect shown · x stop · X stop all · f hide failed · r retry · +/- at once · / filter · q back'
 
 const shownRows = (experiments: Experiment[], state: PaneState): Shown[] =>
   experiments.flatMap(experiment =>
@@ -35,14 +38,29 @@ const shownRows = (experiments: Experiment[], state: PaneState): Shown[] =>
       .map(row => ({ experiment, row })),
   )
 
+const pendingOf = (experiment: Experiment) => experiment.rows.filter(row => row.status === 'pending')
+
+// Draw a grabbed run at its new place among the pending runs, as the TUI does before it drops.
+const arranged = (experiments: Experiment[], grab: Grab | null): Experiment[] =>
+  experiments.map(experiment => {
+    if (grab === null || experiment.name !== grab.experiment) return experiment
+    const pending = pendingOf(experiment)
+    const grabbed = pending.find(row => row.run === grab.run)
+    if (grabbed === undefined) return experiment
+    const order = pending.filter(row => row !== grabbed)
+    order.splice(grab.place, 0, grabbed)
+    let at = 0
+    return { ...experiment, rows: experiment.rows.map(row => (row.status === 'pending' ? order[at++] ?? row : row)) }
+  })
+
 const nextRunsOf = (experiments: Experiment[]) => experiments.map(one => one.nextRun ?? '').join('\n')
 
 const isTypable = (event: ClientKeyEvent) => event.key.length === 1 && !event.ctrl && !event.meta
 
 const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
   const { Box, Text } = surface.elements
-  const { experiments, log } = props
-  const state: PaneState = surface.state ?? {
+  const { log } = props
+  const fresh: PaneState = surface.state ?? {
     cursor: 0,
     filter: '',
     isTyping: false,
@@ -50,8 +68,15 @@ const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
     note: '',
     frame: 0,
     now: Date.now(),
-    nextRuns: nextRunsOf(experiments),
+    nextRuns: nextRunsOf(props.experiments),
+    grab: null,
   }
+  const grabbed = props.experiments
+    .find(one => one.name === fresh.grab?.experiment)
+    ?.rows.find(row => row.run === fresh.grab?.run)
+  // A grabbed run that starts meanwhile goes back where it was.
+  const state = grabbed?.status === 'pending' ? fresh : { ...fresh, grab: null }
+  const experiments = arranged(props.experiments, state.grab)
   const shown = shownRows(experiments, state)
   const set = (change: Partial<PaneState>) => surface.setState({ ...state, note: '', ...change })
   const post = (message: PaneMessage) => surface.post(message as JsonValue)
@@ -73,7 +98,40 @@ const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
     if (experiment !== undefined) control(experiment, experiment.isIdle ? 'finish' : 'interrupt')
   }
 
+  const shift = (grab: Grab, step: number) => {
+    const experiment = experiments.find(one => one.name === grab.experiment)
+    const place = grab.place + step
+    if (experiment === undefined || place < 0 || place >= pendingOf(experiment).length) return
+    const moved = { ...grab, place }
+    const at = shownRows(arranged(props.experiments, moved), state).findIndex(({ row }) => row.run === grab.run)
+    set({ grab: moved, note: state.note, cursor: at === -1 ? cursor : at })
+  }
+
+  const drop = (grab: Grab) => {
+    post({ controls: [{ experiment: grab.experiment, action: 'move', args: [grab.run, String(grab.place)] }] })
+    set({ grab: null })
+  }
+
+  const onGrabbing = (grab: Grab, event: ClientKeyEvent) => {
+    switch (event.key) {
+      case 'j':
+      case 'down':
+        return shift(grab, 1)
+      case 'k':
+      case 'up':
+        return shift(grab, -1)
+      case 'return':
+      case 'm':
+        return drop(grab)
+      case 'q': {
+        const at = shownRows(props.experiments, state).findIndex(({ row }) => row.run === grab.run)
+        return set({ grab: null, cursor: at === -1 ? cursor : at })
+      }
+    }
+  }
+
   const onKey = (event: ClientKeyEvent) => {
+    if (state.grab !== null) return onGrabbing(state.grab, event)
     if (state.isTyping) {
       if (event.key === 'return') set({ isTyping: false })
       else if (event.key === 'backspace' || event.key === 'delete') set({ filter: state.filter.slice(0, -1) })
@@ -103,6 +161,16 @@ const Pane: ClientModule<PaneProps, PaneState> = (props, surface) => {
       case 'n':
         if (current !== undefined) control(current.experiment, 'run_next', current.row.run)
         return
+      case 'm':
+        if (current?.row.status !== 'pending') return
+        return set({
+          grab: {
+            experiment: current.experiment.name,
+            run: current.row.run,
+            place: pendingOf(current.experiment).indexOf(current.row),
+          },
+          note: `Moving ${current.row.run}. j/k moves it, enter drops it, q puts it back.`,
+        })
       case 'space':
         if (current !== undefined) control(current.experiment, 'toggle', current.row.run)
         return

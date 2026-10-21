@@ -1,0 +1,21 @@
+# Skill
+
+`labnotes` ships an agent skill, so a coding agent like Claude Code or Codex can drive it for you. Install it with:
+
+```bash
+npx skills add thekevinscott/labnotes
+```
+
+With the skill installed, the agent can set up an experiment's `experiment.toml`, run its param grid, check what has run and which runs failed, and answer questions about its runs. It only applies in projects with a `.labnotes.toml` at the root. Notes are plain files, so the agent edits them directly.
+
+The skill tells the agent to read `uvx labnotes context` before running anything. That command prints a guide to the CLI for agents, including what a script run by `labnotes` should do. You can read it yourself the same way.
+
+## Mods
+
+In Claude Code, the skill also installs mods that bring the run table into the session.
+
+The agent starts runs in a background shell, so the conversation isn't held while they go. It opens a pane with the same live table as the [TUI](cli/tui) through its `show_runs` tool, after starting runs or when you ask to watch them. Click the pane to use its keys. The [TUI keys](api/tui) work there, except the pane never sees Escape or Ctrl-C: `q` goes back from a run's output, and `X` stops all runs.
+
+When a run finishes or fails, a toast says so, whether or not the pane is open.
+
+The pane and the terminal are both views of the project's daemon, so you can watch the same runs in either.

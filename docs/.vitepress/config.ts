@@ -3,6 +3,7 @@ import { defineConfig } from 'vitepress'
 const repository = 'https://github.com/thekevinscott/labnotes'
 
 export default defineConfig({
+  vue: { template: { compilerOptions: { whitespace: 'preserve' } } },
   title: 'labnotes',
   description: '',
   base: '/labnotes/',
@@ -11,49 +12,48 @@ export default defineConfig({
   // the build. The changelog/migration fragment folders are the raw record
   // (one file per PR, see docs/internals/repo.md); they never publish either.
   // internals/ is contributor/agent-facing material, also excluded.
-  srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**'],
+  // migrations.md is a pointer stub at the conventional path.
+  srcExclude: ['**/AGENTS.md', 'changelog.d/**', 'migrations.d/**', 'internals/**', 'migrations.md', 'demos/**'],
   themeConfig: {
     siteTitle: false,
-    // Top-level nav is the four Diataxis quadrants, mirroring the
-    // testing-conventions docs site. See docs/AGENTS.md.
-    nav: [
-      { text: 'Getting Started', link: '/getting-started' },
-      { text: 'How-to Guides', link: '/guide/' },
-      { text: 'Reference', link: '/reference/' },
-      { text: 'Explanation', link: '/explanation/' },
+    sidebar: [
+      {
+        items: [
+          { text: 'Philosophy', link: '/philosophy' },
+          { text: 'Getting Started', link: '/getting-started' },
+          {
+            text: 'CLI',
+            link: '/cli/experiments',
+            items: [
+              { text: 'Working with Experiments', link: '/cli/experiments' },
+              {
+                text: 'Modes',
+                collapsed: false,
+                items: [
+                  { text: 'Adhoc', link: '/cli/adhoc' },
+                  { text: 'Matrix', link: '/cli/matrix' },
+                ],
+              },
+              { text: 'TUI', link: '/cli/tui' },
+            ],
+          },
+          { text: 'Frontend', link: '/frontend' },
+          { text: 'Skill', link: '/skill' },
+        ],
+      },
+      {
+        text: 'Guides',
+        items: [{ text: 'Common Organizations', link: '/guides/common-organizations' }],
+      },
+      {
+        text: 'API',
+        items: [
+          { text: 'Config', link: '/api/config' },
+          { text: 'CLI', link: '/api/cli' },
+          { text: 'TUI', link: '/api/tui' },
+        ],
+      },
     ],
-    sidebar: {
-      '/': [
-        {
-          text: 'Tutorial',
-          items: [
-            { text: 'Getting Started', link: '/getting-started' },
-          ],
-        },
-        {
-          text: 'How-to Guides',
-          items: [
-            { text: 'Overview', link: '/guide/' },
-            { text: 'Testing conventions', link: '/guide/testing-conventions' },
-          ],
-        },
-        {
-          text: 'Reference',
-          items: [
-            { text: 'API', link: '/reference/' },
-            { text: 'Migrations', link: '/migrations' },
-          ],
-        },
-        {
-          text: 'Explanation',
-          items: [
-            { text: 'Overview', link: '/explanation/' },
-            { text: 'Ad hoc runs', link: '/explanation/adhoc-runs' },
-            { text: 'Matrix runs', link: '/explanation/matrix-runs' },
-          ],
-        },
-      ],
-    },
     socialLinks: [{ icon: 'github', link: repository }],
     search: { provider: 'local' },
     outline: [2, 3],

@@ -1,6 +1,3 @@
----
-diataxis: reference
----
 
 # Migrations
 

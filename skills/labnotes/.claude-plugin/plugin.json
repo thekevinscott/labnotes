@@ -1,7 +1,7 @@
 {
   "name": "labnotes",
   "version": "0.1.0",
-  "description": "A /labnotes pane showing this project's labnotes runs, and a notice when they finish",
+  "description": "A pane that shows and steers this project's labnotes runs, and a notice when they finish",
   "author": {
     "name": "Kevin Scott"
   },

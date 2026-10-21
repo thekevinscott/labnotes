@@ -1,21 +1,32 @@
-export type RunState = 'pending' | 'running' | 'stopping' | 'passed' | 'failed' | 'skipped'
+export type RunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'deselected'
 
-export type Run = {
+export type Row = {
   run: string
-  params: Record<string, unknown>
-  state: RunState
-  line?: string
+  params: string
+  status: RunStatus
+  reason?: string
+  dim: boolean
+  startedAt?: number
+  endedAt?: number
+  folder?: string
 }
 
 export type Experiment = {
   name: string
-  runs: Run[]
+  title: string
+  concurrency: number
+  rows: Row[]
+  message: string
+  nextRun: string | null
+  isIdle: boolean
   isFinished: boolean
   error: string | null
 }
 
+export type Log = { run: string; lines: string[] }
+
 declare module 'claude-code' {
   interface PluginState {
-    labnotes: { experiments: Experiment[] }
+    labnotes: { experiments: Experiment[]; log: Log | null }
   }
 }

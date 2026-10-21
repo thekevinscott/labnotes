@@ -14,7 +14,7 @@ The skill tells the agent to read `uvx labnotes context` before running anything
 
 In Claude Code, the skill also installs mods that bring the run table into the session.
 
-The agent starts runs in a background shell, so the conversation isn't held while they go. It opens a pane with the same live table as the [TUI](cli/tui) through its `show_runs` tool, after starting runs or when you ask to watch them. Click the pane to use its keys. The [TUI keys](api/tui) work there, except the pane never sees Escape or Ctrl-C: `q` goes back from a run's output, and `X` stops all runs.
+The agent starts runs in a background shell, so the conversation isn't held while they go. It opens a pane with the same live table as the [TUI](cli/tui) through its `show_runs` tool, after starting runs or when you ask to watch them. Click the pane to use its keys. The [TUI keys](api/tui) work there, except the pane never sees Escape or Ctrl-C: `q` goes back from a run's output or puts a moved run back, and `X` stops all runs.
 
 When a run finishes or fails, a toast says so, whether or not the pane is open.
 

@@ -4,6 +4,7 @@ import sys
 from pathlib import Path
 from typing import Any
 
+import psutil
 import pytest
 
 from labnotes.cli import main
@@ -253,3 +254,56 @@ def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(project: Path) ->
     assert labnotes(project, ["experiments", "exp", "run"]) == 0
 
     assert len(runs(project)) == 4
+
+
+SLEEPER = """
+import os
+import signal
+import sys
+import time
+from pathlib import Path
+
+args = sys.argv[1:]
+if "--stubborn" in args:
+    signal.signal(signal.SIGTERM, signal.SIG_IGN)
+    Path("pid.txt").write_text(str(os.getpid()))
+time.sleep(float(args[args.index("--s") + 1]))
+"""
+
+
+def sleeper(root: Path, seconds: list[float], stubborn: bool = False) -> Path:
+    write(root / ".labnotes.toml", "")
+    write(root / "sleep.py", SLEEPER)
+    flag = " --stubborn" if stubborn else ""
+    write(
+        root / "exp" / "experiment.toml",
+        f'command = "{sys.executable} sleep.py{flag}"\n'
+        f'mode = "matrix"\n[params]\ns = {json.dumps(seconds)}\n',
+    )
+    return root
+
+
+def test_stops_only_the_runs_that_outlast_the_timeout(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = sleeper(tmp_path, [0.1, 30])
+
+    argv = ["experiments", "exp", "run", "--concurrency", "2", "--timeout", "2"]
+    assert labnotes(project, argv) == 0
+
+    recorded = {run["params"]["s"]: run for run in runs(project)}
+    assert (recorded[0.1]["exit_code"], recorded[0.1]["error"]) == (0, None)
+    assert recorded[30]["exit_code"] != 0
+    assert recorded[30]["error"] == "timed out after 2s"
+    assert "timed out after 2s" in capsys.readouterr().out
+
+
+def test_kills_a_timed_out_run_that_ignores_sigterm(tmp_path: Path) -> None:
+    project = sleeper(tmp_path, [30], stubborn=True)
+
+    assert labnotes(project, ["experiments", "exp", "run", "--timeout", "1"]) == 0
+
+    [run] = runs(project)
+    assert run["error"] == "timed out after 1s"
+    stubborn = int((project / "pid.txt").read_text())
+    assert not psutil.pid_exists(stubborn)

@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -210,7 +210,9 @@ def test_nests_adhoc_runs_in_one_folder_per_command(
     collaborators["run_ids"].return_value = {"r1", "r1/taken"}
     listen, report = mock.Mock(), mock.Mock()
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         if folder.name == "n2":
             listen.call_args.args[0].retry("r1/n1")
         return {"exit_code": 0, "error": None}
@@ -283,7 +285,7 @@ def test_runs_up_to_the_concurrency_at_once(
     live: list[int] = []
     peak = 0
 
-    async def execute(*args: object) -> dict[str, object]:
+    async def execute(*args: object, **_: object) -> dict[str, object]:
         nonlocal peak
         live.append(1)
         peak = max(peak, len(live))
@@ -307,6 +309,7 @@ def interrupting(times: int, listen: mock.Mock) -> object:
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        **__: object,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         assert not stopping.is_set()
@@ -392,7 +395,7 @@ def test_moves_a_pending_run_to_the_front(
     listen = mock.Mock()
     report = mock.Mock()
 
-    async def execute(*args: object) -> dict[str, object]:
+    async def execute(*args: object, **_: object) -> dict[str, object]:
         controls = listen.call_args.args[0]
         controls.run_next("r1")
         # Built at runtime, so an `is` comparison would miss it.
@@ -438,7 +441,9 @@ def test_moves_a_pending_run_to_a_place_in_the_queue(
     listen, report = mock.Mock(), mock.Mock()
     planning(collaborators, 4)
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         if folder.name == "r1":
             controls = listen.call_args.args[0]
             controls.move("r1", 0)
@@ -458,7 +463,7 @@ def test_moves_a_pending_run_to_a_place_in_the_queue(
 def changing_concurrency(listen: mock.Mock, to: int, widths: list[int]) -> object:
     live = 0
 
-    async def execute(*args: object) -> dict[str, object]:
+    async def execute(*args: object, **_: object) -> dict[str, object]:
         nonlocal live
         live += 1
         widths.append(live)
@@ -531,7 +536,9 @@ def test_a_deselected_run_does_not_run(
     listen, report = mock.Mock(), mock.Mock()
     planning(collaborators, 3)
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         if folder.name == "r1":
             listen.call_args.args[0].toggle("r2")
         return {"exit_code": 0, "error": None}
@@ -552,7 +559,7 @@ def test_a_reselected_run_goes_to_the_back_of_the_queue(
     listen, report = mock.Mock(), mock.Mock()
     planning(collaborators, 3)
 
-    async def execute(*args: object) -> dict[str, object]:
+    async def execute(*args: object, **_: object) -> dict[str, object]:
         if len(started_runs(report)) == 1:
             controls = listen.call_args.args[0]
             controls.toggle("r2")
@@ -579,7 +586,9 @@ def test_a_reselected_run_starts_at_once_when_there_is_room(
     listen, report = mock.Mock(), mock.Mock()
     planning(collaborators, 3)
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         if folder.name == "r1":
             controls = listen.call_args.args[0]
             controls.toggle("r3")
@@ -601,7 +610,7 @@ def test_toggling_a_run_that_is_not_waiting_does_nothing(
 ) -> None:
     listen, report = mock.Mock(), mock.Mock()
 
-    async def execute(*args: object) -> dict[str, object]:
+    async def execute(*args: object, **_: object) -> dict[str, object]:
         listen.call_args.args[0].toggle("r1")
         return {"exit_code": 0, "error": None}
 
@@ -618,7 +627,7 @@ def test_toggling_after_stopping_does_nothing(
     listen, report = mock.Mock(), mock.Mock()
     planning(collaborators, 3)
 
-    async def execute(*args: object) -> dict[str, object]:
+    async def execute(*args: object, **_: object) -> dict[str, object]:
         controls = listen.call_args.args[0]
         controls.toggle("r2")
         controls.interrupt()
@@ -642,6 +651,7 @@ def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        **__: object,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=int(folder.name[1:])))
         for by, target in kills:
@@ -720,6 +730,7 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        **__: object,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         listen.call_args.args[0].interrupt()
@@ -761,7 +772,9 @@ def test_retry_runs_an_ended_run_again_under_a_new_id(
 ) -> None:
     listen, report = mock.Mock(), mock.Mock()
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         if folder.name == "r2":
             listen.call_args.args[0].retry("r1")
         return {"exit_code": 0, "error": None}
@@ -783,7 +796,9 @@ def test_retry_ignores_runs_that_have_not_ended(
 ) -> None:
     listen, report = mock.Mock(), mock.Mock()
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         listen.call_args.args[0].retry(folder.name)
         return {"exit_code": 0, "error": None}
 
@@ -799,7 +814,9 @@ def test_retry_does_nothing_after_stopping(
 ) -> None:
     listen, report = mock.Mock(), mock.Mock()
 
-    async def execute(root: Path, folder: Path, *args: object) -> dict[str, object]:
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
         if folder.name == "r2":
             controls = listen.call_args.args[0]
             controls.interrupt()
@@ -813,3 +830,65 @@ def test_retry_does_nothing_after_stopping(
 
     assert started_runs(report) == ["r1", "r2"]
     assert "retried" not in events(report)
+
+
+def test_passes_the_timeout_to_each_run(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    asyncio.run(
+        run_experiment(
+            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            "exp",
+            experiment(),
+            1,
+            mock.Mock(),
+            lambda controls: controls.finish(),
+            90,
+        )
+    )
+
+    calls = collaborators["execute_run"].await_args_list
+    assert [c.kwargs["timeout"] for c in calls] == [90, 90]
+
+
+def test_a_timed_out_run_stops_like_a_kill(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    report = mock.Mock()
+    planning(collaborators, 1)
+
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        stopping: asyncio.Event,
+        tree: set[object],
+        *,
+        stop: Callable[[], None],
+        **__: object,
+    ) -> dict[str, object]:
+        running.add(mock.Mock(pid=1))
+        stop()
+        stop()
+        running.clear()
+        stop()
+        return {"exit_code": -9, "error": "timed out after 1s"}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report)
+
+    assert collaborators["signal_tree"].call_args_list == [
+        mock.call(1, SIGTERM, set()),
+        mock.call(1, SIGKILL, set()),
+    ]
+    assert events(report) == [
+        "planned",
+        "started",
+        "stopping run",
+        "killing run",
+        "ended",
+        "idle",
+    ]

@@ -10,7 +10,7 @@ async def load_run(
 ) -> dict[str, object] | None:
     rows = await tables.query(
         "SELECT runs.experiment, experiments.display_name, runs.id, runs.folder,"
-        " runs.created, runs.ended, runs.exit_code, runs.params"
+        " runs.created, runs.ended, runs.exit_code, runs.error, runs.params"
         " FROM runs JOIN experiments ON experiments.name = runs.experiment"
         f" WHERE runs.experiment = {quote_string(experiment)}"
         f" AND runs.id = {quote_string(run)}"

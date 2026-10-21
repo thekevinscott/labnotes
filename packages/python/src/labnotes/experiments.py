@@ -40,6 +40,13 @@ from labnotes.tui.run_tui import run_tui
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
     help="With run: read this file instead of the experiment's experiment.toml.",
 )
+@click.option(
+    "--timeout",
+    type=click.IntRange(min=1),
+    metavar="SECONDS",
+    help="With run: stop any run still going after this many seconds."
+    " Unset, runs have no time limit.",
+)
 @click.pass_context
 def experiments(
     ctx: click.Context,
@@ -48,6 +55,7 @@ def experiments(
     output_format: str | None,
     concurrency: int | None,
     experiment_config: Path | None,
+    timeout: int | None,
 ) -> None:
     config = load_config(ctx)
     if config is None:
@@ -63,7 +71,7 @@ def experiments(
             click.echo(f"Created {path / 'experiment.toml'}")
             return
         case str(), "run":
-            start = remote_start(config, name, experiment_config, concurrency)
+            start = remote_start(config, name, experiment_config, concurrency, timeout)
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():
                     results = run_tui(start, name)

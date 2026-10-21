@@ -1,15 +1,18 @@
 import asyncio
 import os
 import time
+from collections.abc import Callable
 from pathlib import Path
 
 import psutil
 
 from labnotes.log_path import LOG_ENV
 from labnotes.runner.shell_command import shell_command
+from labnotes.runner.stop_then_kill import GRACE_SECONDS
 from labnotes.runner.wait_for_tree import wait_for_tree
 from labnotes.runner.write_run_json import write_run_json
 from labnotes.tables.iso_time import iso_time
+from labnotes.tui.format_elapsed import format_elapsed
 
 
 async def execute_run(
@@ -20,6 +23,8 @@ async def execute_run(
     running: set[asyncio.subprocess.Process],
     stopping: asyncio.Event,
     tree: set[psutil.Process],
+    timeout: float | None = None,
+    stop: Callable[[], None] = lambda: None,
 ) -> dict[str, object]:
     run: dict[str, object] = {
         "params": params,
@@ -50,14 +55,27 @@ async def execute_run(
             run["error"] = str(error)
         else:
             running.add(process)
+            exited = asyncio.ensure_future(process.wait())
+            kill_later = None
             try:
-                run["exit_code"] = await process.wait()
+                if (
+                    timeout is not None
+                    and not (await asyncio.wait({exited}, timeout=timeout))[0]
+                ):
+                    run["error"] = f"timed out after {format_elapsed(timeout)}"
+                    stop()
+                    kill_later = asyncio.get_running_loop().call_later(
+                        GRACE_SECONDS, stop
+                    )
+                run["exit_code"] = await exited
                 # The shell can exit on SIGTERM before what it started. Once
                 # stopping, the run stays killable until everything signalled
                 # is gone. A normal exit ends the run even if helpers linger.
-                if stopping.is_set():
+                if stopping.is_set() or kill_later is not None:
                     await wait_for_tree(tree)
             finally:
+                if kill_later is not None:
+                    kill_later.cancel()
                 running.discard(process)
     run["ended"] = iso_time(time.time())
     write_run_json(folder, run)

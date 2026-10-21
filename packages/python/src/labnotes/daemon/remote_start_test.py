@@ -50,8 +50,9 @@ def go(
     experiment_config: Path | None = None,
     report: mock.Mock | None = None,
     listen: mock.Mock | None = None,
+    timeout: float | None = None,
 ) -> list[dict[str, object]]:
-    start = remote_start(CONFIG, "exp", experiment_config, 3)
+    start = remote_start(CONFIG, "exp", experiment_config, 3, timeout)
     return asyncio.run(start(report or mock.Mock(), listen or mock.Mock()))
 
 
@@ -83,6 +84,7 @@ def test_runs_the_experiment_through_the_daemon(
             "client": 7,
             "experiment_config": str(toml.resolve()),
             "concurrency": 3,
+            "timeout": None,
         },
     )
     assert report.call_args_list == [
@@ -101,6 +103,7 @@ def test_sends_no_experiment_config_by_default(daemon: dict[str, Any]) -> None:
         "client": 7,
         "experiment_config": None,
         "concurrency": 3,
+        "timeout": None,
     }
 
 
@@ -200,3 +203,11 @@ def test_names_the_error_type_when_it_has_no_message(daemon: dict[str, Any]) -> 
         ValueError, match="^Can't reach the labnotes daemon: Transport$"
     ):
         go()
+
+
+def test_sends_the_timeout(daemon: dict[str, Any]) -> None:
+    daemon["sent"].append({"event": "done", "experiment": "exp", "error": None})
+
+    go(timeout=90)
+
+    assert daemon["client"].post.call_args.kwargs["json"]["timeout"] == 90

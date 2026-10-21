@@ -41,7 +41,7 @@ class ExperimentsScreen(Screen[None]):
         self.sub_title = "" if rows else "No experiments."
         fill_table(
             self.query_one(DataTable),
-            list(rows[0]) if rows else [],
+            list(next(iter(rows), ())),
             [
                 (
                     str(row["name"]),

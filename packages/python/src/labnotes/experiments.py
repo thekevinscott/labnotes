@@ -76,12 +76,7 @@ def experiments(
             return
     if action not in (None, "runs"):
         raise click.UsageError(f"Unknown action {action}. Use runs or run.")
-    if (
-        action is None
-        and output_format is None
-        and sys.stdout.isatty()
-        and sys.stderr.isatty()
-    ):
+    if output_format is None and sys.stdout.isatty() and sys.stderr.isatty():
         try:
             browse_tui(config, name)
         except ValueError as error:

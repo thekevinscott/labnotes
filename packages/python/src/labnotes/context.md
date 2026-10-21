@@ -35,8 +35,8 @@ labnotes experiments foo runs --format json   # foo's runs, oldest first
 ```
 
 Always pass `--format json` (to parse) or `--format table`. Without `--format`,
-`labnotes experiments` and `labnotes experiments foo` open an interactive
-browser when they find a terminal, and wait for keys that never come.
+all three open an interactive browser when they find a terminal, and wait for
+keys that never come.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't

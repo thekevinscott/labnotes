@@ -1,0 +1,1 @@
+**Changed** — **BREAKING** — the TUIs quit on Ctrl-C, and `q` no longer quits. With runs going, the run TUI asks first: Enter or a second Ctrl-C leaves them running, `s` stops them, Escape goes back. Two Ctrl-Cs used to stop every run; now they leave the runs going. See the [migration](../migrations.d/2026-10-21-python-tui-ctrl-c-prompt.md).

@@ -22,8 +22,9 @@ def invocation_rows(
             [run, *_] = group["runs"]
             rows.append((str(run["id"]), run_cells(run, columns, True, live)))
             continue
-        rows.append((group["name"], group_cells(group, columns, live)))
-        if group["name"] in opened:
+        is_open = group["name"] in opened
+        rows.append((group["name"], group_cells(group, columns, live, is_open)))
+        if is_open:
             rows += [
                 (str(run["id"]), run_cells(run, columns, True, live))
                 for run in group["runs"]

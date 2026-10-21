@@ -7,7 +7,7 @@ from labnotes.format_value import format_value
 
 
 def group_cells(
-    group: Mapping[str, Any], columns: Sequence[str], live: bool
+    group: Mapping[str, Any], columns: Sequence[str], live: bool, opened: bool
 ) -> list[object]:
     status = Text.assemble(
         (f"{group['passed']}✓", "green"), " ", (f"{group['failed']}✕", "red")
@@ -15,7 +15,8 @@ def group_cells(
     if group["unfinished"]:
         mark, style = ("◐", "yellow") if live else ("–", "dim")
         status.append(f" {group['unfinished']}{mark}", style=style)
-    cells: list[object] = [status, group["name"], str(len(group["runs"]))]
+    marker = "▾" if opened else "▸"
+    cells: list[object] = [status, f"{marker} {group['name']}", str(len(group["runs"]))]
     for column in columns[1:]:
         if column == "started":
             cells.append(group["started"] or "")

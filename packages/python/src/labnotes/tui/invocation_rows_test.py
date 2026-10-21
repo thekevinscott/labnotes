@@ -21,11 +21,12 @@ def cells() -> Iterator[dict[str, mock.MagicMock]]:
         ) as run_cells,
         mock.patch(
             "labnotes.tui.invocation_rows.group_cells",
-            side_effect=lambda group, columns, live: [
+            side_effect=lambda group, columns, live, opened: [
                 "group",
                 group["name"],
                 columns,
                 live,
+                opened,
             ],
         ) as group_cells,
     ):
@@ -59,17 +60,17 @@ GROUPED = {
 
 def test_shows_each_invocation_closed() -> None:
     assert invocation_rows(GROUPED, set()) == [
-        ("b", ["group", "b", ["id"], False]),
+        ("b", ["group", "b", ["id"], False, False]),
         ("lone", ["run", "lone", ["id"], True, False]),
-        ("a", ["group", "a", ["id"], False]),
+        ("a", ["group", "a", ["id"], False, False]),
     ]
 
 
 def test_lists_the_runs_of_an_open_invocation_under_it() -> None:
     assert invocation_rows(GROUPED, {"b"}) == [
-        ("b", ["group", "b", ["id"], False]),
+        ("b", ["group", "b", ["id"], False, True]),
         ("b/1", ["run", "b/1", ["id"], True, False]),
         ("b/2", ["run", "b/2", ["id"], True, False]),
         ("lone", ["run", "lone", ["id"], True, False]),
-        ("a", ["group", "a", ["id"], False]),
+        ("a", ["group", "a", ["id"], False, False]),
     ]

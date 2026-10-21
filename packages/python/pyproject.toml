@@ -21,7 +21,6 @@ dependencies = [
     "markdown-it-py>=4.2.0",
     "markupsafe>=3.0.4",
     "psutil>=7.2.2",
-    "pytimeparse2>=1.7.1",
     "rich>=14",
     "starlette>=1.8.0",
     "textual>=8.2.8",
@@ -69,7 +68,7 @@ select = ["E4", "E7", "E9", "F", "TID252"]
 [tool.ruff.lint.flake8-tidy-imports]
 ban-relative-imports = "all"
 
-# haikunator and pytimeparse2 ship no type hints.
+# haikunator ships no type hints.
 [[tool.mypy.overrides]]
-module = ["haikunator", "pytimeparse2"]
+module = ["haikunator"]
 ignore_missing_imports = true

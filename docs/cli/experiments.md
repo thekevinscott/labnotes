@@ -59,4 +59,4 @@ Running an experiment opens a TUI that shows a table of all runs. Pending runs a
 
 ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) leaves them running, `s` stops them, and esc goes back.
 
-`--timeout 30m` stops any run still going after 30 minutes, with SIGTERM and then SIGKILL 5 seconds later. Each run gets its own 30 minutes. Its `run.json` records `"error": "timed out after 30m 00s"`, so a timeout reads differently from a crash.
+`--timeout 1800` stops any run still going after 1800 seconds (30 minutes), with SIGTERM and then SIGKILL 5 seconds later. Each run gets its own 30 minutes. Its `run.json` records `"error": "timed out after 30m 00s"`, so a timeout reads differently from a crash.

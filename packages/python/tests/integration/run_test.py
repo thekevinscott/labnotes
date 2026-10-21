@@ -288,7 +288,7 @@ def test_stops_only_the_runs_that_outlast_the_timeout(
 ) -> None:
     project = sleeper(tmp_path, [0.1, 30])
 
-    argv = ["experiments", "exp", "run", "--concurrency", "2", "--timeout", "2s"]
+    argv = ["experiments", "exp", "run", "--concurrency", "2", "--timeout", "2"]
     assert labnotes(project, argv) == 0
 
     recorded = {run["params"]["s"]: run for run in runs(project)}

@@ -7,7 +7,6 @@ import click
 from labnotes.create_experiment import create_experiment
 from labnotes.daemon.remote_start import remote_start
 from labnotes.load_config import load_config
-from labnotes.parse_timeout import parse_timeout
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
 from labnotes.runner.run_headless import run_headless
@@ -43,10 +42,10 @@ from labnotes.tui.run_tui import run_tui
 )
 @click.option(
     "--timeout",
-    callback=parse_timeout,
-    metavar="DURATION",
-    help="With run: stop any run still going after this long, like 90, 30s,"
-    " 10m or 1h30m. Unset, runs have no time limit.",
+    type=click.IntRange(min=1),
+    metavar="SECONDS",
+    help="With run: stop any run still going after this many seconds."
+    " Unset, runs have no time limit.",
 )
 @click.pass_context
 def experiments(
@@ -56,7 +55,7 @@ def experiments(
     output_format: str | None,
     concurrency: int | None,
     experiment_config: Path | None,
-    timeout: float | None,
+    timeout: int | None,
 ) -> None:
     config = load_config(ctx)
     if config is None:

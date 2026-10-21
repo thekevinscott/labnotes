@@ -47,11 +47,11 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 | `--format table\|json` | Print the listing forms in this format and exit, even in a terminal. No default. |
 | `--concurrency N` | With `run`: how many runs at once. Overrides `experiment.toml` and `.labnotes.toml`; 1 if none sets it. |
 | `-e, --experiment-config FILE` | With `run`: read this file instead of the experiment's `experiment.toml`. |
-| `--timeout DURATION` | With `run`: stop any one run still going after this long, the same way as [`run stop`](#run-stop). Takes seconds (`90`) or units (`30s`, `10m`, `2h`, `1h30m`). No default: unset, runs have no time limit. |
+| `--timeout SECONDS` | With `run`: stop any one run still going after this many seconds, the same way as [`run stop`](#run-stop). Takes a whole number over 0, like `600`. No default: unset, runs have no time limit. |
 
 `run` exits after printing `N passed, M failed.`
 
-A run stopped by `--timeout` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
+A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
 ## `run`
 

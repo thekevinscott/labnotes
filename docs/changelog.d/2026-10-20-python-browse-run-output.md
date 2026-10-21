@@ -1,0 +1,1 @@
+**Added** — in the `labnotes experiments` browser, Enter on a run row opens that run's output: stdout and stderr, following new lines while the run is still writing. The header names the run. Escape goes back to the experiment screen with the cursor and expanded invocations as they were.

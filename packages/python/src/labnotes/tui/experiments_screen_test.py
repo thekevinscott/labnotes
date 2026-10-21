@@ -84,7 +84,9 @@ def test_reloads_the_experiments_on_each_change(
     collaborators["watch_rows"].assert_called_once_with(
         TABLES, {"files", "runs", "experiment_configs"}
     )
-    collaborators["reload_on_change"].assert_called_once_with("changes", screen.load)
+    collaborators["reload_on_change"].assert_called_once_with(
+        "changes", screen.load, screen.stopped
+    )
     getattr(screen.run_worker, "assert_called_once_with")(
         "reloading", exit_on_error=False
     )
@@ -150,3 +152,9 @@ def test_exits_with_what_stopped_the_read(
         )
 
     collaborators["app"].return_value.exit.assert_called_once_with(error)
+
+
+def test_says_live_updates_stopped(screen: ExperimentsScreen) -> None:
+    screen.stopped(OSError("watcher died"))
+
+    assert screen.sub_title == "Live updates stopped: watcher died"

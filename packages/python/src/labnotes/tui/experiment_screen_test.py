@@ -120,7 +120,9 @@ def test_names_the_experiment_and_reloads_it_on_each_change(
     collaborators["watch_rows"].assert_called_once_with(
         TABLES, {"runs", "experiment_configs"}, "alpha"
     )
-    collaborators["reload_on_change"].assert_called_once_with("changes", screen.load)
+    collaborators["reload_on_change"].assert_called_once_with(
+        "changes", screen.load, screen.stopped
+    )
     getattr(screen.run_worker, "assert_called_once_with")(
         "reloading", exit_on_error=False
     )
@@ -270,3 +272,11 @@ def test_exits_with_what_stopped_the_load(
         )
 
     collaborators["app"].return_value.exit.assert_called_once_with(error)
+
+
+def test_says_live_updates_stopped_after_the_name(screen: ExperimentScreen) -> None:
+    screen.sub_title = "Alpha study"
+
+    screen.stopped(OSError("watcher died"))
+
+    assert screen.sub_title == "Alpha study · Live updates stopped: watcher died"

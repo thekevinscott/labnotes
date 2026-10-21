@@ -2,6 +2,7 @@ from dirsql import DirSQL
 from textual.app import ComposeResult
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header
+from textual.worker import Worker, WorkerState
 
 from labnotes.models import LabnotesConfig
 from labnotes.tables.summarize_experiments import summarize_experiments
@@ -22,6 +23,10 @@ class ExperimentsScreen(Screen[None]):
 
     def on_mount(self) -> None:
         self.run_worker(self.load(), exit_on_error=False)
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.state == WorkerState.ERROR:
+            self.app.exit(event.worker.error)
 
     async def load(self) -> None:
         rows = await summarize_experiments(self.tables)

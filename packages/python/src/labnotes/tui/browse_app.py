@@ -1,6 +1,5 @@
 from textual.app import App
 from textual.binding import Binding
-from textual.worker import Worker, WorkerState
 
 from labnotes.models import LabnotesConfig
 from labnotes.tables.open_tables import open_tables
@@ -8,7 +7,7 @@ from labnotes.tui.experiment_screen import ExperimentScreen
 from labnotes.tui.experiments_screen import ExperimentsScreen
 
 
-class BrowseApp(App[None]):
+class BrowseApp(App[BaseException | None]):
     BINDINGS = [Binding("q", "quit", "Quit")]
 
     def __init__(self, config: LabnotesConfig, name: str | None) -> None:
@@ -16,7 +15,6 @@ class BrowseApp(App[None]):
         self.config = config
         self.experiment_name = name
         self.title = config.root.name
-        self.error: BaseException | None = None
 
     def on_mount(self) -> None:
         tables = open_tables(self.config)
@@ -25,8 +23,3 @@ class BrowseApp(App[None]):
             self.push_screen(
                 ExperimentScreen(tables, self.config, self.experiment_name)
             )
-
-    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.state == WorkerState.ERROR:
-            self.error = event.worker.error
-            self.exit()

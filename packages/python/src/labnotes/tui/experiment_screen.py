@@ -6,6 +6,7 @@ from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header
+from textual.worker import Worker, WorkerState
 
 from labnotes.load_experiment import load_experiment
 from labnotes.models import LabnotesConfig
@@ -16,7 +17,7 @@ from labnotes.tui.runs_table import RunsTable
 
 class ExperimentScreen(Screen[None]):
     BINDINGS = [
-        Binding("space", "toggle", "Open invocation"),
+        Binding("space", "open_invocation", "Open invocation"),
         Binding("escape", "app.pop_screen", "Back"),
     ]
 
@@ -36,6 +37,10 @@ class ExperimentScreen(Screen[None]):
     def on_mount(self) -> None:
         self.sub_title = self.experiment_name
         self.run_worker(self.load(), exit_on_error=False)
+
+    def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
+        if event.state == WorkerState.ERROR:
+            self.app.exit(event.worker.error)
 
     async def load(self) -> None:
         loaded = await load_experiment(
@@ -60,7 +65,7 @@ class ExperimentScreen(Screen[None]):
             table.add_row(*cells, key=key)
         table.move_cursor(row=row)
 
-    def action_toggle(self) -> None:
+    def action_open_invocation(self) -> None:
         table = self.query_one(DataTable)
         if not table.row_count:
             return

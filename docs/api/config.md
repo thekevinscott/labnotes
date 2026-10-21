@@ -87,7 +87,7 @@ effort = ["low", "high"]
 - Type: string
 - Required
 
-Shell command for one run, run from the project root. `{run_dir}` becomes the run folder's absolute path, shell-quoted. Params are appended as flags (see [`[params]`](#params)).
+Shell command for one run, run from the project root. `{run_dir}` becomes the run folder's absolute path, shell-quoted. Params are appended as flags (see [`[params]`](#params)). The command can write structured output with [`log`](sdk#log).
 
 ### `name`
 

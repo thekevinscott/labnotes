@@ -163,6 +163,19 @@ def test_forces_color_in_the_child(
     assert env["KEPT"] == "1"
 
 
+def test_points_the_child_at_its_run_log(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LABNOTES_LOG", "/parent/log.jsonl")
+
+    run(tmp_path)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["LABNOTES_LOG"] == str(tmp_path / "log.jsonl")
+
+
 def test_keeps_color_settings_the_user_chose(
     tmp_path: Path,
     collaborators: dict[str, mock.MagicMock],

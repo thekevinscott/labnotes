@@ -5,6 +5,7 @@ from pathlib import Path
 
 import psutil
 
+from labnotes.log_path import LOG_ENV
 from labnotes.runner.shell_command import shell_command
 from labnotes.runner.wait_for_tree import wait_for_tree
 from labnotes.runner.write_run_json import write_run_json
@@ -36,7 +37,12 @@ async def execute_run(
             process = await asyncio.create_subprocess_shell(
                 shell_command(command, folder, params),
                 cwd=root,
-                env={"FORCE_COLOR": "1", "CLICOLOR_FORCE": "1", **os.environ},
+                env={
+                    "FORCE_COLOR": "1",
+                    "CLICOLOR_FORCE": "1",
+                    **os.environ,
+                    LOG_ENV: str(folder / "log.jsonl"),
+                },
                 stdout=stdout,
                 stderr=stderr,
             )

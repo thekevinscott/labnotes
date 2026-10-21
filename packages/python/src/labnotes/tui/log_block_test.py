@@ -1,75 +1,52 @@
-import asyncio
-from collections.abc import Callable, Coroutine
-from typing import Any
+from collections.abc import Iterator
+from unittest import mock
 
-from textual.app import App, ComposeResult
-from textual.pilot import Pilot
+import pytest
 
 from labnotes.tui.log_block import LogBlock
 
-LONG = "first line of a long thought\nsecond line " + "word " * 40
+LONG = "first line\n[bold]second[/bold] line"
 
 
-class Host(App[None]):
-    def compose(self) -> ComposeResult:
-        yield LogBlock(LONG)
+@pytest.fixture
+def update() -> Iterator[mock.MagicMock]:
+    with mock.patch.object(LogBlock, "update") as update:
+        yield update
 
 
-def mounted(
-    check: Callable[[Pilot[None], LogBlock], Coroutine[Any, Any, None]],
-) -> None:
-    async def drive() -> None:
-        app = Host()
-        async with app.run_test(size=(40, 20)) as pilot:
-            await pilot.pause()
-            await check(pilot, app.query_one(LogBlock))
-
-    asyncio.run(drive())
+def shown(update: mock.MagicMock) -> str:
+    return str(update.call_args.args[0].plain)
 
 
-def shown(block: LogBlock) -> str:
-    return str(block.render())
+def test_starts_collapsed_to_one_line(update: mock.MagicMock) -> None:
+    block = LogBlock(LONG)
+
+    assert not block.expanded
+    assert block.has_class("-collapsed")
+    assert shown(update) == "▸ first line [bold]second[/bold] line"
 
 
-def test_starts_collapsed_to_one_line() -> None:
-    async def check(_: Pilot[None], block: LogBlock) -> None:
-        assert not block.expanded
-        assert shown(block) == "▸ " + LONG.replace("\n", " ")
-        assert block.size.height == 1
+def test_click_expands_and_collapses(update: mock.MagicMock) -> None:
+    block = LogBlock(LONG)
 
-    mounted(check)
+    block.on_click(mock.Mock())
+    assert block.expanded
+    assert not block.has_class("-collapsed")
+    assert shown(update) == f"▾ {LONG}"
 
-
-def test_click_expands_and_collapses() -> None:
-    async def check(pilot: Pilot[None], block: LogBlock) -> None:
-        await pilot.click(LogBlock)
-        await pilot.pause()
-        assert block.expanded
-        assert shown(block) == "▾ " + LONG
-        assert block.size.height > 2
-
-        await pilot.click(LogBlock)
-        await pilot.pause()
-        assert not block.expanded
-        assert block.size.height == 1
-
-    mounted(check)
+    block.on_click(mock.Mock())
+    assert not block.expanded
+    assert block.has_class("-collapsed")
+    assert shown(update) == "▸ first line [bold]second[/bold] line"
 
 
-def test_grows_in_place() -> None:
-    async def check(pilot: Pilot[None], block: LogBlock) -> None:
-        block.extend(" more")
-        await pilot.pause()
-        assert block.body == LONG + " more"
-        assert shown(block) == "▸ " + (LONG + " more").replace("\n", " ")
+@pytest.mark.parametrize(("clicks", "text"), [(0, "▸ par tial"), (1, "▾ par\ntial")])
+def test_grows_in_place(update: mock.MagicMock, clicks: int, text: str) -> None:
+    block = LogBlock("par")
+    for _ in range(clicks):
+        block.on_click(mock.Mock())
 
-    mounted(check)
+    block.extend("\ntial")
 
-
-def test_shows_markup_as_text() -> None:
-    async def check(pilot: Pilot[None], block: LogBlock) -> None:
-        block.extend("[bold]x[/bold]")
-        await pilot.pause()
-        assert shown(block).endswith("[bold]x[/bold]")
-
-    mounted(check)
+    assert block.body == "par\ntial"
+    assert shown(update) == text

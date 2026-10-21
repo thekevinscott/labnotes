@@ -19,9 +19,9 @@ def group(**fields: object) -> dict[str, Any]:
 
 
 def test_summarizes_an_invocation() -> None:
-    assert [str(cell) for cell in group_cells(group(), COLUMNS, False)] == [
+    assert [str(cell) for cell in group_cells(group(), COLUMNS, False, False)] == [
         "2✓ 1✕",
-        "20261017-000000",
+        "▸ 20261017-000000",
         "3",
         "a",
         "",
@@ -32,11 +32,11 @@ def test_summarizes_an_invocation() -> None:
 
 
 def test_leaves_the_start_blank_when_the_name_has_no_stamp() -> None:
-    assert group_cells(group(started=None), COLUMNS, False)[5] == ""
+    assert group_cells(group(started=None), COLUMNS, False, False)[5] == ""
 
 
 def test_formats_shared_values() -> None:
-    cells = group_cells(group(shared={"m": None, "n": True}), COLUMNS, False)
+    cells = group_cells(group(shared={"m": None, "n": True}), COLUMNS, False, False)
 
     assert cells[3:5] == ["—", "true"]
 
@@ -48,20 +48,24 @@ def styles(status: Any) -> list[tuple[str, str]]:
 
 
 def test_colors_the_counts() -> None:
-    [status, *_] = group_cells(group(), COLUMNS, False)
+    [status, *_] = group_cells(group(), COLUMNS, False, False)
 
     assert styles(status) == [("2✓", "green"), ("1✕", "red")]
 
 
 def test_counts_running_runs_while_the_daemon_is_up() -> None:
-    [status, *_] = group_cells(group(unfinished=4), COLUMNS, True)
+    [status, *_] = group_cells(group(unfinished=4), COLUMNS, True, False)
 
     assert str(status) == "2✓ 1✕ 4◐"
     assert styles(status)[-1] == (" 4◐", "yellow")
 
 
 def test_counts_interrupted_runs_once_the_daemon_is_down() -> None:
-    [status, *_] = group_cells(group(unfinished=4), COLUMNS, False)
+    [status, *_] = group_cells(group(unfinished=4), COLUMNS, False, False)
 
     assert str(status) == "2✓ 1✕ 4–"
     assert styles(status)[-1] == (" 4–", "dim")
+
+
+def test_marks_an_open_invocation() -> None:
+    assert group_cells(group(), COLUMNS, False, True)[1] == "▾ 20261017-000000"

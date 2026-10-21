@@ -144,6 +144,20 @@ def test_starts_a_new_block_after_stop(tmp_path: Path, blocks: LogBlocks) -> Non
     assert bodies(blocks) == ["one", "two"]
 
 
+def test_shows_an_unknown_phase_as_a_complete_block(
+    tmp_path: Path, blocks: LogBlocks
+) -> None:
+    append(
+        tmp_path,
+        {"id": "t1", "phase": "update", "content": "u"},
+        {"id": "t1", "phase": "delta", "content": "d"},
+    )
+
+    blocks.follow(tmp_path)
+
+    assert bodies(blocks) == ["u", "d"]
+
+
 def test_skips_lines_that_are_not_blocks(tmp_path: Path, blocks: LogBlocks) -> None:
     append(tmp_path, "not json", "[1, 2]", "", {"content": 3})
 

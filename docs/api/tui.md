@@ -39,6 +39,8 @@ The header shows the experiment's name and how many runs go at once.
 
 The output view follows the run's `stdout.log` and `stderr.log` as they're written. ANSI color and bold show as styled text; other escape codes are dropped.
 
+Blocks the script writes with [`log`](sdk#log) show above the raw output, one line each, collapsed and cut off with an ellipsis (▸). Click a block to expand it to its full text (▾); click again to collapse it. A streaming block shows on `start` and grows in place as its deltas arrive. Without a `log.jsonl`, the raw output fills the view as before.
+
 | Key | Action |
 | --- | --- |
 | Escape | Back to the table. |

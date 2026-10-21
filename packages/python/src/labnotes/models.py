@@ -49,6 +49,8 @@ class LabnotesConfig:
     concurrency: int = 1
     # Set when the config's folder is itself the one experiment.
     experiment: str | None = None
+    # [experiment] in .labnotes.toml, under each experiment.toml.
+    defaults: dict[str, object] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

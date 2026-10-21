@@ -19,9 +19,13 @@ async def prepare_experiment(
         folder = config.experiments.replace("{experiment}", name)
         experiment_config = config.root / folder / "experiment.toml"
     source = await file_text(config.root, experiment_config)
-    if source is None:
+    if source is None and not config.defaults:
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")
     experiment = read_experiment_config(
-        experiment_config, source, config.mode, config.concurrency
+        config.path if source is None else experiment_config,
+        source or "",
+        config.mode,
+        config.concurrency,
+        config.defaults,
     )
     return experiment, experiment.concurrency if concurrency is None else concurrency

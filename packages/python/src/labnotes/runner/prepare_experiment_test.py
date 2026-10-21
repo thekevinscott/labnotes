@@ -28,6 +28,8 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
 def make_config(root: Path) -> mock.Mock:
     return mock.Mock(
         experiment=None,
+        defaults={},
+        path=root / ".labnotes.toml",
         root=root,
         experiments="notes/{experiment}",
         runs="data/{experiment}/{run}",
@@ -53,7 +55,7 @@ def test_reads_the_experiment(
 
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "matrix", 3
+        path, "source", "matrix", 3, {}
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
@@ -67,7 +69,7 @@ def test_reads_the_named_experiment_config(
     prepare(tmp_path, path)
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "matrix", 3
+        path, "source", "matrix", 3, {}
     )
 
 
@@ -109,3 +111,17 @@ def test_refuses_another_name_for_the_one_experiment(
 
     with pytest.raises(ValueError, match="No experiment other; this project is"):
         asyncio.run(prepare_experiment(config, "other", None, None))
+
+
+def test_runs_from_the_defaults_alone(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["file_text"].return_value = None
+    config = make_config(tmp_path)
+    config.defaults = {"command": "go"}
+
+    asyncio.run(prepare_experiment(config, "exp", None, None))
+
+    collaborators["read_experiment_config"].assert_called_once_with(
+        tmp_path / ".labnotes.toml", "", "matrix", 3, {"command": "go"}
+    )

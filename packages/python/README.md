@@ -27,7 +27,9 @@ labnotes reads the file from the working folder, or from the path given with
 
 When `experiment.toml` sits next to `.labnotes.toml`, the root is the one
 experiment, named after its folder. Paths then drop `{experiment}`: files
-default to `files/` and runs to `runs/{run}`.
+default to `files/` and runs to `runs/{run}`. An `[experiment]` table in
+`.labnotes.toml` takes the same keys as `experiment.toml` and is the base
+that `experiment.toml` layers over.
 
 `labnotes experiments` reads three tables from those paths:
 

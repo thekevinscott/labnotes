@@ -29,3 +29,10 @@ def test_a_config_holds_many_experiments_by_default() -> None:
     config = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
 
     assert config.experiment is None
+
+
+def test_configs_do_not_share_their_defaults() -> None:
+    config = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
+    config.defaults["command"] = "go"
+
+    assert LabnotesConfig(Path("/p"), Path("/p"), "e", "f", "r").defaults == {}

@@ -15,7 +15,9 @@ class Host(App[None]):
         yield LogBlock(LONG)
 
 
-def mounted(check: Callable[[Pilot[None], LogBlock], Coroutine[Any, Any, None]]) -> None:
+def mounted(
+    check: Callable[[Pilot[None], LogBlock], Coroutine[Any, Any, None]],
+) -> None:
     async def drive() -> None:
         app = Host()
         async with app.run_test(size=(40, 20)) as pilot:
@@ -59,12 +61,15 @@ def test_grows_in_place() -> None:
         block.extend(" more")
         await pilot.pause()
         assert block.body == LONG + " more"
-        assert shown(block).endswith("word more")
+        assert shown(block) == "▸ " + (LONG + " more").replace("\n", " ")
 
     mounted(check)
 
 
 def test_shows_markup_as_text() -> None:
-    block = LogBlock("[bold]x[/bold]")
+    async def check(pilot: Pilot[None], block: LogBlock) -> None:
+        block.extend("[bold]x[/bold]")
+        await pilot.pause()
+        assert shown(block).endswith("[bold]x[/bold]")
 
-    assert shown(block) == "▸ [bold]x[/bold]"
+    mounted(check)

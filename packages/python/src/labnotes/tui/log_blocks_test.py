@@ -89,7 +89,7 @@ def test_grows_a_streaming_block_in_place(tmp_path: Path, blocks: LogBlocks) -> 
         {"id": "t1", "phase": "delta", "content": "par"},
     )
     blocks.follow(tmp_path)
-    assert bodies(blocks) == [""]
+    assert bodies(blocks) == ["par"]
 
     append(
         tmp_path,

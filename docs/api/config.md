@@ -23,7 +23,7 @@ Paths are relative to the root. Absolute paths and `~` are rejected.
 
 ### One experiment
 
-When `experiment.toml` sits next to `.labnotes.toml`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `mode` and `concurrency` still apply. The defaults become:
+When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `mode` and `concurrency` still apply. The defaults become:
 
 ```toml
 [files]
@@ -78,6 +78,34 @@ Where an experiment's notes and other files live. A glob such as `"{experiment}/
 - Placeholders: `{experiment}` and `{run}`, both required; only `{run}` for [one experiment](#one-experiment)
 
 Where run folders live.
+
+### `[experiment]`
+
+Experiment config kept in `.labnotes.toml`. It takes the same keys as [`experiment.toml`](#experiment-toml), with params under `[experiment.params]`, and is the base that each `experiment.toml` layers over:
+
+- Top-level keys in `experiment.toml` replace the base's.
+- `params` merge by name; a param in `experiment.toml` replaces the base's values for that name.
+- The merged result is what gets checked, so a key can live in either file, such as `command` in one and `params` in the other.
+- `run -e PATH` replaces the `experiment.toml` layer; the base still applies.
+
+```toml
+# .labnotes.toml
+[experiment]
+command = "uv run study.py --output {run_dir}"
+
+[experiment.params]
+problem = ["2286"]
+```
+
+```toml
+# experiment.toml
+name = "Surprisals"
+
+[params]
+max-chars = [70, 80]
+```
+
+With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `mode` and `concurrency` stay in `[experiments]`.
 
 ## `experiment.toml`
 

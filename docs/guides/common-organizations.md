@@ -91,4 +91,6 @@ data
 path = "notes/"
 ```
 
+The experiment config can live in `.labnotes.toml` too, under [`[experiment]`](../api/config#experiment); then `experiment.toml` is optional.
+
 Renaming the folder renames the experiment. Runs don't store the name, so nothing on disk changes; only URLs and CLI names do.

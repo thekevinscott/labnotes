@@ -26,6 +26,12 @@ def run_tui(terminal, tmp_path: Path, repeats: int) -> Terminal:
     )
 
 
+def stop(term: Terminal) -> None:
+    term.key_ctrl_c()
+    expect(term.get_by_text("still going")).to_be_visible()
+    term.write("s")
+
+
 def test_escape_backs_out_of_a_runs_output(terminal, tmp_path: Path) -> None:
     term = run_tui(terminal, tmp_path, 2)
     expect(term.get_by_text("1 at a time")).to_be_visible()
@@ -37,7 +43,7 @@ def test_escape_backs_out_of_a_runs_output(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("params")).to_be_visible()
     expect(term.get_by_text("line 3")).not_to_be_visible()
 
-    term.key_ctrl_c()
+    stop(term)
 
 
 def test_escape_backs_out_of_a_lone_adhoc_run(terminal, tmp_path: Path) -> None:
@@ -48,7 +54,7 @@ def test_escape_backs_out_of_a_lone_adhoc_run(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("params")).to_be_visible()
     expect(term.get_by_text("line 3")).not_to_be_visible()
 
-    term.key_ctrl_c()
+    stop(term)
 
 
 def test_coming_back_to_a_run_shows_its_output_so_far_and_keeps_following(
@@ -70,7 +76,7 @@ def test_coming_back_to_a_run_shows_its_output_so_far_and_keeps_following(
     expect(term.get_by_text("line 0")).to_be_visible()
     expect(term.get_by_text("line 15")).to_be_visible()
 
-    term.key_ctrl_c()
+    stop(term)
 
 
 def test_lists_adhoc_runs_by_the_params_that_vary(terminal, tmp_path: Path) -> None:
@@ -90,7 +96,7 @@ def test_lists_adhoc_runs_by_the_params_that_vary(terminal, tmp_path: Path) -> N
     expect(term.get_by_text(re.compile(r"0580-[0-9a-f]{4}"))).to_be_visible()
     expect(term.get_by_text(re.compile(r"2002-[0-9a-f]{4}"))).to_be_visible()
 
-    term.key_ctrl_c()
+    stop(term)
 
 
 def test_moving_a_pending_run_changes_the_order_runs_start(
@@ -126,4 +132,4 @@ def test_moving_a_pending_run_changes_the_order_runs_start(
 
     assert started.read_text().split() == ["a", "c", "b"]
 
-    term.write("q")
+    term.key_ctrl_c()

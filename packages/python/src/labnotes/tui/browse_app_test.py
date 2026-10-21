@@ -78,14 +78,17 @@ def test_escape_goes_back_to_the_list() -> None:
     asyncio.run(drive())
 
 
-def test_q_quits() -> None:
+def test_ctrl_c_quits_and_q_does_not() -> None:
     app = BrowseApp(CONFIG, None)
 
     async def drive() -> None:
         async with app.run_test() as pilot:
             await pilot.press("q")
             await pilot.pause()
+            assert app.is_running
 
+            await pilot.press("ctrl+c")
+            await pilot.pause()
             assert not app.is_running
 
     asyncio.run(drive())

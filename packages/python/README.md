@@ -84,14 +84,14 @@ To exclude a run, add `"excluded": true` and an optional `"reason"` to its
 replaces it; both show as columns in `runs`.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish; `q` quits. Elsewhere, it prints a
+open when they finish; Ctrl-C quits. Elsewhere, it prints a
 line per event instead.
 
 - `--concurrency N` runs N at a time (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.
-- Ctrl-C stops the running scripts and records their end. A second Ctrl-C
-  kills them. Closing the terminal or sending SIGTERM stops them the same way,
-  then kills any still going 5 seconds later.
+- With runs going, Ctrl-C asks first. Enter (or a second Ctrl-C) leaves them
+  running. `s` stops the running scripts and records their end, then kills any
+  still going 5 seconds later. Escape goes back. SIGTERM stops them like `s`.
 - A second `run` of the same experiment fails while the first holds the lock.
 - It exits 0 even if runs fail; the summary line counts failures. If it can't
   start or reach the daemon, it prints the cause on one line and exits 1.

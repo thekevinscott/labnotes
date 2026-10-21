@@ -49,7 +49,7 @@ def test_browses_from_the_list_into_an_experiment_and_back(
     term.key_escape()
     expect(term.get_by_text("display_name")).to_be_visible()
 
-    term.write("q")
+    term.key_ctrl_c()
     term.wait()
 
 
@@ -60,7 +60,7 @@ def test_opens_straight_on_a_named_experiment(
     term = labnotes(terminal, project(tmp_path), argv)
     expect(term.get_by_text("2✓ 0✕")).to_be_visible()
 
-    term.write("q")
+    term.key_ctrl_c()
     term.wait()
 
 
@@ -78,7 +78,7 @@ def test_shows_a_run_that_lands_while_the_experiment_is_open(
     expect(term.get_by_text("20261018-000000")).to_be_visible()
     expect(term.get_by_text("0✓ 1✕")).to_be_visible()
 
-    term.write("q")
+    term.key_ctrl_c()
     term.wait()
 
 
@@ -90,7 +90,7 @@ def test_lists_an_experiment_that_appears_while_open(terminal, tmp_path: Path) -
     write(root / "gamma/files/notes.md", "notes")
     expect(term.get_by_text("gamma")).to_be_visible()
 
-    term.write("q")
+    term.key_ctrl_c()
     term.wait()
 
 
@@ -121,7 +121,7 @@ def test_opens_a_run_and_follows_its_output(terminal, tmp_path: Path) -> None:
     term.key_enter()
     expect(term.get_by_text("appended later")).to_be_visible()
 
-    term.write("q")
+    term.key_ctrl_c()
     term.wait()
 
 

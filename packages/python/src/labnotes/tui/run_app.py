@@ -10,10 +10,11 @@ from textual.widgets import DataTable, Footer, Header, Input, Static
 
 from labnotes.models import Controls, Start
 from labnotes.runner.describe_event import describe_event
-from labnotes.runner.stop_then_kill import stop_then_kill
+from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.runner.param_args import param_args
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
+from labnotes.tui.leave_prompt import LeavePrompt
 from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
@@ -30,7 +31,7 @@ GRABBING_ACTIONS = {*GRABBED_ACTIONS, "grab", "quit", "interrupt", "command_pale
 class RunApp(App[None]):
     CSS = "#concurrency { dock: right; width: auto; padding: 0 1; }"
     BINDINGS = [
-        Binding("ctrl+c", "interrupt", "Stop runs"),
+        Binding("ctrl+c", "interrupt", "Quit"),
         Binding("n", "run_next", "Run next"),
         Binding("m", "grab", "Move"),
         Binding("j,down", "shift(1)", priority=True),
@@ -46,7 +47,6 @@ class RunApp(App[None]):
         Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
-        Binding("q", "quit", "Quit"),
     ]
 
     def __init__(self, start: Start, title: str) -> None:
@@ -113,7 +113,7 @@ class RunApp(App[None]):
 
     def listen(self, controls: Controls) -> None:
         self.controls = controls
-        stop_then_kill(self.action_interrupt, signal.SIGTERM)
+        stop_then_kill(self.stop_runs, signal.SIGTERM)
         asyncio.get_running_loop().add_signal_handler(signal.SIGHUP, self.exit)
 
     def show_event(self, event: dict[str, object]) -> None:
@@ -202,7 +202,7 @@ class RunApp(App[None]):
     def show_summary(self) -> None:
         failed = len(self.failed)
         passed = len(self.ended) - failed
-        self.show(f"{passed} passed, {failed} failed. q to quit.")
+        self.show(f"{passed} passed, {failed} failed. Ctrl-C to quit.")
 
     def reposition(self, event: dict[str, object], run: str) -> None:
         table = self.query_one(DataTable)
@@ -233,6 +233,8 @@ class RunApp(App[None]):
             table.update_cell(run, column, cell, update_width=True)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
+        if isinstance(self.screen, LeavePrompt):
+            return False
         if self.grabbed is not None:
             return action in GRABBING_ACTIONS
         if action in GRABBED_ACTIONS:
@@ -256,17 +258,29 @@ class RunApp(App[None]):
         self.next_run = None
         self.query_one("#status", Static).update(text)
 
-    def action_interrupt(self) -> None:
+    def stop_runs(self) -> None:
         if self.idle:
             self.controls.finish()
         else:
             self.controls.interrupt()
 
-    async def action_quit(self) -> None:
-        if self.idle:
+    def action_interrupt(self) -> None:
+        if self.started:
+            self.push_screen(LeavePrompt(len(self.started)), self.answer)
+        elif self.idle:
             self.controls.finish()
         else:
             self.exit()
+
+    async def action_quit(self) -> None:
+        self.action_interrupt()
+
+    def answer(self, choice: str | None) -> None:
+        if choice == "leave":
+            self.exit()
+        elif choice == "stop":
+            self.controls.interrupt()
+            self.set_timer(GRACE_SECONDS, self.controls.interrupt)
 
     def cursor_run(self) -> str | None:
         table = self.query_one(DataTable)

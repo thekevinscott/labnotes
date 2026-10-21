@@ -2,7 +2,9 @@
 
 `labnotes` offers a CLI for managing and running experiments. Ensure that you've [first created a configuration file](../getting-started).
 
-## Viewing
+## Viewing Experiments
+
+![Listing experiments, one experiment, and its runs](/demos/experiments.gif)
 
 View experiments with:
 
@@ -24,13 +26,15 @@ Which shows metadata about the experiment along with the above fields. You can s
 uvx labnotes experiments foo runs
 ```
 
-## Running
+## Running Experiments
 
 You can run an experiment with:
 
 ```bash
 uvx labnotes experiments foo run
 ```
+
+By default, this launches the [TUI](tui).
 
 To run an experiment needs a script and parameters defined. This should be defined in an `experiment.toml` file in the experiment folder; it can also be provided on the command line (`uvx labnotes experiments foo run --experiment-config ./foo.toml`).
 

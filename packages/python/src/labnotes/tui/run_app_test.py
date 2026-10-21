@@ -633,6 +633,20 @@ def test_ctrl_c_asks_before_leaving_runs_going() -> None:
     asyncio.run(drive())
 
 
+def test_ctrl_q_asks_like_ctrl_c() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls, "r1"), "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("ctrl+q")
+            await pilot.pause()
+            assert prompt(app).startswith("1 run still going.")
+
+    asyncio.run(drive())
+
+
 def test_ctrl_c_twice_leaves_the_runs_going() -> None:
     controls = mock.Mock()
 

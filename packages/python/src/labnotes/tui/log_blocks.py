@@ -41,12 +41,12 @@ class LogBlocks(VerticalScroll):
     def add(self, record: dict[str, object]) -> None:
         phase, key = record.get("phase"), record.get("id")
         body = str(record.get("content", ""))
-        if key in self.streaming and phase in ("delta", "stop"):
+        if phase == "delta" and key in self.streaming:
             self.streaming[key].extend(body)
-            if phase == "stop":
-                del self.streaming[key]
             return
         if phase == "stop":
+            if key in self.streaming:
+                self.streaming.pop(key).extend(body)
             return
         block = LogBlock(body)
         if phase in STREAMING:

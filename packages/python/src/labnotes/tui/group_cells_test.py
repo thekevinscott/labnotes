@@ -1,10 +1,8 @@
 from typing import Any
 
-from rich.text import Text
-
 from labnotes.tui.group_cells import group_cells
 
-COLUMNS = ["id", "m", "n", "started", "duration"]
+COLUMNS = ["id", "m", "n", "started", "x", "duration"]
 
 
 def group(**fields: object) -> dict[str, Any]:
@@ -12,7 +10,7 @@ def group(**fields: object) -> dict[str, Any]:
         "name": "20261017-000000",
         "started": "2026-10-17 00:00:00",
         "runs": [{}, {}, {}],
-        "shared": {"m": "a"},
+        "shared": {"m": "a", "x": 5},
         "passed": 2,
         "failed": 1,
         "unfinished": 0,
@@ -28,6 +26,7 @@ def test_summarizes_an_invocation() -> None:
         "a",
         "",
         "2026-10-17 00:00:00",
+        "5",
         "",
     ]
 
@@ -42,8 +41,7 @@ def test_formats_shared_values() -> None:
     assert cells[3:5] == ["—", "true"]
 
 
-def styles(status: object) -> list[tuple[str, str]]:
-    assert isinstance(status, Text)
+def styles(status: Any) -> list[tuple[str, str]]:
     return [
         (status.plain[span.start : span.end], str(span.style)) for span in status.spans
     ]

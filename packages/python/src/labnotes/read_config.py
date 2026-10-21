@@ -18,8 +18,11 @@ def read_config(path: Path) -> LabnotesConfig:
     unknown = sorted(values.keys() - DEFAULT_PATHS.keys())
     if unknown:
         raise ValueError(f"{path}: unknown tables {', '.join(unknown)}")
+    root = path.resolve().parent
+    single = (root / "experiment.toml").is_file()
     paths = {
-        table: read_path(path, table, values.get(table, {})) for table in DEFAULT_PATHS
+        table: read_path(path, table, values.get(table, {}), single=single)
+        for table in DEFAULT_PATHS
     }
     experiments = values.get("experiments", {})
     mode = experiments.get("mode", DEFAULT_MODE)
@@ -30,7 +33,11 @@ def read_config(path: Path) -> LabnotesConfig:
         raise ValueError(
             f"{path}: [experiments] concurrency must be a positive integer"
         )
-    path = path.resolve()
     return LabnotesConfig(
-        path, path.parent, **paths, mode=mode, concurrency=concurrency
+        path.resolve(),
+        root,
+        **paths,
+        mode=mode,
+        concurrency=concurrency,
+        experiment=root.name if single else None,
     )

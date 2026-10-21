@@ -21,6 +21,20 @@ path = "{experiment}/runs/{run}"
 
 Paths are relative to the root. Absolute paths and `~` are rejected.
 
+### One experiment
+
+When `experiment.toml` sits next to `.labnotes.toml`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `mode` and `concurrency` still apply. The defaults become:
+
+```toml
+[files]
+path = "files/"
+
+[runs]
+path = "runs/{run}"
+```
+
+`labnotes init` writes these when it finds an `experiment.toml`. `labnotes experiments new` refuses, since the root can't hold other experiments.
+
 ### `[experiments]`
 
 #### `path`
@@ -51,7 +65,7 @@ Runs at once for every experiment whose `experiment.toml` doesn't set it.
 
 - Type: string
 - Default: `"{experiment}/files/"`
-- Placeholders: `{experiment}`, required
+- Placeholders: `{experiment}`, required, or none for [one experiment](#one-experiment)
 
 Where an experiment's notes and other files live. A glob such as `"{experiment}/*.md"` works too.
 
@@ -61,7 +75,7 @@ Where an experiment's notes and other files live. A glob such as `"{experiment}/
 
 - Type: string
 - Default: `"{experiment}/runs/{run}"`
-- Placeholders: `{experiment}` and `{run}`, both required
+- Placeholders: `{experiment}` and `{run}`, both required; only `{run}` for [one experiment](#one-experiment)
 
 Where run folders live.
 

@@ -47,6 +47,8 @@ class LabnotesConfig:
     runs: str
     mode: str = DEFAULT_MODE
     concurrency: int = 1
+    # Set when the config's folder is itself the one experiment.
+    experiment: str | None = None
 
 
 @dataclass(frozen=True)

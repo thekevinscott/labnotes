@@ -10,7 +10,7 @@ def note_path(config: LabnotesConfig, experiment: str, note: str) -> Path | None
     if ".." in PurePosixPath(relative).parts or not note.endswith(".md"):
         return None
     found = path_pattern(config.files).fullmatch(relative)
-    if found is None or found["experiment"] != experiment:
+    if found is None or (config.experiment or found["experiment"]) != experiment:
         return None
     path = config.root / relative
     return path if path.is_relative_to(config.root) and path.is_file() else None

@@ -25,6 +25,10 @@ names: the experiments path must use `{experiment}`, and the runs path both.
 labnotes reads the file from the working folder, or from the path given with
 `-c`.
 
+When `experiment.toml` sits next to `.labnotes.toml`, the root is the one
+experiment, named after its folder. Paths then drop `{experiment}`: files
+default to `files/` and runs to `runs/{run}`.
+
 `labnotes experiments` reads three tables from those paths:
 
 - `experiments`: `name`, and `config`, the experiment's `experiment.toml` as

@@ -11,6 +11,10 @@ async def prepare_experiment(
     experiment_config: Path | None,
     concurrency: int | None,
 ) -> tuple[ExperimentConfig, int]:
+    if config.experiment not in (None, name):
+        raise ValueError(
+            f"No experiment {name}; this project is the experiment {config.experiment}."
+        )
     if experiment_config is None:
         folder = config.experiments.replace("{experiment}", name)
         experiment_config = config.root / folder / "experiment.toml"

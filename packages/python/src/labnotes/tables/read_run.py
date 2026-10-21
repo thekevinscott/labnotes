@@ -4,7 +4,9 @@ from pathlib import Path
 from labnotes.tables.path_pattern import path_pattern
 
 
-def read_run(root: Path, template: str, path: str) -> list[dict[str, object]]:
+def read_run(
+    root: Path, template: str, path: str, *, experiment: str | None = None
+) -> list[dict[str, object]]:
     relative = Path(path).relative_to(root).as_posix()
     found = path_pattern(f"{template}/run.json").fullmatch(relative)
     if found is None:
@@ -13,7 +15,7 @@ def read_run(root: Path, template: str, path: str) -> list[dict[str, object]]:
     folder = relative.removesuffix("/run.json")
     return [
         {
-            "experiment": found["experiment"],
+            "experiment": experiment or found["experiment"],
             "id": found["run"],
             "folder": folder,
             "created": run.get("created"),

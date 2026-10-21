@@ -35,3 +35,11 @@ def test_skips_a_path_outside_the_runs_template(tmp_path: Path) -> None:
     path = write_log(tmp_path / "exp/files/stdout.log", "x")
 
     assert read_log(tmp_path, "data/{experiment}/{run}", path) == []
+
+
+def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> None:
+    path = write_log(tmp_path / "runs/brave-fox/stdout.log", "hi\n")
+
+    assert read_log(tmp_path, "runs/{run}", path, experiment="study") == [
+        {"experiment": "study", "run": "brave-fox", "stream": "stdout", "size": 3}
+    ]

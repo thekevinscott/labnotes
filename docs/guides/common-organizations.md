@@ -71,3 +71,24 @@ path = "notes/{experiment}/*.md"
 [runs]
 path = "runs/{experiment}/{run}"
 ```
+
+## One experiment per repo
+
+The repo is the experiment: `experiment.toml` sits next to `.labnotes.toml`. labnotes sees that and treats the root as the one experiment, named after its folder. Paths drop `{experiment}`, and `[experiments] path` doesn't apply. With no paths set, notes go in `files/` and runs in `runs/{run}`.
+
+<Tree>
+data
+    surprisals-experiment
+        .labnotes.toml
+        experiment.toml
+        notes
+            plan.md
+        runs/
+</Tree>
+
+```toml
+[files]
+path = "notes/"
+```
+
+Renaming the folder renames the experiment. Runs don't store the name, so nothing on disk changes; only URLs and CLI names do.

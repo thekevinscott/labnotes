@@ -7,6 +7,7 @@ from labnotes.context_guide import context_guide
 
 GUIDE = files("labnotes").joinpath("context.md").read_text(encoding="utf-8")
 CONFIG = mock.Mock(
+    experiment=None,
     path=Path("/p/.labnotes.toml"),
     root=Path("/p"),
     experiments="{experiment}",
@@ -44,3 +45,17 @@ def test_says_when_the_project_does_not_use_labnotes() -> None:
 
 def test_the_guide_starts_with_usage() -> None:
     assert GUIDE.splitlines()[0] == "## Usage"
+
+
+def test_names_the_one_experiment_when_the_root_is_it() -> None:
+    config = mock.Mock(
+        experiment="study",
+        path=Path("/p/.labnotes.toml"),
+        root=Path("/p"),
+        files="files/",
+        runs="runs/{run}",
+    )
+
+    assert "Root: /p\nExperiment: study (the root is the one experiment)\nFiles:" in (
+        context_guide(config, Path("/p"))
+    )

@@ -13,7 +13,7 @@ B: dict[str, object] = {"m": "b"}
 SIGKILL, SIGTERM = 9, 15
 
 
-def experiment(mode: str = "fill") -> mock.Mock:
+def experiment(mode: str = "matrix") -> mock.Mock:
     config = mock.Mock(
         command="run", params={"m": ["a", "b"]}, repeats=2, counts="c", mode=mode
     )
@@ -86,7 +86,7 @@ def run(
     report: mock.Mock,
     concurrency: int = 1,
     listen: mock.Mock | None = None,
-    mode: str = "fill",
+    mode: str = "matrix",
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
@@ -152,7 +152,7 @@ def test_runs_each_planned_run_in_a_new_folder(
             "title": "exp",
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
-            "mode": "fill",
+            "mode": "matrix",
         },
         {
             "event": "started",
@@ -229,6 +229,36 @@ def test_nests_adhoc_runs_in_one_folder_per_command(
     named = [c.args[:2] for c in collaborators["new_param_run_id"].call_args_list]
     choices = {"m": ["a", "b"]}
     assert named == [(A, choices), (B, choices), (A, choices)]
+
+
+def test_gives_a_lone_adhoc_run_its_own_stamped_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    listen = mock.Mock()
+
+    def retry_first(event: dict[str, object]) -> None:
+        if event == {"event": "ended", "run": "r1", "exit_code": 0, "error": None}:
+            retry = listen.call_args.args[0].retry
+            asyncio.get_running_loop().call_soon(retry, "r1")
+
+    report = mock.Mock(side_effect=retry_first)
+
+    run(tmp_path, report, listen=listen, mode="adhoc")
+
+    assert started_runs(report) == ["r1", "r2"]
+    assert (tmp_path / "exp" / "r1").is_dir()
+    collaborators["new_param_run_id"].assert_not_called()
+
+
+def test_stamps_no_folder_when_an_adhoc_command_plans_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = []
+
+    run(tmp_path, mock.Mock(), mode="adhoc")
+
+    collaborators["new_stamped_run_id"].assert_not_called()
 
 
 def test_names_every_run_before_the_first_starts(

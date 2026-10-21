@@ -47,9 +47,9 @@ def test_defaults_to_one_repeat_and_no_params() -> None:
 
 
 def test_falls_back_to_the_project_mode_and_concurrency() -> None:
-    config = read_experiment_config(PATH, 'command = "run"\n', "fill", 3)
+    config = read_experiment_config(PATH, 'command = "run"\n', "matrix", 3)
 
-    assert (config.mode, config.concurrency) == ("fill", 3)
+    assert (config.mode, config.concurrency) == ("matrix", 3)
 
 
 def test_reads_concurrency_over_the_project_concurrency() -> None:
@@ -68,7 +68,9 @@ def test_reads_counts() -> None:
     assert config.counts == "exit_code = 0"
 
 
-@pytest.mark.parametrize(("mode", "project"), [("fill", "adhoc"), ("adhoc", "fill")])
+@pytest.mark.parametrize(
+    ("mode", "project"), [("matrix", "adhoc"), ("adhoc", "matrix")]
+)
 def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
     config = read_experiment_config(
         PATH, f'command = "run"\nmode = "{mode}"\n', project, 1
@@ -94,7 +96,7 @@ def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
         ('command = "run"\n[params]\nd = [1979-05-27]\n', "dates or times"),
         ('command = "run"\ncounts = 1\n', "counts must be a SQL condition"),
         ('command = "run"\ncounts = " "\n', "counts must be a SQL condition"),
-        ('command = "run"\nmode = "once"\n', "mode must be fill or adhoc"),
+        ('command = "run"\nmode = "once"\n', "mode must be matrix or adhoc"),
         ('command = "run"\nconcurrency = 0\n', "concurrency must be a positive"),
     ],
 )

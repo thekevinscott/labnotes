@@ -58,14 +58,14 @@ and as `display_name` in `experiments`. The folder name stays the key, so
 renaming the experiment means editing `name`.
 Each combination of `[params]` runs `repeats` times (1 if omitted), round-robin, on every
 `run`, whatever is already on disk. That is `mode = "adhoc"`, the default.
-`mode = "fill"` counts what is there: only runs that count fill a combination,
+`mode = "matrix"` counts what is there: only runs that count fill a combination,
 so running again fills in what failed or never ran. `mode` under
 `[experiments]` in `.labnotes.toml` sets it for every experiment that doesn't
 set its own.
-Each run gets a new run folder. In `fill` mode it is named for the UTC time it was planned
-(`runs/20261020-000429-brave-fox`). In `adhoc` mode each `run` command gets one folder named
-that way, and its runs nest inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id
-is that path under `runs/`. Either way, folder listings sort by start. `command` runs in a shell from the root, with
+Each run gets a new run folder. In `matrix` mode it is named for the UTC time it was planned
+(`runs/20261020-000429-brave-fox`). In `adhoc` mode a `run` command that plans one run names
+its folder the same way. One that plans more gets one folder named that way, and its runs nest
+inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id is that path under `runs/`. Either way, folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there.
 Each param is appended as `--name value`, with the name as written (use
@@ -113,8 +113,8 @@ going. Elsewhere, it prints a line per event instead.
   `.labnotes.toml`, then 1.
 - `-e PATH` reads another file instead of `experiment.toml`.
 - `run` hands its runs to the project's labnotes daemon, starting it if
-  needed, and shows or waits for them. The daemon listens on `.labnotes.sock`
-  in the project folder and exits once nothing is running and no client has
+  needed, and shows or waits for them. The daemon listens on a socket in
+  `/tmp/labnotes-<uid>/` and exits once nothing is running and no client has
   been connected for 15 seconds. Runs belong to the daemon, so quitting the
   live view, closing its terminal, or killing `run` outright leaves them going.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
@@ -122,7 +122,15 @@ going. Elsewhere, it prints a line per event instead.
   seconds later. Once the runs are done, either one closes the live view.
 - `labnotes run stop` stops every run the daemon has going: SIGTERM, then
   SIGKILL 5 seconds later.
+- `labnotes run status` prints what the daemon has going, a line per event so
+  far plus the latest line each running run logged. `-f` keeps following, and
+  waits for a daemon when none is up. `--json` prints one JSON object per line.
+  Following doesn't keep the daemon up.
+- `labnotes run control NAME ACTION [ARG]` sends one live-view control to a
+  running experiment: `kill`, `retry`, `run_next` or `toggle` a run,
+  `set_concurrency` to a number, `interrupt` or `finish`.
 - A second `run` of the same experiment fails while the first is going.
-- It exits 0 even if runs fail; the summary line counts failures.
+- It exits 0 even if runs fail; the summary line counts failures. If it can't
+  start or reach the daemon, it prints the cause on one line and exits 1.
 
-`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

@@ -1,15 +1,16 @@
 import re
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from playwright.async_api import Page, expect
-from conftest import browse, run, serve, write
+from conftest import browse, daemon, run, serve, write
 
 
 def test_shows_the_experiment_toml_on_one_line(site: str) -> None:
     async def check(page: Page) -> None:
         await expect(page.get_by_role("heading", name="Alpha study")).to_be_visible()
         summary = page.locator(".config-summary")
-        await expect(summary).to_contain_text("fill")
+        await expect(summary).to_contain_text("matrix")
         await expect(summary).to_contain_text("command go")
         await expect(summary).to_contain_text("repeats 2")
         await expect(summary).to_contain_text("source-language en fr")
@@ -54,14 +55,14 @@ def test_shows_when_each_run_started_and_how_long_it_took(tmp_path: Path) -> Non
         for column in ("started", "duration"):
             await expect(table.get_by_role("columnheader", name=column)).to_be_visible()
         done = table.get_by_role("row").filter(has_text="run1")
-        await expect(done).to_contain_text("2026-10-17 00:00:01")
+        await expect(done).to_contain_text("2026-10-16 20:00:01")
         await expect(done).to_contain_text("8m 20s")
         await expect(table.get_by_role("row").filter(has_text="run2")).to_contain_text(
             "—"
         )
 
     for site in serve(tmp_path):
-        browse(f"{site}/experiments/alpha", check)
+        browse(f"{site}/experiments/alpha", check, timezone_id="America/New_York")
 
 
 def test_filters_runs_by_text(site: str) -> None:
@@ -89,6 +90,40 @@ def test_filters_runs_live_while_typing(site: str) -> None:
 
         await expect(page.get_by_text("No runs match these filters.")).to_be_visible()
         await expect(page.get_by_text("0 of 2")).to_be_visible()
+
+    browse(f"{site}/experiments/alpha", check)
+
+
+def test_sorts_runs_in_place(site: str) -> None:
+    async def check(page: Page) -> None:
+        loads: list[Page] = []
+        page.on("load", lambda loaded: loads.append(loaded))
+        await page.evaluate("window.stayed = true")
+        await page.get_by_label("Filter source-language").click()
+        await page.get_by_role("checkbox", name="fr").check()
+        await page.get_by_role("checkbox", name="en").check()
+        await page.get_by_role("heading", name="Alpha study").click()
+        rows = page.locator("tbody tr.run-row")
+        header = page.get_by_role("columnheader", name="id")
+        sort = header.get_by_role("link")
+
+        await sort.click()
+        await expect(header).to_have_attribute("aria-sort", "ascending")
+        await sort.click()
+
+        await expect(header).to_have_attribute("aria-sort", "descending")
+        await expect(rows.first).to_contain_text("run2")
+        await expect(rows.last).to_contain_text("run1")
+        await expect(page).to_have_url(re.compile(r"sort=id&order=desc"))
+        await expect(sort).to_be_focused()
+        await expect(page.get_by_label("Filter source-language")).to_have_text("en, fr")
+        assert await page.evaluate("window.stayed")
+        assert loads == []
+
+        await page.get_by_label("Filter id").fill("run")
+        await page.get_by_label("Filter id").press("Enter")
+        await expect(page).to_have_url(re.compile(r"sort=id&order=desc&.*f\.id=run"))
+        await expect(rows.first).to_contain_text("run2")
 
     browse(f"{site}/experiments/alpha", check)
 
@@ -147,6 +182,46 @@ LAKE = "20261020-105052-lake"
 POND = "20261019-090000-pond"
 
 
+def unfinished(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    started = datetime.now(UTC) - timedelta(seconds=5)
+    run(tmp_path, "run1", {}, created=started.strftime("%Y-%m-%dT%H:%M:%SZ"))
+
+
+def test_shows_an_unfinished_run_as_running_while_the_daemon_is_up(
+    tmp_path: Path,
+) -> None:
+    unfinished(tmp_path)
+
+    async def check(page: Page) -> None:
+        row = page.get_by_role("row").filter(has_text="run1")
+        await expect(row.get_by_title("running")).to_be_visible()
+        await expect(row.get_by_title("not complete")).to_have_count(0)
+        elapsed = row.locator(".elapsed")
+        await expect(elapsed).to_have_text(re.compile(r"^\d+s$"))
+        first = await elapsed.text_content()
+        await expect(elapsed).not_to_have_text(str(first), timeout=3000)
+
+    for _ in daemon(tmp_path):
+        for site in serve(tmp_path):
+            browse(f"{site}/experiments/alpha", check)
+
+
+def test_shows_an_unfinished_run_as_interrupted_without_a_daemon(
+    tmp_path: Path,
+) -> None:
+    unfinished(tmp_path)
+
+    async def check(page: Page) -> None:
+        row = page.get_by_role("row").filter(has_text="run1")
+        await expect(row.get_by_title("interrupted")).to_be_visible()
+        await expect(row.locator(".elapsed")).to_have_count(0)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
 def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(tmp_path / "alpha/experiment.toml", ADHOC)
@@ -159,7 +234,7 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
         one = page.get_by_role("cell", name="one1", exact=True)
         await expect(groups).to_have_count(2)
         await expect(groups.first).to_contain_text(LAKE)
-        await expect(groups.first).to_contain_text("2026-10-20 10:50:52")
+        await expect(groups.first).to_contain_text("2026-10-20 06:50:52")
         await expect(
             groups.first.get_by_role("cell", name="2", exact=True)
         ).to_be_visible()
@@ -178,10 +253,49 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
         await expect(one).to_have_count(0)
         await expect(page.get_by_role("cell", name="two2", exact=True)).to_be_visible()
         await expect(groups).to_have_count(1)
+        await expect(groups.first).to_contain_text("2026-10-20 06:50:52")
+        await expect(page.get_by_role("row").filter(has_text="two2")).to_contain_text(
+            "2026-10-16 20:00:02"
+        )
 
         await groups.first.click()
 
         await expect(page.get_by_role("cell", name="two2", exact=True)).to_be_hidden()
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check, timezone_id="America/New_York")
+
+
+def test_opens_groups_to_show_what_a_filter_matched(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=0)
+    run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{POND}/four4", {"m": "a"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        lake = page.locator(".group-row").filter(has_text=LAKE)
+        pond = page.locator(".group-row").filter(has_text=POND)
+        one = page.get_by_role("cell", name="one1", exact=True)
+        three = page.get_by_role("cell", name="three3", exact=True)
+        await expect(lake.get_by_role("cell").nth(3)).to_have_text("")
+        await expect(pond.get_by_role("cell").nth(3)).to_have_text("a")
+        await page.get_by_role("button", name=POND).click()
+
+        await page.get_by_label("Filter m").click()
+        await page.get_by_role("checkbox", name="a").check()
+
+        await expect(one).to_be_visible()
+        await expect(lake.get_by_role("cell").nth(2)).to_have_text("1 of 2")
+        await expect(lake.get_by_role("cell").nth(3)).to_have_text("a")
+        await expect(pond.get_by_role("cell").nth(2)).to_have_text("2 of 2")
+
+        await page.get_by_role("checkbox", name="a").uncheck()
+
+        await expect(lake.get_by_role("cell").nth(2)).to_have_text("2")
+        await expect(one).to_be_hidden()
+        await expect(three).to_be_visible()
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
@@ -200,6 +314,53 @@ def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> 
         await page.get_by_label("Filter id").fill("three")
 
         await expect(page.get_by_role("cell", name=f"{LAKE}/one1")).to_have_count(0)
+        await expect(page.locator(".group-row")).to_have_count(0)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
+HERON = "20261021-080000-heron"
+
+
+def test_lists_a_lone_flat_adhoc_run_as_a_plain_row(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
+    run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=0)
+    run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
+    run(tmp_path, HERON, {"m": "b"}, exit_code=0, created="2026-10-21T08:00:00Z")
+
+    async def check(page: Page) -> None:
+        groups = page.locator(".group-row")
+        heron = page.get_by_role("row").filter(has_text=HERON)
+        await expect(groups).to_have_count(2)
+        await expect(groups.filter(has_text=HERON)).to_have_count(0)
+        await expect(heron).to_have_count(1)
+        await expect(heron).to_be_visible()
+        await expect(heron).to_contain_text("b")
+        await expect(page.locator("tbody").first).to_contain_text(HERON)
+        await expect(page.get_by_role("cell", name="one1", exact=True)).to_be_hidden()
+
+        await page.get_by_label("Filter m").click()
+        await page.get_by_role("checkbox", name="a").check()
+
+        await expect(heron).to_have_count(0)
+        await expect(groups).to_have_count(2)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
+def test_lists_flat_adhoc_runs_without_groups(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    run(tmp_path, HERON, {"m": "a"}, exit_code=0, created="2026-10-21T08:00:00Z")
+    run(tmp_path, f"{POND}/three3", {"m": "b"}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        await expect(page.get_by_role("cell", name=HERON, exact=True)).to_be_visible()
+        await expect(page.get_by_role("cell", name=f"{POND}/three3")).to_be_visible()
         await expect(page.locator(".group-row")).to_have_count(0)
 
     for site in serve(tmp_path):

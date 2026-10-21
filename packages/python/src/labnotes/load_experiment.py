@@ -6,7 +6,9 @@ from typing import cast
 from dirsql import DirSQL
 
 from labnotes.check_counts import check_counts
+from labnotes.count_groups import count_groups
 from labnotes.count_runs import count_runs
+from labnotes.daemon.daemon_running import daemon_running
 from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
 from labnotes.format_value import format_value
@@ -57,6 +59,11 @@ async def load_experiment(
     notes = await experiment_notes(tables, root, name)
     runs = await list_runs(tables, source, str(summary["completed_run"]), view)
     nested = summary["mode"] == "adhoc" and await nests_runs(tables, source)
+    groups = (
+        group_runs(runs, list(choices), await count_groups(tables, source))
+        if nested
+        else None
+    )
     return {
         "name": row["name"],
         "display_name": row["display_name"],
@@ -76,7 +83,8 @@ async def load_experiment(
             for note in notes
         ],
         "runs_list": runs,
-        "run_groups": group_runs(runs) if nested else None,
+        "runs_live": await daemon_running(root),
+        "run_groups": groups,
         "run_columns": shown,
         "run_view": view,
         "run_choices": choices,

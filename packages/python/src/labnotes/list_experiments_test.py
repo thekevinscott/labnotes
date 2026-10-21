@@ -41,7 +41,7 @@ def check_counts() -> Iterator[mock.AsyncMock]:
 def test_lists_each_experiment_with_its_config_summary_and_run_counts(
     count_runs: mock.AsyncMock,
 ) -> None:
-    config = {"command": "go", "repeats": 2, "mode": "fill", "params": {"x": [1, 2]}}
+    config = {"command": "go", "repeats": 2, "mode": "matrix", "params": {"x": [1, 2]}}
     tables = mock.Mock()
     tables.query = mock.AsyncMock(
         return_value=[
@@ -58,7 +58,7 @@ def test_lists_each_experiment_with_its_config_summary_and_run_counts(
     assert (a["name"], a["display_name"], a["mode"], a["runs"], a["completed"]) == (
         "a",
         "Alpha",
-        "fill",
+        "matrix",
         5,
         4,
     )

@@ -1,0 +1,1 @@
+**Changed** — **BREAKING** `mode = "fill"` is now `mode = "matrix"`, in `experiment.toml` and under `[experiments]` in `.labnotes.toml`. `"fill"` is rejected. See [the migration](../migrations.d/2026-10-20-python-rename-fill-to-matrix.md).

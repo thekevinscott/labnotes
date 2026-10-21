@@ -6,6 +6,7 @@ from labnotes.models import LabnotesConfig
 from labnotes.tables.path_glob import path_glob
 from labnotes.tables.read_experiment import read_experiment
 from labnotes.tables.read_file import read_file
+from labnotes.tables.read_log import read_log
 from labnotes.tables.read_run import read_run
 
 # experiments is a view, so files and runs can't declare a foreign key to it.
@@ -40,6 +41,13 @@ CREATE TABLE runs (
   PRIMARY KEY (experiment, id)
 )
 """
+# Sizes only: the server reads log text from disk, the row change is the signal.
+LOGS = """
+CREATE TABLE logs (
+  experiment TEXT, run TEXT, stream TEXT, size INTEGER,
+  PRIMARY KEY (experiment, run, stream)
+)
+"""
 
 
 def open_tables(config: LabnotesConfig) -> DirSQL:
@@ -58,6 +66,12 @@ def open_tables(config: LabnotesConfig) -> DirSQL:
                 ddl=RUNS,
                 glob=path_glob(f"{config.runs}/run.json"),
                 on_file=partial(read_run, root, config.runs),
+            ),
+            Table(
+                name="logs",
+                ddl=LOGS,
+                glob=path_glob(f"{config.runs}/std*.log"),
+                on_file=partial(read_log, root, config.runs),
             ),
             Table(
                 name="experiment_configs",

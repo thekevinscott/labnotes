@@ -43,8 +43,9 @@ def test_lists_runs_newest_first_with_a_completed_flag() -> None:
     ]
     sql = runs.query.await_args.args[0]
     assert (
-        sql
-        == "SELECT (exit_code = 0) AS labnotes_completed, * FROM (source) ORDER BY created DESC, id DESC"
+        sql == "SELECT (exit_code = 0) AS labnotes_completed,"
+        " (ended IS NULL AND exit_code IS NULL AND error IS NULL) AS labnotes_unfinished,"
+        " * FROM (source) ORDER BY created DESC, id DESC"
     )
 
 

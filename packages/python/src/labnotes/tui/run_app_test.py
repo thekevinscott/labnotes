@@ -49,7 +49,7 @@ def styles(app: RunApp) -> list[list[object]]:
     ]
 
 
-def planned(*runs: str, mode: str = "fill") -> dict[str, object]:
+def planned(*runs: str, mode: str = "matrix") -> dict[str, object]:
     return {
         "event": "planned",
         "title": "Exp",
@@ -1164,7 +1164,7 @@ def test_escape_brings_back_the_summary_once_idle() -> None:
     [
         (("r1",), "adhoc", "r1"),
         (("r1", "r2"), "adhoc", None),
-        (("r1",), "fill", None),
+        (("r1",), "matrix", None),
     ],
 )
 def test_opens_a_lone_adhoc_run_in_its_output(
@@ -1247,5 +1247,38 @@ def test_moves_the_cursor_with_vim_keys(keys: tuple[str, ...], row: int) -> None
             await pilot.press(*keys)
             table: Any = app.query_one("#runs")
             assert table.cursor_row == row
+
+    asyncio.run(drive())
+
+
+def test_keeps_the_error_that_stopped_the_runs() -> None:
+    failure = ValueError("no daemon")
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        raise failure
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.is_running
+            assert app.error is failure
+            assert app.results == []
+
+    asyncio.run(drive())
+
+
+def test_has_no_error_when_the_runs_finish() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return [{"exit_code": 0}]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        assert app.error is None
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.is_running
+            assert app.error is None
+            assert app.results == [{"exit_code": 0}]
 
     asyncio.run(drive())

@@ -10,8 +10,10 @@ from pathlib import Path
 import pytest
 from playwright.async_api import Page, async_playwright
 
+from labnotes.daemon.socket_path import socket_path
+
 CONFIG = (
-    'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "fill"\n'
+    'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "matrix"\n'
     '[params]\nsource-language = ["en", "fr"]\n'
 )
 
@@ -43,6 +45,24 @@ def free_port() -> int:
         return int(sock.getsockname()[1])
 
 
+def daemon(root: Path) -> Iterator[None]:
+    labnotes = Path(sys.executable).parent / "labnotes"
+    process = subprocess.Popen(
+        [labnotes, "-c", root / ".labnotes.toml", "daemon"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(100):
+            if socket_path(root).exists():
+                break
+            time.sleep(0.1)
+        yield
+    finally:
+        process.terminate()
+        process.wait()
+
+
 def serve(root: Path) -> Iterator[str]:
     port = free_port()
     labnotes = Path(sys.executable).parent / "labnotes"
@@ -65,17 +85,36 @@ def serve(root: Path) -> Iterator[str]:
 
 
 def browse(
-    url: str, check: Callable[[Page], Awaitable[None]], width: int = 1280
+    url: str,
+    check: Callable[[Page], Awaitable[None]],
+    width: int = 1280,
+    timezone_id: str = "UTC",
 ) -> None:
     async def drive() -> None:
         async with async_playwright() as playwright:
             browser = await playwright.chromium.launch()
-            page = await browser.new_page(viewport={"width": width, "height": 800})
+            page = await browser.new_page(
+                viewport={"width": width, "height": 800}, timezone_id=timezone_id
+            )
             await page.goto(url)
             await check(page)
             await browser.close()
 
     asyncio.run(drive())
+
+
+@pytest.fixture
+def tmp_path(tmp_path: Path) -> Path:
+    # Real project roots run long; pytest's short default hides path-length
+    # limits such as the 107-byte AF_UNIX socket path.
+    deep = (
+        tmp_path
+        / "a-fairly-long-folder-name-for-research"
+        / "and-another-nested-one"
+        / "experiments-and-their-notes-live-here"
+    )
+    deep.mkdir(parents=True)
+    return deep
 
 
 @pytest.fixture

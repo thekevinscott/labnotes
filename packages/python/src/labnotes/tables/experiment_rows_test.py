@@ -6,7 +6,7 @@ import pytest
 
 from labnotes.tables.experiment_rows import experiment_rows
 
-CONFIG = mock.Mock(mode="fill")
+CONFIG = mock.Mock(mode="matrix")
 
 
 @pytest.fixture
@@ -53,7 +53,7 @@ def test_lists_one_experiments_runs(queries: dict[str, mock.MagicMock]) -> None:
 
     assert asyncio.run(experiment_rows(CONFIG, "a", "runs")) == [{"id": "r"}]
 
-    queries["summarize_config"].assert_called_once_with({"counts": "x"}, "fill")
+    queries["summarize_config"].assert_called_once_with({"counts": "x"}, "matrix")
     queries["list_runs"].assert_awaited_once_with(
         queries["open_tables"].return_value, "a", "c"
     )
@@ -66,7 +66,7 @@ def test_summarizes_a_missing_config_as_none(
 
     asyncio.run(experiment_rows(CONFIG, "a", "runs"))
 
-    queries["summarize_config"].assert_called_once_with(None, "fill")
+    queries["summarize_config"].assert_called_once_with(None, "matrix")
 
 
 def test_returns_none_for_an_unknown_experiment(

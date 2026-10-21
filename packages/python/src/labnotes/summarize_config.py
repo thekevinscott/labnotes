@@ -15,13 +15,13 @@ def summarize_config(config: dict[str, object] | None, mode: str) -> dict[str, o
     cells = prod(len(values) for values in varies.values())
     command = config.get("command")
     counts = config.get("counts")
-    fill = config.get("mode", mode) == "fill"
+    matrix = config.get("mode", mode) == "matrix"
     return {
         "fixed": {},
         "varies": varies,
         "cell_count": cells,
         "runs_per_cell": repeats,
         "completed_run": counts if isinstance(counts, str) else DEFAULT_COUNTS,
-        "mode": "fill" if fill else "adhoc",
+        "mode": "matrix" if matrix else "adhoc",
         "other": {} if command is None else {"command": command},
     }

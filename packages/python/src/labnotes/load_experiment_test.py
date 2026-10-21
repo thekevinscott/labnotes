@@ -12,7 +12,7 @@ from labnotes.load_experiment import load_experiment
 CONFIG = {
     "command": "go",
     "repeats": 2,
-    "mode": "fill",
+    "mode": "matrix",
     "params": {"x": [1, 2], "y": ["a"]},
 }
 ROOT = Path("/p")
@@ -62,8 +62,19 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             return_value=True,
         ) as nests_runs,
         mock.patch("labnotes.load_experiment.group_runs") as group_runs,
+        mock.patch(
+            "labnotes.load_experiment.count_groups",
+            new_callable=mock.AsyncMock,
+            return_value={"g": 2},
+        ) as count_groups,
+        mock.patch(
+            "labnotes.load_experiment.daemon_running",
+            new_callable=mock.AsyncMock,
+            return_value=True,
+        ) as daemon_running,
     ):
         yield {
+            "count_groups": count_groups,
             "nests_runs": nests_runs,
             "group_runs": group_runs,
             "count_runs": count_runs,
@@ -73,6 +84,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "check_counts": check_counts,
             "sort_href": sort_href,
             "python_blocks": python_blocks,
+            "daemon_running": daemon_running,
         }
 
 
@@ -103,6 +115,8 @@ def test_loads_config_notes_progress_and_runs(
         {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
+    assert loaded["runs_live"] is True
+    collaborators["daemon_running"].assert_awaited_once_with(ROOT)
     assert loaded["run_groups"] is None
     collaborators["nests_runs"].assert_not_awaited()
     assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]
@@ -156,11 +170,13 @@ def test_falls_back_to_the_project_mode(
     config = {key: value for key, value in CONFIG.items() if key != "mode"}
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(config)), ROOT, "fill", "a", mock.Mock())
+        load_experiment(
+            make_tables(experiment(config)), ROOT, "matrix", "a", mock.Mock()
+        )
     )
 
     assert loaded is not None
-    assert loaded["mode"] == "fill"
+    assert loaded["mode"] == "matrix"
 
 
 def test_returns_none_for_an_unknown_experiment(
@@ -266,14 +282,19 @@ def test_groups_adhoc_runs_by_invocation_once_any_has_several(
     config = {**CONFIG, "mode": "adhoc"}
     tables = make_tables(experiment(config))
 
-    loaded = asyncio.run(load_experiment(tables, ROOT, "fill", "a", mock.Mock()))
+    loaded = asyncio.run(load_experiment(tables, ROOT, "matrix", "a", mock.Mock()))
 
     assert loaded is not None
     source = collaborators["list_runs"].await_args.args[1]
     collaborators["nests_runs"].assert_awaited_once_with(tables, source)
     group_runs = collaborators["group_runs"]
+    count_groups = collaborators["count_groups"]
     if nested:
-        group_runs.assert_called_once_with(loaded["runs_list"])
+        count_groups.assert_awaited_once_with(tables, source)
+        group_runs.assert_called_once_with(
+            loaded["runs_list"], ["x", "y"], count_groups.return_value
+        )
         assert loaded["run_groups"] is group_runs.return_value
     else:
+        count_groups.assert_not_awaited()
         assert loaded["run_groups"] is None

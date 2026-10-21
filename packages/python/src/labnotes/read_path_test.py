@@ -25,7 +25,7 @@ def test_reads_a_path(table: str, template: str) -> None:
     assert read_path(CONFIG, table, {"path": template}) == template
 
 
-@pytest.mark.parametrize("section", [{"mode": "fill"}, {"concurrency": 2}])
+@pytest.mark.parametrize("section", [{"mode": "matrix"}, {"concurrency": 2}])
 def test_lets_settings_through_in_experiments(section: dict[str, object]) -> None:
     assert read_path(CONFIG, "experiments", section) == "{experiment}"
 
@@ -35,7 +35,7 @@ def test_lets_settings_through_in_experiments(section: dict[str, object]) -> Non
     [
         ("experiments", "e", "experiments must be a table, like [experiments]"),
         ("files", {"glob": 1}, "unknown keys in [files]: glob"),
-        ("files", {"mode": "fill"}, "unknown keys in [files]: mode"),
+        ("files", {"mode": "matrix"}, "unknown keys in [files]: mode"),
         ("files", {"path": 1}, "[files] path must be a string"),
         ("files", {"path": "/abs/{experiment}"}, "[files] path must be relative"),
         ("files", {"path": "~/{experiment}"}, "[files] path must be relative"),

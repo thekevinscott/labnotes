@@ -65,9 +65,19 @@ def collaborators() -> Iterator[dict[str, Any]]:
         }
 
 
-def call(app: Any, path: str, body: object = None, **params: str) -> Any:
+def call(
+    app: Any,
+    path: str,
+    body: object = None,
+    query: dict[str, str] | None = None,
+    **params: str,
+) -> Any:
     [endpoint] = [route.endpoint for route in app.routes if route.path == path]
-    request = mock.Mock(path_params=params, json=mock.AsyncMock(return_value=body))
+    request = mock.Mock(
+        path_params=params,
+        query_params=query or {},
+        json=mock.AsyncMock(return_value=body),
+    )
     return endpoint(request)
 
 
@@ -398,5 +408,79 @@ def test_forgets_the_owner_of_an_ended_session(
         await start(app)
         await owner.aclose()  # type: ignore[attr-defined]
         controls.finish.assert_not_called()
+
+    asyncio.run(go())
+
+
+class Parsed(str):
+    """A query value that is equal to, but not the same object as, a literal."""
+
+
+async def watch(app: Any, client: int) -> AsyncIterator[str]:
+    response = await call(app, "/events", query={"watch": Parsed("1")})
+    stream: AsyncIterator[str] = response.body_iterator
+    assert await next_event(stream) == {"event": "connected", "client": client}
+    return stream
+
+
+def test_replays_running_sessions_to_a_watcher(
+    collaborators: dict[str, Any],
+) -> None:
+    session: Session = collaborators["session"]
+
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        await start(app)
+        session.report({"event": "idle"})
+        watcher = await watch(app, 1)
+        assert await next_event(watcher) == {
+            "event": "planned",
+            "folder": "/runs/r1",
+            "experiment": "exp",
+        }
+        assert await next_event(watcher) == {"event": "idle", "experiment": "exp"}
+        assert await next_event(watcher) == {"event": "replayed"}
+        assert session.end is not None
+        session.end.set()
+        await next_event(watcher)
+        assert await next_event(await watch(app, 2)) == {"event": "replayed"}
+
+    asyncio.run(go())
+
+
+def test_says_when_the_replay_is_over_with_nothing_running() -> None:
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        assert await next_event(await watch(app, 1)) == {"event": "replayed"}
+
+    asyncio.run(go())
+
+
+def test_does_not_keep_the_daemon_up_for_watchers(
+    collaborators: dict[str, Any],
+) -> None:
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        watcher = await watch(app, 1)
+        assert app.state.idle()
+        client = await connect(app, 2)
+        assert not app.state.idle()
+        await client.aclose()  # type: ignore[attr-defined]
+        assert app.state.idle()
+        await watcher.aclose()  # type: ignore[attr-defined]
+        assert app.state.idle()
+
+    asyncio.run(go())
+
+
+def test_does_not_replay_to_a_plain_client(collaborators: dict[str, Any]) -> None:
+    session: Session = collaborators["session"]
+
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        await start(app)
+        client = await connect(app, 1)
+        session.report({"event": "idle"})
+        assert await next_event(client) == {"event": "idle", "experiment": "exp"}
 
     asyncio.run(go())

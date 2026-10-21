@@ -35,3 +35,16 @@ def test_names_the_root_config_after_the_one_experiment(tmp_path: Path) -> None:
     [row] = read_experiment(tmp_path, "", str(path), experiment="study")
 
     assert row["experiment"] == "study"
+
+
+def test_layers_the_config_over_the_defaults(tmp_path: Path) -> None:
+    path = write_config(tmp_path / "exp", '[params]\nm = ["b"]\n')
+
+    [row] = read_experiment(
+        tmp_path,
+        "{experiment}",
+        path,
+        defaults={"command": "go", "params": {"m": ["a"], "n": [1]}},
+    )
+
+    assert row["config"] == ('{"command": "go", "params": {"m": ["b"], "n": [1]}}')

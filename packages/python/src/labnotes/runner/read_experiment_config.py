@@ -1,7 +1,9 @@
 import json
 import tomllib
 from pathlib import Path
+from typing import Any
 
+from labnotes.compose_experiment import compose_experiment
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.models import ExperimentConfig
 from labnotes.is_positive_int import is_positive_int
@@ -11,12 +13,17 @@ SETTINGS = {"name", "command", "repeats", "params", "counts", "mode", "concurren
 
 
 def read_experiment_config(
-    path: Path, source: str, mode: str, concurrency: int
+    path: Path,
+    source: str,
+    mode: str,
+    concurrency: int,
+    defaults: dict[str, object] | None = None,
 ) -> ExperimentConfig:
     try:
-        values = tomllib.loads(source)
+        layer = tomllib.loads(source)
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from error
+    values: dict[str, Any] = compose_experiment(defaults or {}, layer)
     unknown = sorted(values.keys() - SETTINGS)
     if unknown:
         raise ValueError(f"{path}: unknown keys {', '.join(unknown)}")

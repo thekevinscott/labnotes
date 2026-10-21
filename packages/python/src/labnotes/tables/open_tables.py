@@ -1,8 +1,10 @@
+import json
 from functools import partial
 
 from dirsql import DirSQL, Table
 
 from labnotes.models import LabnotesConfig
+from labnotes.sql_quote import quote_string
 from labnotes.tables.experiment_toml import experiment_toml
 from labnotes.tables.path_glob import path_glob
 from labnotes.tables.read_blocks import read_blocks
@@ -17,17 +19,19 @@ CREATE TABLE experiment_configs (
   experiment TEXT PRIMARY KEY, config TEXT, source TEXT
 );
 CREATE VIEW experiments AS
-  SELECT
-    names.name,
-    coalesce(experiment_configs.config ->> 'name', names.name) AS display_name,
-    experiment_configs.config,
-    experiment_configs.source
+  SELECT name, coalesce(config ->> 'name', name) AS display_name, config, source
   FROM (
-    SELECT experiment AS name FROM experiment_configs
-    UNION SELECT experiment FROM files
-    UNION SELECT experiment FROM runs
-  ) AS names
-  LEFT JOIN experiment_configs ON experiment_configs.experiment = names.name;
+    SELECT
+      names.name,
+      coalesce(experiment_configs.config, {defaults}) AS config,
+      experiment_configs.source
+    FROM (
+      SELECT experiment AS name FROM experiment_configs
+      UNION SELECT experiment FROM files
+      UNION SELECT experiment FROM runs{one}
+    ) AS names
+    LEFT JOIN experiment_configs ON experiment_configs.experiment = names.name
+  );
 """
 FILES = """
 CREATE TABLE files (
@@ -56,6 +60,15 @@ CREATE TABLE blocks (
   PRIMARY KEY (experiment, run)
 )
 """
+
+
+def experiments_ddl(config: LabnotesConfig) -> str:
+    defaults = json.dumps(config.defaults, default=str) if config.defaults else None
+    one = config.experiment
+    return EXPERIMENTS.format(
+        defaults="NULL" if defaults is None else quote_string(defaults),
+        one="" if one is None else f"\n      UNION SELECT {quote_string(one)}",
+    )
 
 
 def open_tables(config: LabnotesConfig) -> DirSQL:
@@ -97,13 +110,14 @@ def open_tables(config: LabnotesConfig) -> DirSQL:
             ),
             Table(
                 name="experiment_configs",
-                ddl=EXPERIMENTS,
+                ddl=experiments_ddl(config),
                 glob=path_glob(experiment_toml(config.experiments)),
                 on_file=partial(
                     read_experiment,
                     root,
                     config.experiments,
                     experiment=config.experiment,
+                    defaults=config.defaults,
                 ),
             ),
         ],

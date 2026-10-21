@@ -131,3 +131,70 @@ def test_experiment_toml_beside_the_config_makes_one_experiment(
     assert read_path.call_args_list[0] == mock.call(
         path, "experiments", {}, single=True
     )
+
+
+def test_reads_the_experiment_defaults(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    path = write(
+        tmp_path, '[experiment]\ncommand = "go"\n[experiment.params]\nm = [1]\n'
+    )
+
+    assert read_config(path).defaults == {"command": "go", "params": {"m": [1]}}
+
+
+def test_has_no_defaults_without_an_experiment_table(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    assert read_config(write(tmp_path, "")).defaults == {}
+
+
+def test_an_experiment_table_alone_makes_one_experiment(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    project = tmp_path / "study"
+    project.mkdir()
+
+    config = read_config(write(project, '[experiment]\ncommand = "go"\n'))
+
+    assert config.experiment == "study"
+
+
+def test_an_experiments_path_keeps_many_experiments_with_defaults(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    path = write(
+        tmp_path,
+        '[experiments]\npath = "{experiment}"\n[experiment]\ncommand = "go"\n',
+    )
+
+    config = read_config(path)
+
+    assert (config.experiment, config.defaults) == (None, {"command": "go"})
+
+
+@pytest.mark.parametrize(
+    ("text", "message"),
+    [
+        ("experiment = 1\n", "experiment must be a table, like [experiment]"),
+        ("[experiment]\nzz = 1\npath = 2\n", "unknown keys in [experiment]: path, zz"),
+    ],
+)
+def test_rejects_a_bad_experiment_table(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, message: str
+) -> None:
+    path = write(tmp_path, text)
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == f"{path}: {message}"
+
+
+def test_a_non_table_experiments_still_fails_in_read_path(
+    tmp_path: Path, read_path: mock.MagicMock
+) -> None:
+    read_path.side_effect = ValueError("bad")
+
+    with pytest.raises(ValueError, match="bad"):
+        read_config(write(tmp_path, 'experiments = 1\n[experiment]\ncommand = "go"\n'))

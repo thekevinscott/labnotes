@@ -105,3 +105,20 @@ def test_rejects_a_bad_config(text: str, message: str) -> None:
         read_experiment_config(PATH, text, "adhoc", 1)
 
     assert str(error.value).startswith(f"{PATH}: ")
+
+
+def test_validates_the_config_layered_over_the_defaults() -> None:
+    config = read_experiment_config(
+        PATH,
+        '[params]\nm = ["b"]\n',
+        "adhoc",
+        1,
+        {"command": "run", "params": {"m": ["a"], "n": [1]}},
+    )
+
+    assert (config.command, config.params) == ("run", {"m": ["b"], "n": [1]})
+
+
+def test_rejects_a_bad_default() -> None:
+    with pytest.raises(ValueError, match="repeats must be a positive integer"):
+        read_experiment_config(PATH, 'command = "run"\n', "adhoc", 1, {"repeats": 0})

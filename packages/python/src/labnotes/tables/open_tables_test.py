@@ -9,6 +9,7 @@ from labnotes.tables.open_tables import open_tables
 
 CONFIG = mock.Mock(
     experiment=None,
+    defaults={},
     root=Path("/p"),
     experiments="notes/{experiment}",
     files="notes/{experiment}/*.md",
@@ -82,7 +83,7 @@ def test_experiments_fall_back_to_the_folder_for_a_display_name(
     open_tables(CONFIG)
 
     ddl = str(tables(dirsql)["experiment_configs"]["ddl"])
-    assert "coalesce(experiment_configs.config ->> 'name', names.name)" in ddl
+    assert "coalesce(config ->> 'name', name)" in ddl
 
 
 def test_runs_carry_exclusion(dirsql: dict[str, mock.MagicMock]) -> None:
@@ -135,6 +136,7 @@ def test_names_rows_after_the_one_experiment(
 ) -> None:
     config = mock.Mock(
         experiment="study",
+        defaults={},
         root=Path("/p"),
         experiments="",
         files="notes/",
@@ -146,5 +148,46 @@ def test_names_rows_after_the_one_experiment(
     found = tables(dirsql)
     assert found["experiment_configs"]["glob"] == "experiment.toml"
     assert {name: t["on_file"].keywords for name, t in found.items()} == {  # type: ignore[attr-defined]
-        name: {"experiment": "study"} for name in found
+        "files": {"experiment": "study"},
+        "runs": {"experiment": "study"},
+        "logs": {"experiment": "study"},
+        "experiment_configs": {"experiment": "study", "defaults": {}},
     }
+
+
+def test_experiments_without_a_config_fall_back_to_the_defaults(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
+    config = mock.Mock(
+        experiment=None,
+        defaults={"command": "it's"},
+        root=Path("/p"),
+        experiments="{experiment}",
+        files="{experiment}/files/",
+        runs="{experiment}/runs/{run}",
+    )
+
+    open_tables(config)
+
+    ddl = str(tables(dirsql)["experiment_configs"]["ddl"])
+    assert """coalesce(experiment_configs.config, '{"command": "it''s"}')""" in ddl
+    assert "UNION SELECT experiment FROM runs\n" in ddl
+
+
+def test_lists_the_one_experiment_even_with_nothing_on_disk(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
+    config = mock.Mock(
+        experiment="study",
+        defaults={},
+        root=Path("/p"),
+        experiments="",
+        files="files/",
+        runs="runs/{run}",
+    )
+
+    open_tables(config)
+
+    ddl = str(tables(dirsql)["experiment_configs"]["ddl"])
+    assert "coalesce(experiment_configs.config, NULL)" in ddl
+    assert "UNION SELECT experiment FROM runs\n      UNION SELECT 'study'\n" in ddl

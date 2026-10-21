@@ -4,7 +4,7 @@
 
 ## Viewing Experiments
 
-![Listing experiments, one experiment, and its runs](/demos/experiments.gif)
+![Browsing experiments: an experiment, an invocation, and a run's output](/demos/experiments.gif)
 
 View experiments with:
 

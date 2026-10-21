@@ -29,12 +29,14 @@ Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
 
 ```sh
-labnotes experiments            # name, last_run, created, files, runs
-labnotes experiments foo        # the same, plus config
-labnotes experiments foo runs   # foo's runs, oldest first
+labnotes experiments --format json            # name, last_run, created, files, runs
+labnotes experiments foo --format json        # the same, plus config
+labnotes experiments foo runs --format json   # foo's runs, oldest first
 ```
 
-Each takes `--format table` (the default) or `--format json`; use `--format json` when you parse the output.
+Always pass `--format json` (to parse) or `--format table`. Without `--format`,
+`labnotes experiments` and `labnotes experiments foo` open an interactive
+browser when they find a terminal, and wait for keys that never come.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't
@@ -91,7 +93,7 @@ A script run by labnotes should:
 - stop any background process it starts before it exits; the run ends when `command` exits.
 - flush its output as it goes (`print(..., flush=True)`, or `PYTHONUNBUFFERED=1`), so the live view shows it as it happens.
 
-Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs`; a run with no `ended` is still going.
+Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
 open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one

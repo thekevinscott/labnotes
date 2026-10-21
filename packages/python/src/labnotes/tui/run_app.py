@@ -33,10 +33,10 @@ class RunApp(App[None]):
         Binding("ctrl+c", "interrupt", "Stop runs"),
         Binding("n", "run_next", "Run next"),
         Binding("m", "grab", "Move"),
-        Binding("j,down", "shift(1)", show=False, priority=True),
-        Binding("k,up", "shift(-1)", show=False, priority=True),
+        Binding("j,down", "shift(1)", priority=True),
+        Binding("k,up", "shift(-1)", priority=True),
         Binding("enter", "drop", "Drop", priority=True),
-        Binding("escape", "put_back", "Put back", priority=True),
+        Binding("escape", "put_back", "Put back"),
         Binding("space", "toggle_run", "Deselect"),
         Binding("D", "deselect_shown", "Deselect shown"),
         Binding("x", "kill_run", "Stop run"),
@@ -169,12 +169,11 @@ class RunApp(App[None]):
                 self.tick()
                 del self.started[run]
                 self.redraw(table.cursor_row)
-            case "queued" | "moved":
-                self.reorder(event, table.cursor_row)
-                table.move_cursor(row=table.get_row_index(run))
-                self.show(describe_event(event))
-                if event["event"] == "queued":
-                    self.next_run = run
+            case "queued":
+                self.reposition(event, run)
+                self.next_run = run
+            case "moved":
+                self.reposition(event, run)
             case "deselected":
                 self.pending.discard(run)
                 self.set_cell(run, "status", dim(DESELECTED))
@@ -210,6 +209,12 @@ class RunApp(App[None]):
         failed = len(self.failed)
         passed = len(self.ended) - failed
         self.show(f"{passed} passed, {failed} failed. q to quit.")
+
+    def reposition(self, event: dict[str, object], run: str) -> None:
+        table = self.query_one(DataTable)
+        self.reorder(event, table.cursor_row)
+        table.move_cursor(row=table.get_row_index(run))
+        self.show(describe_event(event))
 
     def reorder(self, event: dict[str, object], row: int) -> None:
         self.release()
@@ -299,7 +304,7 @@ class RunApp(App[None]):
         run = str(self.grabbed)
         queue = self.queue()
         place = queue.index(run) + step
-        if not 0 <= place < len(queue):
+        if place not in range(len(queue)):
             return
         order = list(self.cells)
         here, there = order.index(run), order.index(queue[place])

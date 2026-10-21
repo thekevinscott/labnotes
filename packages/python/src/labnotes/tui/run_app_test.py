@@ -1463,8 +1463,9 @@ def test_a_grabbed_run_that_starts_goes_back_and_lets_go() -> None:
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "j")
+            run = "".join(["r", "2"])
             reports[0](
-                {"event": "started", "run": "r2", "params": {"m": "b"}, "folder": "/"}
+                {"event": "started", "run": run, "params": {"m": "b"}, "folder": "/"}
             )
             assert app.grabbed is None
             assert order(app) == ["r1", "r2", "r3", "r4"]

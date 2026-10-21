@@ -27,6 +27,10 @@ def param_args() -> Iterator[mock.MagicMock]:
             {"event": "moved", "run": "r1", "pending": ["r2", "r1", "r3"]},
             "r1 moved to 2 of 3 in the queue.",
         ),
+        (
+            {"event": "moved", "run": "r3", "pending": ["r3", "r1"]},
+            "r3 moved to 1 of 2 in the queue.",
+        ),
         ({"event": "retried", "run": "r1", "retry": "r2"}, "r1 retried as r2."),
         ({"event": "idle"}, "No runs left."),
         ({"event": "stopping run", "run": "r1"}, "Stopping r1."),

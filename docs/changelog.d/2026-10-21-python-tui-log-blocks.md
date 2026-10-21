@@ -1,0 +1,1 @@
+**Added** — the TUI run output shows blocks written with `labnotes.log` above the raw stdout and stderr, one collapsed line each. Click a block to expand or collapse it. Streaming blocks grow in place as their deltas arrive.

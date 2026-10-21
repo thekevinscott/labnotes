@@ -10,15 +10,18 @@ FOLDER = Path("/p/project/alpha/runs/first")
 
 
 @pytest.fixture(autouse=True)
-def widgets() -> Iterator[mock.MagicMock]:
+def widgets() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch("labnotes.tui.run_screen.Header", return_value="header"),
         mock.patch("labnotes.tui.run_screen.Footer", return_value="footer"),
         mock.patch(
             "labnotes.tui.run_screen.RunOutput", return_value="output"
         ) as run_output,
+        mock.patch(
+            "labnotes.tui.run_screen.LogBlocks", return_value="blocks"
+        ) as blocks,
     ):
-        yield run_output
+        yield {"output": run_output, "blocks": blocks}
 
 
 @pytest.fixture
@@ -36,11 +39,12 @@ def screen(output: mock.MagicMock) -> Iterator[RunScreen]:
         yield shown
 
 
-def test_shows_the_output_between_the_header_and_footer(
-    screen: RunScreen, widgets: mock.MagicMock
+def test_shows_log_blocks_then_the_output_between_the_header_and_footer(
+    screen: RunScreen, widgets: dict[str, mock.MagicMock]
 ) -> None:
-    assert list(screen.compose()) == ["header", "output", "footer"]
-    widgets.assert_called_once_with(id="output")
+    assert list(screen.compose()) == ["header", "blocks", "output", "footer"]
+    widgets["output"].assert_called_once_with(id="output")
+    widgets["blocks"].assert_called_once_with(id="blocks")
 
 
 def test_binds_escape_to_go_back() -> None:
@@ -51,11 +55,14 @@ def test_binds_escape_to_go_back() -> None:
 
 
 def test_names_the_run_and_follows_its_folder(
-    screen: RunScreen, output: mock.MagicMock, widgets: mock.MagicMock
+    screen: RunScreen, output: mock.MagicMock, widgets: dict[str, mock.MagicMock]
 ) -> None:
     screen.on_mount()
 
     assert screen.sub_title == "20261017-000000/first"
-    getattr(screen.query_one, "assert_called_once_with")(widgets)
-    output.follow.assert_called_once_with(FOLDER)
+    assert [call.args for call in getattr(screen.query_one, "call_args_list")] == [
+        (widgets["blocks"],),
+        (widgets["output"],),
+    ]
+    assert output.follow.call_args_list == [mock.call(FOLDER), mock.call(FOLDER)]
     getattr(screen.set_interval, "assert_called_once_with")(0.25, screen.follow)

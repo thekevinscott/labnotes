@@ -1597,3 +1597,46 @@ def test_shows_where_the_daemon_moved_a_run() -> None:
             assert status(app) == "said moved"
 
     asyncio.run(drive())
+
+
+def test_shows_log_blocks_above_the_output(tmp_path: Path) -> None:
+    for run in ("r1", "r2"):
+        (tmp_path / run).mkdir()
+        (tmp_path / run / "stdout.log").write_text("raw\n")
+    (tmp_path / "r1" / "log.jsonl").write_text('{"content": "answer"}\n')
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        for run in ("r1", "r2"):
+            report(
+                {
+                    "event": "started",
+                    "run": run,
+                    "params": {"m": run},
+                    "folder": tmp_path / run,
+                }
+            )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                blocks = app.query_one("#blocks")
+                assert not blocks.display
+                app.view("r1")
+                await pilot.pause()
+                assert blocks.display
+                assert [str(block.render()) for block in blocks.children] == [
+                    "▸ answer"
+                ]
+                assert blocks.region.y < app.query_one("#output").region.y
+                await pilot.press("escape")
+                assert not blocks.display
+                app.view("r2")
+                await pilot.pause()
+                assert not blocks.display
+                assert list(blocks.children) == []
+
+    asyncio.run(drive())

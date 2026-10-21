@@ -5,6 +5,7 @@ from textual.binding import Binding
 from textual.screen import Screen
 from textual.widgets import Footer, Header
 
+from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.run_output import RunOutput
 
 
@@ -18,6 +19,7 @@ class RunScreen(Screen[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield LogBlocks(id="blocks")
         yield RunOutput(id="output")
         yield Footer()
 
@@ -27,4 +29,5 @@ class RunScreen(Screen[None]):
         self.set_interval(0.25, self.follow)
 
     def follow(self) -> None:
+        self.query_one(LogBlocks).follow(self.folder)
         self.query_one(RunOutput).follow(self.folder)

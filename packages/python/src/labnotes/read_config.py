@@ -2,10 +2,12 @@ import tomllib
 from pathlib import Path
 
 from labnotes.models import LabnotesConfig
+from labnotes.is_non_negative_int import is_non_negative_int
 from labnotes.is_positive_int import is_positive_int
 from labnotes.modes import DEFAULT_MODE, MODES
 from labnotes.runner.read_experiment_config import SETTINGS
 from labnotes.read_path import DEFAULT_PATHS, read_path
+from labnotes.retries import DEFAULT_RETRIES
 
 CONFIG_FILE = ".labnotes.toml"
 
@@ -45,12 +47,16 @@ def read_config(path: Path) -> LabnotesConfig:
         raise ValueError(
             f"{path}: [experiments] concurrency must be a positive integer"
         )
+    retries = experiments.get("retries", DEFAULT_RETRIES)
+    if not is_non_negative_int(retries):
+        raise ValueError(f"{path}: [experiments] retries must be 0 or more")
     return LabnotesConfig(
         path.resolve(),
         root,
         **paths,
         mode=mode,
         concurrency=concurrency,
+        retries=retries,
         experiment=root.name if single else None,
         defaults=defaults,
     )

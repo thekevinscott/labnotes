@@ -6,10 +6,20 @@ from typing import Any
 from labnotes.compose_experiment import compose_experiment
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.models import ExperimentConfig
+from labnotes.is_non_negative_int import is_non_negative_int
 from labnotes.is_positive_int import is_positive_int
 from labnotes.modes import MODES
 
-SETTINGS = {"name", "command", "repeats", "params", "counts", "mode", "concurrency"}
+SETTINGS = {
+    "name",
+    "command",
+    "repeats",
+    "params",
+    "counts",
+    "mode",
+    "concurrency",
+    "retries",
+}
 
 
 def read_experiment_config(
@@ -17,6 +27,7 @@ def read_experiment_config(
     source: str,
     mode: str,
     concurrency: int,
+    retries: int,
     defaults: dict[str, object] | None = None,
 ) -> ExperimentConfig:
     try:
@@ -55,4 +66,9 @@ def read_experiment_config(
     concurrency = values.get("concurrency", concurrency)
     if not is_positive_int(concurrency):
         raise ValueError(f"{path}: concurrency must be a positive integer")
-    return ExperimentConfig(command, repeats, params, name, counts, mode, concurrency)
+    retries = values.get("retries", retries)
+    if not is_non_negative_int(retries):
+        raise ValueError(f"{path}: retries must be 0 or more")
+    return ExperimentConfig(
+        command, repeats, params, name, counts, mode, concurrency, retries
+    )

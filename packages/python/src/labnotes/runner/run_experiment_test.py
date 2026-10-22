@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import Callable, Iterator
+import inspect
+from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -13,9 +14,19 @@ B: dict[str, object] = {"m": "b"}
 SIGKILL, SIGTERM = 9, 15
 
 
-def experiment(mode: str = "matrix") -> mock.Mock:
+def settle[T](work: Coroutine[Any, Any, T]) -> T:
+    # A broken retry budget or cancel waits on a timer or never ends; fail fast.
+    return asyncio.run(asyncio.wait_for(work, 5))
+
+
+def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
     config = mock.Mock(
-        command="run", params={"m": ["a", "b"]}, repeats=2, counts="c", mode=mode
+        command="run",
+        params={"m": ["a", "b"]},
+        repeats=2,
+        counts="c",
+        mode=mode,
+        retries=retries,
     )
     config.name = None
     return config
@@ -87,6 +98,8 @@ def run(
     concurrency: int = 1,
     listen: mock.Mock | None = None,
     mode: str = "matrix",
+    retries: int = 2,
+    retry_seconds: float = 0.0,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
@@ -95,14 +108,15 @@ def run(
         hear(controls)
         controls.finish()  # type: ignore[attr-defined]
 
-    return asyncio.run(
+    return settle(
         run_experiment(
             config,
             "exp",
-            experiment(mode),
+            experiment(mode, retries),
             concurrency,
             report,
             listening,
+            retry_seconds=retry_seconds,
         )
     )
 
@@ -179,7 +193,7 @@ def test_titles_the_plan_with_the_experiments_name(
     named = experiment()
     named.name = "Model effort"
 
-    asyncio.run(
+    settle(
         run_experiment(
             mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
             "exp",
@@ -309,6 +323,7 @@ def interrupting(times: int, listen: mock.Mock) -> object:
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        retry_of: str | None,
         **__: object,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
@@ -651,6 +666,7 @@ def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        retry_of: str | None,
         **__: object,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=int(folder.name[1:])))
@@ -730,6 +746,7 @@ def test_a_second_interrupt_after_the_processes_exit_kills_nothing(
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        retry_of: str | None,
         **__: object,
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
@@ -764,7 +781,7 @@ def test_waits_for_finish_once_idle(
         heard[0].finish()
         assert len(await task) == 2
 
-    asyncio.run(go())
+    settle(go())
 
 
 def test_retry_runs_an_ended_run_again_under_a_new_id(
@@ -865,6 +882,7 @@ def test_a_timed_out_run_stops_like_a_kill(
         running: set[object],
         stopping: asyncio.Event,
         tree: set[object],
+        retry_of: str | None,
         *,
         stop: Callable[[], None],
         **__: object,
@@ -892,3 +910,339 @@ def test_a_timed_out_run_stops_like_a_kill(
         "ended",
         "idle",
     ]
+
+
+def test_never_retries_a_run_that_timed_out(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    report = mock.Mock()
+
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        *args: object,
+        stop: Callable[[], None],
+        **_: object,
+    ) -> dict[str, object]:
+        running.add(mock.Mock(pid=1))
+        stop()
+        return {"exit_code": 75, "error": "timed out after 1s"}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, retry_seconds=0.01)
+
+    assert events(report) == ["planned", "started", "stopping run", "ended", "idle"]
+
+
+def exiting(*codes: int) -> object:
+    exits = iter(codes)
+
+    async def execute(*args: object, **_: object) -> dict[str, object]:
+        return {"exit_code": next(exits), "error": None}
+
+    return execute
+
+
+def retry_parents(collaborators: dict[str, mock.MagicMock]) -> list[object]:
+    return [c.args[7] for c in collaborators["execute_run"].await_args_list]
+
+
+def test_waits_thirty_seconds_before_a_retry_by_default() -> None:
+    default = inspect.signature(run_experiment).parameters["retry_seconds"].default
+
+    assert default == 30.0
+
+
+def test_retries_a_tempfail_with_the_same_params(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 0)
+    report = mock.Mock()
+
+    results = run(tmp_path, report, retry_seconds=0.01)
+
+    assert [r["exit_code"] for r in results] == [75, 0]
+    assert started_runs(report) == ["r1", "r2"]
+    assert [c.args[3] for c in collaborators["execute_run"].await_args_list] == [A, A]
+    assert retry_parents(collaborators) == [None, "r1"]
+    assert events(report) == [
+        "planned",
+        "started",
+        "ended",
+        "retrying",
+        "retried",
+        "started",
+        "ended",
+        "idle",
+    ]
+    retrying = {
+        "event": "retrying",
+        "run": "r1",
+        "attempt": 1,
+        "retries": 2,
+        "seconds": 0.01,
+    }
+    assert retrying in reported(report)
+    assert {"event": "retried", "run": "r1", "retry": "r2", "params": A} in reported(
+        report
+    )
+
+
+def test_doubles_the_wait_then_gives_up(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    planning(collaborators, 1)
+    collaborators["new_stamped_run_id"].side_effect = iter(["r1", "r2", "r3"])
+    collaborators["execute_run"].side_effect = exiting(75, 75, 75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retry_seconds=0.01)
+
+    assert started_runs(report) == ["r1", "r2", "r3"]
+    assert retry_parents(collaborators) == [None, "r1", "r2"]
+    waits = [e for e in reported(report) if e["event"] == "retrying"]
+    assert [(e["run"], e["attempt"], e["seconds"]) for e in waits] == [
+        ("r1", 1, 0.01),
+        ("r2", 2, 0.02),
+    ]
+    assert reported(report)[-2:] == [
+        {"event": "gave up", "run": "r3", "retries": 2},
+        {"event": "idle"},
+    ]
+
+
+def test_gives_up_at_once_with_no_retries(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=0)
+
+    assert started_runs(report) == ["r1"]
+    assert {"event": "gave up", "run": "r1", "retries": 0} in reported(report)
+
+
+@pytest.mark.parametrize("code", [1, 74, 76, -15, 0])
+def test_never_retries_other_exits(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], code: int
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(code)
+    report = mock.Mock()
+
+    run(tmp_path, report)
+
+    assert events(report) == ["planned", "started", "ended", "idle"]
+
+
+def test_never_retries_a_run_that_failed_to_start(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].return_value = {"exit_code": None, "error": "boom"}
+    report = mock.Mock()
+
+    run(tmp_path, report)
+
+    assert events(report) == ["planned", "started", "ended", "idle"]
+
+
+def test_never_retries_a_stopped_run(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        *args: object,
+        **_: object,
+    ) -> dict[str, object]:
+        running.add(mock.Mock(pid=42))
+        listen.call_args.args[0].kill("r1")
+        return {"exit_code": 75, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert events(report) == ["planned", "started", "stopping run", "ended", "idle"]
+
+
+def test_never_retries_once_stopping(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(*args: object, **_: object) -> dict[str, object]:
+        listen.call_args.args[0].interrupt()
+        return {"exit_code": 75, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
+
+
+def calling(action: str, *args: object) -> tuple[mock.Mock, mock.Mock]:
+    listen = mock.Mock()
+
+    def on_retrying(event: dict[str, object]) -> None:
+        if event["event"] == "retrying":
+            control = getattr(listen.call_args.args[0], action)
+            asyncio.get_running_loop().call_soon(control, *args)
+
+    return listen, mock.Mock(side_effect=on_retrying)
+
+
+def test_stopping_cancels_a_waiting_retry(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75)
+    listen, report = calling("interrupt")
+
+    run(tmp_path, report, listen=listen, retry_seconds=60)
+
+    assert started_runs(report) == ["r1"]
+    assert reported(report)[-3:] == [
+        {"event": "stopping"},
+        {"event": "retry cancelled", "run": "r1"},
+        {"event": "idle"},
+    ]
+
+
+def test_stopping_with_runs_going_cancels_waiting_retries_too(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen = mock.Mock()
+    release = asyncio.Event()
+
+    async def execute(
+        root: Path, folder: Path, *args: object, **_: object
+    ) -> dict[str, object]:
+        if folder.name == "r1":
+            return {"exit_code": 75, "error": None}
+        await release.wait()
+        return {"exit_code": -15, "error": None}
+
+    def on_event(event: dict[str, object]) -> None:
+        match event["event"]:
+            case "retrying":
+                interrupt = listen.call_args.args[0].interrupt
+                asyncio.get_running_loop().call_soon(interrupt)
+            case "retry cancelled":
+                release.set()
+
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock(side_effect=on_event)
+
+    run(tmp_path, report, listen=listen, concurrency=2, retry_seconds=60)
+
+    assert started_runs(report) == ["r1", "r2"]
+    assert events(report)[-4:] == ["stopping", "retry cancelled", "ended", "idle"]
+
+
+def test_killing_a_waiting_retry_cancels_it(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75)
+    listen, report = calling("kill", "r1")
+
+    run(tmp_path, report, listen=listen, retry_seconds=60)
+
+    assert started_runs(report) == ["r1"]
+    assert reported(report)[-2:] == [
+        {"event": "retry cancelled", "run": "r1"},
+        {"event": "idle"},
+    ]
+
+
+def test_retrying_a_waiting_run_starts_it_now_and_spends_the_budget(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75)
+    listen, report = calling("retry", "r1")
+
+    run(tmp_path, report, listen=listen, retries=1, retry_seconds=60)
+
+    assert started_runs(report) == ["r1", "r2"]
+    assert retry_parents(collaborators) == [None, "r1"]
+    assert "retry cancelled" not in events(report)
+    assert {"event": "gave up", "run": "r2", "retries": 1} in reported(report)
+
+
+def test_each_retry_of_a_waiting_run_spends_one_more_of_the_budget(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75, 75, 75)
+    collaborators["new_stamped_run_id"].side_effect = iter(["r1", "r2", "r3", "r4"])
+    listen = mock.Mock()
+
+    def retry_at_once(event: dict[str, object]) -> None:
+        if event["event"] == "retrying":
+            retry = listen.call_args.args[0].retry
+            asyncio.get_running_loop().call_soon(retry, event["run"])
+
+    report = mock.Mock(side_effect=retry_at_once)
+
+    run(tmp_path, report, listen=listen, retries=2, retry_seconds=60)
+
+    assert started_runs(report) == ["r1", "r2", "r3"]
+    assert {"event": "gave up", "run": "r3", "retries": 2} in reported(report)
+
+
+def test_a_manual_retry_links_to_its_run_with_a_fresh_budget(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75, 75)
+    collaborators["new_stamped_run_id"].side_effect = iter(["r1", "r2", "r3"])
+    listen = mock.Mock()
+
+    def retry_after_giving_up(event: dict[str, object]) -> None:
+        if event == {"event": "gave up", "run": "r1", "retries": 0}:
+            retry = listen.call_args.args[0].retry
+            asyncio.get_running_loop().call_soon(retry, "r1")
+
+    report = mock.Mock(side_effect=retry_after_giving_up)
+
+    async def go() -> None:
+        config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+        controls: list[Any] = []
+
+        def hear(heard: Any) -> None:
+            listen(heard)
+            controls.append(heard)
+
+        task = asyncio.create_task(
+            run_experiment(
+                config, "exp", experiment(retries=0), 1, report, hear, retry_seconds=0
+            )
+        )
+        while len(started_runs(report)) < 2 or "idle" not in events(report)[-1:]:
+            await asyncio.sleep(0.001)
+        controls[0].finish()
+        await task
+
+    settle(go())
+
+    assert retry_parents(collaborators) == [None, "r1"]
+    assert {"event": "gave up", "run": "r2", "retries": 0} in reported(report)

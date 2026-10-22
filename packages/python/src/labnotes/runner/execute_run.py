@@ -23,6 +23,7 @@ async def execute_run(
     running: set[asyncio.subprocess.Process],
     stopping: asyncio.Event,
     tree: set[psutil.Process],
+    retry_of: str | None = None,
     timeout: float | None = None,
     stop: Callable[[], None] = lambda: None,
 ) -> dict[str, object]:
@@ -33,6 +34,8 @@ async def execute_run(
         "exit_code": None,
         "error": None,
     }
+    if retry_of is not None:
+        run["retry_of"] = retry_of
     write_run_json(folder, run)
     with (
         (folder / "stdout.log").open("wb") as stdout,

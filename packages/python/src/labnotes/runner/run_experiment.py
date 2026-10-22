@@ -11,6 +11,7 @@ from labnotes.models import (
     Listen,
     Report,
 )
+from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
@@ -33,6 +34,7 @@ async def run_experiment(
     report: Report,
     listen: Listen,
     timeout: float | None = None,
+    retry_seconds: float = RETRY_SECONDS,
 ) -> list[dict[str, object]]:
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
@@ -94,11 +96,19 @@ async def run_experiment(
             stopping.set()
             report({"event": "stopping"})
             signal_runs(signal.SIGTERM)
+            if waiting:
+                for run in list(waiting):
+                    cancel_retry(run)
+                fill()
         elif any(running.values()):
             report({"event": "killing"})
             signal_runs(signal.SIGKILL)
 
     def kill(run: str) -> None:
+        if run in waiting:
+            cancel_retry(run)
+            fill()
+            return
         if not running.get(run):
             return
         if run in stopped:
@@ -147,15 +157,53 @@ async def run_experiment(
             fill()
 
     ended: dict[str, dict[str, object]] = {}
+    parents: dict[str, str] = {}
+    attempts: dict[str, int] = {}
+    waiting: dict[str, asyncio.TimerHandle] = {}
+
+    def requeue(run: str, attempt: int) -> None:
+        again = new_id(ended[run])
+        planned.add(again)
+        parents[again] = run
+        attempts[again] = attempt
+        plan.append((again, ended[run]))
+        report({"event": "retried", "run": run, "retry": again, "params": ended[run]})
+        fill()
 
     def retry(run: str) -> None:
         if stopping.is_set() or run not in ended:
             return
-        again = new_id(ended[run])
-        planned.add(again)
-        plan.append((again, ended[run]))
-        report({"event": "retried", "run": run, "retry": again, "params": ended[run]})
-        fill()
+        if run in waiting:
+            waiting.pop(run).cancel()
+            requeue(run, attempts.get(run, 0) + 1)
+        else:
+            requeue(run, 0)
+
+    def retry_later(run: str) -> None:
+        tried = attempts.get(run, 0)
+        if tried >= experiment.retries:
+            report({"event": "gave up", "run": run, "retries": tried})
+            return
+        seconds = retry_seconds * 2**tried
+
+        def due() -> None:
+            del waiting[run]
+            requeue(run, tried + 1)
+
+        waiting[run] = asyncio.get_running_loop().call_later(seconds, due)
+        report(
+            {
+                "event": "retrying",
+                "run": run,
+                "attempt": tried + 1,
+                "retries": experiment.retries,
+                "seconds": seconds,
+            }
+        )
+
+    def cancel_retry(run: str) -> None:
+        waiting.pop(run).cancel()
+        report({"event": "retry cancelled", "run": run})
 
     limit = concurrency
     live: set[asyncio.Task[None]] = set()
@@ -169,7 +217,7 @@ async def run_experiment(
             task.add_done_callback(end)
             live.add(task)
             started.append(task)
-        if not live:
+        if not (live or waiting):
             report({"event": "idle"})
             if finishing:
                 done.set()
@@ -177,7 +225,7 @@ async def run_experiment(
     def finish() -> None:
         nonlocal finishing
         finishing = True
-        if not (live or plan):
+        if not (live or plan or waiting):
             done.set()
 
     def end(task: asyncio.Task[None]) -> None:
@@ -204,6 +252,7 @@ async def run_experiment(
             running[run],
             stopping,
             trees[run],
+            parents.get(run),
             timeout=timeout,
             stop=lambda: kill(run),
         )
@@ -211,6 +260,10 @@ async def run_experiment(
         report({"event": "ended", "run": run, **result})
         ended[run] = params
         results.append(result)
+        if result["exit_code"] == RETRY_EXIT_CODE and not (
+            stopping.is_set() or run in stopped
+        ):
+            retry_later(run)
 
     listen(
         Controls(

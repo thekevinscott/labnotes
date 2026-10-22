@@ -92,14 +92,28 @@ A script run by labnotes should:
 - take each param as a `--name value` flag, parsing lists and tables from JSON;
 - take its output folder as an argument, passed in `command` as `{run_dir}`, and write everything it produces there;
 - exit non-zero when it fails, so the run counts as failed and runs again next time;
+- exit 75 (`EX_TEMPFAIL`) only when the run couldn't do its work for a reason outside the experiment, like no Docker network or no capacity, so labnotes retries it (see below). labnotes never retries any other exit on its own;
 - stop any background process it starts before it exits; the run ends when `command` exits.
 - flush its output as it goes (`print(..., flush=True)`, or `PYTHONUNBUFFERED=1`), so the live view shows it as it happens.
+
+A run that exits 75 is retried on its own, with the same params, in a new run
+folder whose `run.json` holds `"retry_of": "<run id>"`. The first retry waits 30
+seconds, and each one after waits twice as long. `retries` in `experiment.toml`
+sets how many (0 turns them off), then `retries` under `[experiments]` in
+`.labnotes.toml`, then 2. The failed run keeps its folder, logs and exit code,
+and the default `counts` rule skips it, so a retry fills its place rather than
+adding a repeat. When the retries run out, the last run keeps exit 75: it never
+got to test its params, so treat it as blocked, not as a result. Stopping the
+runs, or `x` on a run waiting to retry, cancels the retry. A run that was stopped never retries. The live view
+shows a waiting retry as `retry in 30s` and the end as `gave up (exit 75)`;
+`run status --json` reports `retrying`, `retried`, `gave up` and
+`retry cancelled` events.
 
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going.
 
 In a terminal, `run` shows a live table of runs (status and time) and stays
 open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one
-runs it again under a new id. `j` and `k` move the cursor, `g` and `G` jump to the
+runs it again under a new id, with `retry_of` set. `j` and `k` move the cursor, `g` and `G` jump to the
 first and last row. Runs not started yet show grayed as `pending`, and as
 `skipped` once stopped. Move the cursor to a pending run and press `n` to run it
 next. `m` grabs a pending run; `j` and `k` move it through the queue, Enter or `m`
@@ -140,7 +154,8 @@ going. Elsewhere, it prints a line per event instead.
   run to a place in the queue counted from 0,
   `set_concurrency` to a number, `interrupt` or `finish`.
 - A second `run` of the same experiment fails while the first is going.
-- It exits 0 even if runs fail; the summary line counts failures. If it can't
+- It exits 0 even if runs fail; the summary line counts failures. A run that
+  was retried counts as retried, not failed. If it can't
   start or reach the daemon, it prints the cause on one line and exits 1.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

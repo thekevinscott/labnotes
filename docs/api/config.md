@@ -11,6 +11,7 @@ Must be at the project root; the folder holding it is the root. labnotes reads i
 path = "{experiment}"
 mode = "adhoc"
 concurrency = 1
+retries = 2
 
 [files]
 path = "{experiment}/files/"
@@ -23,7 +24,7 @@ Paths are relative to the root. Absolute paths and `~` are rejected.
 
 ### One experiment
 
-When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `mode` and `concurrency` still apply. The defaults become:
+When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `mode`, `concurrency`, and `retries` still apply. The defaults become:
 
 ```toml
 [files]
@@ -58,6 +59,13 @@ Mode for every experiment whose `experiment.toml` doesn't set one. See [`mode`](
 - Default: `1`
 
 Runs at once for every experiment whose `experiment.toml` doesn't set it.
+
+#### `retries`
+
+- Type: integer, 0 or more
+- Default: `2`
+
+Retries for a run that exits 75, for every experiment whose `experiment.toml` doesn't set it. See [`retries`](#retries-1).
 
 ### `[files]`
 
@@ -105,7 +113,7 @@ name = "Surprisals"
 max-chars = [70, 80]
 ```
 
-With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `mode` and `concurrency` stay in `[experiments]`.
+With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `mode`, `concurrency`, and `retries` stay in `[experiments]`.
 
 ## `experiment.toml`
 
@@ -117,6 +125,7 @@ command = "uv run scripts/study.py --output {run_dir}"
 repeats = 5
 mode = "matrix"
 concurrency = 2
+retries = 3
 counts = "exit_code = 0 AND created > '2026-10-01'"
 
 [params]
@@ -165,6 +174,15 @@ Every combination of values runs. Each value is passed as `--name value`, with t
 - Default: `[experiments] concurrency` in `.labnotes.toml`, else `1`
 
 Runs at once. `--concurrency` on the command line overrides it.
+
+### `retries`
+
+- Type: integer, 0 or more
+- Default: `[experiments] retries` in `.labnotes.toml`, else `2`
+
+How many times to retry a run whose command exits 75 (`EX_TEMPFAIL`). Exit 75 means the run failed for a reason outside the experiment, such as no capacity, so labnotes runs it again with the same params. No other exit is retried. The first retry waits 30 seconds and each later one waits twice as long. `0` turns retries off.
+
+Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the id of the run it replaces. The failed run keeps its folder and logs. The default [`counts`](#counts) rule skips it, so a retry doesn't add a repeat. When retries run out, the last run keeps exit 75. Stopping the runs cancels a waiting retry, and a stopped run never retries.
 
 ### `counts`
 

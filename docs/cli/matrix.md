@@ -18,6 +18,8 @@ Each combination of `[params]` is done once it has `repeats` runs that count. `r
 
 By default a run counts when it exited 0 and its `run.json` doesn't hold `"excluded": true`. Set `counts` in `experiment.toml` to replace that rule with a SQL condition over `runs`, like `exit_code = 0 AND created > '2026-10-01'`.
 
+A run that exits 75 is [retried](../api/config#retries-1) in the same `run`. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more.
+
 Runs will appear on disk as flat folders, each named for the UTC time it was planned:
 
 <Tree>

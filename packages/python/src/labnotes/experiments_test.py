@@ -255,11 +255,13 @@ def test_counts_a_retried_run_once(
         {"run": "r2", "exit_code": 1},
         {"run": "r3", "exit_code": 0, "retry_of": "r1"},
         {"run": "r4", "exit_code": 0},
+        {"run": "r5", "exit_code": 75},
+        {"run": "r6", "exit_code": 0, "retry_of": "r5"},
     ]
 
     assert run(["a", "run"]) == 0
 
-    assert capsys.readouterr().out == "2 passed, 1 failed. 1 retried.\n"
+    assert capsys.readouterr().out == "3 passed, 1 failed. 2 retried.\n"
 
 
 @pytest.mark.parametrize("terminal", [True, False])

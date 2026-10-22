@@ -67,5 +67,5 @@ reason = "WorkerState members are singletons, so is equals =="
 [[python.exempt]]
 path = "src/labnotes/runner/run_experiment.py"
 rules = ["mutation"]
-lines = [184, 260]
+lines = [184, 263]
 reason = "a retry is only scheduled below the budget and each one adds one, so tried never passes retries: >= equals ==; both sides are small ints, which CPython caches, so is equals =="

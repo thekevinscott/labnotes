@@ -104,7 +104,8 @@ def test_records_the_run_before_and_after(
         "exit_code": None,
         "error": None,
     }
-    assert snapshots == [started, {**started, "ended": "end", "exit_code": 3}]
+    spawned = {**started, "pid": 42}
+    assert snapshots == [started, spawned, {**spawned, "ended": "end", "exit_code": 3}]
     assert result == snapshots[-1]
     assert collaborators["write_run_json"].call_args.args[0] == tmp_path
 
@@ -119,7 +120,7 @@ def test_records_which_run_a_retry_retries(
 
     result = run(tmp_path, retry_of="r1")
 
-    assert [snapshot["retry_of"] for snapshot in snapshots] == ["r1", "r1"]
+    assert [snapshot["retry_of"] for snapshot in snapshots] == ["r1", "r1", "r1"]
     assert result["retry_of"] == "r1"
 
 

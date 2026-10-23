@@ -31,20 +31,144 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch("labnotes.tui.run_app.SPINNER", "|"),
         mock.patch("labnotes.tui.run_app.signal", mock.Mock(SIGTERM=15, SIGHUP=1)),
         mock.patch("labnotes.tui.run_app.stop_then_kill") as stop_then_kill,
+        mock.patch(
+            "labnotes.tui.run_app.run_usage",
+            new=mock.AsyncMock(
+                side_effect=lambda folder, running: {
+                    "memory": 3_200_000_000 if running else None,
+                    "size": 5_000,
+                }
+            ),
+        ) as run_usage,
     ):
         time.monotonic.return_value = 10.0
-        yield {"time": time, "stop_then_kill": stop_then_kill}
+        yield {"time": time, "stop_then_kill": stop_then_kill, "run_usage": run_usage}
 
 
 def rows(app: RunApp) -> list[list[object]]:
     table: Any = app.query_one("#runs")
-    return [[str(cell) for cell in table.get_row(key)] for key in table.rows]
+    return [[str(cell) for cell in table.get_row(key)][:4] for key in table.rows]
+
+
+def usage(app: RunApp) -> list[list[str]]:
+    table: Any = app.query_one("#runs")
+    return [[str(cell) for cell in table.get_row(key)][4:] for key in table.rows]
+
+
+def began(run: str) -> dict[str, object]:
+    return {
+        "event": "started",
+        "run": run,
+        "params": {"m": run},
+        "folder": f"/runs/{run}",
+    }
+
+
+def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        report(began("r1"))
+        report(began("r2"))
+        report({"event": "ended", "run": "r2", "exit_code": 0, "error": None})
+        await asyncio.Event().wait()
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.tick()
+            await pilot.pause()
+            assert usage(app) == [["3.2 GB", "5.0 KB"], ["", "5.0 KB"], ["", ""]]
+            assert app.query_one("#runs").ordered_columns[4].label.plain == "memory"  # type: ignore[attr-defined]
+            assert app.query_one("#runs").ordered_columns[5].label.plain == "size"  # type: ignore[attr-defined]
+            app.exit()
+
+    asyncio.run(drive())
+    calls = collaborators["run_usage"].await_args_list
+    assert mock.call(Path("/runs/r2"), False) in calls
+    assert mock.call(Path("/runs/r1"), True) in calls
+    assert mock.call(Path("/runs/r2"), True) not in calls
+
+
+def test_keeps_a_late_sample_off_a_run_that_ended(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    sampled = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow(folder: Path, running: bool) -> dict[str, int | None]:
+        if running:
+            sampled.set()
+            await release.wait()
+            return {"memory": 9_000, "size": 9_000}
+        return {"memory": None, "size": 1_000}
+
+    collaborators["run_usage"].side_effect = slow
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report(began("r1"))
+        await sampled.wait()
+        report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        await asyncio.Event().wait()
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.tick()
+            await sampled.wait()
+            await pilot.pause()
+            release.set()
+            await pilot.pause()
+            assert usage(app) == [["", "1.0 KB"]]
+            app.exit()
+
+    asyncio.run(drive())
+
+
+def test_waits_for_one_sample_before_taking_another(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    release = asyncio.Event()
+
+    async def slow(folder: Path, running: bool) -> dict[str, int | None]:
+        await release.wait()
+        return {"memory": 2_000, "size": 3_000}
+
+    collaborators["run_usage"].side_effect = slow
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report(began("r1"))
+        await asyncio.Event().wait()
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp")
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.tick()
+            app.tick()
+            await pilot.pause()
+            assert collaborators["run_usage"].await_count == 1
+            release.set()
+            await pilot.pause()
+            assert usage(app) == [["2.0 KB", "3.0 KB"]]
+            app.tick()
+            await pilot.pause()
+            assert collaborators["run_usage"].await_count == 2
+            app.exit()
+
+    asyncio.run(drive())
 
 
 def styles(app: RunApp) -> list[list[object]]:
     table: Any = app.query_one("#runs")
     return [
-        [getattr(cell, "style", None) for cell in table.get_row(key)]
+        [getattr(cell, "style", None) for cell in table.get_row(key)][:4]
         for key in table.rows
     ]
 

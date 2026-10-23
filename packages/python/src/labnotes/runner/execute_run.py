@@ -58,6 +58,8 @@ async def execute_run(
             run["error"] = str(error)
         else:
             running.add(process)
+            run["pid"] = process.pid
+            write_run_json(folder, run)
             exited = asyncio.ensure_future(process.wait())
             kill_later = None
             try:

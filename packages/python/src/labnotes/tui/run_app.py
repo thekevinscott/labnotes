@@ -1,6 +1,7 @@
 import asyncio
 import signal
 import time
+from functools import partial
 from pathlib import Path
 
 from rich.text import Text
@@ -8,8 +9,10 @@ from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
+from labnotes.format_bytes import format_bytes
 from labnotes.models import Controls, Start
 from labnotes.retries import RETRY_EXIT_CODE
+from labnotes.run_usage import run_usage
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.runner.param_args import param_args
@@ -20,7 +23,7 @@ from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 
-COLUMNS = ("run", "params", "status", "time")
+COLUMNS = ("run", "params", "status", "time", "memory", "size")
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED, DESELECTED = "–", "⊘"
@@ -83,6 +86,7 @@ class RunApp(App[None]):
         self.viewing: str | None = None
         self.grabbed: str | None = None
         self.grabbed_from: list[str] = []
+        self.sampling = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -127,7 +131,14 @@ class RunApp(App[None]):
                 self.title = str(event["title"])
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
-                    cells = (planned["run"].rpartition("/")[2], args, PENDING, "")
+                    cells = (
+                        planned["run"].rpartition("/")[2],
+                        args,
+                        PENDING,
+                        "",
+                        "",
+                        "",
+                    )
                     self.cells[planned["run"]] = [*map(dim, cells)]
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
@@ -166,6 +177,7 @@ class RunApp(App[None]):
                 self.tick()
                 del self.started[run]
                 self.redraw(table.cursor_row)
+                self.run_worker(partial(self.measure, run))
             case "queued":
                 self.reposition(event, run)
                 self.next_run = run
@@ -202,7 +214,7 @@ class RunApp(App[None]):
                 again = str(event["retry"])
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 self.cells[again] = [
-                    *map(dim, (again.rpartition("/")[2], args, PENDING, ""))
+                    *map(dim, (again.rpartition("/")[2], args, PENDING, "", "", ""))
                 ]
                 self.pending.add(again)
                 self.redraw(table.cursor_row)
@@ -275,6 +287,25 @@ class RunApp(App[None]):
             wait = format_elapsed(max(0, due - now))
             outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retry in {wait}"
             self.set_cell(run, "status", Text(outcome, style="yellow"))
+        if self.started and not self.sampling:
+            self.sampling = True
+            self.run_worker(self.sample)
+
+    async def sample(self) -> None:
+        try:
+            for run in list(self.started):
+                usage = await run_usage(self.folders[run], True)
+                if run in self.started:
+                    self.show_usage(run, usage)
+        finally:
+            self.sampling = False
+
+    async def measure(self, run: str) -> None:
+        self.show_usage(run, await run_usage(self.folders[run], False))
+
+    def show_usage(self, run: str, usage: dict[str, int | None]) -> None:
+        self.set_cell(run, "memory", format_bytes(usage["memory"]))
+        self.set_cell(run, "size", format_bytes(usage["size"]))
 
     def spin(self) -> None:
         self.frame = (self.frame + 1) % len(SPINNER)

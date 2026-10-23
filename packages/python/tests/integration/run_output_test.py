@@ -16,10 +16,12 @@ def shown(output: RunOutput) -> list[str]:
     return [line.text.rstrip() for line in output.lines]
 
 
-def mounted(check: Callable[[RunOutput], None]) -> None:
+def mounted(
+    check: Callable[[RunOutput], None], size: tuple[int, int] = (80, 24)
+) -> None:
     async def drive() -> None:
         app = Host()
-        async with app.run_test() as pilot:
+        async with app.run_test(size=size) as pilot:
             await pilot.pause()
             check(app.query_one(RunOutput))
 
@@ -154,6 +156,31 @@ def test_drops_escapes_other_than_color(tmp_path: Path) -> None:
         assert shown(output) == ["20% done"]
 
     mounted(check)
+
+
+def test_wraps_long_lines_instead_of_scrolling_sideways(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("word " * 12 + "\n")
+
+    def check(output: RunOutput) -> None:
+        output.follow(tmp_path)
+        assert len(shown(output)) > 1
+        assert " ".join(shown(output)).split() == ["word"] * 12
+        assert output.virtual_size.width <= output.scrollable_content_region.width
+
+    mounted(check, size=(30, 10))
+
+
+def test_redraws_an_unfinished_line_that_wraps(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("word " * 12)
+
+    def check(output: RunOutput) -> None:
+        output.follow(tmp_path)
+        append(tmp_path / "stdout.log", b"end\nnext\n")
+        output.follow(tmp_path)
+        lines = shown(output)
+        assert " ".join(lines).split() == ["word"] * 12 + ["end", "next"]
+
+    mounted(check, size=(30, 10))
 
 
 def test_redraws_an_unfinished_line_written_before_the_size_is_known(

@@ -7,7 +7,8 @@ import pytest
 
 from labnotes.tui.run_output import RunOutput
 
-DROP_LAST_LINE = RunOutput.drop_last_line
+DROP_UNFINISHED = RunOutput.drop_unfinished
+WRITE = RunOutput.write
 
 
 @pytest.fixture(autouse=True)
@@ -15,7 +16,7 @@ def log() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch.object(RunOutput, "write") as write,
         mock.patch.object(RunOutput, "clear") as clear,
-        mock.patch.object(RunOutput, "drop_last_line") as drop,
+        mock.patch.object(RunOutput, "drop_unfinished") as drop,
     ):
         yield {"write": write, "clear": clear, "drop": drop}
 
@@ -34,7 +35,30 @@ def test_starts_empty(log: dict[str, mock.MagicMock]) -> None:
     assert output.id == "output"
     assert output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
+    assert output.written_rows == 0
+    assert (output.wrap, output.min_width) == (True, 1)
+    assert not output._size_known
     log["clear"].assert_called_once_with()
+
+
+@pytest.mark.parametrize("width, known", [(0, False), (1, True), (40, True)])
+def test_reset_holds_writes_while_the_log_has_no_width(width: int, known: bool) -> None:
+    output = RunOutput()
+    with mock.patch.object(
+        RunOutput, "scrollable_content_region", mock.Mock(width=width)
+    ):
+        output.reset()
+    assert output._size_known is known
+
+
+def test_write_counts_the_rows_it_adds() -> None:
+    output = RunOutput()
+    output.lines = ["earlier", "earlier"]  # type: ignore[list-item]
+    with mock.patch("textual.widgets.RichLog.write") as write:
+        write.side_effect = lambda *args, **kwargs: output.lines.extend(["a", "b"])  # type: ignore[list-item]
+        assert WRITE(output, "text", 9, scroll_end=False) is output
+    write.assert_called_once_with("text", 9, scroll_end=False)
+    assert output.written_rows == 2
 
 
 def test_follows_nothing_before_a_run_writes_output(
@@ -174,23 +198,24 @@ def test_drops_a_deferred_write_before_the_size_is_known() -> None:
     output = RunOutput()
     output._size_known = False
     output._deferred_renders = deque(["kept", "dropped"])  # type: ignore[list-item]
-    DROP_LAST_LINE(output)
+    DROP_UNFINISHED(output)
     assert list(output._deferred_renders) == ["kept"]
 
 
-def test_drops_the_last_rendered_line() -> None:
+def test_drops_every_row_of_the_unfinished_line() -> None:
     output = RunOutput()
     output._size_known = True
-    output.lines = ["first", "kept", "dropped"]  # type: ignore[list-item]
+    output.written_rows = 2
+    output.lines = ["first", "kept", "kept", "dropped", "dropped"]  # type: ignore[list-item]
     output._line_cache = mock.Mock()
     with (
         mock.patch.object(RunOutput, "virtual_size", mock.Mock(width=9)),
         mock.patch("labnotes.tui.run_output.Size") as size,
         mock.patch.object(output, "refresh") as refresh,
     ):
-        DROP_LAST_LINE(output)
+        DROP_UNFINISHED(output)
         assert output.virtual_size is size.return_value
-    size.assert_called_once_with(9, 2)
-    assert output.lines == ["first", "kept"]
+    size.assert_called_once_with(9, 3)
+    assert output.lines == ["first", "kept", "kept"]
     output._line_cache.clear.assert_called_once_with()
     refresh.assert_called_once_with()

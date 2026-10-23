@@ -255,6 +255,7 @@ async def run_experiment(
             parents.get(run),
             timeout=timeout,
             stop=lambda: kill(run),
+            stopped=lambda: run in stopped,
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})

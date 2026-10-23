@@ -719,6 +719,41 @@ def test_a_second_kill_sends_sigkill(
     ]
 
 
+def test_tells_each_run_whether_it_was_stopped(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    planning(collaborators, 2)
+    seen: list[tuple[str, bool, bool]] = []
+
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        stopping: asyncio.Event,
+        tree: set[object],
+        retry_of: str | None,
+        *,
+        stopped: Callable[[], bool],
+        **__: object,
+    ) -> dict[str, object]:
+        running.add(mock.Mock(pid=1))
+        before = stopped()
+        if folder.name == "r1":
+            listen.call_args.args[0].kill("r1")
+        seen.append((folder.name, before, stopped()))
+        running.clear()
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+
+    run(tmp_path, report, listen=listen)
+
+    assert seen == [("r1", False, True), ("r2", False, False)]
+
+
 def test_killing_a_run_that_is_not_running_does_nothing(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

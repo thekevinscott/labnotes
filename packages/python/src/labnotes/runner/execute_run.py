@@ -8,6 +8,7 @@ from pathlib import Path
 import psutil
 
 from labnotes.log_path import LOG_ENV
+from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.shell_command import shell_command
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
 from labnotes.runner.wait_for_tree import wait_for_tree
@@ -27,6 +28,7 @@ async def execute_run(
     retry_of: str | None = None,
     timeout: float | None = None,
     stop: Callable[[], None] = lambda: None,
+    stopped: Callable[[], bool] = lambda: False,
 ) -> dict[str, object]:
     run: dict[str, object] = {
         "params": params,
@@ -34,6 +36,8 @@ async def execute_run(
         "ended": None,
         "exit_code": None,
         "error": None,
+        "ended_by": None,
+        "signal": None,
     }
     if retry_of is not None:
         run["retry_of"] = retry_of
@@ -75,7 +79,14 @@ async def execute_run(
                     kill_later = asyncio.get_running_loop().call_later(
                         GRACE_SECONDS, stop
                     )
-                run["exit_code"] = await exited
+                run["exit_code"] = code = await exited
+                run["signal"] = exit_signal(code)
+                if kill_later is not None:
+                    run["ended_by"] = "timeout"
+                elif stopping.is_set() or stopped():
+                    run["ended_by"] = "stop"
+                elif run["signal"] is not None:
+                    run["ended_by"] = "signal"
                 # The shell can exit on SIGTERM before what it started. Once
                 # stopping, the run stays killable until everything signalled
                 # is gone. A normal exit ends the run even if helpers linger.

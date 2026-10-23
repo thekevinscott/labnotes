@@ -53,7 +53,7 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 
 In the runs listing, `memory` is the resident memory of a running run's command and everything it started, and `size` is what its run folder holds on disk, hidden files and folders aside. A symlink to a file counts as its target's size; symlinked folders aren't followed. A finished run has a size and no memory. The table shows them like `3.2 GB`; `--format json` gives bytes, with `null` where there's nothing to show. The command's process id is in the run's `run.json` as `pid`, with its start time as `pid_created`; memory is only read while that process is the same one and the record hasn't ended, so a reused pid after a crash shows no memory.
 
-A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
+A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with, and `"ended_by": "timeout"`. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
 ## `run`
 
@@ -78,7 +78,7 @@ Shows what each experiment is running, the latest line each running run logged, 
 labnotes run stop
 ```
 
-Stops every run. Scripts get SIGTERM, then SIGKILL 5 seconds later.
+Stops every run. Scripts get SIGTERM, then SIGKILL 5 seconds later. Each stopped run's `run.json` records `"ended_by": "stop"`, so it reads apart from a run something else killed (`"ended_by": "signal"`).
 
 ### `run control`
 

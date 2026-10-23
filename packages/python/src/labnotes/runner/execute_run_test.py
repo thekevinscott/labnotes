@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -56,8 +57,13 @@ def run(
     stopping: bool = False,
     timeout: float | None = None,
     stop: mock.Mock | None = None,
+    stopped: bool = False,
     **retry_of: str,
 ) -> dict[str, object]:
+    options: dict[str, Any] = dict(retry_of)
+    if stopped:
+        options["stopped"] = lambda: True
+
     async def go() -> dict[str, object]:
         event = asyncio.Event()
         if stopping:
@@ -72,7 +78,7 @@ def run(
             TREE,  # type: ignore[arg-type]
             timeout=timeout,
             stop=mock.Mock() if stop is None else stop,
-            **retry_of,
+            **options,
         )
 
     return asyncio.run(go())
@@ -111,6 +117,8 @@ def test_records_the_run_before_and_after(
         "ended": None,
         "exit_code": None,
         "error": None,
+        "ended_by": None,
+        "signal": None,
     }
     spawned = {**started, "pid": 42, "pid_created": 1234.5}
     assert snapshots == [started, spawned, {**spawned, "ended": "end", "exit_code": 3}]
@@ -259,6 +267,7 @@ def test_stops_a_run_that_outlasts_its_timeout(
 
     stop.assert_called_once_with()
     assert (result["exit_code"], result["error"]) == (-15, "timed out after 0s")
+    assert (result["ended_by"], result["signal"]) == ("timeout", 15)
     collaborators["wait_for_tree"].assert_awaited_once_with(TREE)
 
 
@@ -326,3 +335,67 @@ def test_leaves_a_run_inside_its_timeout_alone(
     stop.assert_not_called()
     collaborators["wait_for_tree"].assert_not_awaited()
     assert (result["exit_code"], result["error"]) == (3, None)
+
+
+def test_records_a_timeout_even_though_the_timeout_stopped_it(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    stop = mock.Mock()
+    exits_after(collaborators["process"], stop, 1)
+
+    result = run(tmp_path, timeout=0.01, stop=stop, stopped=True)
+
+    assert result["ended_by"] == "timeout"
+
+
+@pytest.mark.parametrize(("stopping", "stopped"), [(True, False), (False, True)])
+def test_records_a_run_labnotes_stopped(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    stopping: bool,
+    stopped: bool,
+) -> None:
+    collaborators["process"].wait = mock.AsyncMock(return_value=-15)
+
+    result = run(tmp_path, stopping=stopping, stopped=stopped)
+
+    assert (result["ended_by"], result["signal"]) == ("stop", 15)
+
+
+def test_records_a_stopped_run_that_exits_on_its_own_terms(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["process"].wait = mock.AsyncMock(return_value=0)
+
+    result = run(tmp_path, stopped=True)
+
+    assert (result["exit_code"], result["ended_by"], result["signal"]) == (
+        0,
+        "stop",
+        None,
+    )
+
+
+@pytest.mark.parametrize("exit_code", [137, -9])
+def test_records_a_signal_labnotes_did_not_send(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], exit_code: int
+) -> None:
+    collaborators["process"].wait = mock.AsyncMock(return_value=exit_code)
+
+    result = run(tmp_path)
+
+    assert (result["exit_code"], result["ended_by"], result["signal"]) == (
+        exit_code,
+        "signal",
+        9,
+    )
+
+
+def test_records_no_cause_for_a_command_that_cannot_start(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["spawn"].side_effect = OSError("no shell")
+
+    result = run(tmp_path, stopping=True)
+
+    assert (result["ended_by"], result["signal"]) == (None, None)

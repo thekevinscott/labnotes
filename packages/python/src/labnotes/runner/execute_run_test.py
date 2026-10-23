@@ -58,9 +58,8 @@ def run(
     timeout: float | None = None,
     stop: mock.Mock | None = None,
     stopped: bool = False,
-    **retry_of: str,
+    **options: Any,
 ) -> dict[str, object]:
-    options: dict[str, Any] = dict(retry_of)
     if stopped:
         options["stopped"] = lambda: True
 
@@ -150,6 +149,21 @@ def test_records_which_run_a_retry_retries(
 
     assert [snapshot["retry_of"] for snapshot in snapshots] == ["r1", "r1", "r1"]
     assert result["retry_of"] == "r1"
+
+
+def test_records_the_invocation_meta_from_the_first_write(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    snapshots: list[dict[str, object]] = []
+    collaborators["write_run_json"].side_effect = lambda _, run: snapshots.append(
+        dict(run)
+    )
+    meta = {"commit": "abc"}
+
+    result = run(tmp_path, meta=meta)  # type: ignore[arg-type]
+
+    assert [snapshot["meta"] for snapshot in snapshots] == [meta, meta, meta]
+    assert result["meta"] == meta
 
 
 def test_tracks_the_process_while_it_runs(

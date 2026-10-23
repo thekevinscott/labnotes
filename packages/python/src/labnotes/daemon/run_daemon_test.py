@@ -22,6 +22,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.daemon.run_daemon.exit_when_idle", new=mock.AsyncMock()
         ) as exit_when_idle,
+        mock.patch(
+            "labnotes.daemon.run_daemon.finalize_lost_runs", new=mock.AsyncMock()
+        ) as finalize_lost_runs,
     ):
         server.return_value.serve = mock.AsyncMock(
             side_effect=lambda: sock.write_text("")
@@ -34,6 +37,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "signal": signal,
             "uvicorn_config": uvicorn_config,
             "exit_when_idle": exit_when_idle,
+            "finalize_lost_runs": finalize_lost_runs,
         }
 
 
@@ -93,3 +97,16 @@ def test_reports_a_failure_to_serve_before_the_socket_exists(
 
     with pytest.raises(RuntimeError, match="boom"):
         serve(mock.Mock(root=Path("/p")), {})
+
+
+def test_finalizes_lost_runs_before_serving(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    config = mock.Mock(root=Path("/p"))
+    collaborators["server"].return_value.serve.side_effect = lambda: (
+        collaborators["finalize_lost_runs"].assert_awaited_once_with(config)
+    )
+
+    serve(config, {})
+
+    collaborators["finalize_lost_runs"].assert_awaited_once_with(config)

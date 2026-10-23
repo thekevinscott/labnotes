@@ -7,7 +7,7 @@ import pytest
 
 from labnotes.tui.run_output import RunOutput
 
-DROP_LAST_LINE = RunOutput.drop_last_line
+DROP_UNFINISHED = RunOutput.drop_unfinished
 
 
 @pytest.fixture(autouse=True)
@@ -15,7 +15,7 @@ def log() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch.object(RunOutput, "write") as write,
         mock.patch.object(RunOutput, "clear") as clear,
-        mock.patch.object(RunOutput, "drop_last_line") as drop,
+        mock.patch.object(RunOutput, "drop_unfinished") as drop,
     ):
         yield {"write": write, "clear": clear, "drop": drop}
 
@@ -34,7 +34,20 @@ def test_starts_empty(log: dict[str, mock.MagicMock]) -> None:
     assert output.id == "output"
     assert output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
+    assert output.unfinished_rows == 0
+    assert (output.wrap, output.min_width) == (True, 1)
     log["clear"].assert_called_once_with()
+
+
+def test_counts_the_rows_an_unfinished_line_wraps_to(
+    tmp_path: Path, log: dict[str, mock.MagicMock]
+) -> None:
+    output = RunOutput()
+    output.lines = ["earlier"]  # type: ignore[list-item]
+    log["write"].side_effect = lambda text: output.lines.extend(["a", "b"])  # type: ignore[arg-type]
+    (tmp_path / "stdout.log").write_text("done\npartial")
+    output.follow(tmp_path)
+    assert output.unfinished_rows == 2
 
 
 def test_follows_nothing_before_a_run_writes_output(
@@ -174,21 +187,22 @@ def test_drops_a_deferred_write_before_the_size_is_known() -> None:
     output = RunOutput()
     output._size_known = False
     output._deferred_renders = deque(["kept", "dropped"])  # type: ignore[list-item]
-    DROP_LAST_LINE(output)
+    DROP_UNFINISHED(output)
     assert list(output._deferred_renders) == ["kept"]
 
 
-def test_drops_the_last_rendered_line() -> None:
+def test_drops_every_row_of_the_unfinished_line() -> None:
     output = RunOutput()
     output._size_known = True
-    output.lines = ["first", "kept", "dropped"]  # type: ignore[list-item]
+    output.unfinished_rows = 2
+    output.lines = ["first", "kept", "dropped", "dropped"]  # type: ignore[list-item]
     output._line_cache = mock.Mock()
     with (
         mock.patch.object(RunOutput, "virtual_size", mock.Mock(width=9)),
         mock.patch("labnotes.tui.run_output.Size") as size,
         mock.patch.object(output, "refresh") as refresh,
     ):
-        DROP_LAST_LINE(output)
+        DROP_UNFINISHED(output)
         assert output.virtual_size is size.return_value
     size.assert_called_once_with(9, 2)
     assert output.lines == ["first", "kept"]

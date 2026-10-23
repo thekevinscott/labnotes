@@ -37,6 +37,7 @@ def test_loads_only_the_standard_library() -> None:
         "labnotes",
         "labnotes.log",
         "labnotes.log_path",
+        "labnotes.view",
     }
     assert tops - set(sys.stdlib_module_names) == {"labnotes"}
 

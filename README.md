@@ -126,63 +126,9 @@ Pass `--host` and `--port` as CLI vars and every other uvicorn option.
 
 ## Example Organizations
 
-### Default
+Three paths in `.labnotes.toml` say where experiments, files and runs live. Two layouts cover most projects:
 
-```
-/experiment-one
-  /files
-    /readme.md
-  /runs
-```
+- One Folder, One Experiment: each experiment is a folder, with its notes in `files` and its runs in `runs`. `uvx labnotes init` writes this one.
+- One Run Tree, Many Experiments: notes stay with each experiment, and all runs go in one `runs` tree with a folder per experiment.
 
-```toml
-[experiments]
-path = "{experiment}"
-
-[files]
-path = "{experiment}/files/"
-
-[runs]
-path = "{experiment}/runs/{run}"
-```
-
-### Notes next to the runs
-
-```
-/experiment-one
-  /readme.md
-  /plan.md
-  /results
-```
-
-```toml
-[experiments]
-path = "{experiment}"
-
-[files]
-path = "{experiment}/*.md"
-
-[runs]
-path = "{experiment}/results/{run}"
-```
-
-### Notes and runs in separate trees
-
-```
-/notes
-  /experiment-one
-    /readme.md
-/data
-  /experiment-one
-```
-
-```toml
-[experiments]
-path = "notes/{experiment}"
-
-[files]
-path = "notes/{experiment}/*.md"
-
-[runs]
-path = "data/{experiment}/{run}"
-```
+[Common Organizations](docs/guides/common-organizations.md) shows both, with the config for each.

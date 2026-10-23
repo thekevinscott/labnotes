@@ -98,7 +98,8 @@ line per event instead.
 - With runs going, Ctrl-C asks first. Enter (or a second Ctrl-C) leaves them
   running. `s` stops the running scripts and records their end, then kills any
   still going 5 seconds later. Escape goes back. SIGTERM stops them like `s`.
-- A second `run` of the same experiment fails while the first holds the lock.
+- A second `run` of the same experiment fails with "already running" while the
+  daemon still has the first going.
 - It exits 0 even if runs fail; the summary line counts failures. If it can't
   start or reach the daemon, it prints the cause on one line and exits 1.
 

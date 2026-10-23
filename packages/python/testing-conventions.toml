@@ -75,3 +75,9 @@ path = "src/labnotes/runner/exit_signal.py"
 rules = ["mutation"]
 lines = [10]
 reason = "exit_code is non-negative here; when bit 7 is set, - 128 equals ^ 128, and when it is clear ^ 128 lands above NSIG like a non-positive difference"
+
+[[python.exempt]]
+path = "src/labnotes/experiments.py"
+rules = ["mutation"]
+lines = [109]
+reason = "click hands back the \"json\" choice literal itself, so is not equals !="

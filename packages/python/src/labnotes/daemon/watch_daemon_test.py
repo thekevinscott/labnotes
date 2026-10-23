@@ -189,25 +189,28 @@ def test_drops_a_sample_that_finishes_after_its_run_ended(
     async def sample(folder: Path, running: bool) -> dict[str, int | None]:
         nonlocal calls
         calls += 1
-        if calls > 2:
+        if calls == 4:
             paused.set()
             await release.wait()
         return {"memory": 5, "size": 9}
 
     daemon["run_usage"].side_effect = sample
     second = {**started(tmp_path / "r2"), "run": "r2"}
+    third = {**started(tmp_path / "r3"), "run": "r3"}
 
     def ended(run: str) -> dict[str, object]:
         return {"event": "ended", "experiment": "exp", "run": run, "exit_code": 0}
 
     async def let_go() -> None:
         release.set()
-        await asyncio.sleep(0.05)
+        for _ in range(5):
+            await asyncio.sleep(0)
 
     daemon["sent"].extend(
         [
             started(tmp_path),
             second,
+            third,
             {"event": "replayed"},
             paused.wait,
             ended("r1"),
@@ -222,12 +225,34 @@ def test_drops_a_sample_that_finishes_after_its_run_ended(
     assert emitted == [
         started(tmp_path),
         second,
+        third,
         USAGE,
         {**USAGE, "run": "r2"},
+        {**USAGE, "run": "r3"},
         ended("r1"),
         ended("r2"),
+        {**USAGE, "run": "r3"},
     ]
-    assert calls == 3
+    assert daemon["run_usage"].await_args_list[3:] == [
+        mock.call(tmp_path, True),
+        mock.call(tmp_path / "r3", True),
+    ]
+
+
+def test_stops_tailing_and_sampling_once_the_stream_ends(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    daemon["sent"].extend([started(tmp_path), {"event": "replayed"}])
+    emitted: list[dict[str, object]] = []
+
+    async def go() -> None:
+        await watch_daemon(Path("/p"), True, emitted.append)
+        sampled = daemon["run_usage"].await_count
+        await asyncio.sleep(0.05)
+        assert daemon["run_usage"].await_count == sampled
+
+    with mock.patch("labnotes.daemon.watch_daemon.USAGE_SECONDS", 0.01):
+        asyncio.run(go())
 
 
 def test_samples_usage_every_thirty_seconds() -> None:

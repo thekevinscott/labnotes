@@ -27,8 +27,11 @@ async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) 
 
     async def sample() -> None:
         for (experiment, run), folder in list(logs.folders.items()):
+            if (experiment, run) not in logs.folders:
+                continue
             usage = await run_usage(folder, True)
-            emit({"event": "usage", "experiment": experiment, "run": run, **usage})
+            if (experiment, run) in logs.folders:
+                emit({"event": "usage", "experiment": experiment, "run": run, **usage})
 
     async def keep_sampling() -> None:
         while True:

@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import os
 import time
 from collections.abc import Callable
@@ -59,6 +60,8 @@ async def execute_run(
         else:
             running.add(process)
             run["pid"] = process.pid
+            with contextlib.suppress(psutil.Error):
+                run["pid_created"] = psutil.Process(process.pid).create_time()
             write_run_json(folder, run)
             exited = asyncio.ensure_future(process.wait())
             kill_later = None

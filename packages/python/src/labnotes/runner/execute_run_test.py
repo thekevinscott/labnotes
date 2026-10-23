@@ -29,14 +29,22 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.runner.execute_run.wait_for_tree", new=mock.AsyncMock()
         ) as wait_for_tree,
+        mock.patch("labnotes.runner.execute_run.psutil") as psutil,
     ):
+        psutil.Error = Gone
+        psutil.Process.return_value.create_time.return_value = 1234.5
         yield {
             "wait_for_tree": wait_for_tree,
             "shell_command": shell_command,
             "write_run_json": write_run_json,
             "spawn": spawn,
             "process": process,
+            "psutil": psutil,
         }
+
+
+class Gone(Exception):
+    pass
 
 
 TREE: set[object] = {"orphan"}
@@ -104,10 +112,22 @@ def test_records_the_run_before_and_after(
         "exit_code": None,
         "error": None,
     }
-    spawned = {**started, "pid": 42}
+    spawned = {**started, "pid": 42, "pid_created": 1234.5}
     assert snapshots == [started, spawned, {**spawned, "ended": "end", "exit_code": 3}]
     assert result == snapshots[-1]
     assert collaborators["write_run_json"].call_args.args[0] == tmp_path
+    collaborators["psutil"].Process.assert_called_once_with(42)
+
+
+def test_records_the_pid_alone_when_the_process_is_already_gone(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["psutil"].Process.side_effect = Gone()
+
+    result = run(tmp_path)
+
+    assert result["pid"] == 42
+    assert "pid_created" not in result
 
 
 def test_records_which_run_a_retry_retries(

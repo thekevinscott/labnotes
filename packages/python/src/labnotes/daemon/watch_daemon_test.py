@@ -180,5 +180,55 @@ def test_stops_sampling_a_run_once_it_ends(
     assert emitted == [started(tmp_path), USAGE, ended]
 
 
+def test_drops_a_sample_that_finishes_after_its_run_ended(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    paused, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def sample(folder: Path, running: bool) -> dict[str, int | None]:
+        nonlocal calls
+        calls += 1
+        if calls > 2:
+            paused.set()
+            await release.wait()
+        return {"memory": 5, "size": 9}
+
+    daemon["run_usage"].side_effect = sample
+    second = {**started(tmp_path / "r2"), "run": "r2"}
+
+    def ended(run: str) -> dict[str, object]:
+        return {"event": "ended", "experiment": "exp", "run": run, "exit_code": 0}
+
+    async def let_go() -> None:
+        release.set()
+        await asyncio.sleep(0.05)
+
+    daemon["sent"].extend(
+        [
+            started(tmp_path),
+            second,
+            {"event": "replayed"},
+            paused.wait,
+            ended("r1"),
+            ended("r2"),
+            let_go,
+        ]
+    )
+
+    with mock.patch("labnotes.daemon.watch_daemon.USAGE_SECONDS", 0.01):
+        emitted = watch(follow=True)
+
+    assert emitted == [
+        started(tmp_path),
+        second,
+        USAGE,
+        {**USAGE, "run": "r2"},
+        ended("r1"),
+        ended("r2"),
+    ]
+    assert calls == 3
+
+
 def test_samples_usage_every_thirty_seconds() -> None:
     assert USAGE_SECONDS == 30.0

@@ -6,7 +6,6 @@ from unittest import mock
 import pytest
 
 from labnotes.tables.open_tables import open_tables
-from labnotes.tables.read_run_file import read_run_file
 
 CONFIG = mock.Mock(
     experiment=None,
@@ -76,7 +75,8 @@ def test_watches_every_run_file_only_when_asked(
     open_tables(CONFIG)
     assert "run_files" not in tables(dirsql)
 
-    open_tables(CONFIG, run_files=True)
+    with mock.patch("labnotes.tables.open_tables.read_run_file") as read_run_file:
+        open_tables(CONFIG, run_files=True)
     found = tables(dirsql)["run_files"]
     assert found["glob"] == "data/*/**/**"
     reader = found["on_file"]

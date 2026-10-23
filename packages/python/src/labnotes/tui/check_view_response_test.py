@@ -1,5 +1,7 @@
 import json
+from collections.abc import Iterator
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -11,6 +13,17 @@ REQUEST = {
 }
 
 
+@pytest.fixture(autouse=True)
+def view_column() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.tui.check_view_response.view_column",
+        side_effect=lambda entry: (
+            {"key": entry, "label": entry} if isinstance(entry, str) else entry
+        ),
+    ) as found:
+        yield found
+
+
 def check(response: object) -> tuple[list[dict[str, str]], dict[str, Any]]:
     return check_view_response(json.dumps(response), REQUEST)
 
@@ -18,7 +31,7 @@ def check(response: object) -> tuple[list[dict[str, str]], dict[str, Any]]:
 def test_reads_columns_and_rows() -> None:
     columns, rows = check(
         {
-            "columns": [{"key": "id", "label": "Run"}, {"key": "m"}, "x"],
+            "columns": [{"key": "id", "label": "Run"}, "m", "x"],
             "rows": {"runs/a": {"id": "a", "m": 1, "folder": "runs/a"}},
         }
     )
@@ -41,17 +54,6 @@ def test_reads_columns_and_rows() -> None:
             "the response must be an object with columns and rows",
         ),
         ({"columns": {}, "rows": {}}, "columns must be a list"),
-        ({"columns": [1], "rows": {}}, "a column must be a string or an object"),
-        ({"columns": [{}], "rows": {}}, "a column needs a string key"),
-        ({"columns": [{"key": 1}], "rows": {}}, "a column needs a string key"),
-        (
-            {"columns": [{"key": "m", "label": 1}], "rows": {}},
-            "column m: label must be a string",
-        ),
-        (
-            {"columns": [{"key": "m", "width": 1}], "rows": {}},
-            "column m: unknown fields width",
-        ),
         ({"columns": ["m", {"key": "m"}], "rows": {}}, "column m is listed twice"),
         ({"columns": [], "rows": []}, "rows must be an object"),
         ({"columns": [], "rows": {}}, "no row for runs/a"),
@@ -82,3 +84,16 @@ def test_lets_rows_keep_native_values_that_arent_columns() -> None:
 def test_rejects_invalid_json() -> None:
     with pytest.raises(ValueError, match="^invalid JSON: Expecting value"):
         check_view_response("nope\n", REQUEST)
+
+
+def test_reads_each_column(view_column: mock.MagicMock) -> None:
+    check({"columns": ["m", {"key": "id"}], "rows": {"runs/a": {}}})
+
+    assert view_column.call_args_list == [mock.call("m"), mock.call({"key": "id"})]
+
+
+def test_passes_on_a_bad_column(view_column: mock.MagicMock) -> None:
+    view_column.side_effect = ValueError("a column needs a string key")
+
+    with pytest.raises(ValueError, match="^a column needs a string key$"):
+        check({"columns": [1], "rows": {"runs/a": {}}})

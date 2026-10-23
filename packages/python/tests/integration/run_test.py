@@ -1,6 +1,9 @@
 import json
 import re
+import signal
+import subprocess
 import sys
+import time
 from pathlib import Path
 from typing import Any
 
@@ -267,14 +270,19 @@ args = sys.argv[1:]
 if "--stubborn" in args:
     signal.signal(signal.SIGTERM, signal.SIG_IGN)
     Path("pid.txt").write_text(str(os.getpid()))
+if "--die" in args:
+    os.kill(os.getpid(), signal.SIGKILL)
+Path(f"started-{os.getpid()}.txt").write_text("")
 time.sleep(float(args[args.index("--s") + 1]))
 """
 
 
-def sleeper(root: Path, seconds: list[float], stubborn: bool = False) -> Path:
+def sleeper(
+    root: Path, seconds: list[float], stubborn: bool = False, die: bool = False
+) -> Path:
     write(root / ".labnotes.toml", "")
     write(root / "sleep.py", SLEEPER)
-    flag = " --stubborn" if stubborn else ""
+    flag = (" --stubborn" if stubborn else "") + (" --die" if die else "")
     write(
         root / "exp" / "experiment.toml",
         f'command = "{sys.executable} sleep.py{flag}"\n'
@@ -293,8 +301,10 @@ def test_stops_only_the_runs_that_outlast_the_timeout(
 
     recorded = {run["params"]["s"]: run for run in runs(project)}
     assert (recorded[0.1]["exit_code"], recorded[0.1]["error"]) == (0, None)
+    assert (recorded[0.1]["ended_by"], recorded[0.1]["signal"]) == (None, None)
     assert recorded[30]["exit_code"] != 0
     assert recorded[30]["error"] == "timed out after 2s"
+    assert (recorded[30]["ended_by"], recorded[30]["signal"]) == ("timeout", 15)
     assert "timed out after 2s" in capsys.readouterr().out
 
 
@@ -305,5 +315,39 @@ def test_kills_a_timed_out_run_that_ignores_sigterm(tmp_path: Path) -> None:
 
     [run] = runs(project)
     assert run["error"] == "timed out after 1s"
+    assert run["ended_by"] == "timeout"
+    # The shell around the script can die on SIGTERM before SIGKILL lands.
+    assert run["signal"] in (signal.SIGTERM, signal.SIGKILL)
     stubborn = int((project / "pid.txt").read_text())
     assert not psutil.pid_exists(stubborn)
+
+
+def test_records_a_signal_labnotes_did_not_send(tmp_path: Path) -> None:
+    project = sleeper(tmp_path, [30], die=True)
+
+    labnotes(project, ["experiments", "exp", "run"])
+
+    [run] = runs(project)
+    assert (run["ended_by"], run["signal"], run["error"]) == ("signal", 9, None)
+
+
+def test_records_runs_stopped_by_stopping_labnotes(tmp_path: Path) -> None:
+    project = sleeper(tmp_path, [30])
+    command = Path(sys.executable).parent / "labnotes"
+    config = project / ".labnotes.toml"
+    process = subprocess.Popen(
+        [command, "-c", config, "experiments", "exp", "run"],
+        stdout=subprocess.DEVNULL,
+    )
+    try:
+        for _ in range(100):
+            if any(project.glob("started-*.txt")):
+                break
+            time.sleep(0.1)
+        process.send_signal(signal.SIGTERM)
+        process.wait(timeout=20)
+    finally:
+        process.kill()
+
+    [run] = runs(project)
+    assert (run["ended_by"], run["signal"], run["error"]) == ("stop", 15, None)

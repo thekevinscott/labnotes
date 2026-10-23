@@ -6,9 +6,9 @@ def format_bytes(count: int | None) -> str:
         return ""
     if count < 1000:
         return f"{count} B"
-    size = float(count)
-    for unit in UNITS:
+    size = count / 1000
+    for unit in UNITS[:-1]:
+        if size < 1000:
+            return f"{size:.1f} {unit}"
         size /= 1000
-        if size < 1000 or unit == UNITS[-1]:
-            break
-    return f"{size:.1f} {unit}"
+    return f"{size:.1f} {UNITS[-1]}"

@@ -62,3 +62,5 @@ A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason ou
 ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) leaves them running, `s` stops them, and esc goes back.
 
 `--timeout 1800` stops any run still going after 1800 seconds (30 minutes), with SIGTERM and then SIGKILL 5 seconds later. Each run gets its own 30 minutes. Its `run.json` records `"error": "timed out after 30m 00s"`, so a timeout reads differently from a crash.
+
+`run.json` also records why a run ended, in `ended_by`: `"timeout"` for `--timeout`, `"stop"` when labnotes stopped it (`run stop`, `s` at the quit prompt, killing the run in the TUI), `"signal"` when a signal labnotes didn't send ended it, like the kernel's out-of-memory killer, and `null` when the script exited on its own. `signal` holds the signal number, read from the exit code: a negative code, or 128 plus the number when the shell reports it (137 is SIGKILL, 9). A script that catches a signal and exits with its own code leaves `signal` null, and one that exits 137 on purpose reads as SIGKILL.

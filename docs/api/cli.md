@@ -51,7 +51,7 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 
 `run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75 is retried on its own; see [`retries`](config#retries-1).
 
-A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
+A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with, and `"ended_by": "timeout"`. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
 ## `run`
 
@@ -76,7 +76,7 @@ Shows what each experiment is running and the latest line each running run logge
 labnotes run stop
 ```
 
-Stops every run. Scripts get SIGTERM, then SIGKILL 5 seconds later.
+Stops every run. Scripts get SIGTERM, then SIGKILL 5 seconds later. Each stopped run's `run.json` records `"ended_by": "stop"`, so it reads apart from a run something else killed (`"ended_by": "signal"`).
 
 ### `run control`
 

@@ -75,8 +75,11 @@ script so it writes its outputs there.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
-code), `stdout.log` and `stderr.log` to the
-run folder.
+code, `ended_by`, `signal`), `stdout.log` and `stderr.log` to the
+run folder. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
+`"signal"` (a signal labnotes didn't send, like the out-of-memory killer) or
+null (the script exited itself). `signal` is the signal number read from the
+exit code (negative, or 128 + N from the shell), else null.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.
@@ -133,7 +136,8 @@ going. Elsewhere, it prints a line per event instead.
 - `-e PATH` reads another file instead of `experiment.toml`.
 - `--timeout SECONDS` stops any one run still going after that many seconds:
   SIGTERM, then SIGKILL 5 seconds later. Its
-  `run.json` gets `"error": "timed out after ..."` next to its exit code.
+  `run.json` gets `"error": "timed out after ..."` and `"ended_by": "timeout"`
+  next to its exit code.
   Unset, runs have no time limit.
 - `run` hands its runs to the project's labnotes daemon, starting it if
   needed, and shows or waits for them. The daemon listens on a socket in

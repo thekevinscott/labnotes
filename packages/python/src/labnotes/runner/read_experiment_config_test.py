@@ -152,6 +152,10 @@ def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
         ('command = "run"\nmemory_interval = true\n', "memory_interval must be"),
         ('command = "run"\nmemory_interval = "5"\n', "memory_interval must be"),
         ('command = "run"\nmemory_interval = inf\n', "memory_interval must be"),
+        ('command = "run"\nviews = 1\n', "views must be a table"),
+        ('command = "run"\n[views]\nrun = "x"\n', "unknown keys in views: run"),
+        ('command = "run"\n[views]\nruns = 1\n', "views.runs must be a command"),
+        ('command = "run"\n[views]\nruns = " "\n', "views.runs must be a command"),
     ],
 )
 def test_rejects_a_bad_config(text: str, message: str) -> None:
@@ -159,6 +163,13 @@ def test_rejects_a_bad_config(text: str, message: str) -> None:
         read_experiment_config(PATH, text, "adhoc", 1, 2)
 
     assert str(error.value).startswith(f"{PATH}: ")
+
+
+@pytest.mark.parametrize(
+    "source", ['command = "run"\n[views]\nruns = "view"\n', 'command = "run"\n[views]\n']
+)
+def test_accepts_views(source: str) -> None:
+    read_experiment_config(PATH, source, "adhoc", 1, 2)
 
 
 def test_validates_the_config_layered_over_the_defaults() -> None:

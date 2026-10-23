@@ -23,7 +23,9 @@ SETTINGS = {
     "retries",
     "meta",
     "memory_interval",
+    "views",
 }
+VIEWS = {"runs"}
 
 
 def read_experiment_config(
@@ -79,6 +81,15 @@ def read_experiment_config(
     memory_interval = values.get("memory_interval", DEFAULT_MEMORY_INTERVAL)
     if not is_non_negative_number(memory_interval):
         raise ValueError(f"{path}: memory_interval must be 0 or more seconds")
+    views = values.get("views", {})
+    if not isinstance(views, dict):
+        raise ValueError(f"{path}: views must be a table, like [views]")
+    unknown = sorted(views.keys() - VIEWS)
+    if unknown:
+        raise ValueError(f"{path}: unknown keys in views: {', '.join(unknown)}")
+    runs = views.get("runs")
+    if runs is not None and (not isinstance(runs, str) or not runs.strip()):
+        raise ValueError(f"{path}: views.runs must be a command")
     return ExperimentConfig(
         command,
         repeats,

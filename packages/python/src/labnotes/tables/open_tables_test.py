@@ -6,6 +6,7 @@ from unittest import mock
 import pytest
 
 from labnotes.tables.open_tables import open_tables
+from labnotes.tables.read_run_file import read_run_file
 
 CONFIG = mock.Mock(
     experiment=None,
@@ -67,6 +68,25 @@ def test_reads_each_table_with_the_root_and_its_path(
         "memory": (Path("/p"), "data/{experiment}/{run}"),
         "experiment_configs": (Path("/p"), "notes/{experiment}"),
     }
+
+
+def test_watches_every_run_file_only_when_asked(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
+    open_tables(CONFIG)
+    assert "run_files" not in tables(dirsql)
+
+    open_tables(CONFIG, run_files=True)
+    found = tables(dirsql)["run_files"]
+    assert found["glob"] == "data/*/**/**"
+    reader = found["on_file"]
+    assert isinstance(reader, partial)
+    assert (reader.func, reader.args, reader.keywords) == (
+        read_run_file,
+        (Path("/p"), "data/{experiment}/{run}"),
+        {"experiment": None},
+    )
+    assert "path TEXT PRIMARY KEY" in str(found["ddl"])
 
 
 def test_declares_the_experiments_view_after_files_and_runs(

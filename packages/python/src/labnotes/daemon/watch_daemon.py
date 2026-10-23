@@ -6,9 +6,11 @@ import httpx2
 
 from labnotes.daemon.daemon_client import daemon_client
 from labnotes.daemon.run_logs import RunLogs
+from labnotes.utils.run_usage import run_usage
 
 Event = dict[str, object]
 TAIL_SECONDS = 1.0
+USAGE_SECONDS = 30.0
 
 
 async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) -> None:
@@ -23,7 +25,21 @@ async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) 
             await asyncio.sleep(TAIL_SECONDS)
             tail()
 
+    async def sample() -> None:
+        for (experiment, run), folder in list(logs.folders.items()):
+            if (experiment, run) not in logs.folders:
+                continue
+            usage = await run_usage(folder, True)
+            if (experiment, run) in logs.folders:
+                emit({"event": "usage", "experiment": experiment, "run": run, **usage})
+
+    async def keep_sampling() -> None:
+        while True:
+            await asyncio.sleep(USAGE_SECONDS)
+            await sample()
+
     tailing = asyncio.create_task(keep_tailing()) if follow else None
+    sampling = None
     try:
         async with (
             daemon_client(root) as client,
@@ -36,8 +52,10 @@ async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) 
                 match event:
                     case {"event": "replayed"}:
                         tail()
+                        await sample()
                         if not follow:
                             return
+                        sampling = asyncio.create_task(keep_sampling())
                         continue
                     case {"event": "started", "experiment": str(name), "run": str(run)}:
                         logs.add(name, run, Path(str(event["folder"])))
@@ -48,5 +66,6 @@ async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) 
     except httpx2.TransportError:
         pass
     finally:
-        if tailing is not None:
-            tailing.cancel()
+        for task in (tailing, sampling):
+            if task is not None:
+                task.cancel()

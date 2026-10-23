@@ -404,3 +404,32 @@ def test_help_says_runs_have_no_timeout_by_default(
     assert "--timeout SECONDS" in out
     assert "stop any run still going after this many seconds." in out
     assert "Unset, runs have no time limit." in out
+
+
+def test_shows_memory_and_size_readably_in_a_table(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["experiment_rows"].return_value = [
+        {"id": "r", "memory": 3_200_000_000, "size": None}
+    ]
+
+    assert run(["a", "runs"]) == 0
+
+    collaborators["print_rows"].assert_called_once_with(
+        [{"id": "r", "memory": "3.2 GB", "size": ""}], "table"
+    )
+
+
+def test_keeps_memory_and_size_in_bytes_in_json(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["experiment_rows"].return_value = [
+        {"id": "r", "memory": 3_200_000_000, "size": 12}
+    ]
+
+    assert run(["a", "runs", "--format", "json"]) == 0
+
+    collaborators["print_rows"].assert_called_once_with(mock.ANY, "json")
+    [printed, _] = collaborators["print_rows"].call_args.args
+    assert printed == [{"id": "r", "memory": 3_200_000_000, "size": 12}]
+    assert [type(printed[0][key]) for key in ("memory", "size")] == [int, int]

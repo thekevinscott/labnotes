@@ -1,15 +1,19 @@
 import asyncio
 import signal
 import time
+from collections.abc import Sequence
 from pathlib import Path
 
 from rich.text import Text
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Input, Static
 
+from labnotes.utils.format_bytes import format_bytes
 from labnotes.models import Controls, Start
 from labnotes.retries import RETRY_EXIT_CODE
+from labnotes.utils.run_usage import run_usage
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.runner.param_args import param_args
@@ -20,7 +24,6 @@ from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 
-COLUMNS = ("run", "params", "status", "time")
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED, DESELECTED = "–", "⊘"
@@ -50,8 +53,9 @@ class RunApp(App[None]):
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
     ]
 
-    def __init__(self, start: Start, title: str) -> None:
+    def __init__(self, start: Start, title: str, columns: Sequence[str]) -> None:
         super().__init__()
+        self.columns = tuple(columns)
         self.start = start
         self.title = title
         self.results: list[dict[str, object]] = []
@@ -73,7 +77,7 @@ class RunApp(App[None]):
         self.frame = 0
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
-        self.cells: dict[str, list[object]] = {}
+        self.cells: dict[str, dict[str, object]] = {}
         self.filter = ""
         self.failed: set[str] = set()
         self.retried: set[str] = set()
@@ -83,6 +87,8 @@ class RunApp(App[None]):
         self.viewing: str | None = None
         self.grabbed: str | None = None
         self.grabbed_from: list[str] = []
+        self.sampling = False
+        self.unmeasured: dict[str, None] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -95,7 +101,7 @@ class RunApp(App[None]):
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
-        for column in COLUMNS:
+        for column in self.columns:
             table.add_column(column, key=column)
         self.query_one(Input).display = False
         self.query_one(RunOutput).display = False
@@ -127,8 +133,9 @@ class RunApp(App[None]):
                 self.title = str(event["title"])
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
-                    cells = (planned["run"].rpartition("/")[2], args, PENDING, "")
-                    self.cells[planned["run"]] = [*map(dim, cells)]
+                    self.cells[planned["run"]] = self.waiting_cells(
+                        planned["run"], args
+                    )
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
@@ -145,13 +152,13 @@ class RunApp(App[None]):
                 if run == self.next_run:
                     self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                cells = (
-                    run.rpartition("/")[2],
-                    args,
-                    SPINNER[self.frame],
-                    format_elapsed(0),
-                )
-                for column, cell in zip(COLUMNS, cells):
+                shown = {
+                    "run": run.rpartition("/")[2],
+                    "params": args,
+                    "status": SPINNER[self.frame],
+                    "time": format_elapsed(0),
+                }
+                for column, cell in shown.items():
                     self.set_cell(run, column, cell)
             case "ended":
                 outcome = PASSED
@@ -166,6 +173,8 @@ class RunApp(App[None]):
                 self.tick()
                 del self.started[run]
                 self.redraw(table.cursor_row)
+                self.unmeasured[run] = None
+                self.measure()
             case "queued":
                 self.reposition(event, run)
                 self.next_run = run
@@ -201,9 +210,7 @@ class RunApp(App[None]):
                 self.retried.add(run)
                 again = str(event["retry"])
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                self.cells[again] = [
-                    *map(dim, (again.rpartition("/")[2], args, PENDING, ""))
-                ]
+                self.cells[again] = self.waiting_cells(again, args)
                 self.pending.add(again)
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
@@ -244,14 +251,20 @@ class RunApp(App[None]):
         table.clear()
         for run, cells in self.cells.items():
             hidden = self.hiding and run in self.failed
-            if self.filter in str(cells[1]) and not hidden:
-                table.add_row(*cells, key=run)
+            if self.filter in str(cells.get("params", "")) and not hidden:
+                table.add_row(*(cells.get(c, "") for c in self.columns), key=run)
         table.move_cursor(row=row)
 
+    def waiting_cells(self, run: str, args: str) -> dict[str, object]:
+        shown = {"run": run.rpartition("/")[2], "params": args, "status": PENDING}
+        return {
+            column: dim(shown.get(column, "")) for column in {*self.columns, *shown}
+        }
+
     def set_cell(self, run: str, column: str, cell: object) -> None:
-        self.cells[run][COLUMNS.index(column)] = cell
+        self.cells[run][column] = cell
         table = self.query_one(DataTable)
-        if run in table.rows:
+        if run in table.rows and column in self.columns:
             table.update_cell(run, column, cell, update_width=True)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
@@ -275,6 +288,31 @@ class RunApp(App[None]):
             wait = format_elapsed(max(0, due - now))
             outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retry in {wait}"
             self.set_cell(run, "status", Text(outcome, style="yellow"))
+        if self.started:
+            self.measure()
+
+    def measure(self) -> None:
+        if not self.sampling:
+            self.sampling = True
+            self.sample()
+
+    @work
+    async def sample(self) -> None:
+        try:
+            for run in list(self.started):
+                usage = await run_usage(self.folders[run], True)
+                if run in self.started:
+                    self.show_usage(run, usage)
+            while self.unmeasured:
+                run = next(iter(self.unmeasured))
+                del self.unmeasured[run]
+                self.show_usage(run, await run_usage(self.folders[run], False))
+        finally:
+            self.sampling = False
+
+    def show_usage(self, run: str, usage: dict[str, int | None]) -> None:
+        self.set_cell(run, "memory", format_bytes(usage["memory"]))
+        self.set_cell(run, "size", format_bytes(usage["size"]))
 
     def spin(self) -> None:
         self.frame = (self.frame + 1) % len(SPINNER)

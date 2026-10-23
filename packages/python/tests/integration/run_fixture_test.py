@@ -8,6 +8,7 @@ from unittest import mock
 
 import pytest
 
+from labnotes.tui.config import RUN_COLUMNS
 from labnotes.runner.param_args import param_args
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.run_app import SPINNER, RunApp
@@ -25,7 +26,7 @@ def snapshot(app: RunApp) -> dict[str, object]:
     table: Any = app.query_one("#runs")
     rows = []
     for key in table.rows:
-        run, params, status, elapsed = table.get_row(key)
+        run, params, status, elapsed, *_ = table.get_row(key)
         text = str(status)
         rows.append(
             {
@@ -69,7 +70,7 @@ def test_shows_the_recorded_runs_like_the_pane(
         async with app.run_test() as pilot:
             await pilot.pause()
 
-    app = RunApp(start, "exp")
+    app = RunApp(start, "exp", RUN_COLUMNS)
 
     asyncio.run(drive())
     assert seen == FIXTURE["checkpoints"]

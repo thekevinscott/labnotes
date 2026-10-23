@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.daemon.watch_daemon import TAIL_SECONDS, watch_daemon
+from labnotes.daemon.watch_daemon import TAIL_SECONDS, USAGE_SECONDS, watch_daemon
 
 
 class Gone(Exception):
@@ -36,6 +36,10 @@ def daemon() -> Iterator[dict[str, Any]]:
         mock.patch("labnotes.daemon.watch_daemon.daemon_client") as daemon_client,
         mock.patch("labnotes.daemon.watch_daemon.httpx2") as httpx2,
         mock.patch("labnotes.daemon.watch_daemon.TAIL_SECONDS", 0.01),
+        mock.patch(
+            "labnotes.daemon.watch_daemon.run_usage",
+            new=mock.AsyncMock(return_value={"memory": 5, "size": 9}),
+        ) as run_usage,
     ):
         daemon_client.return_value.__aenter__.return_value = client
         httpx2.EventSource.side_effect = stream
@@ -46,6 +50,7 @@ def daemon() -> Iterator[dict[str, Any]]:
             "sent": sent,
             "daemon_client": daemon_client,
             "event_source": httpx2.EventSource,
+            "run_usage": run_usage,
         }
 
 
@@ -57,6 +62,9 @@ def watch(follow: bool) -> list[dict[str, object]]:
 
 def started(folder: Path) -> dict[str, object]:
     return {"event": "started", "experiment": "exp", "run": "r1", "folder": str(folder)}
+
+
+USAGE = {"event": "usage", "experiment": "exp", "run": "r1", "memory": 5, "size": 9}
 
 
 def output(line: str) -> dict[str, object]:
@@ -75,7 +83,8 @@ def test_reports_the_daemons_state_then_stops(
     (tmp_path / "stdout.log").write_text("one\ntwo\n")
     daemon["sent"].extend([started(tmp_path), {"event": "replayed"}, {"event": "idle"}])
 
-    assert watch(follow=False) == [started(tmp_path), output("two")]
+    assert watch(follow=False) == [started(tmp_path), output("two"), USAGE]
+    daemon["run_usage"].assert_awaited_once_with(tmp_path, True)
     daemon["daemon_client"].assert_called_once_with(Path("/p"))
     daemon["client"].stream.assert_called_once_with(
         "GET", "/events", params={"watch": "1"}
@@ -138,3 +147,113 @@ def test_stops_when_the_daemon_cannot_be_reached(daemon: dict[str, Any]) -> None
 
 def test_reads_logs_once_a_second() -> None:
     assert TAIL_SECONDS == 1.0
+
+
+def test_samples_running_runs_again_while_following(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    async def wait() -> None:
+        await asyncio.sleep(0.05)
+
+    daemon["sent"].extend([started(tmp_path), {"event": "replayed"}, wait])
+
+    with mock.patch("labnotes.daemon.watch_daemon.USAGE_SECONDS", 0.01):
+        emitted = watch(follow=True)
+
+    assert emitted[:2] == [started(tmp_path), USAGE]
+    assert emitted.count(USAGE) > 2
+
+
+def test_stops_sampling_a_run_once_it_ends(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    ended = {"event": "ended", "experiment": "exp", "run": "r1", "exit_code": 0}
+
+    async def wait() -> None:
+        await asyncio.sleep(0.05)
+
+    daemon["sent"].extend([started(tmp_path), {"event": "replayed"}, ended, wait])
+
+    with mock.patch("labnotes.daemon.watch_daemon.USAGE_SECONDS", 0.01):
+        emitted = watch(follow=True)
+
+    assert emitted == [started(tmp_path), USAGE, ended]
+
+
+def test_drops_a_sample_that_finishes_after_its_run_ended(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    paused, release = asyncio.Event(), asyncio.Event()
+    calls = 0
+
+    async def sample(folder: Path, running: bool) -> dict[str, int | None]:
+        nonlocal calls
+        calls += 1
+        if calls == 4:
+            paused.set()
+            await release.wait()
+        return {"memory": 5, "size": 9}
+
+    daemon["run_usage"].side_effect = sample
+    second = {**started(tmp_path / "r2"), "run": "r2"}
+    third = {**started(tmp_path / "r3"), "run": "r3"}
+
+    def ended(run: str) -> dict[str, object]:
+        return {"event": "ended", "experiment": "exp", "run": run, "exit_code": 0}
+
+    async def let_go() -> None:
+        release.set()
+        for _ in range(5):
+            await asyncio.sleep(0)
+
+    daemon["sent"].extend(
+        [
+            started(tmp_path),
+            second,
+            third,
+            {"event": "replayed"},
+            paused.wait,
+            ended("r1"),
+            ended("r2"),
+            let_go,
+        ]
+    )
+
+    with mock.patch("labnotes.daemon.watch_daemon.USAGE_SECONDS", 0.01):
+        emitted = watch(follow=True)
+
+    assert emitted == [
+        started(tmp_path),
+        second,
+        third,
+        USAGE,
+        {**USAGE, "run": "r2"},
+        {**USAGE, "run": "r3"},
+        ended("r1"),
+        ended("r2"),
+        {**USAGE, "run": "r3"},
+    ]
+    assert daemon["run_usage"].await_args_list[3:] == [
+        mock.call(tmp_path, True),
+        mock.call(tmp_path / "r3", True),
+    ]
+
+
+def test_stops_tailing_and_sampling_once_the_stream_ends(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    daemon["sent"].extend([started(tmp_path), {"event": "replayed"}])
+    emitted: list[dict[str, object]] = []
+
+    async def go() -> None:
+        await watch_daemon(Path("/p"), True, emitted.append)
+        sampled = daemon["run_usage"].await_count
+        await asyncio.sleep(0.05)
+        assert daemon["run_usage"].await_count == sampled
+
+    with mock.patch("labnotes.daemon.watch_daemon.USAGE_SECONDS", 0.01):
+        asyncio.run(go())
+
+
+def test_samples_usage_every_thirty_seconds() -> None:
+    assert USAGE_SECONDS == 30.0

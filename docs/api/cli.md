@@ -36,7 +36,7 @@ labnotes experiments [NAME] [runs|run]
 | --- | --- |
 | `labnotes experiments` | Lists experiments: name, last run, created, files, runs. |
 | `labnotes experiments NAME` | Shows one experiment, plus its config. |
-| `labnotes experiments NAME runs` | Lists the experiment's runs, oldest first. |
+| `labnotes experiments NAME runs` | Lists the experiment's runs, oldest first, with each run's `memory` and `size`. |
 | `labnotes experiments NAME run` | Runs the experiment. Opens the [TUI](tui) in a terminal; otherwise prints a line per event and blocks until the runs end. |
 | `labnotes experiments new [NAME]` | Creates an experiment folder with a starter `experiment.toml`. Picks a random name if you give none. |
 
@@ -51,6 +51,8 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 
 `run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75 is retried on its own; see [`retries`](config#retries-1).
 
+In the runs listing, `memory` is the resident memory of a running run's command and everything it started, and `size` is what its run folder holds on disk, hidden files and folders aside. A symlink to a file counts as its target's size; symlinked folders aren't followed. A finished run has a size and no memory. The table shows them like `3.2 GB`; `--format json` gives bytes, with `null` where there's nothing to show. The command's process id is in the run's `run.json` as `pid`, with its start time as `pid_created`; memory is only read while that process is the same one and the record hasn't ended, so a reused pid after a crash shows no memory.
+
 A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with, and `"ended_by": "timeout"`. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
 ## `run`
@@ -63,12 +65,12 @@ Controls the runs going in the project. Runs belong to the project's daemon, so 
 labnotes run status [-f] [--json]
 ```
 
-Shows what each experiment is running and the latest line each running run logged.
+Shows what each experiment is running, the latest line each running run logged, and what each running run uses, like `exp: r1 uses 3.2 GB of memory, 5.2 GB on disk.` Memory is the resident memory of the run's command and everything it started. With `-f`, the usage repeats every 30 seconds.
 
 | Option | Description |
 | --- | --- |
 | `-f, --follow` | Keep reporting until interrupted. |
-| `--json` | One JSON event per line. Retries show as `retrying` (with `attempt`, `retries` and `seconds`), `retried`, `gave up` and `retry cancelled`. |
+| `--json` | One JSON event per line. Retries show as `retrying` (with `attempt`, `retries` and `seconds`), `retried`, `gave up` and `retry cancelled`. Usage shows as `usage`, with `memory` and `size` in bytes. |
 
 ### `run stop`
 

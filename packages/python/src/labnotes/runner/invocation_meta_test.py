@@ -58,3 +58,10 @@ def test_fails_on_json_that_is_not_an_object(tmp_path: Path, output: str) -> Non
         meta(tmp_path, command)
 
     assert str(error.value) == f"meta command {command} didn't print a JSON object"
+
+
+def test_fails_when_a_signal_ends_the_command(tmp_path: Path) -> None:
+    with pytest.raises(ValueError) as error:
+        meta(tmp_path, "echo '{}'; kill -TERM $$")
+
+    assert str(error.value) == "meta command echo '{}'; kill -TERM $$ exited -15"

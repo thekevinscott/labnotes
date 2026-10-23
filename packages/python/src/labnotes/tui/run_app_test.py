@@ -176,6 +176,60 @@ def test_waits_for_one_sample_before_taking_another(
     asyncio.run(drive())
 
 
+def test_measures_runs_that_end_together_one_scan_at_a_time(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    sampled, release, done = asyncio.Event(), asyncio.Event(), asyncio.Event()
+    scanning = most = 0
+
+    async def slow(folder: Path, running: bool) -> dict[str, int | None]:
+        nonlocal scanning, most
+        scanning += 1
+        most = max(most, scanning)
+        if running:
+            sampled.set()
+            await release.wait()
+        await asyncio.sleep(0)
+        scanning -= 1
+        return {"memory": None, "size": 1_000}
+
+    collaborators["run_usage"].side_effect = slow
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        for run in ("r1", "r2", "r3"):
+            report(began(run))
+        await sampled.wait()
+        for run in ("r1", "r2", "r3"):
+            report({"event": "ended", "run": run, "exit_code": 0, "error": None})
+        await done.wait()
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.tick()
+            await sampled.wait()
+            await pilot.pause()
+            release.set()
+            for _ in range(5):
+                await pilot.pause()
+            assert usage(app) == [["", "1.0 kB"]] * 3
+            done.set()
+            await pilot.pause()
+            app.exit()
+
+    asyncio.run(drive())
+    assert most == 1
+    finals = [
+        call.args[0]
+        for call in collaborators["run_usage"].await_args_list
+        if call.args[1] is False
+    ]
+    assert finals == [Path("/runs/r1"), Path("/runs/r2"), Path("/runs/r3")]
+
+
 def test_shows_only_the_columns_it_is_given_in_their_order(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:

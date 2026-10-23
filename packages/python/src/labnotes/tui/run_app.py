@@ -5,6 +5,7 @@ from collections.abc import Sequence
 from pathlib import Path
 
 from rich.text import Text
+from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.widgets import DataTable, Footer, Header, Input, Static
@@ -87,6 +88,7 @@ class RunApp(App[None]):
         self.grabbed: str | None = None
         self.grabbed_from: list[str] = []
         self.sampling = False
+        self.unmeasured: dict[str, None] = {}
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -171,7 +173,8 @@ class RunApp(App[None]):
                 self.tick()
                 del self.started[run]
                 self.redraw(table.cursor_row)
-                self.run_worker(self.measure(run))
+                self.unmeasured[run] = None
+                self.measure()
             case "queued":
                 self.reposition(event, run)
                 self.next_run = run
@@ -285,21 +288,27 @@ class RunApp(App[None]):
             wait = format_elapsed(max(0, due - now))
             outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retry in {wait}"
             self.set_cell(run, "status", Text(outcome, style="yellow"))
-        if self.started and not self.sampling:
-            self.sampling = True
-            self.run_worker(self.sample())
+        if self.started:
+            self.measure()
 
+    def measure(self) -> None:
+        if not self.sampling:
+            self.sampling = True
+            self.sample()
+
+    @work
     async def sample(self) -> None:
         try:
             for run in list(self.started):
                 usage = await run_usage(self.folders[run], True)
                 if run in self.started:
                     self.show_usage(run, usage)
+            while self.unmeasured:
+                run = next(iter(self.unmeasured))
+                del self.unmeasured[run]
+                self.show_usage(run, await run_usage(self.folders[run], False))
         finally:
             self.sampling = False
-
-    async def measure(self, run: str) -> None:
-        self.show_usage(run, await run_usage(self.folders[run], False))
 
     def show_usage(self, run: str, usage: dict[str, int | None]) -> None:
         self.set_cell(run, "memory", format_bytes(usage["memory"]))

@@ -138,6 +138,8 @@ def test_moving_a_pending_run_changes_the_order_runs_start(
 def test_shows_a_running_runs_memory_and_size(terminal, tmp_path: Path) -> None:
     term = run_tui(terminal, tmp_path, 2)
     expect(term.get_by_text("memory")).to_be_visible()
-    expect(term.get_by_text(re.compile(r"\d+\.\d MB +\d+(\.\d)? (kB|MB|bytes)"))).to_be_visible()
+    expect(
+        term.get_by_text(re.compile(r"\d+\.\d MB +\d+(\.\d)? (kB|MB|bytes)"))
+    ).to_be_visible()
 
     stop(term)

@@ -15,7 +15,7 @@ from labnotes.daemon.describe_status import describe_status
         ({"event": "queued", "run": "r2"}, "exp: r2 runs next."),
         (
             {"event": "usage", "run": "r1", "memory": 3_200_000_000, "size": 5000},
-            "exp: r1 uses 3.2 GB of memory, 5.0 KB on disk.",
+            "exp: r1 uses 3.2 GB of memory, 5.0 kB on disk.",
         ),
         (
             {"event": "usage", "run": "r1", "memory": None, "size": None},

@@ -1,7 +1,7 @@
 import json
 
 from labnotes.models import LabnotesConfig
-from labnotes.run_usage import run_usage
+from labnotes.utils.run_usage import run_usage
 from labnotes.summarize_config import summarize_config
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.open_tables import open_tables

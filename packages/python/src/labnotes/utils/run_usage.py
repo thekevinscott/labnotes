@@ -2,7 +2,7 @@ from pathlib import Path
 
 from dirsql import DirSQL
 
-from labnotes.tree_rss import tree_rss
+from labnotes.utils.tree_rss import tree_rss
 
 USAGE = (
     "SELECT (SELECT SUM(size) FROM './**') AS size,"

@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tree_rss import tree_rss
+from labnotes.utils.tree_rss import tree_rss
 
 
 class Gone(Exception):
@@ -16,7 +16,7 @@ class Denied(Exception):
 
 @pytest.fixture
 def psutil() -> Iterator[mock.MagicMock]:
-    with mock.patch("labnotes.tree_rss.psutil") as psutil:
+    with mock.patch("labnotes.utils.tree_rss.psutil") as psutil:
         psutil.NoSuchProcess = Gone
         psutil.AccessDenied = Denied
         yield psutil

@@ -6,7 +6,7 @@ import httpx2
 
 from labnotes.daemon.daemon_client import daemon_client
 from labnotes.daemon.run_logs import RunLogs
-from labnotes.run_usage import run_usage
+from labnotes.utils.run_usage import run_usage
 
 Event = dict[str, object]
 TAIL_SECONDS = 1.0

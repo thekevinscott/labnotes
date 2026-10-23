@@ -4,7 +4,7 @@ import os
 from pathlib import Path
 from unittest import mock
 
-from labnotes.run_usage import run_usage
+from labnotes.utils.run_usage import run_usage
 
 
 def usage(folder: Path, running: bool) -> dict[str, int | None]:
@@ -24,7 +24,7 @@ def test_samples_a_running_runs_tree_and_sizes_its_folder(tmp_path: Path) -> Non
     make_run(tmp_path, pid=os.getpid())
     shown = len(json.dumps({"pid": os.getpid()})) + 5000
 
-    with mock.patch("labnotes.run_usage.tree_rss", return_value=123) as tree_rss:
+    with mock.patch("labnotes.utils.run_usage.tree_rss", return_value=123) as tree_rss:
         assert usage(tmp_path, running=True) == {"memory": 123, "size": shown}
     tree_rss.assert_called_once_with(os.getpid())
 
@@ -32,7 +32,7 @@ def test_samples_a_running_runs_tree_and_sizes_its_folder(tmp_path: Path) -> Non
 def test_sizes_a_finished_run_without_sampling(tmp_path: Path) -> None:
     make_run(tmp_path, pid=os.getpid())
 
-    with mock.patch("labnotes.run_usage.tree_rss") as tree_rss:
+    with mock.patch("labnotes.utils.run_usage.tree_rss") as tree_rss:
         found = usage(tmp_path, running=False)
     tree_rss.assert_not_called()
     assert found["memory"] is None
@@ -43,7 +43,7 @@ def test_sizes_a_finished_run_without_sampling(tmp_path: Path) -> None:
 def test_has_no_memory_before_the_pid_is_recorded(tmp_path: Path) -> None:
     make_run(tmp_path)
 
-    with mock.patch("labnotes.run_usage.tree_rss") as tree_rss:
+    with mock.patch("labnotes.utils.run_usage.tree_rss") as tree_rss:
         assert usage(tmp_path, running=True)["memory"] is None
     tree_rss.assert_not_called()
 

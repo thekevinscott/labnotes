@@ -6,7 +6,7 @@ import click
 
 from labnotes.create_experiment import create_experiment
 from labnotes.daemon.remote_start import remote_start
-from labnotes.format_bytes import format_bytes
+from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE

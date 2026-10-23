@@ -6,7 +6,7 @@ from collections.abc import Iterator
 import psutil
 import pytest
 
-from labnotes.tree_rss import tree_rss
+from labnotes.utils.tree_rss import tree_rss
 
 NESTED = (
     "import subprocess, sys, time;"

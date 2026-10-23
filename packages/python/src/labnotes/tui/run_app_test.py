@@ -8,6 +8,7 @@ import pytest
 
 from labnotes.tui.run_app import RunApp
 
+COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]
 Listen = Callable[[Any], None]
 
@@ -76,7 +77,7 @@ def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> N
         return []
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             app.tick()
@@ -120,7 +121,7 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
         return []
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             app.tick()
@@ -155,7 +156,7 @@ def test_waits_for_one_sample_before_taking_another(
         return []
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             app.tick()
@@ -168,6 +169,50 @@ def test_waits_for_one_sample_before_taking_another(
             app.tick()
             await pilot.pause()
             assert collaborators["run_usage"].await_count == 2
+            done.set()
+            await pilot.pause()
+            app.exit()
+
+    asyncio.run(drive())
+
+
+def test_shows_only_the_columns_it_is_given_in_their_order(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    done = asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        report(began("r1"))
+        report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        report(began("r2"))
+        await done.wait()
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", ["size", "status", "run"])
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.tick()
+            await pilot.pause()
+            table: Any = app.query_one("#runs")
+            assert [column.label.plain for column in table.ordered_columns] == [
+                "size",
+                "status",
+                "run",
+            ]
+            assert [
+                [str(cell) for cell in table.get_row(key)] for key in table.rows
+            ] == [
+                ["5.0 KB", "✓", "r1"],
+                ["5.0 KB", "|", "r2"],
+                ["", "○", "r3"],
+            ]
+            assert [getattr(cell, "style", None) for cell in table.get_row("r3")] == [
+                "dim"
+            ] * 3
+            await pilot.press("slash", "m", "space", "r", "3", "enter")
+            assert [str(table.get_row(key)[2]) for key in table.rows] == ["r3"]
             done.set()
             await pilot.pause()
             app.exit()
@@ -249,7 +294,7 @@ def test_shows_each_run_and_the_outcome(
         ]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert app.title == "Exp"
@@ -282,7 +327,7 @@ def test_names_a_started_adhoc_run_without_its_invocation() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[0] for row in rows(app)] == ["r1", "r2"]
@@ -307,7 +352,7 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             rendered.set()
@@ -342,7 +387,7 @@ def test_skips_pending_runs_when_stopping() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[2] for row in rows(app)] == ["|", "–", "–"]
@@ -369,7 +414,7 @@ def test_moves_queued_runs_up_the_pending_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[0] for row in rows(app)] == ["r1", "r4", "r2", "r3"]
@@ -396,7 +441,7 @@ def test_clears_the_next_run_note_once_it_starts() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert status(app) == "said queued"
@@ -430,7 +475,7 @@ def test_keeps_later_notes_when_the_next_run_starts() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert status(app) == "said killing"
@@ -461,7 +506,7 @@ def test_moves_deselected_runs_to_the_bottom() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[:3:2] for row in rows(app)] == [
@@ -498,7 +543,7 @@ def test_puts_reselected_runs_back_in_the_queue() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[:3:2] for row in rows(app)] == [
@@ -519,7 +564,7 @@ def test_space_toggles_the_row_under_the_cursor() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("down", "space")
@@ -543,7 +588,7 @@ def test_space_leaves_the_cursor_on_the_next_row() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("down", "space")
@@ -560,7 +605,7 @@ def test_space_does_nothing_without_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.press("space")
@@ -578,7 +623,7 @@ def test_n_runs_the_row_under_the_cursor_next() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("down", "down", "n")
@@ -592,7 +637,7 @@ def test_n_does_nothing_without_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.press("n")
@@ -610,7 +655,7 @@ def test_plus_and_minus_change_the_concurrency() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert corner(app) == "2 at a time"
@@ -632,7 +677,7 @@ def test_concurrency_starts_at_one_until_planned() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("plus")
@@ -648,7 +693,7 @@ def test_shows_the_new_concurrency() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert (app.concurrency, corner(app)) == (5, "5 at a time")
@@ -663,7 +708,7 @@ def test_shows_other_events_as_status() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert status(app) == "said killing"
@@ -687,7 +732,7 @@ def test_ticks_the_time_of_running_runs(
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             collaborators["time"].monotonic.return_value = 25.0
@@ -712,7 +757,7 @@ def test_spins_the_status_of_running_runs() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch("labnotes.tui.run_app.DataTable.set_interval") as interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -753,7 +798,7 @@ def test_ctrl_c_asks_before_leaving_runs_going() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls, "r1", "r2"), "exp")
+        app = RunApp(going(controls, "r1", "r2"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("ctrl+c")
@@ -771,7 +816,7 @@ def test_ctrl_q_asks_like_ctrl_c() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls, "r1"), "exp")
+        app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("ctrl+q")
@@ -785,7 +830,7 @@ def test_ctrl_c_twice_leaves_the_runs_going() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls, "r1"), "exp")
+        app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("ctrl+c", "ctrl+c")
@@ -800,7 +845,7 @@ def test_s_at_the_prompt_stops_the_runs_then_kills_them() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls, "r1"), "exp")
+        app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         with mock.patch("labnotes.tui.run_app.GRACE_SECONDS", 0.3):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -820,7 +865,7 @@ def test_escape_at_the_prompt_keeps_the_tui_open() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls, "r1"), "exp")
+        app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("ctrl+c", "escape")
@@ -836,7 +881,7 @@ def test_table_keys_wait_while_the_prompt_is_open() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls, "r1"), "exp")
+        app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("ctrl+c", "x", "n", "j", "m")
@@ -856,7 +901,7 @@ def test_ctrl_c_with_nothing_running_quits_and_leaves_the_queue_going() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert app.title == "Exp"
@@ -882,7 +927,7 @@ def test_ctrl_c_finishes_once_idle() -> None:
         return []
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             reports[0]({"event": "idle"})
@@ -899,7 +944,7 @@ def test_sigterm_stops_the_runs_then_finishes_once_idle(
     controls = mock.Mock()
 
     async def drive() -> None:
-        app = RunApp(going(controls), "exp")
+        app = RunApp(going(controls), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             collaborators["stop_then_kill"].assert_called_once_with(app.stop_runs, 15)
@@ -926,7 +971,7 @@ def test_closing_the_terminal_leaves_the_runs_going() -> None:
         return await loop.create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert handlers == {1: app.exit}
@@ -943,7 +988,7 @@ def test_ticks_every_second_and_follows_output_often() -> None:
         return []
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "set_interval") as set_interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -976,7 +1021,7 @@ def test_widens_columns_as_cells_grow(
         return [{"exit_code": -15}]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             rendered.set()
@@ -997,7 +1042,7 @@ def test_slash_filters_rows_by_params() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("slash", "m", "space", "r", "2", "enter")
@@ -1039,7 +1084,7 @@ def test_an_empty_filter_hides_the_field() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert not app.query_one("#filter").display
@@ -1059,7 +1104,7 @@ def test_filtering_keeps_the_cursor_on_a_shown_row() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("down", "down", "slash", "r", "enter")
@@ -1088,7 +1133,7 @@ def test_shift_d_deselects_the_shown_pending_runs() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("slash", "r", "enter", "D")
@@ -1106,7 +1151,7 @@ def test_x_stops_the_run_under_the_cursor() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("down", "x")
@@ -1120,7 +1165,7 @@ def test_x_does_nothing_without_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.press("x")
@@ -1149,7 +1194,7 @@ def test_f_hides_and_shows_failed_runs() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("f")
@@ -1196,7 +1241,7 @@ def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert status(app) == "1 passed, 1 failed. Ctrl-C to quit."
@@ -1229,7 +1274,7 @@ def test_r_does_nothing_without_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.press("r")
@@ -1254,7 +1299,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -1295,7 +1340,7 @@ def test_only_back_and_quit_work_while_following_output() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -1336,7 +1381,7 @@ def test_starts_over_when_viewing_another_run(tmp_path: Path) -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -1359,7 +1404,7 @@ def test_escape_brings_back_the_summary_once_idle() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -1388,7 +1433,7 @@ def test_opens_a_lone_adhoc_run_in_its_output(
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -1422,7 +1467,7 @@ def test_shows_nested_runs_by_their_own_name() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             reports[0](
@@ -1451,7 +1496,7 @@ def test_moves_the_cursor_with_vim_keys(keys: tuple[str, ...], row: int) -> None
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press(*keys)
@@ -1468,7 +1513,7 @@ def test_keeps_the_error_that_stopped_the_runs() -> None:
         raise failure
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert not app.is_running
@@ -1483,7 +1528,7 @@ def test_has_no_error_when_the_runs_finish() -> None:
         return [{"exit_code": 0}]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         assert app.error is None
         async with app.run_test() as pilot:
             await pilot.pause()
@@ -1525,7 +1570,7 @@ def test_enter_drops_a_grabbed_run_where_j_moved_it() -> None:
     start, _, controls = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m")
@@ -1552,7 +1597,7 @@ def test_m_drops_a_grabbed_run_where_k_moved_it() -> None:
     start, _, controls = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("G", "m", "k", "up", "m")
@@ -1566,7 +1611,7 @@ def test_a_grabbed_run_stays_inside_the_pending_runs() -> None:
     start, _, controls = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "k")
@@ -1581,7 +1626,7 @@ def test_escape_puts_a_grabbed_run_back() -> None:
     start, _, controls = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "j", "j", "escape")
@@ -1599,7 +1644,7 @@ def test_putting_back_keeps_runs_added_while_grabbed_last() -> None:
     start, reports, _ = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "j")
@@ -1616,7 +1661,7 @@ def test_only_pending_runs_can_be_grabbed() -> None:
     start, _, _ = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("m")
@@ -1632,7 +1677,7 @@ def test_m_does_nothing_without_rows() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.press("m")
             assert app.grabbed is None
@@ -1644,7 +1689,7 @@ def test_only_grab_keys_work_while_grabbed() -> None:
     start, _, controls = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert not app.check_action("shift", (1,))
@@ -1669,7 +1714,7 @@ def test_a_grabbed_run_that_starts_goes_back_and_lets_go() -> None:
     start, reports, controls = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "j")
@@ -1690,7 +1735,7 @@ def test_a_reorder_from_the_daemon_lets_go_of_the_grabbed_run() -> None:
     start, reports, _ = grabbing()
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "j")
@@ -1718,7 +1763,7 @@ def test_shows_where_the_daemon_moved_a_run() -> None:
     start, reports, _ = grabbing(move)
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             await pilot.press("j", "m", "j", "enter")
@@ -1753,7 +1798,7 @@ def test_shows_log_blocks_above_the_output(tmp_path: Path) -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -1794,7 +1839,7 @@ def test_shows_tempfail_retries_counting_down_then_their_outcome(
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[2] for row in rows(app)] == [
@@ -1852,7 +1897,7 @@ def test_a_manual_retry_keeps_the_runs_status() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert [row[2] for row in rows(app)] == ["✗ exited 1", "✓", "✓"]
@@ -1875,7 +1920,7 @@ def test_a_retried_run_that_passed_counts_as_retried_not_failed() -> None:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp")
+        app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
             assert status(app) == "1 passed, 0 failed. 1 retried. Ctrl-C to quit."

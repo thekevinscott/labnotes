@@ -1,6 +1,6 @@
 import pytest
 
-from labnotes.format_bytes import format_bytes
+from labnotes.utils.format_bytes import format_bytes
 
 
 @pytest.mark.parametrize(

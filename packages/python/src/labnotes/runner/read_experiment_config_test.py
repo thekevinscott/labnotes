@@ -166,7 +166,8 @@ def test_rejects_a_bad_config(text: str, message: str) -> None:
 
 
 @pytest.mark.parametrize(
-    "source", ['command = "run"\n[views]\nruns = "view"\n', 'command = "run"\n[views]\n']
+    "source",
+    ['command = "run"\n[views]\nruns = "view"\n', 'command = "run"\n[views]\n'],
 )
 def test_accepts_views(source: str) -> None:
     read_experiment_config(PATH, source, "adhoc", 1, 2)

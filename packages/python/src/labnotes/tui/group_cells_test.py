@@ -2,7 +2,8 @@ from typing import Any
 
 from labnotes.tui.group_cells import group_cells
 
-COLUMNS = ["id", "m", "n", "started", "x", "duration"]
+KEYS = ["status", "id", "runs", "m", "n", "started", "x", "duration"]
+COLUMNS = [{"key": key, "label": key.upper()} for key in KEYS]
 
 
 def group(**fields: object) -> dict[str, Any]:
@@ -29,6 +30,12 @@ def test_summarizes_an_invocation() -> None:
         "5",
         "",
     ]
+
+
+def test_follows_the_column_order() -> None:
+    columns = [COLUMNS[3], COLUMNS[1]]
+
+    assert group_cells(group(), columns, False, False) == ["a", "▸ 20261017-000000"]
 
 
 def test_leaves_the_start_blank_when_the_name_has_no_stamp() -> None:

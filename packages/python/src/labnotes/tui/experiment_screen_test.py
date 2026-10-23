@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Iterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from unittest import mock
 
@@ -16,7 +16,10 @@ LOADED = {
         {"id": "inv/first", "folder": "alpha/runs/inv/first"},
         {"id": "lone", "folder": "alpha/runs/lone"},
     ],
+    "runs_view": None,
 }
+COLUMNS = [{"key": "status", "label": ""}, {"key": "id", "label": "id"}]
+NATIVE = {"alpha/runs/lone": {"id": "lone"}}
 
 
 @pytest.fixture(autouse=True)
@@ -31,14 +34,20 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ),
         mock.patch(
             "labnotes.tui.experiment_screen.invocation_columns",
-            return_value=["", "id"],
+            return_value=COLUMNS,
         ) as invocation_columns,
         mock.patch(
+            "labnotes.tui.experiment_screen.native_rows", return_value=NATIVE
+        ) as native_rows,
+        mock.patch(
             "labnotes.tui.experiment_screen.invocation_rows",
-            side_effect=lambda experiment, opened: [
+            side_effect=lambda experiment, opened, columns, rows: [
                 (key, [key]) for key in ["inv", *sorted(opened), "lone"]
             ],
         ) as invocation_rows,
+        mock.patch(
+            "labnotes.tui.experiment_screen.Static", return_value="status"
+        ) as static,
         mock.patch(
             "labnotes.tui.experiment_screen.RunsTable", return_value="runs table"
         ) as runs_table,
@@ -63,6 +72,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "load_experiment": load_experiment,
             "invocation_columns": invocation_columns,
             "invocation_rows": invocation_rows,
+            "native_rows": native_rows,
+            "static": static,
             "runs_table": runs_table,
             "fill_table": fill_table,
             "run_screen": run_screen,
@@ -80,11 +91,28 @@ def table() -> mock.MagicMock:
 
 
 @pytest.fixture
-def screen(table: mock.MagicMock) -> Iterator[ExperimentScreen]:
-    shown = ExperimentScreen(TABLES, CONFIG, "alpha")
+def status() -> mock.MagicMock:
+    return mock.MagicMock(display=False)
+
+
+@pytest.fixture
+def views() -> mock.MagicMock:
+    return mock.MagicMock(return_value="request")
+
+
+@pytest.fixture
+def screen(
+    table: mock.MagicMock, status: mock.MagicMock, views: mock.MagicMock
+) -> Iterator[ExperimentScreen]:
+    shown = ExperimentScreen(TABLES, CONFIG, "alpha", views)
     with (
-        mock.patch.object(shown, "query_one", return_value=table),
+        mock.patch.object(
+            shown,
+            "query_one",
+            side_effect=lambda *query: status if query[0] == "#view-status" else table,
+        ),
         mock.patch.object(shown, "run_worker"),
+        mock.patch.object(shown, "watch_files", new=mock.Mock()),
     ):
         yield shown
 
@@ -97,8 +125,9 @@ def filled(fill_table: mock.MagicMock) -> list[str]:
 def test_shows_a_table_between_the_header_and_footer(
     screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    assert list(screen.compose()) == ["header", "runs table", "footer"]
+    assert list(screen.compose()) == ["header", "runs table", "status", "footer"]
     collaborators["runs_table"].assert_called_once_with(id="runs", cursor_type="row")
+    collaborators["static"].assert_called_once_with(id="view-status")
 
 
 def test_binds_enter_and_escape() -> None:
@@ -140,10 +169,141 @@ def test_lists_the_runs_by_invocation(
     )
     assert screen.sub_title == "Alpha study"
     collaborators["invocation_columns"].assert_called_once_with(LOADED)
-    collaborators["invocation_rows"].assert_called_once_with(LOADED, set())
+    collaborators["native_rows"].assert_called_once_with(LOADED)
+    collaborators["invocation_rows"].assert_called_once_with(
+        LOADED, set(), COLUMNS, NATIVE
+    )
     collaborators["fill_table"].assert_called_once_with(
         table, ["", "id"], [("inv", ["inv"]), ("lone", ["lone"])]
     )
+    getattr(screen.run_worker, "assert_not_called")()
+
+
+def test_hides_the_status_line_without_a_runs_view(
+    screen: ExperimentScreen, status: mock.MagicMock
+) -> None:
+    asyncio.run(screen.load())
+
+    status.update.assert_called_once_with("")
+    assert status.display is False
+
+
+VIEWED = {**LOADED, "runs_view": "uv run view.py"}
+
+
+@pytest.fixture
+def runs_view() -> Iterator[mock.MagicMock]:
+    with mock.patch("labnotes.tui.experiment_screen.RunsView") as made:
+        made.return_value.table.return_value = ([{"key": "m", "label": "M"}], {})
+        made.return_value.status.return_value = ""
+        made.return_value.next_request.return_value = None
+        made.return_value.exchange = mock.AsyncMock(return_value=True)
+        yield made
+
+
+def test_starts_the_runs_view_once(
+    screen: ExperimentScreen,
+    collaborators: dict[str, mock.MagicMock],
+    views: mock.MagicMock,
+    runs_view: mock.MagicMock,
+) -> None:
+    collaborators["load_experiment"].return_value = VIEWED
+
+    asyncio.run(screen.load())
+    asyncio.run(screen.load())
+
+    views.assert_called_once_with("uv run view.py")
+    runs_view.assert_called_once_with("request")
+    assert getattr(screen.run_worker, "call_count") == 1
+    assert (
+        runs_view.return_value.update.call_args_list == [mock.call(COLUMNS, NATIVE)] * 2
+    )
+
+
+def test_draws_what_the_runs_view_shows(
+    screen: ExperimentScreen,
+    table: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
+    runs_view: mock.MagicMock,
+) -> None:
+    collaborators["load_experiment"].return_value = VIEWED
+
+    asyncio.run(screen.load())
+
+    collaborators["invocation_rows"].assert_called_once_with(
+        VIEWED, set(), [{"key": "m", "label": "M"}], {}
+    )
+    assert collaborators["fill_table"].call_args.args[1] == ["M"]
+
+
+def test_shows_what_the_runs_view_reports(
+    screen: ExperimentScreen,
+    status: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
+    runs_view: mock.MagicMock,
+) -> None:
+    collaborators["load_experiment"].return_value = VIEWED
+    runs_view.return_value.status.return_value = "runs view took 120 ms"
+
+    asyncio.run(screen.load())
+
+    status.update.assert_called_once_with("runs view took 120 ms")
+    assert status.display is True
+
+
+def test_asks_the_runs_view_when_it_has_a_request(
+    screen: ExperimentScreen,
+    collaborators: dict[str, mock.MagicMock],
+    runs_view: mock.MagicMock,
+) -> None:
+    collaborators["load_experiment"].return_value = VIEWED
+    runs_view.return_value.next_request.side_effect = [{"rows": {}}, None]
+    with mock.patch.object(
+        screen, "answer", new=mock.Mock(return_value="answering")
+    ) as answer:
+        asyncio.run(screen.load())
+
+    answer.assert_called_once_with(runs_view.return_value, {"rows": {}})
+    getattr(screen.run_worker, "assert_called_with")("answering", exit_on_error=False)
+
+
+@pytest.mark.parametrize("changed", [True, False])
+def test_redraws_only_when_the_answer_changed_and_asks_again(
+    screen: ExperimentScreen,
+    status: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
+    runs_view: mock.MagicMock,
+    changed: bool,
+) -> None:
+    view = runs_view.return_value
+    view.exchange.return_value = changed
+    view.status.return_value = "runs view: broken"
+    screen.view = view
+
+    with mock.patch.object(screen, "ask") as ask:
+        asyncio.run(screen.answer(view, {"rows": {}}))
+
+    view.exchange.assert_awaited_once_with({"rows": {}})
+    assert collaborators["fill_table"].called is changed
+    status.update.assert_called_once_with("runs view: broken")
+    ask.assert_called_once_with(view)
+
+
+def test_marks_touched_files_and_asks(
+    screen: ExperimentScreen,
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    async def changes() -> AsyncIterator[dict[str, object]]:
+        yield {"path": "alpha/runs/lone/stderr.log"}
+
+    collaborators["watch_rows"].return_value = changes()
+    view = mock.Mock()
+    with mock.patch.object(screen, "ask") as ask:
+        asyncio.run(ExperimentScreen.watch_files(screen, view))
+
+    collaborators["watch_rows"].assert_called_once_with(TABLES, {"run_files"}, "alpha")
+    view.touch.assert_called_once_with("alpha/runs/lone/stderr.log")
+    ask.assert_called_once_with(view)
 
 
 def test_rejects_an_unknown_experiment(

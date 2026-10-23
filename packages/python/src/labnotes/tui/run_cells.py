@@ -1,29 +1,22 @@
 from collections.abc import Mapping, Sequence
 
-from rich.text import Text
-
-from labnotes.format_duration import format_duration
-from labnotes.format_value import format_value
-from labnotes.tui.dim import dim
+from labnotes.tui.format_cell import format_cell
 
 
 def run_cells(
-    run: Mapping[str, object], columns: Sequence[str], nested: bool, live: bool
+    row: Mapping[str, object],
+    columns: Sequence[Mapping[str, str]],
+    nested: bool,
+    live: bool,
 ) -> list[object]:
-    if run["labnotes_unfinished"]:
-        status = Text("◐", style="yellow") if live else dim("–")
-    elif run["labnotes_completed"]:
-        status = Text("✓", style="green")
-    else:
-        status = Text("✕", style="red")
-    cells: list[object] = [status]
+    cells: list[object] = []
     for column in columns:
-        value = run[column]
-        if column == "id" and nested:
-            child = str(value).partition("/")[2]
-            cells += [f"  {child}" if child else str(value), ""]
-        elif column == "duration":
-            cells.append(format_duration(value))  # type: ignore[arg-type]
+        key = column["key"]
+        if key not in row:
+            cells.append("")
+        elif key == "id" and nested:
+            child = str(row[key]).partition("/")[2]
+            cells.append(f"  {child}" if child else str(row[key]))
         else:
-            cells.append(format_value(value))
+            cells.append(format_cell(key, row[key], live))
     return cells

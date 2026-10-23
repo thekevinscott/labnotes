@@ -1,6 +1,7 @@
 import io
 import json
 import sys
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -14,7 +15,7 @@ REQUEST = {
 }
 
 
-def runs(columns: list[object]) -> tuple[list[object], object]:
+def runs(columns: list[Any]) -> tuple[list[Any], Any]:
     return [*columns, "model"], lambda row: {**row, "model": f"m-{row['id']}"}
 
 
@@ -69,7 +70,7 @@ def test_serves_a_function_defined_in_the_script(
     monkeypatch.setattr(sys, "stdout", stdout)
     monkeypatch.setattr(sys, "stderr", stderr)
 
-    def noisy(columns: list[object]) -> tuple[list[object], object]:
+    def noisy(columns: list[Any]) -> tuple[list[Any], Any]:
         print("debugging")
         return runs(columns)
 

@@ -1,6 +1,7 @@
 import asyncio
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -51,6 +52,10 @@ def run(
     stopped: bool = False,
     **retry_of: str,
 ) -> dict[str, object]:
+    options: dict[str, Any] = dict(retry_of)
+    if stopped:
+        options["stopped"] = lambda: True
+
     async def go() -> dict[str, object]:
         event = asyncio.Event()
         if stopping:
@@ -65,8 +70,7 @@ def run(
             TREE,  # type: ignore[arg-type]
             timeout=timeout,
             stop=mock.Mock() if stop is None else stop,
-            stopped=lambda: stopped,
-            **retry_of,
+            **options,
         )
 
     return asyncio.run(go())

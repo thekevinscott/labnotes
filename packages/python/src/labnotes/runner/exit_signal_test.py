@@ -15,6 +15,7 @@ def nsig() -> Iterator[None]:
 @pytest.mark.parametrize(
     ("exit_code", "expected"),
     [
+        (-1, 1),
         (-9, 9),
         (-15, 15),
         (137, 9),

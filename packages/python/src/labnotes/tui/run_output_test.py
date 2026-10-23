@@ -5,9 +5,12 @@ from unittest import mock
 
 import pytest
 
+from textual.widgets import RichLog
+
 from labnotes.tui.run_output import RunOutput
 
 DROP_UNFINISHED = RunOutput.drop_unfinished
+WRITE = RunOutput.write
 
 
 @pytest.fixture(autouse=True)
@@ -34,20 +37,30 @@ def test_starts_empty(log: dict[str, mock.MagicMock]) -> None:
     assert output.id == "output"
     assert output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
-    assert output.unfinished_rows == 0
+    assert output.written_rows == 0
     assert (output.wrap, output.min_width) == (True, 1)
+    assert not output._size_known
     log["clear"].assert_called_once_with()
 
 
-def test_counts_the_rows_an_unfinished_line_wraps_to(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+@pytest.mark.parametrize("width, known", [(0, False), (1, True), (40, True)])
+def test_reset_holds_writes_while_the_log_has_no_width(width: int, known: bool) -> None:
+    output = RunOutput()
+    with mock.patch.object(
+        RunOutput, "scrollable_content_region", mock.Mock(width=width)
+    ):
+        output.reset()
+    assert output._size_known is known
+
+
+def test_write_counts_the_rows_it_adds() -> None:
     output = RunOutput()
     output.lines = ["earlier"]  # type: ignore[list-item]
-    log["write"].side_effect = lambda text: output.lines.extend(["a", "b"])  # type: ignore[arg-type]
-    (tmp_path / "stdout.log").write_text("done\npartial")
-    output.follow(tmp_path)
-    assert output.unfinished_rows == 2
+    with mock.patch.object(RichLog, "write") as write:
+        write.side_effect = lambda *args, **kwargs: output.lines.extend(["a", "b"])  # type: ignore[list-item]
+        assert WRITE(output, "text", 9, scroll_end=False) is output
+    write.assert_called_once_with("text", 9, scroll_end=False)
+    assert output.written_rows == 2
 
 
 def test_follows_nothing_before_a_run_writes_output(
@@ -194,7 +207,7 @@ def test_drops_a_deferred_write_before_the_size_is_known() -> None:
 def test_drops_every_row_of_the_unfinished_line() -> None:
     output = RunOutput()
     output._size_known = True
-    output.unfinished_rows = 2
+    output.written_rows = 2
     output.lines = ["first", "kept", "dropped", "dropped"]  # type: ignore[list-item]
     output._line_cache = mock.Mock()
     with (

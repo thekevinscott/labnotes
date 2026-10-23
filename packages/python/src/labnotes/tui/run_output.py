@@ -1,5 +1,6 @@
 import codecs
 from pathlib import Path
+from typing import Any, Self
 
 from rich.text import Text
 from textual.geometry import Size
@@ -21,8 +22,11 @@ class RunOutput(RichLog):
         }
         self.last_stream: str | None = None
         self.unfinished = ""
-        self.unfinished_rows = 0
+        self.written_rows = 0
         self.clear()
+        # A hidden log has no width; writing now would wrap every line to one
+        # cell. Hold writes until it's shown and resized.
+        self._size_known = self.scrollable_content_region.width > 0
 
     @property
     def mid_line(self) -> bool:
@@ -49,16 +53,22 @@ class RunOutput(RichLog):
             if complete:
                 self.write(Text.from_ansi("\n".join(complete)))
             if self.unfinished:
-                rows = len(self.lines)
                 self.write(Text.from_ansi(self.unfinished))
-                self.unfinished_rows = len(self.lines) - rows
             self.last_stream = stream
+
+    # Counted here, not in follow: writes made before the size is known
+    # render later, from on_resize.
+    def write(self, content: object, *args: Any, **kwargs: Any) -> Self:
+        rows = len(self.lines)
+        super().write(content, *args, **kwargs)
+        self.written_rows = len(self.lines) - rows
+        return self
 
     def drop_unfinished(self) -> None:
         if not self._size_known:
             self._deferred_renders.pop()
             return
-        del self.lines[-self.unfinished_rows :]
+        del self.lines[-self.written_rows :]
         self._line_cache.clear()
         self.virtual_size = Size(self.virtual_size.width, len(self.lines))
         self.refresh()

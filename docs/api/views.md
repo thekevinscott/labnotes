@@ -39,7 +39,9 @@ columns, row = runs([{"key": "id", "label": "id"}])
 assert row({"id": "a", "params": {"model": "opus"}})["model"] == "opus"
 ```
 
-### Example: the last line of stderr
+### Example: why a run failed
+
+The reason a run failed is often the last line of its `stderr.log`. This view shows it beside each failed run:
 
 ```python
 # views/runs.py
@@ -50,19 +52,21 @@ from labnotes import view
 
 def last_line(folder):
     path = Path(folder) / "stderr.log"
-    lines = path.read_text().splitlines() if path.exists() else []
+    text = path.read_text(errors="replace") if path.exists() else ""
+    lines = [line for line in text.splitlines() if line.strip()]
     return lines[-1] if lines else ""
 
 
 @view.serve
 def runs(columns):
-    return [*columns, {"key": "last", "label": "last stderr"}], lambda row: {
-        **row,
-        "last": last_line(row["folder"]),
-    }
+    def row(run):
+        failed = run["status"] == "failed"
+        return {**run, "reason": last_line(run["folder"]) if failed else ""}
+
+    return [*columns, {"key": "reason", "label": "last stderr"}], row
 ```
 
-`folder` is relative to the project root, which is where the script runs. As a run writes to `stderr.log`, labnotes asks again for that run and the column follows.
+`folder` is relative to the project root, which is where the script runs. When a run's files change, labnotes asks again for that run, so the column fills in as runs fail.
 
 ## Columns
 

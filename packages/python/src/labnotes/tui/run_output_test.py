@@ -5,8 +5,6 @@ from unittest import mock
 
 import pytest
 
-from textual.widgets import RichLog
-
 from labnotes.tui.run_output import RunOutput
 
 DROP_UNFINISHED = RunOutput.drop_unfinished
@@ -55,8 +53,8 @@ def test_reset_holds_writes_while_the_log_has_no_width(width: int, known: bool) 
 
 def test_write_counts_the_rows_it_adds() -> None:
     output = RunOutput()
-    output.lines = ["earlier"]  # type: ignore[list-item]
-    with mock.patch.object(RichLog, "write") as write:
+    output.lines = ["earlier", "earlier"]  # type: ignore[list-item]
+    with mock.patch("textual.widgets.RichLog.write") as write:
         write.side_effect = lambda *args, **kwargs: output.lines.extend(["a", "b"])  # type: ignore[list-item]
         assert WRITE(output, "text", 9, scroll_end=False) is output
     write.assert_called_once_with("text", 9, scroll_end=False)
@@ -208,7 +206,7 @@ def test_drops_every_row_of_the_unfinished_line() -> None:
     output = RunOutput()
     output._size_known = True
     output.written_rows = 2
-    output.lines = ["first", "kept", "dropped", "dropped"]  # type: ignore[list-item]
+    output.lines = ["first", "kept", "kept", "dropped", "dropped"]  # type: ignore[list-item]
     output._line_cache = mock.Mock()
     with (
         mock.patch.object(RunOutput, "virtual_size", mock.Mock(width=9)),
@@ -217,7 +215,7 @@ def test_drops_every_row_of_the_unfinished_line() -> None:
     ):
         DROP_UNFINISHED(output)
         assert output.virtual_size is size.return_value
-    size.assert_called_once_with(9, 2)
-    assert output.lines == ["first", "kept"]
+    size.assert_called_once_with(9, 3)
+    assert output.lines == ["first", "kept", "kept"]
     output._line_cache.clear.assert_called_once_with()
     refresh.assert_called_once_with()

@@ -26,7 +26,7 @@ class RunOutput(RichLog):
         self.clear()
         # A hidden log has no width; writing now would wrap every line to one
         # cell. Hold writes until it's shown and resized.
-        self._size_known = self.scrollable_content_region.width > 0
+        self._size_known = bool(self.scrollable_content_region.width)
 
     @property
     def mid_line(self) -> bool:

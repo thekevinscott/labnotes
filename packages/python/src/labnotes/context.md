@@ -77,8 +77,9 @@ Each param is appended as `--name value`, with the name as written (use
 and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
 code, `ended_by`, `signal`), `stdout.log` and `stderr.log` to the
 run folder. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
-`"signal"` (a signal labnotes didn't send, like the out-of-memory killer) or
-null (the script exited itself). `signal` is the signal number read from the
+`"signal"` (a signal labnotes didn't send, like the out-of-memory killer),
+`"lost"` (its process died unseen; the daemon marks these when it starts, with
+`ended` set and `exit_code` null) or null (the script exited itself). `signal` is the signal number read from the
 exit code (negative, or 128 + N from the shell), else null.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next

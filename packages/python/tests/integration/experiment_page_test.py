@@ -2,6 +2,7 @@ import re
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
+import psutil
 from playwright.async_api import Page, expect
 from conftest import browse, daemon, run, serve, write
 
@@ -182,17 +183,19 @@ LAKE = "20261020-105052-lake"
 POND = "20261019-090000-pond"
 
 
-def unfinished(tmp_path: Path) -> None:
+def unfinished(tmp_path: Path, **fields: object) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
     started = datetime.now(UTC) - timedelta(seconds=5)
-    run(tmp_path, "run1", {}, created=started.strftime("%Y-%m-%dT%H:%M:%SZ"))
+    run(tmp_path, "run1", {}, created=started.strftime("%Y-%m-%dT%H:%M:%SZ"), **fields)
 
 
 def test_shows_an_unfinished_run_as_running_while_the_daemon_is_up(
     tmp_path: Path,
 ) -> None:
-    unfinished(tmp_path)
+    # A live process, so the daemon doesn't end the run as lost.
+    me = psutil.Process()
+    unfinished(tmp_path, pid=me.pid, pid_created=me.create_time())
 
     async def check(page: Page) -> None:
         row = page.get_by_role("row").filter(has_text="run1")

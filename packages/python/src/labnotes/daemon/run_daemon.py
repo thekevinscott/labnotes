@@ -6,11 +6,13 @@ import uvicorn
 from labnotes.daemon.daemon_app import daemon_app
 from labnotes.daemon.daemon_server import DaemonServer
 from labnotes.daemon.exit_when_idle import exit_when_idle
+from labnotes.daemon.finalize_lost_runs import finalize_lost_runs
 from labnotes.daemon.socket_path import socket_path
 from labnotes.models import LabnotesConfig
 
 
 async def run_daemon(config: LabnotesConfig) -> None:
+    await finalize_lost_runs(config)
     path = socket_path(config.root)
     app = daemon_app(config)
     server = DaemonServer(

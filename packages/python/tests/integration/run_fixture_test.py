@@ -25,7 +25,7 @@ def snapshot(app: RunApp) -> dict[str, object]:
     table: Any = app.query_one("#runs")
     rows = []
     for key in table.rows:
-        run, params, status, elapsed = table.get_row(key)
+        run, params, status, elapsed, *_ = table.get_row(key)
         text = str(status)
         rows.append(
             {

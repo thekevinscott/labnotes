@@ -45,7 +45,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         yield {"time": time, "stop_then_kill": stop_then_kill, "run_usage": run_usage}
 
 
-def rows(app: RunApp) -> list[list[object]]:
+def rows(app: RunApp) -> list[list[str]]:
     table: Any = app.query_one("#runs")
     return [[str(cell) for cell in table.get_row(key)][:4] for key in table.rows]
 

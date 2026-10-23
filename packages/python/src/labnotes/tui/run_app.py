@@ -1,7 +1,6 @@
 import asyncio
 import signal
 import time
-from functools import partial
 from pathlib import Path
 
 from rich.text import Text
@@ -156,13 +155,13 @@ class RunApp(App[None]):
                 if run == self.next_run:
                     self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                cells = (
+                shown = (
                     run.rpartition("/")[2],
                     args,
                     SPINNER[self.frame],
                     format_elapsed(0),
                 )
-                for column, cell in zip(COLUMNS, cells):
+                for column, cell in zip(COLUMNS, shown):
                     self.set_cell(run, column, cell)
             case "ended":
                 outcome = PASSED
@@ -177,7 +176,7 @@ class RunApp(App[None]):
                 self.tick()
                 del self.started[run]
                 self.redraw(table.cursor_row)
-                self.run_worker(partial(self.measure, run))
+                self.run_worker(self.measure(run))
             case "queued":
                 self.reposition(event, run)
                 self.next_run = run
@@ -289,7 +288,7 @@ class RunApp(App[None]):
             self.set_cell(run, "status", Text(outcome, style="yellow"))
         if self.started and not self.sampling:
             self.sampling = True
-            self.run_worker(self.sample)
+            self.run_worker(self.sample())
 
     async def sample(self) -> None:
         try:

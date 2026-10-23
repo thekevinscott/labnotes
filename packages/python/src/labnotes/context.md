@@ -109,9 +109,10 @@ shows a waiting retry as `retry in 30s` and the end as `gave up (exit 75)`;
 `run status --json` reports `retrying`, `retried`, `gave up` and
 `retry cancelled` events.
 
-Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going.
+Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going. Each run lists `size`, the bytes in its run folder, and a running run lists `memory`, the resident bytes of its command and everything it started.
 
-In a terminal, `run` shows a live table of runs (status and time) and stays
+In a terminal, `run` shows a live table of runs (status, time, memory and
+folder size) and stays
 open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one
 runs it again under a new id, with `retry_of` set. `j` and `k` move the cursor, `g` and `G` jump to the
 first and last row. Runs not started yet show grayed as `pending`, and as
@@ -146,7 +147,8 @@ going. Elsewhere, it prints a line per event instead.
 - `labnotes run stop` stops every run the daemon has going: SIGTERM, then
   SIGKILL 5 seconds later.
 - `labnotes run status` prints what the daemon has going, a line per event so
-  far plus the latest line each running run logged. `-f` keeps following, and
+  far plus the latest line each running run logged and what each running run
+  uses (`usage` events with `--json`). `-f` keeps following, and
   waits for a daemon when none is up. `--json` prints one JSON object per line.
   Following doesn't keep the daemon up.
 - `labnotes run control NAME ACTION [ARG]` sends one live-view control to a

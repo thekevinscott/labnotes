@@ -18,6 +18,8 @@
 
 The header shows the experiment's name and how many runs go at once.
 
+The `memory` column shows how much memory a running run's processes hold: the resident memory of its command and everything it started, summed and sampled each second. The `size` column shows how much its run folder holds on disk. A finished run keeps its size and drops its memory. Both use units of 1000, like `3.2 GB`. Hidden files and folders (names starting with `.`) don't count toward the size.
+
 ## Table keys
 
 | Key | Action |

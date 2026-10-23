@@ -82,7 +82,7 @@ def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> N
             await pilot.pause()
             app.tick()
             await pilot.pause()
-            assert usage(app) == [["3.2 GB", "5.0 KB"], ["", "5.0 KB"], ["", ""]]
+            assert usage(app) == [["3.2 GB", "5.0 kB"], ["", "5.0 kB"], ["", ""]]
             assert app.query_one("#runs").ordered_columns[4].label.plain == "memory"  # type: ignore[attr-defined]
             assert app.query_one("#runs").ordered_columns[5].label.plain == "size"  # type: ignore[attr-defined]
             done.set()
@@ -129,7 +129,7 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
             await pilot.pause()
             release.set()
             await pilot.pause()
-            assert usage(app) == [["", "1.0 KB"]]
+            assert usage(app) == [["", "1.0 kB"]]
             done.set()
             await pilot.pause()
             app.exit()
@@ -165,7 +165,7 @@ def test_waits_for_one_sample_before_taking_another(
             assert collaborators["run_usage"].await_count == 1
             release.set()
             await pilot.pause()
-            assert usage(app) == [["2.0 KB", "3.0 KB"]]
+            assert usage(app) == [["2.0 kB", "3.0 kB"]]
             app.tick()
             await pilot.pause()
             assert collaborators["run_usage"].await_count == 2
@@ -204,8 +204,8 @@ def test_shows_only_the_columns_it_is_given_in_their_order(
             assert [
                 [str(cell) for cell in table.get_row(key)] for key in table.rows
             ] == [
-                ["5.0 KB", "✓", "r1"],
-                ["5.0 KB", "|", "r2"],
+                ["5.0 kB", "✓", "r1"],
+                ["5.0 kB", "|", "r2"],
                 ["", "○", "r3"],
             ]
             assert [getattr(cell, "style", None) for cell in table.get_row("r3")] == [

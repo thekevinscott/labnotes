@@ -423,9 +423,13 @@ def test_shows_memory_and_size_readably_in_a_table(
 def test_keeps_memory_and_size_in_bytes_in_json(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    rows = [{"id": "r", "memory": 3_200_000_000, "size": 12}]
-    collaborators["experiment_rows"].return_value = rows
+    collaborators["experiment_rows"].return_value = [
+        {"id": "r", "memory": 3_200_000_000, "size": 12}
+    ]
 
     assert run(["a", "runs", "--format", "json"]) == 0
 
-    collaborators["print_rows"].assert_called_once_with(rows, "json")
+    collaborators["print_rows"].assert_called_once_with(mock.ANY, "json")
+    [printed, _] = collaborators["print_rows"].call_args.args
+    assert printed == [{"id": "r", "memory": 3_200_000_000, "size": 12}]
+    assert [type(printed[0][key]) for key in ("memory", "size")] == [int, int]

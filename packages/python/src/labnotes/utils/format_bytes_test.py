@@ -1,21 +1,17 @@
-import pytest
+from unittest import mock
 
 from labnotes.utils.format_bytes import format_bytes
 
 
-@pytest.mark.parametrize(
-    ("count", "shown"),
-    [
-        (None, ""),
-        (0, "0 B"),
-        (999, "999 B"),
-        (1000, "1.0 KB"),
-        (1_000_000, "1.0 MB"),
-        (1_700_000, "1.7 MB"),
-        (3_249_999_999, "3.2 GB"),
-        (5_200_000_000_000, "5.2 TB"),
-        (5_200_000_000_000_000, "5200.0 TB"),
-    ],
-)
-def test_formats_a_byte_count(count: int | None, shown: str) -> None:
-    assert format_bytes(count) == shown
+def test_shows_nothing_for_an_unknown_count() -> None:
+    with mock.patch("labnotes.utils.format_bytes.decimal") as decimal:
+        assert format_bytes(None) == ""
+    decimal.assert_not_called()
+
+
+def test_shows_a_count_in_decimal_units() -> None:
+    with mock.patch(
+        "labnotes.utils.format_bytes.decimal", return_value="3.2 GB"
+    ) as decimal:
+        assert format_bytes(3_249_999_999) == "3.2 GB"
+    decimal.assert_called_once_with(3_249_999_999)

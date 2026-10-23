@@ -7,7 +7,6 @@ from unittest import mock
 import pytest
 
 from labnotes.daemon.finalize_lost_runs import finalize_lost_runs
-from labnotes.list_runs import UNFINISHED
 
 CONFIG = mock.Mock(root=Path("/lab"))
 GOING = {"params": {"n": 1}, "ended": None, "exit_code": None, "error": None}
@@ -21,6 +20,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch("labnotes.daemon.finalize_lost_runs.process_alive") as alive,
         mock.patch("labnotes.daemon.finalize_lost_runs.write_run_json") as write,
         mock.patch("labnotes.daemon.finalize_lost_runs.time") as time,
+        mock.patch("labnotes.daemon.finalize_lost_runs.UNFINISHED", "unfinished"),
     ):
         time.time.return_value = 100
         open_tables.return_value.query = mock.AsyncMock(return_value=[])
@@ -41,7 +41,7 @@ def test_reads_only_unfinished_runs(collaborators: dict[str, mock.MagicMock]) ->
 
     collaborators["open_tables"].assert_called_once_with(CONFIG)
     collaborators["open_tables"].return_value.query.assert_awaited_once_with(
-        f"SELECT folder, run FROM runs WHERE {UNFINISHED}"
+        "SELECT folder, run FROM runs WHERE unfinished"
     )
     collaborators["write"].assert_not_called()
 

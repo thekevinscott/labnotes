@@ -19,6 +19,7 @@ SETTINGS = {
     "mode",
     "concurrency",
     "retries",
+    "meta",
 }
 
 
@@ -69,6 +70,9 @@ def read_experiment_config(
     retries = values.get("retries", retries)
     if not is_non_negative_int(retries):
         raise ValueError(f"{path}: retries must be 0 or more")
+    meta = values.get("meta")
+    if meta is not None and (not isinstance(meta, str) or not meta.strip()):
+        raise ValueError(f"{path}: meta must be a string")
     return ExperimentConfig(
-        command, repeats, params, name, counts, mode, concurrency, retries
+        command, repeats, params, name, counts, mode, concurrency, retries, meta
     )

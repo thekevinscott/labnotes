@@ -45,7 +45,8 @@ def test_defaults_to_one_repeat_and_no_params() -> None:
         config.mode,
         config.concurrency,
         config.retries,
-    ) == (None, 1, {}, "default", "adhoc", 1, 2)
+        config.meta,
+    ) == (None, 1, {}, "default", "adhoc", 1, 2, None)
 
 
 def test_falls_back_to_the_project_mode_concurrency_and_retries() -> None:
@@ -79,6 +80,22 @@ def test_reads_counts() -> None:
     assert config.counts == "exit_code = 0"
 
 
+def test_reads_meta() -> None:
+    config = read_experiment_config(
+        PATH, 'command = "run"\nmeta = "uv run meta.py"\n', "adhoc", 1, 2
+    )
+
+    assert config.meta == "uv run meta.py"
+
+
+def test_layers_meta_from_the_defaults() -> None:
+    config = read_experiment_config(
+        PATH, 'command = "run"\n', "adhoc", 1, 2, {"meta": "git rev-parse HEAD"}
+    )
+
+    assert config.meta == "git rev-parse HEAD"
+
+
 @pytest.mark.parametrize(
     ("mode", "project"), [("matrix", "adhoc"), ("adhoc", "matrix")]
 )
@@ -105,6 +122,8 @@ def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
         ('command = "run"\n[params]\nm = "a"\n', "params.m must be a non-empty list"),
         ('command = "run"\n[params]\nm = []\n', "params.m must be a non-empty list"),
         ('command = "run"\n[params]\nd = [1979-05-27]\n', "dates or times"),
+        ('command = "run"\nmeta = 1\n', "meta must be a string"),
+        ('command = "run"\nmeta = " "\n', "meta must be a string"),
         ('command = "run"\ncounts = 1\n', "counts must be a SQL condition"),
         ('command = "run"\ncounts = " "\n', "counts must be a SQL condition"),
         ('command = "run"\nmode = "once"\n', "mode must be matrix or adhoc"),

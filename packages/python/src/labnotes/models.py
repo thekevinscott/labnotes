@@ -65,3 +65,4 @@ class ExperimentConfig:
     mode: str = DEFAULT_MODE
     concurrency: int = 1
     retries: int = DEFAULT_RETRIES
+    meta: str | None = None

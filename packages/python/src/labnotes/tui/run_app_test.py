@@ -65,12 +65,14 @@ def began(run: str) -> dict[str, object]:
 
 
 def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> None:
+    done = asyncio.Event()
+
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3"))
         report(began("r1"))
         report(began("r2"))
         report({"event": "ended", "run": "r2", "exit_code": 0, "error": None})
-        await asyncio.Event().wait()
+        await done.wait()
         return []
 
     async def drive() -> None:
@@ -82,6 +84,8 @@ def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> N
             assert usage(app) == [["3.2 GB", "5.0 KB"], ["", "5.0 KB"], ["", ""]]
             assert app.query_one("#runs").ordered_columns[4].label.plain == "memory"  # type: ignore[attr-defined]
             assert app.query_one("#runs").ordered_columns[5].label.plain == "size"  # type: ignore[attr-defined]
+            done.set()
+            await pilot.pause()
             app.exit()
 
     asyncio.run(drive())
@@ -95,6 +99,7 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     sampled = asyncio.Event()
+    done = asyncio.Event()
     release = asyncio.Event()
 
     async def slow(folder: Path, running: bool) -> dict[str, int | None]:
@@ -111,7 +116,7 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
         report(began("r1"))
         await sampled.wait()
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
-        await asyncio.Event().wait()
+        await done.wait()
         return []
 
     async def drive() -> None:
@@ -124,6 +129,8 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
             release.set()
             await pilot.pause()
             assert usage(app) == [["", "1.0 KB"]]
+            done.set()
+            await pilot.pause()
             app.exit()
 
     asyncio.run(drive())
@@ -133,6 +140,7 @@ def test_waits_for_one_sample_before_taking_another(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     release = asyncio.Event()
+    done = asyncio.Event()
 
     async def slow(folder: Path, running: bool) -> dict[str, int | None]:
         await release.wait()
@@ -143,7 +151,7 @@ def test_waits_for_one_sample_before_taking_another(
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))
         report(began("r1"))
-        await asyncio.Event().wait()
+        await done.wait()
         return []
 
     async def drive() -> None:
@@ -160,6 +168,8 @@ def test_waits_for_one_sample_before_taking_another(
             app.tick()
             await pilot.pause()
             assert collaborators["run_usage"].await_count == 2
+            done.set()
+            await pilot.pause()
             app.exit()
 
     asyncio.run(drive())

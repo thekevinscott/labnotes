@@ -25,8 +25,8 @@ When `experiment.toml` sits next to `.labnotes.toml`, the root is the one experi
 - `files`: `experiment`, `filename`, `path`, `ctime`, `mtime`.
 - `runs`: `experiment`, `id`, `folder`, `created`, `ended`, `exit_code`,
   `error`, `stdout`, `stderr`, `params` as JSON, `meta` as JSON (null without
-  a `meta` command), and `run`, the whole `run.json` as JSON, read from each run
-  folder's `run.json`.
+  a `meta` command), `command`, and `run`, the whole `run.json` as JSON, read
+  from each run folder's `run.json`.
 
 Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
@@ -75,9 +75,11 @@ inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id is that pat
 script so it writes its outputs there.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
-and tables as JSON. labnotes writes `run.json` (params, created, ended, exit
-code, `ended_by`, `signal`), `stdout.log` and `stderr.log` to the
-run folder. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
+and tables as JSON. labnotes writes `run.json` (params, `command`, created,
+ended, exit code, `ended_by`, `signal`), `stdout.log` and `stderr.log` to the
+run folder. `command` is the shell command the run executed, with `{run_dir}`
+and the params filled in, written before the run starts, so a killed run has it
+and a later edit to `experiment.toml` doesn't hide what a run did. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
 `"signal"` (a signal labnotes didn't send, like the out-of-memory killer),
 `"lost"` (its process died unseen; the daemon marks these when it starts, with
 `ended` set and `exit_code` null) or null (the script exited itself). `signal` is the signal number read from the

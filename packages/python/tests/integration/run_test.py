@@ -1,5 +1,6 @@
 import json
 import re
+import shlex
 import signal
 import subprocess
 import sys
@@ -182,6 +183,15 @@ def test_keeps_the_real_param_values_in_run_json(project: Path) -> None:
     assert by_label == {"x-1": "data/x 1", "y": "data/y"}
     for run in recorded:
         assert (run["folder"] / "out.txt").read_text() == f"--m {run['params']['m']}"
+
+
+def test_records_the_command_each_run_executed(project: Path) -> None:
+    recorded = run_adhoc(project, 'm = ["data/x 1", "data/y"]\n')
+
+    for run in recorded:
+        folder = shlex.quote(str(run["folder"]))
+        m = shlex.quote(run["params"]["m"])
+        assert run["command"] == f"{sys.executable} script.py --out {folder} --m {m}"
 
 
 def test_leaves_params_that_never_change_out_of_the_name(project: Path) -> None:

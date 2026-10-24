@@ -123,6 +123,13 @@ shows a waiting retry as `retry in 30s` and the end as `gave up (exit 75)`;
 
 Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going. Each run lists `size`, the bytes in its run folder, and a running run lists `memory`, the resident bytes of its command and everything it started.
 
+While a run goes, labnotes appends a memory sample to `memory.jsonl` in its run
+folder every 5 seconds: one JSON line, `{"time": <unix seconds>, "rss": <bytes>,
+"processes": <count>}`, for the command and everything it started. It keeps
+every sample, so a run killed for memory still shows the climb.
+`memory_interval` in `experiment.toml` (or `[experiment]` in `.labnotes.toml`)
+sets the seconds between samples; 0 turns it off.
+
 In a terminal, `run` shows a live table of runs (status, time, memory and
 folder size) and stays
 open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one

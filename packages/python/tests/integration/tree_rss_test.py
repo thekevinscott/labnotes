@@ -7,6 +7,7 @@ import psutil
 import pytest
 
 from labnotes.utils.tree_rss import tree_rss
+from labnotes.utils.tree_usage import tree_usage
 
 NESTED = (
     "import subprocess, sys, time;"
@@ -47,3 +48,10 @@ def test_has_nothing_for_a_process_that_exited() -> None:
     process.wait()
 
     assert tree_rss(process.pid, 0.0) is None
+
+
+def test_counts_the_processes_in_a_real_tree(parent: psutil.Process) -> None:
+    usage = tree_usage(parent.pid, parent.create_time())
+
+    assert usage is not None
+    assert usage[1] == 2

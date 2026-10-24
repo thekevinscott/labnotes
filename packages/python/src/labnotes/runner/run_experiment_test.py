@@ -28,6 +28,7 @@ def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
         mode=mode,
         retries=retries,
         meta=None,
+        memory_interval=0.5,
     )
     config.name = None
     return config
@@ -956,6 +957,7 @@ def test_passes_the_timeout_to_each_run(
 
     calls = collaborators["execute_run"].await_args_list
     assert [c.kwargs["timeout"] for c in calls] == [90, 90]
+    assert [c.kwargs["memory_interval"] for c in calls] == [0.5, 0.5]
 
 
 def test_a_timed_out_run_stops_like_a_kill(

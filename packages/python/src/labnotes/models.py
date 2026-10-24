@@ -4,6 +4,7 @@ from pathlib import Path
 from typing import Any, Protocol
 
 from labnotes.default_counts import DEFAULT_COUNTS
+from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
 from labnotes.modes import DEFAULT_MODE
 from labnotes.retries import DEFAULT_RETRIES
 
@@ -66,3 +67,4 @@ class ExperimentConfig:
     concurrency: int = 1
     retries: int = DEFAULT_RETRIES
     meta: str | None = None
+    memory_interval: float = DEFAULT_MEMORY_INTERVAL

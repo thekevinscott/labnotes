@@ -261,6 +261,7 @@ async def run_experiment(
             stop=lambda: kill(run),
             stopped=lambda: run in stopped,
             meta=meta,
+            memory_interval=experiment.memory_interval,
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})

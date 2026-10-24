@@ -1,0 +1,1 @@
+**Added** — every `run.json` records `command`, the shell command the run executed with `{run_dir}` and the params filled in. It is in the first write, before the command starts, so a killed run has it too. The `runs` table gains a `command` column. Runs recorded before this have no `command`, and the column is null for them.

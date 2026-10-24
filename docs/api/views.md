@@ -97,6 +97,7 @@ A row is one run, keyed by column. labnotes sends:
 | `exit_code`, `error` | From `run.json`. |
 | `stdout`, `stderr` | From `run.json`, when it holds them. |
 | `params` | The run's params, as an object. |
+| `meta` | The run's [`meta`](config#meta), as written to `run.json`, or `null`. |
 | `run` | All of `run.json`, as an object. |
 | each param that varies | Its value, as in the columns. |
 | `status` | `"passed"`, `"failed"` or `"unfinished"`. |

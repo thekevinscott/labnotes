@@ -46,7 +46,8 @@ def test_defaults_to_one_repeat_and_no_params() -> None:
         config.concurrency,
         config.retries,
         config.meta,
-    ) == (None, 1, {}, "default", "adhoc", 1, 2, None)
+        config.memory_interval,
+    ) == (None, 1, {}, "default", "adhoc", 1, 2, None, 5.0)
 
 
 def test_falls_back_to_the_project_mode_concurrency_and_retries() -> None:
@@ -62,6 +63,23 @@ def test_reads_retries_over_the_project_retries(retries: int) -> None:
     )
 
     assert config.retries == retries
+
+
+@pytest.mark.parametrize("interval", [0, 2, 0.5])
+def test_reads_the_memory_interval(interval: float) -> None:
+    config = read_experiment_config(
+        PATH, f'command = "run"\nmemory_interval = {interval}\n', "adhoc", 1, 2
+    )
+
+    assert config.memory_interval == interval
+
+
+def test_layers_the_memory_interval_over_the_defaults() -> None:
+    config = read_experiment_config(
+        PATH, "", "adhoc", 1, 2, {"command": "run", "memory_interval": 30}
+    )
+
+    assert config.memory_interval == 30
 
 
 def test_reads_concurrency_over_the_project_concurrency() -> None:
@@ -130,6 +148,10 @@ def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
         ('command = "run"\nconcurrency = 0\n', "concurrency must be a positive"),
         ('command = "run"\nretries = -1\n', "retries must be 0 or more"),
         ('command = "run"\nretries = true\n', "retries must be 0 or more"),
+        ('command = "run"\nmemory_interval = -1\n', "memory_interval must be"),
+        ('command = "run"\nmemory_interval = true\n', "memory_interval must be"),
+        ('command = "run"\nmemory_interval = "5"\n', "memory_interval must be"),
+        ('command = "run"\nmemory_interval = inf\n', "memory_interval must be"),
     ],
 )
 def test_rejects_a_bad_config(text: str, message: str) -> None:

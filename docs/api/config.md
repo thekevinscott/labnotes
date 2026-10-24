@@ -127,6 +127,7 @@ repeats = 5
 mode = "matrix"
 concurrency = 2
 retries = 3
+memory_interval = 10
 counts = "exit_code = 0 AND created > '2026-10-01'"
 
 [params]
@@ -203,6 +204,19 @@ Runs at once. `--concurrency` on the command line overrides it.
 How many times to retry a run whose command exits 75 (`EX_TEMPFAIL`). Exit 75 means the run failed for a reason outside the experiment, such as no capacity, so labnotes runs it again with the same params. No other exit is retried. The first retry waits 30 seconds and each later one waits twice as long. `0` turns retries off.
 
 Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the id of the run it replaces. The failed run keeps its folder and logs. The default [`counts`](#counts) rule skips it, so a retry doesn't add a repeat. When retries run out, the last run keeps exit 75. Stopping the runs cancels a waiting retry, and a stopped run never retries.
+
+### `memory_interval`
+
+- Type: number of seconds, 0 or more
+- Default: `5`
+
+How often to sample a running run's memory. Each sample is the resident memory of the run's command and everything it started, appended as one JSON line to `memory.jsonl` in the run folder and flushed right away:
+
+```json
+{"time": 1792800000.5, "rss": 3249999999, "processes": 3}
+```
+
+`time` is Unix seconds, `rss` is bytes, and `processes` is how many processes it counted. labnotes keeps every sample, so a run that climbed and was then killed for memory still shows the climb. At 5 seconds a 10-hour run writes about 7,200 lines. `0` turns sampling off and writes no file. Like any key here, it can be set for every experiment in [`[experiment]`](#experiment).
 
 ### `counts`
 

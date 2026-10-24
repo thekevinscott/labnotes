@@ -47,6 +47,7 @@ def test_globs_each_table_from_its_path(dirsql: dict[str, mock.MagicMock]) -> No
         "runs": "data/*/**/run.json",
         "logs": "data/*/**/std*.log",
         "blocks": "data/*/**/log.jsonl",
+        "memory": "data/*/**/memory.jsonl",
         "experiment_configs": "notes/*/experiment.toml",
     }
 
@@ -63,6 +64,7 @@ def test_reads_each_table_with_the_root_and_its_path(
         "runs": (Path("/p"), "data/{experiment}/{run}"),
         "logs": (Path("/p"), "data/{experiment}/{run}"),
         "blocks": (Path("/p"), "data/{experiment}/{run}"),
+        "memory": (Path("/p"), "data/{experiment}/{run}"),
         "experiment_configs": (Path("/p"), "notes/{experiment}"),
     }
 
@@ -131,6 +133,17 @@ def test_block_logs_carry_only_their_size(dirsql: dict[str, mock.MagicMock]) -> 
     assert "PRIMARY KEY (experiment, run)" in ddl
 
 
+def test_memory_holds_one_row_per_sample(dirsql: dict[str, mock.MagicMock]) -> None:
+    with mock.patch("labnotes.tables.open_tables.read_memory") as read_memory:
+        open_tables(CONFIG)
+
+    memory = tables(dirsql)["memory"]
+    ddl = str(memory["ddl"])
+    assert memory["on_file"].func is read_memory  # type: ignore[attr-defined]
+    assert "line INTEGER, time REAL, rss INTEGER, processes INTEGER" in ddl
+    assert "PRIMARY KEY (experiment, run, line)" in ddl
+
+
 def test_names_rows_after_the_one_experiment(
     dirsql: dict[str, mock.MagicMock],
 ) -> None:
@@ -152,6 +165,7 @@ def test_names_rows_after_the_one_experiment(
         "runs": {"experiment": "study"},
         "logs": {"experiment": "study"},
         "blocks": {"experiment": "study"},
+        "memory": {"experiment": "study"},
         "experiment_configs": {"experiment": "study", "defaults": {}},
     }
 

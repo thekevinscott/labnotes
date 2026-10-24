@@ -7,6 +7,8 @@ from labnotes.compose_experiment import compose_experiment
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.models import ExperimentConfig
 from labnotes.is_non_negative_int import is_non_negative_int
+from labnotes.is_non_negative_number import is_non_negative_number
+from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
 from labnotes.is_positive_int import is_positive_int
 from labnotes.modes import MODES
 
@@ -20,6 +22,7 @@ SETTINGS = {
     "concurrency",
     "retries",
     "meta",
+    "memory_interval",
 }
 
 
@@ -73,6 +76,18 @@ def read_experiment_config(
     meta = values.get("meta")
     if meta is not None and (not isinstance(meta, str) or not meta.strip()):
         raise ValueError(f"{path}: meta must be a string")
+    memory_interval = values.get("memory_interval", DEFAULT_MEMORY_INTERVAL)
+    if not is_non_negative_number(memory_interval):
+        raise ValueError(f"{path}: memory_interval must be 0 or more seconds")
     return ExperimentConfig(
-        command, repeats, params, name, counts, mode, concurrency, retries, meta
+        command,
+        repeats,
+        params,
+        name,
+        counts,
+        mode,
+        concurrency,
+        retries,
+        meta,
+        memory_interval,
     )

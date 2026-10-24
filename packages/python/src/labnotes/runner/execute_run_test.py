@@ -31,6 +31,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.execute_run.wait_for_tree", new=mock.AsyncMock()
         ) as wait_for_tree,
         mock.patch("labnotes.runner.execute_run.psutil") as psutil,
+        mock.patch(
+            "labnotes.runner.execute_run.record_memory", new=mock.AsyncMock()
+        ) as record_memory,
     ):
         psutil.Error = Gone
         psutil.Process.return_value.create_time.return_value = 1234.5
@@ -41,6 +44,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "spawn": spawn,
             "process": process,
             "psutil": psutil,
+            "record_memory": record_memory,
         }
 
 
@@ -58,6 +62,7 @@ def run(
     timeout: float | None = None,
     stop: mock.Mock | None = None,
     stopped: bool = False,
+    memory_interval: float = 0,
     **options: Any,
 ) -> dict[str, object]:
     if stopped:
@@ -77,6 +82,7 @@ def run(
             TREE,  # type: ignore[arg-type]
             timeout=timeout,
             stop=mock.Mock() if stop is None else stop,
+            memory_interval=memory_interval,
             **options,
         )
 
@@ -317,6 +323,7 @@ def test_cancels_the_kill_once_a_timed_out_run_ends(
                 TREE,  # type: ignore[arg-type]
                 timeout=0.01,
                 stop=stop,
+                memory_interval=0,
             )
             await asyncio.sleep(0.1)
 
@@ -414,3 +421,59 @@ def test_records_no_cause_for_a_command_that_cannot_start(
     result = run(tmp_path, stopping=True)
 
     assert (result["ended_by"], result["signal"]) == (None, None)
+
+
+@pytest.mark.parametrize("interval", [0, -1])
+def test_records_no_memory_without_a_positive_interval(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], interval: float
+) -> None:
+    run(tmp_path, memory_interval=interval)
+
+    collaborators["record_memory"].assert_not_called()
+
+
+def test_records_the_trees_memory_at_the_interval(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, memory_interval=0.5)
+
+    collaborators["record_memory"].assert_awaited_once_with(
+        tmp_path / "memory.jsonl", 42, 1234.5, 0.5
+    )
+
+
+def test_records_no_memory_without_the_process_start_time(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["psutil"].Process.side_effect = Gone()
+
+    run(tmp_path, memory_interval=5)
+
+    collaborators["record_memory"].assert_not_called()
+
+
+def test_stops_recording_memory_when_the_run_ends(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    sampling: list[str] = []
+
+    async def record(*_: object) -> None:
+        sampling.append("started")
+        try:
+            await asyncio.Event().wait()
+        except asyncio.CancelledError:
+            sampling.append("stopped")
+            raise
+
+    async def exit_later() -> int:
+        await asyncio.sleep(0)
+        assert sampling == ["started"]
+        return 0
+
+    collaborators["record_memory"].side_effect = record
+    collaborators["process"].wait = exit_later
+
+    result = run(tmp_path, memory_interval=5)
+
+    assert sampling == ["started", "stopped"]
+    assert result["exit_code"] == 0

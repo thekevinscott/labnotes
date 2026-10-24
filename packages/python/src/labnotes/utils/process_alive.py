@@ -1,6 +1,6 @@
 import psutil
 
-from labnotes.utils.tree_rss import SAME_START_SECONDS
+from labnotes.utils.tree_usage import SAME_START_SECONDS
 
 
 def process_alive(pid: int, created: float | None) -> bool:

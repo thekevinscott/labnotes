@@ -10,6 +10,7 @@ from labnotes.tables.read_blocks import read_blocks
 from labnotes.tables.read_experiment import read_experiment
 from labnotes.tables.read_file import read_file
 from labnotes.tables.read_log import read_log
+from labnotes.tables.read_memory import read_memory
 from labnotes.tables.read_run import read_run
 
 FILES = """
@@ -37,6 +38,12 @@ BLOCKS = """
 CREATE TABLE blocks (
   experiment TEXT, run TEXT, size INTEGER,
   PRIMARY KEY (experiment, run)
+)
+"""
+MEMORY = """
+CREATE TABLE memory (
+  experiment TEXT, run TEXT, line INTEGER, time REAL, rss INTEGER, processes INTEGER,
+  PRIMARY KEY (experiment, run, line)
 )
 """
 
@@ -76,6 +83,14 @@ def open_tables(config: LabnotesConfig) -> DirSQL:
                 glob=path_glob(f"{config.runs}/log.jsonl"),
                 on_file=partial(
                     read_blocks, root, config.runs, experiment=config.experiment
+                ),
+            ),
+            Table(
+                name="memory",
+                ddl=MEMORY,
+                glob=path_glob(f"{config.runs}/memory.jsonl"),
+                on_file=partial(
+                    read_memory, root, config.runs, experiment=config.experiment
                 ),
             ),
             Table(

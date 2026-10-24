@@ -67,3 +67,10 @@ def test_counts_a_process_it_cannot_inspect_as_alive(psutil: mock.MagicMock) -> 
     psutil.Process.side_effect = Denied()
 
     assert process_alive(7, 50.0) is True
+
+
+def test_allows_the_slack_shared_with_tree_usage(psutil: mock.MagicMock) -> None:
+    started(psutil, 53.0)
+
+    with mock.patch("labnotes.utils.process_alive.SAME_START_SECONDS", 5):
+        assert process_alive(7, 50.0) is True

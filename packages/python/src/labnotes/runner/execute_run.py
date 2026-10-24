@@ -9,6 +9,7 @@ import psutil
 
 from labnotes.log_path import LOG_ENV
 from labnotes.runner.exit_signal import exit_signal
+from labnotes.runner.record_memory import record_memory
 from labnotes.runner.shell_command import shell_command
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
 from labnotes.runner.wait_for_tree import wait_for_tree
@@ -30,6 +31,8 @@ async def execute_run(
     stop: Callable[[], None] = lambda: None,
     stopped: Callable[[], bool] = lambda: False,
     meta: dict[str, object] | None = None,
+    *,
+    memory_interval: float,
 ) -> dict[str, object]:
     resolved = shell_command(command, folder, params)
     run: dict[str, object] = {
@@ -69,9 +72,17 @@ async def execute_run(
         else:
             running.add(process)
             run["pid"] = process.pid
+            created = None
             with contextlib.suppress(psutil.Error):
-                run["pid_created"] = psutil.Process(process.pid).create_time()
+                run["pid_created"] = created = psutil.Process(process.pid).create_time()
             write_run_json(folder, run)
+            sampler = None
+            if memory_interval > 0 and created is not None:
+                sampler = asyncio.create_task(
+                    record_memory(
+                        folder / "memory.jsonl", process.pid, created, memory_interval
+                    )
+                )
             exited = asyncio.ensure_future(process.wait())
             kill_later = None
             try:
@@ -100,6 +111,9 @@ async def execute_run(
             finally:
                 if kill_later is not None:
                     kill_later.cancel()
+                if sampler is not None:
+                    sampler.cancel()
+                    await asyncio.wait({sampler})
                 running.discard(process)
     run["ended"] = iso_time(time.time())
     write_run_json(folder, run)

@@ -112,6 +112,7 @@ def test_records_the_run_before_and_after(
 
     started = {
         "params": PARAMS,
+        "command": "study",
         "created": "start",
         "ended": None,
         "exit_code": None,

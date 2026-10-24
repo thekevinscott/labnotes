@@ -31,8 +31,10 @@ async def execute_run(
     stopped: Callable[[], bool] = lambda: False,
     meta: dict[str, object] | None = None,
 ) -> dict[str, object]:
+    resolved = shell_command(command, folder, params)
     run: dict[str, object] = {
         "params": params,
+        "command": resolved,
         "created": iso_time(time.time()),
         "ended": None,
         "exit_code": None,
@@ -51,7 +53,7 @@ async def execute_run(
     ):
         try:
             process = await asyncio.create_subprocess_shell(
-                shell_command(command, folder, params),
+                resolved,
                 cwd=root,
                 env={
                     "FORCE_COLOR": "1",

@@ -61,3 +61,30 @@ def test_leaves_an_imported_function_alone(respond: mock.MagicMock) -> None:
     assert serve(runs) is runs
 
     respond.assert_not_called()
+
+
+def test_serves_whatever_string_names_the_script(
+    monkeypatch: pytest.MonkeyPatch, respond: mock.MagicMock
+) -> None:
+    monkeypatch.setattr(sys, "stdout", io.StringIO())
+
+    def script(columns: list[Any]) -> tuple[list[Any], Any]:
+        return runs(columns)
+
+    script.__module__ = "".join(["__ma", "in__"])
+
+    serve(script)
+
+    respond.assert_called_once()
+
+
+def test_leaves_a_module_that_sorts_before_main_alone(
+    respond: mock.MagicMock,
+) -> None:
+    def script(columns: list[Any]) -> tuple[list[Any], Any]:
+        return runs(columns)
+
+    script.__module__ = "Views"
+
+    assert serve(script) is script
+    respond.assert_not_called()

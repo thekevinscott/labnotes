@@ -1,3 +1,5 @@
+import json
+
 import pytest
 
 from labnotes.tui.format_cell import format_cell
@@ -52,3 +54,32 @@ def test_formats_other_values() -> None:
     assert format_cell("m", {"a": 1}, False) == '{"a": 1}'
     assert format_cell("m", "2026-10-17T00:00:01Z", False) == "2026-10-17T00:00:01Z"
     assert format_cell("m", 65, False) == "65"
+
+
+@pytest.mark.parametrize(
+    ("pair", "shown"),
+    [
+        ('["status", "passed"]', "✓"),
+        ('["status", "failed"]', "✕"),
+        ('["status", "unfinished"]', "–"),
+        ('["duration", 65]', "1m 05s"),
+        ('["started", "2026-10-17T00:00:01Z"]', "2026-10-17 00:00:01"),
+    ],
+)
+def test_matches_keys_and_values_read_from_json(pair: str, shown: str) -> None:
+    key, value = json.loads(pair)
+
+    assert str(format_cell(key, value, False)) == shown
+
+
+@pytest.mark.parametrize("key", ["a", "zz"])
+@pytest.mark.parametrize(
+    "value", ["passed", "failed", "unfinished", 65, "2026-10-17T00:00:01Z"]
+)
+def test_leaves_keys_on_either_side_of_the_special_ones(key: str, value: object) -> None:
+    assert format_cell(key, value, False) == str(value)
+
+
+@pytest.mark.parametrize("value", ["a", "zz"])
+def test_leaves_statuses_on_either_side_of_the_known_ones(value: str) -> None:
+    assert format_cell("status", value, False) == value

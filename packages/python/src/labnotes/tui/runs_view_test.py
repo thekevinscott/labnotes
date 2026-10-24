@@ -186,6 +186,7 @@ def test_keeps_the_last_good_rows_on_a_bad_answer(reply: object, error: str) -> 
         (None, None, ""),
         (None, 0.1, ""),
         (None, 0.1404, "runs view took 140 ms"),
+        (None, 1.0, "runs view took 1000 ms"),
         ("bad", 0.05, "runs view: bad"),
         ("bad", 0.2, "runs view: bad · runs view took 200 ms"),
     ],
@@ -197,3 +198,14 @@ def test_describes_errors_and_slow_answers(
     shown.error, shown.elapsed = error, elapsed
 
     assert shown.status() == status
+
+
+def test_asks_for_nothing_when_equal_rows_arrive_again() -> None:
+    shown = view()
+    shown.update([dict(COLUMNS[0])], {"runs/a": dict(A)})
+    shown.next_request()
+    shown.busy = False
+
+    shown.update([dict(COLUMNS[0])], {"runs/a": dict(A)})
+
+    assert shown.next_request() is None

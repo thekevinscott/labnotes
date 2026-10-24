@@ -1,3 +1,4 @@
+import json
 from typing import Any
 
 from labnotes.tui.group_cells import group_cells
@@ -76,3 +77,16 @@ def test_counts_interrupted_runs_once_the_daemon_is_down() -> None:
 
 def test_marks_an_open_invocation() -> None:
     assert group_cells(group(), COLUMNS, False, True)[1] == "▾ 20261017-000000"
+
+
+def test_matches_keys_read_from_json() -> None:
+    columns = [{"key": key, "label": key} for key in json.loads(json.dumps(KEYS))]
+
+    assert [str(cell) for cell in group_cells(group(), columns, False, False)][:6] == [
+        "2✓ 1✕",
+        "▸ 20261017-000000",
+        "3",
+        "a",
+        "",
+        "2026-10-17 00:00:00",
+    ]

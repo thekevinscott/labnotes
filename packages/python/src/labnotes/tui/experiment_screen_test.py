@@ -214,7 +214,9 @@ def test_starts_the_runs_view_once(
 
     views.assert_called_once_with("uv run view.py")
     runs_view.assert_called_once_with("request")
-    assert getattr(screen.run_worker, "call_count") == 1
+    getattr(screen.run_worker, "assert_called_once_with")(
+        getattr(screen.watch_files, "return_value"), exit_on_error=False
+    )
     assert (
         runs_view.return_value.update.call_args_list == [mock.call(COLUMNS, NATIVE)] * 2
     )

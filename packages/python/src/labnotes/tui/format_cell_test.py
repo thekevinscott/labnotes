@@ -76,7 +76,9 @@ def test_matches_keys_and_values_read_from_json(pair: str, shown: str) -> None:
 @pytest.mark.parametrize(
     "value", ["passed", "failed", "unfinished", 65, "2026-10-17T00:00:01Z"]
 )
-def test_leaves_keys_on_either_side_of_the_special_ones(key: str, value: object) -> None:
+def test_leaves_keys_on_either_side_of_the_special_ones(
+    key: str, value: object
+) -> None:
     assert format_cell(key, value, False) == str(value)
 
 

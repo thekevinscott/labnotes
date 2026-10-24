@@ -180,9 +180,9 @@ def test_times_the_reply_from_when_it_was_sent(tmp_path: Path) -> None:
         view = ViewProcess(command(ECHO), tmp_path)
         try:
             with mock.patch("labnotes.tui.view_process.time") as clock:
-                clock.monotonic.side_effect = [100.0, 100.25]
+                clock.monotonic.side_effect = [10.0, 30.25]
                 return (await view.request({}))[1]
         finally:
             await view.close()
 
-    assert run(test) == 0.25
+    assert run(test) == 20.25

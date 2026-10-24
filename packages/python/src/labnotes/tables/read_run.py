@@ -25,6 +25,7 @@ def read_run(
             "stdout": f"{folder}/stdout.log",
             "stderr": f"{folder}/stderr.log",
             "params": json.dumps(run.get("params", {})),
+            "meta": None if (meta := run.get("meta")) is None else json.dumps(meta),
             "run": json.dumps(run),
         }
     ]

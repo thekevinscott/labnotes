@@ -13,6 +13,7 @@ from labnotes.models import (
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
+from labnotes.runner.invocation_meta import invocation_meta
 from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
@@ -36,6 +37,9 @@ async def run_experiment(
     timeout: float | None = None,
     retry_seconds: float = RETRY_SECONDS,
 ) -> list[dict[str, object]]:
+    meta = None
+    if experiment.meta is not None:
+        meta = await invocation_meta(config.root, experiment.meta)
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
     finished: list[dict[str, object]] = []
@@ -256,6 +260,7 @@ async def run_experiment(
             timeout=timeout,
             stop=lambda: kill(run),
             stopped=lambda: run in stopped,
+            meta=meta,
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})

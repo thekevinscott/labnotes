@@ -18,6 +18,7 @@ def test_reads_a_run_row(tmp_path: Path) -> None:
         "exit_code": 0,
         "error": None,
         "excluded": True,
+        "meta": {"commit": "abc"},
     }
     path = write_run(tmp_path / "exp" / "runs" / "brave-fox", run)
 
@@ -33,6 +34,7 @@ def test_reads_a_run_row(tmp_path: Path) -> None:
             "stdout": "exp/runs/brave-fox/stdout.log",
             "stderr": "exp/runs/brave-fox/stderr.log",
             "params": '{"model": "opus", "effort": "low"}',
+            "meta": '{"commit": "abc"}',
             "run": json.dumps(run),
         }
     ]
@@ -48,8 +50,9 @@ def test_leaves_missing_fields_empty(tmp_path: Path) -> None:
         row["id"],
         row["ended"],
         row["params"],
+        row["meta"],
         row["run"],
-    ) == ("exp", "r1", None, "{}", "{}")
+    ) == ("exp", "r1", None, "{}", None, "{}")
 
 
 def test_skips_a_run_json_outside_the_template(tmp_path: Path) -> None:

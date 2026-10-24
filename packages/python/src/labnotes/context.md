@@ -24,8 +24,9 @@ When `experiment.toml` sits next to `.labnotes.toml`, the root is the one experi
   `experiment.toml`, files or runs.
 - `files`: `experiment`, `filename`, `path`, `ctime`, `mtime`.
 - `runs`: `experiment`, `id`, `folder`, `created`, `ended`, `exit_code`,
-  `error`, `stdout`, `stderr`, `params` as JSON, and `run`, the whole
-  `run.json` as JSON, read from each run folder's `run.json`.
+  `error`, `stdout`, `stderr`, `params` as JSON, `meta` as JSON (null without
+  a `meta` command), and `run`, the whole `run.json` as JSON, read from each run
+  folder's `run.json`.
 
 Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
@@ -81,6 +82,11 @@ run folder. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
 `"lost"` (its process died unseen; the daemon marks these when it starts, with
 `ended` set and `exit_code` null) or null (the script exited itself). `signal` is the signal number read from the
 exit code (negative, or 128 + N from the shell), else null.
+`meta` in `experiment.toml` (or `[experiment]` in `.labnotes.toml`) is a shell
+command that prints one JSON object, such as the git commit. labnotes runs it
+once from the root when `run` starts and copies it into every run's `run.json`
+as `meta`. If it fails or prints anything else, no run starts. Queued runs keep
+the value from the start, even if the code changed while they waited.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.

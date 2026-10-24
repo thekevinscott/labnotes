@@ -122,6 +122,7 @@ One per experiment folder. `labnotes experiments new [NAME]` creates one. `run -
 ```toml
 name = "Model and effort"
 command = "uv run scripts/study.py --output {run_dir}"
+meta = "uv run scripts/meta.py"
 repeats = 5
 mode = "matrix"
 concurrency = 2
@@ -139,6 +140,25 @@ effort = ["low", "high"]
 - Required
 
 Shell command for one run, run from the project root. `{run_dir}` becomes the run folder's absolute path, shell-quoted. Params are appended as flags (see [`[params]`](#params)). The command can write structured output with [`log`](sdk#log).
+
+### `meta`
+
+- Type: string
+- Default: none
+
+Shell command that describes the invocation, such as the git commit it ran. labnotes runs it once when `run` starts, from the project root, before any run starts. Its stdout must be one JSON object:
+
+```toml
+meta = "git log -1 --format='{\"commit\":\"%H\"}'"
+```
+
+Every run the invocation starts, retries included, gets a copy as `meta` in its `run.json`, written before the run's command starts, so a run that dies early still has it. The `runs` table has it as a `meta` column, so a rule like [`counts`](#counts) can read `meta ->> 'commit'`. Without `meta`, `run.json` has no `meta` key and the column is `NULL`.
+
+A non-zero exit, output that isn't JSON, or JSON that isn't an object fails the invocation before any run starts. The error names the command and shows its stderr.
+
+The command runs once, not per run. A run that waits in the queue keeps the value from the start of the invocation, so if the code changes while it waits, its recorded commit is out of date.
+
+Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment.
 
 ### `name`
 

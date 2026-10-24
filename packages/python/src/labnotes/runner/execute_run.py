@@ -29,6 +29,7 @@ async def execute_run(
     timeout: float | None = None,
     stop: Callable[[], None] = lambda: None,
     stopped: Callable[[], bool] = lambda: False,
+    meta: dict[str, object] | None = None,
 ) -> dict[str, object]:
     run: dict[str, object] = {
         "params": params,
@@ -41,6 +42,8 @@ async def execute_run(
     }
     if retry_of is not None:
         run["retry_of"] = retry_of
+    if meta is not None:
+        run["meta"] = meta
     write_run_json(folder, run)
     with (
         (folder / "stdout.log").open("wb") as stdout,

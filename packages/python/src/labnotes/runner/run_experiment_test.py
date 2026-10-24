@@ -27,6 +27,7 @@ def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
         counts="c",
         mode=mode,
         retries=retries,
+        meta=None,
     )
     config.name = None
     return config
@@ -78,6 +79,10 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.new_param_run_id",
             side_effect=lambda params, choices, taken: next(names),
         ) as new_param_run_id,
+        mock.patch(
+            "labnotes.runner.run_experiment.invocation_meta",
+            new=mock.AsyncMock(return_value={"commit": "abc"}),
+        ) as invocation_meta,
     ):
         yield {
             "open_tables": open_tables,
@@ -89,6 +94,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "new_param_run_id": new_param_run_id,
             "execute_run": execute_run,
             "signal_tree": signal_tree,
+            "invocation_meta": invocation_meta,
         }
 
 
@@ -184,6 +190,55 @@ def test_runs_each_planned_run_in_a_new_folder(
         {"event": "ended", "run": "r2", **ended},
         {"event": "idle"},
     ]
+
+
+def start_with_meta(tmp_path: Path, report: mock.Mock) -> list[dict[str, object]]:
+    configured = experiment()
+    configured.meta = "git log -1"
+    return settle(
+        run_experiment(
+            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            "exp",
+            configured,
+            1,
+            report,
+            lambda controls: controls.finish(),  # type: ignore[attr-defined]
+        )
+    )
+
+
+def test_runs_without_meta_when_none_is_configured(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock())
+
+    collaborators["invocation_meta"].assert_not_awaited()
+    calls = collaborators["execute_run"].await_args_list
+    assert [c.kwargs["meta"] for c in calls] == [None, None]
+
+
+def test_gives_every_run_the_meta_read_once_at_the_start(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    start_with_meta(tmp_path, mock.Mock())
+
+    collaborators["invocation_meta"].assert_awaited_once_with(tmp_path, "git log -1")
+    calls = collaborators["execute_run"].await_args_list
+    assert [c.kwargs["meta"] for c in calls] == [{"commit": "abc"}] * 2
+
+
+def test_fails_before_planning_when_the_meta_command_fails(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["invocation_meta"].side_effect = ValueError("meta failed")
+    report = mock.Mock()
+
+    with pytest.raises(ValueError, match="meta failed"):
+        start_with_meta(tmp_path, report)
+
+    report.assert_not_called()
+    collaborators["open_tables"].assert_not_called()
+    collaborators["execute_run"].assert_not_awaited()
 
 
 def test_titles_the_plan_with_the_experiments_name(

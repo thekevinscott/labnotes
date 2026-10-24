@@ -1,74 +1,53 @@
+import json
+from collections.abc import Iterator
+from unittest import mock
+
 import pytest
 
 from labnotes.tui.run_cells import run_cells
 
-COLUMNS = ["count", "id", "m", "started", "duration"]
+COLUMNS = [{"key": key, "label": key} for key in ["status", "id", "runs", "m"]]
+ROW = {"status": "passed", "id": "inv/r1", "m": "a"}
 
 
-def run(**fields: object) -> dict[str, object]:
-    return {
-        "labnotes_completed": 1,
-        "labnotes_unfinished": 0,
-        "count": 5,
-        "id": "inv/r1",
-        "m": "a",
-        "started": "2026-10-17 00:00:00",
-        "duration": 65,
-        **fields,
-    }
+@pytest.fixture(autouse=True)
+def format_cell() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.tui.run_cells.format_cell",
+        side_effect=lambda key, value, live: f"{key}={value} {live}",
+    ) as found:
+        yield found
 
 
-def plain(cells: list[object]) -> list[str]:
-    return [str(cell) for cell in cells]
-
-
-def test_shows_a_flat_run() -> None:
-    assert plain(run_cells(run(), COLUMNS, False, False)) == [
-        "✓",
-        "5",
-        "inv/r1",
-        "a",
-        "2026-10-17 00:00:00",
-        "1m 05s",
+def test_formats_each_column_from_the_row() -> None:
+    assert run_cells(ROW, COLUMNS, False, True) == [
+        "status=passed True",
+        "id=inv/r1 True",
+        "",
+        "m=a True",
     ]
+
+
+def test_leaves_a_column_missing_from_the_row_blank() -> None:
+    assert run_cells({}, COLUMNS, False, False) == ["", "", "", ""]
 
 
 def test_indents_a_nested_run_under_its_invocation() -> None:
-    assert plain(run_cells(run(), COLUMNS, True, False)) == [
-        "✓",
-        "5",
-        "  r1",
-        "",
-        "a",
-        "2026-10-17 00:00:00",
-        "1m 05s",
-    ]
+    assert run_cells(ROW, COLUMNS, True, False)[1] == "  r1"
 
 
 def test_shows_a_lone_nested_run_by_its_whole_id() -> None:
-    assert plain(run_cells(run(id="lone"), COLUMNS, True, False))[2:4] == ["lone", ""]
+    assert run_cells({"id": "lone"}, COLUMNS, True, False)[1] == "lone"
 
 
-def test_fills_missing_values_with_a_dash() -> None:
-    cells = plain(run_cells(run(m=None, duration=None), COLUMNS, False, False))
+@pytest.mark.parametrize("key", ["a", "zz"])
+def test_indents_only_the_id(key: str) -> None:
+    columns = [{"key": key, "label": key}]
 
-    assert cells[3] == "—"
-    assert cells[5] == "—"
+    assert run_cells({key: "inv/r1"}, columns, True, False) == [f"{key}=inv/r1 False"]
 
 
-@pytest.mark.parametrize(
-    ("fields", "live", "mark", "style"),
-    [
-        ({}, False, "✓", "green"),
-        ({"labnotes_completed": 0}, False, "✕", "red"),
-        ({"labnotes_completed": 0, "labnotes_unfinished": 1}, True, "◐", "yellow"),
-        ({"labnotes_completed": 0, "labnotes_unfinished": 1}, False, "–", "dim"),
-    ],
-)
-def test_marks_the_status(
-    fields: dict[str, object], live: bool, mark: str, style: str
-) -> None:
-    [status, *_] = run_cells(run(**fields), COLUMNS, False, live)
+def test_indents_an_id_read_from_json() -> None:
+    columns = json.loads('[{"key": "id", "label": "id"}]')
 
-    assert str(status) == mark
-    assert getattr(status, "style") == style
+    assert run_cells(ROW, columns, True, False) == ["  r1"]

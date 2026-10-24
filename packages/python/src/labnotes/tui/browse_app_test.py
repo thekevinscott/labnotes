@@ -27,6 +27,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
                     "runs_live": False,
                     "runs_list": [],
                     "run_groups": None,
+                    "runs_view": None,
                 }
             ),
         ),
@@ -50,7 +51,7 @@ def test_opens_on_the_experiment_list(
             assert screens(app) == ["ExperimentsScreen"]
 
     asyncio.run(drive())
-    collaborators["open_tables"].assert_called_once_with(CONFIG)
+    collaborators["open_tables"].assert_called_once_with(CONFIG, run_files=True)
 
 
 def test_opens_a_named_experiment_over_the_list() -> None:
@@ -93,3 +94,19 @@ def test_ctrl_c_quits_and_q_does_not() -> None:
 
     asyncio.run(drive())
     assert app.return_value is None
+
+
+def test_shares_one_view_process_per_command_and_closes_them() -> None:
+    async def drive() -> None:
+        with mock.patch("labnotes.tui.browse_app.ViewProcess") as process:
+            process.return_value.close = mock.AsyncMock()
+            app = BrowseApp(CONFIG, None)
+            async with app.run_test():
+                first = app.view_request("go")
+                second = app.view_request("go")
+
+                assert first is second is process.return_value.request
+                process.assert_called_once_with("go", CONFIG.root)
+            process.return_value.close.assert_awaited_once_with()
+
+    asyncio.run(drive())

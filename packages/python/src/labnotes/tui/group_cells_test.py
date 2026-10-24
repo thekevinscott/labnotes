@@ -1,8 +1,10 @@
+import json
 from typing import Any
 
 from labnotes.tui.group_cells import group_cells
 
-COLUMNS = ["id", "m", "n", "started", "x", "duration"]
+KEYS = ["status", "id", "runs", "m", "n", "started", "x", "duration"]
+COLUMNS = [{"key": key, "label": key.upper()} for key in KEYS]
 
 
 def group(**fields: object) -> dict[str, Any]:
@@ -29,6 +31,12 @@ def test_summarizes_an_invocation() -> None:
         "5",
         "",
     ]
+
+
+def test_follows_the_column_order() -> None:
+    columns = [COLUMNS[3], COLUMNS[1]]
+
+    assert group_cells(group(), columns, False, False) == ["a", "▸ 20261017-000000"]
 
 
 def test_leaves_the_start_blank_when_the_name_has_no_stamp() -> None:
@@ -69,3 +77,16 @@ def test_counts_interrupted_runs_once_the_daemon_is_down() -> None:
 
 def test_marks_an_open_invocation() -> None:
     assert group_cells(group(), COLUMNS, False, True)[1] == "▾ 20261017-000000"
+
+
+def test_matches_keys_read_from_json() -> None:
+    columns = [{"key": key, "label": key} for key in json.loads(json.dumps(KEYS))]
+
+    assert [str(cell) for cell in group_cells(group(), columns, False, False)][:6] == [
+        "2✓ 1✕",
+        "▸ 20261017-000000",
+        "3",
+        "a",
+        "",
+        "2026-10-17 00:00:00",
+    ]

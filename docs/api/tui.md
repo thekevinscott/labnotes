@@ -70,7 +70,7 @@ Closing the terminal leaves the runs going. Sending SIGTERM stops them like `s`.
 
 `labnotes experiments`, `labnotes experiments NAME` and `labnotes experiments NAME runs` open the browser when `--format` is unset and stdout and stderr are both a terminal. Naming an experiment starts on its screen, with the list underneath.
 
-The experiments screen has the same columns as `--format table`. The experiment screen mirrors the runs tab of the [frontend](../frontend): runs from one `adhoc` invocation collapse into one row with pass, fail and running counts; other runs get a row each. Both screens update live and keep the cursor and expanded rows. An experiment removed while open empties its screen with a note in the header.
+The experiments screen has the same columns as `--format table`. The experiment screen mirrors the runs tab of the [frontend](../frontend): runs from one `adhoc` invocation collapse into one row with pass, fail and running counts; other runs get a row each. Both screens update live and keep the cursor and expanded rows. An experiment removed while open empties its screen with a note in the header. A [runs view](views) adds columns to the experiment screen, and a line under the table reports when it fails or answers slowly.
 
 | Key | Action |
 | --- | --- |

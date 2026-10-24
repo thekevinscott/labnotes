@@ -263,6 +263,21 @@ def test_notes_a_counts_rule_set_in_the_config(
     assert loaded["counts_set"] is True
 
 
+def test_names_the_runs_view_command(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    config = {**CONFIG, "views": {"runs": "uv run view.py"}}
+
+    loaded = asyncio.run(
+        load_experiment(
+            make_tables(experiment(config)), ROOT, "adhoc", "a", mock.Mock()
+        )
+    )
+
+    assert loaded is not None
+    assert loaded["runs_view"] == "uv run view.py"
+
+
 def test_has_no_counts_rule_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:

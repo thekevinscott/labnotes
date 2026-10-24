@@ -19,6 +19,7 @@ from labnotes.nests_runs import nests_runs
 from labnotes.parse_run_view import parse_run_view
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
+from labnotes.runs_view_command import runs_view_command
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
 from labnotes.summarize_config import summarize_config
@@ -88,6 +89,7 @@ async def load_experiment(
         "run_columns": shown,
         "run_view": view,
         "run_choices": choices,
+        "runs_view": runs_view_command(config),
         "sort_hrefs": {
             column: sort_href(view, column) for column in ["status", *shown]
         },

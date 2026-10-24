@@ -60,3 +60,16 @@ Each run gets its own `LABNOTES_LOG`. labnotes replaces any value the script inh
 ### Outside labnotes
 
 With `LABNOTES_LOG` unset, as when you run the script yourself, `log` prints `content` to stdout. Blocks without `content`, such as `start` and `stop`, print nothing.
+
+## `view`
+
+```python
+from labnotes import view
+
+
+@view.serve
+def runs(columns):
+    return [*columns, "model"], lambda row: {**row, "model": row["params"]["model"]}
+```
+
+`view.serve` turns a script into a [runs view](views), which adds columns to the TUI's runs table. Like `log`, it loads only the standard library.

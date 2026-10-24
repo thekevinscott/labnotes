@@ -1,4 +1,5 @@
 import json
+import time
 import sys
 from pathlib import Path
 
@@ -131,3 +132,91 @@ def test_prints_and_exits_when_format_is_given(terminal, tmp_path: Path) -> None
     term.wait()
 
     assert term.exit_code == 0
+
+
+LAST_LINE = """\
+from pathlib import Path
+
+from labnotes import view
+
+
+def last_line(folder):
+    lines = (Path(folder) / "stderr.log").read_text().splitlines()
+    return lines[-1] if lines else ""
+
+
+@view.serve
+def runs(columns):
+    return [*columns, {"key": "last", "label": "last stderr"}], lambda row: {
+        **row,
+        "last": last_line(row["folder"]),
+    }
+"""
+
+
+def viewed(root: Path, script: str) -> Path:
+    write(root / "alpha/view.py", script)
+    write(
+        root / "alpha/experiment.toml",
+        'command = "go"\nmode = "adhoc"\n'
+        f"[views]\nruns = {json.dumps(f'{sys.executable} alpha/view.py')}\n",
+    )
+    for run in ("first", "second"):
+        write(root / f"alpha/runs/20261017-000000/{run}/stderr.log", f"{run} warmup\n")
+    return root
+
+
+def test_adds_columns_from_a_runs_view_and_follows_run_files(
+    terminal, tmp_path: Path
+) -> None:
+    root = viewed(project(tmp_path), LAST_LINE)
+    term = labnotes(terminal, root, "alpha")
+    expect(term.get_by_text("last stderr")).to_be_visible()
+
+    term.key_enter()
+    expect(term.get_by_text("second warmup")).to_be_visible()
+
+    stderr = root / "alpha/runs/20261017-000000/second/stderr.log"
+    with stderr.open("a", encoding="utf-8") as log:
+        log.write("step 2 of 9\n")
+    expect(term.get_by_text("step 2 of 9")).to_be_visible()
+    expect(term.get_by_text("second warmup")).not_to_be_visible()
+
+    term.key_ctrl_c()
+    term.wait()
+
+
+def test_keeps_redrawing_while_a_run_writes_continuously(
+    terminal, tmp_path: Path
+) -> None:
+    root = viewed(project(tmp_path), LAST_LINE)
+    term = labnotes(terminal, root, "alpha")
+    expect(term.get_by_text("last stderr")).to_be_visible()
+    term.key_enter()
+    expect(term.get_by_text("second warmup")).to_be_visible()
+
+    stderr = root / "alpha/runs/20261017-000000/second/stderr.log"
+    with stderr.open("a", encoding="utf-8") as log:
+        for step in range(200):
+            log.write(f"step {step}\n")
+            log.flush()
+            time.sleep(0.01)
+    expect(term.get_by_text("step 199")).to_be_visible()
+
+    term.key_ctrl_c()
+    term.wait()
+
+
+def test_reports_a_bad_answer_and_a_slow_one(terminal, tmp_path: Path) -> None:
+    script = (
+        "import time\nfrom labnotes import view\n\n\n@view.serve\n"
+        "def runs(columns):\n    time.sleep(0.2)\n"
+        '    return columns, lambda row: {**row, "extra": 1}\n'
+    )
+    term = labnotes(terminal, viewed(project(tmp_path), script), "alpha")
+    expect(term.get_by_text("unknown columns extra")).to_be_visible()
+    expect(term.get_by_text("runs view took")).to_be_visible()
+    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+
+    term.key_ctrl_c()
+    term.wait()

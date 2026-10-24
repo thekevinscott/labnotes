@@ -218,6 +218,18 @@ How often to sample a running run's memory. Each sample is the resident memory o
 
 `time` is Unix seconds, `rss` is bytes, and `processes` is how many processes it counted. labnotes keeps every sample, so a run that climbed and was then killed for memory still shows the climb. At 5 seconds a 10-hour run writes about 7,200 lines. `0` turns sampling off and writes no file. Like any key here, it can be set for every experiment in [`[experiment]`](#experiment).
 
+### `[views]`
+
+- Type: table
+- Default: none
+
+```toml
+[views]
+runs = "uv run views/runs.py"
+```
+
+`runs` is a shell command, run from the project root, that adds columns to the TUI's runs table. See [Views](views).
+
 ### `counts`
 
 - Type: string, a SQL condition over `runs`

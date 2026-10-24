@@ -12,6 +12,7 @@ from labnotes.tables.read_file import read_file
 from labnotes.tables.read_log import read_log
 from labnotes.tables.read_memory import read_memory
 from labnotes.tables.read_run import read_run
+from labnotes.tables.read_run_file import read_run_file
 
 FILES = """
 CREATE TABLE files (
@@ -47,9 +48,26 @@ CREATE TABLE memory (
 )
 """
 
+# Every file in a run folder, so a change anywhere in it is a watch event.
+RUN_FILES = """
+CREATE TABLE run_files (
+  experiment TEXT, path TEXT PRIMARY KEY, size INTEGER, mtime_ns INTEGER
+)
+"""
 
-def open_tables(config: LabnotesConfig) -> DirSQL:
+
+def open_tables(config: LabnotesConfig, run_files: bool = False) -> DirSQL:
     root = config.root
+    extra = [
+        Table(
+            name="run_files",
+            ddl=RUN_FILES,
+            glob=path_glob(f"{config.runs}/**"),
+            on_file=partial(
+                read_run_file, root, config.runs, experiment=config.experiment
+            ),
+        )
+    ]
     return DirSQL(
         str(root),
         tables=[
@@ -105,6 +123,7 @@ def open_tables(config: LabnotesConfig) -> DirSQL:
                     defaults=config.defaults,
                 ),
             ),
+            *(extra if run_files else []),
         ],
         # Run folders are often gitignored (DVC, large outputs); scan them anyway.
         no_ignore=True,

@@ -1,6 +1,7 @@
 import asyncio
 import shlex
 import sys
+import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
 from unittest import mock
@@ -186,3 +187,55 @@ def test_times_the_reply_from_when_it_was_sent(tmp_path: Path) -> None:
             await view.close()
 
     assert run(test) == 20.25
+
+
+def test_reads_replies_up_to_one_gibibyte(tmp_path: Path) -> None:
+    spawn = mock.AsyncMock(wraps=asyncio.create_subprocess_shell)
+
+    async def test() -> None:
+        view = ViewProcess(command(ECHO), tmp_path)
+        try:
+            with mock.patch("asyncio.create_subprocess_shell", spawn):
+                await view.request({})
+        finally:
+            await view.close()
+
+    run(test)
+
+    assert spawn.call_args.kwargs["limit"] == 1024**3
+
+
+def test_waits_a_second_for_the_last_error_of_a_stopped_view(tmp_path: Path) -> None:
+    code = (
+        "import os, sys, time\nsys.stdin.readline()\nos.close(1)\n"
+        "time.sleep(0.5)\nprint('late', file=sys.stderr, flush=True)\ntime.sleep(60)"
+    )
+
+    async def test() -> float:
+        # Without exec, sh holds the closed stdout open until the script exits.
+        view = ViewProcess(f"exec {command(code)}", tmp_path)
+        started = time.monotonic()
+        try:
+            with pytest.raises(ValueError) as error:
+                await view.request({})
+            assert str(error.value) == "the runs view stopped: late"
+            return time.monotonic() - started
+        finally:
+            assert view.process is not None
+            view.process.kill()
+            await view.process.wait()
+
+    assert 1.0 <= run(test) < 1.5
+
+
+def test_close_kills_a_view_after_a_second(tmp_path: Path) -> None:
+    code = "import sys, time\nsys.stdin.readline()\nprint('{}', flush=True)\ntime.sleep(60)"
+
+    async def test() -> float:
+        view = ViewProcess(command(code), tmp_path)
+        await view.request({})
+        started = time.monotonic()
+        await view.close()
+        return time.monotonic() - started
+
+    assert 1.0 <= run(test) < 1.5

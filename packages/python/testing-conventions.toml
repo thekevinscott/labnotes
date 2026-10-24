@@ -81,15 +81,3 @@ path = "src/labnotes/experiments.py"
 rules = ["mutation"]
 lines = [109]
 reason = "click hands back the \"json\" choice literal itself, so is not equals !="
-
-[[python.exempt]]
-path = "src/labnotes/tui/view_process.py"
-rules = ["mutation"]
-lines = [11, 12]
-reason = "LINE_LIMIT is a ceiling far above any reply and GRACE_SECONDS a wait before the kill; nearby values behave the same"
-
-[[python.exempt]]
-path = "src/labnotes/tui/view_process.py"
-rules = ["mutation"]
-lines = [46]
-reason = "the process is always made with three pipes, so every operand is true and and equals or; the assert only narrows types"

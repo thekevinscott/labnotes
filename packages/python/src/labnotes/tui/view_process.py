@@ -43,7 +43,9 @@ class ViewProcess:
             )
             self.stderr = asyncio.create_task(self.read_stderr(self.process.stderr))
         stdin, stdout, stderr = self.process.stdin, self.process.stdout, self.stderr
-        assert stdin is not None and stdout is not None and stderr is not None
+        assert stdin is not None
+        assert stdout is not None
+        assert stderr is not None
         started = time.monotonic()
         stdin.write(json.dumps(payload).encode() + b"\n")
         await stdin.drain()

@@ -195,11 +195,12 @@ def test_lists_a_param_named_id_once(
 ) -> None:
     config = {**CONFIG, "params": {"id": [1], "a": [2]}}
 
-    loaded = asyncio.run(
-        load_experiment(
-            make_tables(experiment(config)), ROOT, "adhoc", "a", mock.Mock()
+    with pytest.warns(UserWarning, match="Params id clash"):
+        loaded = asyncio.run(
+            load_experiment(
+                make_tables(experiment(config)), ROOT, "adhoc", "a", mock.Mock()
+            )
         )
-    )
 
     assert loaded is not None
     assert loaded["run_columns"] == ["id", "a", "started", "duration"]

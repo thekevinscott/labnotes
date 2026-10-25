@@ -182,6 +182,8 @@ Runs per combination of params.
 
 Every combination of values runs. Each value is passed as `--name value`, with the name as written. Booleans pass as 0 or 1, lists and tables as JSON. Dates and times are rejected.
 
+Where runs are listed, each param gets a column of its own. A param named like a `runs` column, such as `id` or `command`, or like `started` or `duration`, doesn't: the run's own column keeps the name, labnotes warns once, and the value stays in `params`.
+
 ### `mode`
 
 - Type: `"adhoc"` | `"matrix"`

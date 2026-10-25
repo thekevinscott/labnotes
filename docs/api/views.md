@@ -100,7 +100,7 @@ A row is one run, keyed by column. labnotes sends:
 | `command` | The shell command the run ran, from `run.json`. |
 | `meta` | The run's [`meta`](config#meta), as written to `run.json`, or `null`. |
 | `run` | All of `run.json`, as an object. |
-| each param that varies | Its value, as in the columns. |
+| each param that varies | Its value, as in the columns. A param named like another field here keeps that field; read it from `params`. |
 | `status` | `"passed"`, `"failed"` or `"unfinished"`. |
 | `started` | `created`. |
 | `duration` | Seconds from `created` to `ended`, or `null`. |

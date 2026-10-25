@@ -20,6 +20,7 @@ dependencies = [
     "jupyter-client>=8.10.0",
     "markdown-it-py>=4.2.0",
     "markupsafe>=3.0.4",
+    "posix-tools>=0.0.4",
     "psutil>=7.2.2",
     "rich>=14",
     "starlette>=1.8.0",

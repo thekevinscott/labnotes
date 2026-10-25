@@ -10,6 +10,8 @@ def describe_status(event: dict[str, object]) -> str:
             memory = format_bytes(event["memory"]) or "?"  # type: ignore[arg-type]
             size = format_bytes(event["size"]) or "?"  # type: ignore[arg-type]
             said = f"{event['run']} uses {memory} of memory, {size} on disk."
+        case {"event": "ended", "last_stderr": str(line)}:
+            said = f"{describe_event(event)}: {line}"
         case {"event": "done", "error": None}:
             said = "Done."
         case {"event": "done"}:

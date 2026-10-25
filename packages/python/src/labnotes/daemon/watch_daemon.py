@@ -3,6 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 import httpx2
+from posix_tools import tail as tail_lines
 
 from labnotes.daemon.daemon_client import daemon_client
 from labnotes.daemon.run_logs import RunLogs
@@ -11,6 +12,22 @@ from labnotes.utils.run_usage import run_usage
 Event = dict[str, object]
 TAIL_SECONDS = 1.0
 USAGE_SECONDS = 30.0
+
+
+async def last_stderr(folder: Path) -> str | None:
+    try:
+        lines = await tail_lines(folder / "stderr.log", n=50)
+    except FileNotFoundError:
+        return None
+    for line in reversed(lines):
+        if (
+            text := line.rstrip(b"\r\n")
+            .rsplit(b"\r")[-1]
+            .decode(errors="replace")
+            .strip()
+        ):
+            return text
+    return None
 
 
 async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) -> None:
@@ -61,6 +78,11 @@ async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) 
                         logs.add(name, run, Path(str(event["folder"])))
                     case {"event": "ended", "experiment": str(name), "run": str(run)}:
                         tail()
+                        folder = logs.folders.get((name, run))
+                        if event.get("exit_code") != 0 and folder is not None:
+                            line = await last_stderr(folder)
+                            if line is not None:
+                                event = {**event, "last_stderr": line}
                         logs.drop(name, run)
                 emit(event)
     except httpx2.TransportError:

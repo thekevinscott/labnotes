@@ -1,5 +1,7 @@
 import type { Block, Experiment, Row, RunStatus } from '../types'
 
+const RETRY_EXIT_CODE = 75
+
 export type LabnotesEvent = { event: string; [field: string]: unknown }
 
 export type Cells = {
@@ -86,14 +88,22 @@ export const describeEvent = (event: LabnotesEvent): string => {
       return `Killing ${event.run}.`
     case 'retried':
       return `${event.run} retried as ${event.retry}.`
+    case 'retrying':
+      return `${event.run} retries in ${formatElapsed(Number(event.seconds))} (retry ${event.attempt} of ${event.retries}).`
+    case 'gave up':
+      return `${event.run} gave up (exit ${RETRY_EXIT_CODE}) after ${event.retries} retries.`
+    case 'retry cancelled':
+      return `${event.run} won't retry.`
     case 'idle':
       return 'No runs left.'
     case 'concurrency':
       return `${event.concurrency} at a time.`
     case 'stopping':
       return 'Stopping runs. X again to kill them.'
-    default:
+    case 'killing':
       return 'Killing runs.'
+    default:
+      return ''
   }
 }
 
@@ -161,10 +171,15 @@ const applyRun = (experiment: Experiment, event: LabnotesEvent, now: number): Ex
         message: error === null ? experiment.message : `Stopped: ${error}`,
       }
     }
-    case 'output':
-      return experiment
-    default:
+    case 'stopping run':
+    case 'killing run':
+    case 'killing':
+    case 'retrying':
+    case 'gave up':
+    case 'retry cancelled':
       return say(experiment, event)
+    default:
+      return experiment
   }
 }
 

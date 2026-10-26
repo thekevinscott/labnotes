@@ -175,10 +175,14 @@ describe('describeEvent', () => {
       { event: 'stopping run', run: 'r' },
       { event: 'killing run', run: 'r' },
       { event: 'retried', run: 'r', retry: 's' },
+      { event: 'retrying', run: 'r', attempt: 1, retries: 3, seconds: 30 },
+      { event: 'gave up', run: 'r', retries: 3 },
+      { event: 'retry cancelled', run: 'r' },
       { event: 'idle' },
       { event: 'concurrency', concurrency: 3 },
       { event: 'stopping' },
       { event: 'killing' },
+      { event: 'usage', run: 'r', memory: 1, size: 1 },
     ].map(describeEvent)
     expect(said).toEqual([
       '2 runs to go, 2 at a time.',
@@ -188,10 +192,14 @@ describe('describeEvent', () => {
       'Stopping r.',
       'Killing r.',
       'r retried as s.',
+      'r retries in 30s (retry 1 of 3).',
+      'r gave up (exit 75) after 3 retries.',
+      "r won't retry.",
       'No runs left.',
       '3 at a time.',
       'Stopping runs. X again to kill them.',
       'Killing runs.',
+      '',
     ])
   })
 })
@@ -203,6 +211,11 @@ describe('applyEvent', () => {
       { event: 'started', run: 's/b-2', params: { m: 'b' }, folder: '/f' },
     )
     expect(other?.message).toBe('Stopping s/a-1.')
+    const [sampled] = fold(
+      { event: 'stopping run', run: 's/a-1' },
+      { event: 'usage', run: 's/a-1', memory: 1, size: 1 },
+    )
+    expect(sampled?.message).toBe('Stopping s/a-1.')
   })
 
   test('sums up once idle and wakes when a run starts', () => {

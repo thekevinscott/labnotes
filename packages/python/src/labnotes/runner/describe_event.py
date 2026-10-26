@@ -14,16 +14,6 @@ def describe_event(event: dict[str, object]) -> str:
         case "ended":
             outcome = event["error"] or f"exited {event['exit_code']}"
             return f"{event['run']} {outcome}"
-        case "queued":
-            return f"{event['run']} runs next."
-        case "moved":
-            pending: list[str] = event["pending"]  # type: ignore[assignment]
-            place = pending.index(str(event["run"])) + 1
-            return f"{event['run']} moved to {place} of {len(pending)} in the queue."
-        case "deselected":
-            return f"{event['run']} deselected."
-        case "reselected":
-            return f"{event['run']} back in the queue."
         case "stopping run":
             return f"Stopping {event['run']}."
         case "killing run":

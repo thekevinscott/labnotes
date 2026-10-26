@@ -17,7 +17,7 @@ features:
     details: Experiments, notes and runs stay as folders on your disk. A .labnotes.toml maps them to your layout, whatever it is.
     link: /guides/common-organizations
   - title: Run from the terminal
-    details: Define params and repeats in experiment.toml. A live table lets you reorder, deselect, retry and change concurrency while runs go.
+    details: Define params and repeats in experiment.toml. A live table lets you stop runs and change concurrency while they go.
     link: /cli/experiments
   - title: Read in the browser
     details: Sort and filter runs, follow a run's output, and write notes with Python blocks that run in place.

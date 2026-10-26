@@ -26,7 +26,7 @@ def run(argv: list[str]) -> int | str | None:
 
 
 EVENTS: list[dict[str, object]] = [
-    {"event": "queued", "experiment": "exp", "run": "r2"},
+    {"event": "stopping run", "experiment": "exp", "run": "r2"},
     {"event": "done", "experiment": "exp", "error": None, "at": Path("/x")},
 ]
 
@@ -52,7 +52,7 @@ def test_shows_status(
 
     root = collaborators["load_config"].return_value.root
     collaborators["watch_status"].assert_awaited_once_with(root, follow, mock.ANY)
-    assert capsys.readouterr().out == "exp: r2 runs next.\nexp: Done.\n"
+    assert capsys.readouterr().out == "exp: Stopping r2.\nexp: Done.\n"
 
 
 def test_shows_status_as_json_lines(

@@ -16,7 +16,6 @@ Each table numbers its rows from 1 down the left edge. The numbers follow the ro
 | `✗ exited 75, retried`, red | Exited 75 and was retried in a new row |
 | `✗ gave up (exit 75)`, red | Exited 75 with no retries left |
 | `–` | Skipped |
-| `⊘` | Deselected |
 
 The header shows the experiment's name and how many runs go at once.
 
@@ -28,15 +27,9 @@ The `memory` column shows how much memory a running run's processes hold: the re
 | --- | --- |
 | `j` / `k` | Move the cursor down / up. |
 | `g` / `G` | Jump to the first / last row. |
-| `n` | Run the pending run under the cursor next. |
-| `m` | Grab the pending run under the cursor. `j` / `k` (or the arrow keys) move it through the queue, Enter or `m` drops it, Escape puts it back. |
-| Space | Deselect a pending run so it won't run. Press again to put it back at the end of the queue. |
 | `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
-| `D` | Deselect every pending run the filter shows. |
 | `x` | Stop the running run under the cursor. Press again to kill it. On a run waiting to retry, cancel the retry. |
 | `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
-| `f` | Hide or show failed runs. |
-| `r` | Run a failed run again under a new id. On a run waiting to retry, retry it now. |
 | Enter | Open the run's output. |
 | Ctrl-p | Open the command palette. |
 | Ctrl-C | Quit. With runs going, it asks first. |

@@ -12,7 +12,7 @@ from labnotes.daemon.describe_status import describe_status
         ),
         ({"event": "done", "error": None}, "exp: Done."),
         ({"event": "done", "error": "boom"}, "exp: Stopped: boom"),
-        ({"event": "queued", "run": "r2"}, "exp: r2 runs next."),
+        ({"event": "stopping run", "run": "r2"}, "exp: Stopping r2."),
         (
             {"event": "usage", "run": "r1", "memory": 3_200_000_000, "size": 5000},
             "exp: r1 uses 3.2 GB of memory, 5.0 kB on disk.",

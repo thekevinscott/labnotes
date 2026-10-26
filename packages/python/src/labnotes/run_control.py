@@ -18,9 +18,7 @@ PARAMS = {
     name="control",
     help=(
         "Send one control to an experiment's runs, as the live view's keys do. "
-        "kill, retry, run_next and toggle take a run; move a run and its new place "
-        "in the queue, from 0; set_concurrency a number; "
-        "interrupt and finish nothing."
+        "kill takes a run; set_concurrency a number; interrupt and finish nothing."
     ),
 )
 @click.argument("name")

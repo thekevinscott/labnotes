@@ -26,27 +26,15 @@ from labnotes.tui.runs_table import RunsTable
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
-SKIPPED, DESELECTED = "–", "⊘"
+SKIPPED = "–"
 VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette"}
-GRABBED_ACTIONS = {"shift", "drop", "put_back"}
-GRABBING_ACTIONS = {*GRABBED_ACTIONS, "grab", "quit", "interrupt", "command_palette"}
 
 
 class RunApp(App[None]):
     CSS = "#concurrency { dock: right; width: auto; padding: 0 1; }"
     BINDINGS = [
         Binding("ctrl+c", "interrupt", "Quit"),
-        Binding("n", "run_next", "Run next"),
-        Binding("m", "grab", "Move"),
-        Binding("j,down", "shift(1)", priority=True),
-        Binding("k,up", "shift(-1)", priority=True),
-        Binding("enter", "drop", "Drop", priority=True),
-        Binding("escape", "put_back", "Put back"),
-        Binding("space", "toggle_run", "Deselect"),
-        Binding("D", "deselect_shown", "Deselect shown"),
         Binding("x", "kill_run", "Stop run"),
-        Binding("f", "hide_failed", "Hide failed"),
-        Binding("r", "retry", "Retry"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
@@ -61,18 +49,10 @@ class RunApp(App[None]):
         self.results: list[dict[str, object]] = []
         self.error: Exception | None = None
         self.controls = Controls(
-            lambda: None,
-            lambda run: None,
-            lambda count: None,
-            lambda run: None,
-            lambda run: None,
-            lambda run: None,
-            lambda: None,
-            lambda run, place: None,
+            lambda: None, lambda count: None, lambda run: None, lambda: None
         )
         self.concurrency = 1
         self.idle = False
-        self.next_run: str | None = None
         self.ended: set[str] = set()
         self.frame = 0
         self.started: dict[str, float] = {}
@@ -82,11 +62,8 @@ class RunApp(App[None]):
         self.failed: set[str] = set()
         self.retried: set[str] = set()
         self.waiting: dict[str, float] = {}
-        self.hiding = False
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
-        self.grabbed: str | None = None
-        self.grabbed_from: list[str] = []
         self.sampling = False
         self.unmeasured: dict[str, None] = {}
 
@@ -143,14 +120,10 @@ class RunApp(App[None]):
                     case "adhoc", [only]:
                         self.view(only["run"])  # type: ignore[index]
             case "started":
-                if run == self.grabbed:
-                    self.action_put_back()
                 self.idle = False
                 self.pending.discard(run)
                 self.started[run] = time.monotonic()
                 self.folders[run] = Path(str(event["folder"]))
-                if run == self.next_run:
-                    self.show("")
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 shown = {
                     "run": run.rpartition("/")[2],
@@ -175,21 +148,6 @@ class RunApp(App[None]):
                 self.redraw(table.cursor_row)
                 self.unmeasured[run] = None
                 self.measure()
-            case "queued":
-                self.reposition(event, run)
-                self.next_run = run
-            case "moved":
-                self.reposition(event, run)
-            case "deselected":
-                self.pending.discard(run)
-                self.set_cell(run, "status", dim(DESELECTED))
-                self.reorder(event, table.cursor_row)
-                self.show(describe_event(event))
-            case "reselected":
-                self.pending.add(run)
-                self.set_cell(run, "status", dim(PENDING))
-                self.reorder(event, table.cursor_row)
-                self.show(describe_event(event))
             case "retrying":
                 self.waiting[run] = time.monotonic() + float(event["seconds"])  # type: ignore[arg-type]
                 self.tick()
@@ -233,25 +191,11 @@ class RunApp(App[None]):
         again = f" {retried} retried." if retried else ""
         self.show(f"{passed} passed, {failed} failed.{again} Ctrl-C to quit.")
 
-    def reposition(self, event: dict[str, object], run: str) -> None:
-        table = self.query_one(DataTable)
-        self.reorder(event, table.cursor_row)
-        table.move_cursor(row=table.get_row_index(run))
-        self.show(describe_event(event))
-
-    def reorder(self, event: dict[str, object], row: int) -> None:
-        self.release()
-        waiting: list[str] = [*event["pending"], *event["held"]]  # type: ignore[misc]
-        for run in waiting:
-            self.cells[run] = self.cells.pop(run)
-        self.redraw(row)
-
     def redraw(self, row: int) -> None:
         table = self.query_one(DataTable)
         table.clear()
         for run, cells in self.cells.items():
-            hidden = self.hiding and run in self.failed
-            if self.filter in str(cells.get("params", "")) and not hidden:
+            if self.filter in str(cells.get("params", "")):
                 table.add_row(
                     *(cells.get(c, "") for c in self.columns),
                     key=run,
@@ -274,10 +218,8 @@ class RunApp(App[None]):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         if isinstance(self.screen, LeavePrompt):
             return False
-        if self.grabbed is not None:
-            return action in GRABBING_ACTIONS
-        if action in GRABBED_ACTIONS:
-            return False
+        if action == "leave" and self.viewing is None:
+            return self.query_one(Input).display
         return self.viewing is None or action in VIEWING_ACTIONS
 
     def show_concurrency(self, event: dict[str, object]) -> None:
@@ -324,7 +266,6 @@ class RunApp(App[None]):
             self.set_cell(run, "status", SPINNER[self.frame])
 
     def show(self, text: str) -> None:
-        self.next_run = None
         self.query_one("#status", Static).update(text)
 
     def stop_runs(self) -> None:
@@ -358,83 +299,9 @@ class RunApp(App[None]):
         cell = table.coordinate_to_cell_key(table.cursor_coordinate)
         return str(cell.row_key.value)
 
-    def action_run_next(self) -> None:
-        if (run := self.cursor_run()) is not None:
-            self.controls.run_next(run)
-
-    def queue(self) -> list[str]:
-        return [run for run in self.cells if run in self.pending]
-
-    def action_grab(self) -> None:
-        if self.grabbed is not None:
-            self.action_drop()
-            return
-        run = self.cursor_run()
-        if run not in self.pending:
-            return
-        self.grabbed = run
-        self.grabbed_from = list(self.cells)
-        self.refresh_bindings()
-        self.show(f"Moving {run}. j/k moves it, Enter drops it, Escape puts it back.")
-
-    def action_shift(self, step: int) -> None:
-        run = str(self.grabbed)
-        queue = self.queue()
-        place = queue.index(run) + step
-        if place not in range(len(queue)):
-            return
-        order = list(self.cells)
-        here, there = order.index(run), order.index(queue[place])
-        order[here], order[there] = order[there], order[here]
-        self.cells = {key: self.cells[key] for key in order}
-        self.redraw_on(run)
-
-    def action_drop(self) -> None:
-        run = str(self.grabbed)
-        self.release()
-        self.show("")
-        self.controls.move(run, self.queue().index(run))
-
-    def action_put_back(self) -> None:
-        run = str(self.grabbed)
-        self.release()
-        places = {key: place for place, key in enumerate(self.grabbed_from)}
-        ordered = sorted(self.cells, key=lambda key: places.get(key, len(places)))
-        self.cells = {key: self.cells[key] for key in ordered}
-        self.redraw_on(run)
-        self.show("")
-
-    def release(self) -> None:
-        self.grabbed = None
-        self.refresh_bindings()
-
-    def redraw_on(self, run: str) -> None:
-        table = self.query_one(DataTable)
-        self.redraw(table.cursor_row)
-        table.move_cursor(row=table.get_row_index(run))
-
-    def action_toggle_run(self) -> None:
-        if (run := self.cursor_run()) is not None:
-            self.controls.toggle(run)
-
-    def action_hide_failed(self) -> None:
-        self.hiding = not self.hiding
-        self.redraw(self.query_one(DataTable).cursor_row)
-        self.show("Failed runs hidden." if self.hiding else "Failed runs shown.")
-
-    def action_retry(self) -> None:
-        if (run := self.cursor_run()) is not None and run in self.failed:
-            self.controls.retry(run)
-
     def action_kill_run(self) -> None:
         if (run := self.cursor_run()) is not None:
             self.controls.kill(run)
-
-    def action_deselect_shown(self) -> None:
-        shown = [str(key.value) for key in self.query_one(DataTable).rows]
-        for run in shown:
-            if run in self.pending:
-                self.controls.toggle(run)
 
     def action_concurrency(self, change: int) -> None:
         self.controls.set_concurrency(self.concurrency + change)
@@ -443,10 +310,10 @@ class RunApp(App[None]):
         field = self.query_one(Input)
         field.display = True
         field.focus()
+        self.refresh_bindings()
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
-        if self.grabbed is None:
-            self.view(str(event.row_key.value))
+        self.view(str(event.row_key.value))
 
     def view(self, run: str) -> None:
         self.viewing = run
@@ -481,6 +348,7 @@ class RunApp(App[None]):
         field.value = ""
         field.display = False
         self.query_one(DataTable).focus()
+        self.refresh_bindings()
 
     def on_input_changed(self, event: Input.Changed) -> None:
         self.filter = event.value
@@ -489,3 +357,4 @@ class RunApp(App[None]):
     def on_input_submitted(self, event: Input.Submitted) -> None:
         event.input.display = bool(event.value)
         self.query_one(DataTable).focus()
+        self.refresh_bindings()

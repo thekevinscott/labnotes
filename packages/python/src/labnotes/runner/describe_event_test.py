@@ -21,16 +21,6 @@ def param_args() -> Iterator[mock.MagicMock]:
             {"event": "planned", "runs": [{}] * 4, "concurrency": 2},
             "4 runs to go, 2 at a time.",
         ),
-        ({"event": "queued", "run": "r1"}, "r1 runs next."),
-        ({"event": "deselected", "run": "r1"}, "r1 deselected."),
-        (
-            {"event": "moved", "run": "r1", "pending": ["r2", "r1", "r3"]},
-            "r1 moved to 2 of 3 in the queue.",
-        ),
-        (
-            {"event": "moved", "run": "r3", "pending": ["r3", "r1"]},
-            "r3 moved to 1 of 2 in the queue.",
-        ),
         ({"event": "retried", "run": "r1", "retry": "r2"}, "r1 retried as r2."),
         (
             {
@@ -50,7 +40,6 @@ def param_args() -> Iterator[mock.MagicMock]:
         ({"event": "idle"}, "No runs left."),
         ({"event": "stopping run", "run": "r1"}, "Stopping r1."),
         ({"event": "killing run", "run": "r1"}, "Killing r1."),
-        ({"event": "reselected", "run": "r1"}, "r1 back in the queue."),
         ({"event": "concurrency", "concurrency": 3}, "3 at a time."),
         (
             {"event": "ended", "run": "r1", "exit_code": 3, "error": None},

@@ -14,13 +14,9 @@ Report = Callable[[dict[str, object]], None]
 @dataclass(frozen=True)
 class Controls:
     interrupt: Callable[[], None]
-    run_next: Callable[[str], None]
     set_concurrency: Callable[[int], None]
-    toggle: Callable[[str], None]
     kill: Callable[[str], None]
-    retry: Callable[[str], None]
     finish: Callable[[], None]
-    move: Callable[[str, int], None]
 
 
 Listen = Callable[[Controls], None]

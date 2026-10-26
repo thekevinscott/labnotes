@@ -106,14 +106,14 @@ def test_follows_events_and_new_log_lines(
             {"event": "replayed"},
             started(tmp_path),
             write,
-            {"event": "queued", "experiment": "exp", "run": "r2"},
+            {"event": "stopping run", "experiment": "exp", "run": "r2"},
         ]
     )
 
     assert watch(follow=True) == [
         started(tmp_path),
         output("one"),
-        {"event": "queued", "experiment": "exp", "run": "r2"},
+        {"event": "stopping run", "experiment": "exp", "run": "r2"},
     ]
 
 

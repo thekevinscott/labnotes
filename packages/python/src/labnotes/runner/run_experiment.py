@@ -128,43 +128,6 @@ async def run_experiment(
             report({"event": "stopping run", "run": run})
             signal_run(run, signal.SIGTERM)
 
-    held: list[Entry] = []
-
-    def find(entries: list[Entry], run: str) -> Entry | None:
-        return next((entry for entry in entries if entry[0] == run), None)
-
-    def arrange(event: str, run: str) -> None:
-        pending = [id_ for id_, _ in plan]
-        deselected = [id_ for id_, _ in held]
-        report({"event": event, "run": run, "pending": pending, "held": deselected})
-
-    def run_next(run: str) -> None:
-        entry = find(plan, run)
-        if entry is not None:
-            plan.remove(entry)
-            plan.insert(0, entry)
-            arrange("queued", run)
-
-    def move(run: str, place: int) -> None:
-        entry = find(plan, run)
-        if entry is not None:
-            plan.remove(entry)
-            plan.insert(max(0, place), entry)
-            arrange("moved", run)
-
-    def toggle(run: str) -> None:
-        if stopping.is_set():
-            return
-        if (entry := find(plan, run)) is not None:
-            plan.remove(entry)
-            held.append(entry)
-            arrange("deselected", run)
-        elif (entry := find(held, run)) is not None:
-            held.remove(entry)
-            plan.append(entry)
-            arrange("reselected", run)
-            fill()
-
     ended: dict[str, dict[str, object]] = {}
     parents: dict[str, str] = {}
     attempts: dict[str, int] = {}
@@ -178,15 +141,6 @@ async def run_experiment(
         plan.append((again, ended[run]))
         report({"event": "retried", "run": run, "retry": again, "params": ended[run]})
         fill()
-
-    def retry(run: str) -> None:
-        if stopping.is_set() or run not in ended:
-            return
-        if run in waiting:
-            waiting.pop(run).cancel()
-            requeue(run, attempts.get(run, 0) + 1)
-        else:
-            requeue(run, 0)
 
     def retry_later(run: str) -> None:
         tried = attempts.get(run, 0)
@@ -277,11 +231,7 @@ async def run_experiment(
         ):
             retry_later(run)
 
-    listen(
-        Controls(
-            interrupt, run_next, set_concurrency, toggle, kill, retry, finish, move
-        )
-    )
+    listen(Controls(interrupt, set_concurrency, kill, finish))
     fill()
     await done.wait()
     await asyncio.gather(*started)

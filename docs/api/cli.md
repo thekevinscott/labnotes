@@ -91,11 +91,7 @@ Sends one control to an experiment's runs, the same as a [TUI](tui) key.
 
 | Action | Argument | Does |
 | --- | --- | --- |
-| `run_next` | run | Runs this pending run next. |
-| `toggle` | run | Deselects a pending run, or puts it back. |
-| `move` | run, place | Moves a pending run to that place in the queue, counted from 0. |
 | `kill` | run | Stops a running run. A second `kill` kills it. On a run waiting to retry, cancels the retry. |
-| `retry` | run | Runs a failed run again under a new id, with `retry_of` in its `run.json`. On a run waiting to retry, starts the retry now. |
 | `set_concurrency` | number | Sets how many run at once. |
 | `finish` | | Lets running runs finish and starts no more. |
 | `interrupt` | | Stops every running run. |

@@ -5,7 +5,6 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from textual.widgets import DataTable
 
 from labnotes.tui.run_app import RunApp
 
@@ -1142,7 +1141,7 @@ def test_numbers_shown_rows_from_one() -> None:
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            table = app.query_one(DataTable)
+            table: Any = app.query_one("#runs")
             labels = [str(row.label) for row in table.ordered_rows]
             assert labels == ["1", "2", "3"]
             await pilot.press("slash", "m", "space", "r", "2", "enter")

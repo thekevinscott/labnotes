@@ -1,0 +1,1 @@
+**Fixed** — The Claude Code runs pane no longer says "Killing runs." while runs are going and nothing was killed. Memory and disk samples, and any other event the pane does not word, now leave its message alone. The pane also words retries the way the run TUI does.

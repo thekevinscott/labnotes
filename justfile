@@ -15,7 +15,11 @@ py-typecheck:
     cd packages/python && uv run mypy src
 
 py-test:
-    cd packages/python && uv run pytest src/labnotes tests
+    cd packages/python && uv run pytest src/labnotes tests/integration
+
+# Drives a real `claude` (installed, on PATH) with the mod loaded.
+py-e2e:
+    cd packages/python && uv run pytest tests/e2e
 
 py-build:
     cd packages/python && uv build

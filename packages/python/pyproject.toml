@@ -44,11 +44,24 @@ dev = [
     "types-psutil>=7.2.2.20260906",
 ]
 
-# thekevinscott's own packages skip the user-level uv release cooldown.
+# Mirrors the user-level uv cooldown. uv writes the merged settings into
+# uv.lock, so a setting only the user config has makes CI, which has no user
+# config, re-resolve instead of installing what is locked.
+[tool.uv]
+exclude-newer = "3 days"
+
+# thekevinscott's own packages skip the cooldown.
 [tool.uv.exclude-newer-package]
+botbox = false
+cachetta = false
+coaxer = false
 curtaincall = false
 dirsql = false
+labnotes = false
+lamp-the-djinn = false
 posix-tools = false
+pyskillet = false
+repo-name-checker = false
 
 [tool.hatch.version]
 source = "vcs"

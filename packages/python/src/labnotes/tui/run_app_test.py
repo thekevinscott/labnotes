@@ -1132,6 +1132,25 @@ def test_slash_filters_rows_by_params() -> None:
     asyncio.run(drive())
 
 
+def test_numbers_shown_rows_from_one() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            table: Any = app.query_one("#runs")
+            labels = [str(row.label) for row in table.ordered_rows]
+            assert labels == ["1", "2", "3"]
+            await pilot.press("slash", "m", "space", "r", "2", "enter")
+            labels = [str(row.label) for row in table.ordered_rows]
+            assert labels == ["1"]
+
+    asyncio.run(drive())
+
+
 def test_an_empty_filter_hides_the_field() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))

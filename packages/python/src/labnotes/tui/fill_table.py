@@ -21,6 +21,6 @@ def fill_table(
         table.clear(columns=True)
         table.add_columns(*columns)
     keys = [each for each, _ in rows]
-    for each, cells in rows:
-        table.add_row(*cells, key=each)
+    for number, (each, cells) in enumerate(rows, 1):
+        table.add_row(*cells, key=each, label=str(number))
     table.move_cursor(row=keys.index(key) if key in keys else row)

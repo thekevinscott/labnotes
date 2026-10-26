@@ -8,6 +8,7 @@ class FakeTable:
     def __init__(self) -> None:
         self.labels: list[str] = []
         self.rows: list[tuple[str, list[object]]] = []
+        self.numbers: list[str] = []
         self.cursor_row = 0
         self.cursor_coordinate = "cursor"
 
@@ -27,6 +28,7 @@ class FakeTable:
 
     def clear(self, columns: bool = False) -> None:
         self.rows = []
+        self.numbers = []
         self.cursor_row = 0
         if columns:
             self.labels = []
@@ -34,8 +36,9 @@ class FakeTable:
     def add_columns(self, *labels: str) -> None:
         self.labels += labels
 
-    def add_row(self, *cells: object, key: str) -> None:
+    def add_row(self, *cells: object, key: str, label: str) -> None:
         self.rows.append((key, list(cells)))
+        self.numbers.append(label)
 
     def move_cursor(self, *, row: int) -> None:
         self.cursor_row = min(row, max(len(self.rows) - 1, 0))
@@ -106,3 +109,12 @@ def test_empties_the_table() -> None:
     fill(table, [])
 
     assert shown(table) == ([], [], 0)
+
+
+def test_numbers_rows_from_one() -> None:
+    table = FakeTable()
+    fill(table, ["name", "size"], "ab", "c", "d")
+
+    fill(table, ["name", "size"], "c", "d")
+
+    assert table.numbers == ["1", "2"]

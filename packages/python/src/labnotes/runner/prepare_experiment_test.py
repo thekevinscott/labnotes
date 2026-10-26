@@ -18,10 +18,12 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.prepare_experiment.file_text",
             new=mock.AsyncMock(return_value="source"),
         ) as file_text,
+        mock.patch("labnotes.runner.prepare_experiment.check_subset") as check_subset,
     ):
         yield {
             "read_experiment_config": read_experiment_config,
             "file_text": file_text,
+            "check_subset": check_subset,
         }
 
 
@@ -60,6 +62,23 @@ def test_reads_the_experiment(
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
+    collaborators["check_subset"].assert_not_called()
+
+
+def test_checks_the_subset_against_the_params(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    experiment = collaborators["read_experiment_config"].return_value
+    collaborators["check_subset"].side_effect = ValueError("No param size.")
+
+    with pytest.raises(ValueError, match=r"^No param size\.$"):
+        asyncio.run(
+            prepare_experiment(make_config(tmp_path), "exp", None, 2, {"size": "s"})
+        )
+
+    collaborators["check_subset"].assert_called_once_with(
+        experiment.params, {"size": "s"}
+    )
 
 
 def test_reads_the_named_experiment_config(

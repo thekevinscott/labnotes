@@ -33,6 +33,7 @@ class Session:
         report: Callable[[dict[str, object]], None],
         listen: Callable[[object], None],
         timeout: float | None,
+        only: dict[str, str] | None = None,
     ) -> list[object]:
         self.report = report
         self.end = asyncio.Event()
@@ -118,16 +119,23 @@ def test_starts_a_session_and_streams_its_events(
         stream = await connect(app)
 
         response = await start(
-            app, experiment_config="/x.toml", concurrency=2, timeout=90
+            app,
+            experiment_config="/x.toml",
+            concurrency=2,
+            timeout=90,
+            only={"model": "small"},
         )
 
         assert response.status_code == 202
         collaborators["prepare_experiment"].assert_awaited_once_with(
-            CONFIG, "exp", Path("/x.toml"), 2
+            CONFIG, "exp", Path("/x.toml"), 2, {"model": "small"}
         )
         args = collaborators["run_experiment"].call_args.args
         assert args[:4] == (CONFIG, "exp", EXPERIMENT, 3)
         assert args[6] == 90
+        assert collaborators["run_experiment"].call_args.kwargs == {
+            "only": {"model": "small"}
+        }
         assert await next_event(stream) == {
             "event": "planned",
             "folder": "/runs/r1",
@@ -154,9 +162,10 @@ def test_reads_the_default_experiment_config(
         app = daemon_app(CONFIG)
         await start(app)
         collaborators["prepare_experiment"].assert_awaited_once_with(
-            CONFIG, "exp", None, None
+            CONFIG, "exp", None, None, None
         )
         assert collaborators["run_experiment"].call_args.args[6] is None
+        assert collaborators["run_experiment"].call_args.kwargs == {"only": None}
 
     asyncio.run(go())
 

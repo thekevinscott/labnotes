@@ -8,6 +8,7 @@ from labnotes.create_experiment import create_experiment
 from labnotes.daemon.remote_start import remote_start
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
+from labnotes.parse_subset import parse_subset
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
 from labnotes.runner.run_headless import run_headless
@@ -20,7 +21,9 @@ BYTES = ("memory", "size")
 
 @click.command(
     help="List experiments, show one, list its runs, or run it."
-    " `new [NAME]` creates one."
+    " `new [NAME]` creates one. With run, --PARAM=VALUE runs only the"
+    " matrix cells where that param has that value.",
+    context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
 @click.argument("name", required=False)
 @click.argument("action", required=False, metavar="[runs|run]")
@@ -74,7 +77,13 @@ def experiments(
             click.echo(f"Created {path / 'experiment.toml'}")
             return
         case str(), "run":
-            start = remote_start(config, name, experiment_config, concurrency, timeout)
+            try:
+                only = parse_subset(ctx.args)
+            except ValueError as error:
+                raise click.UsageError(str(error)) from error
+            start = remote_start(
+                config, name, experiment_config, concurrency, timeout, only
+            )
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():
                     results = run_tui(start, name)
@@ -92,6 +101,8 @@ def experiments(
             passed = len(results) - failed - retried
             click.echo(f"{passed} passed, {failed} failed.{again}")
             return
+    if ctx.args:
+        raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
     if action not in (None, "runs"):
         raise click.UsageError(f"Unknown action {action}. Use runs or run.")
     if output_format is None and sys.stdout.isatty() and sys.stderr.isatty():

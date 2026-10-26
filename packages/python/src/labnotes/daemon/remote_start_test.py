@@ -85,6 +85,7 @@ def test_runs_the_experiment_through_the_daemon(
             "experiment_config": str(toml.resolve()),
             "concurrency": 3,
             "timeout": None,
+            "only": None,
         },
     )
     assert report.call_args_list == [
@@ -104,7 +105,17 @@ def test_sends_no_experiment_config_by_default(daemon: dict[str, Any]) -> None:
         "experiment_config": None,
         "concurrency": 3,
         "timeout": None,
+        "only": None,
     }
+
+
+def test_sends_the_subset_to_run(daemon: dict[str, Any]) -> None:
+    daemon["sent"].append({"event": "done", "experiment": "exp", "error": None})
+
+    start = remote_start(CONFIG, "exp", None, 3, None, {"model": "small"})
+    asyncio.run(start(mock.Mock(), mock.Mock()))
+
+    assert daemon["client"].post.call_args.kwargs["json"]["only"] == {"model": "small"}
 
 
 def test_sends_controls_to_the_daemon(daemon: dict[str, Any]) -> None:

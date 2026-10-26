@@ -78,6 +78,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                 name,
                 None if path is None else Path(str(path)),
                 body.get("concurrency"),  # type: ignore[arg-type]
+                body.get("only"),  # type: ignore[arg-type]
             )
         except ValueError as error:
             return refuse(400, str(error))
@@ -103,6 +104,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                     lambda event: record({**event, "experiment": name}),
                     listen,
                     body.get("timeout"),  # type: ignore[arg-type]
+                    only=body.get("only"),  # type: ignore[arg-type]
                 )
             # Clients hear why the session ended; the daemon keeps serving.
             except Exception as failure:  # noqa: BLE001

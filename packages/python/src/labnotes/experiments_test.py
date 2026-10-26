@@ -96,6 +96,17 @@ def test_rejects_an_unknown_action(
     collaborators["experiment_rows"].assert_not_called()
 
 
+def test_needs_run_for_params(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["a", "runs", "--model=small", "--lang=en"]) == 2
+
+    assert "Unexpected --model=small. --PARAM=VALUE needs run." in (
+        capsys.readouterr().err
+    )
+    collaborators["experiment_rows"].assert_not_called()
+
+
 def test_help_says_format_prints_and_exits(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -187,6 +198,9 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch("labnotes.experiments.remote_start") as remote_start,
         mock.patch("labnotes.experiments.run_tui", return_value=results) as run_tui,
         mock.patch("labnotes.experiments.sys") as sys,
+        mock.patch(
+            "labnotes.experiments.parse_subset", return_value={}
+        ) as parse_subset,
     ):
         sys.stdout.isatty.return_value = False
         sys.stderr.isatty.return_value = True
@@ -195,6 +209,7 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
             "remote_start": remote_start,
             "run_tui": run_tui,
             "sys": sys,
+            "parse_subset": parse_subset,
         }
 
 
@@ -206,7 +221,7 @@ def test_runs_an_experiment_through_the_daemon(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, None
+        collaborators["load_config"].return_value, "a", None, 3, None, {}
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["remote_start"].return_value
@@ -227,6 +242,47 @@ def test_runs_an_experiment_from_a_named_config(
     assert run(["a", "run", "-e", str(path)]) == 0
 
     assert drivers["remote_start"].call_args.args[1:4] == ("a", path, None)
+
+
+def test_runs_the_subset_given_as_params(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--model=small", "--timeout", "5", "--lang=en"]) == 0
+
+    drivers["parse_subset"].assert_called_once_with(["--model=small", "--lang=en"])
+    drivers["remote_start"].assert_called_once_with(
+        collaborators["load_config"].return_value,
+        "a",
+        None,
+        None,
+        5,
+        drivers["parse_subset"].return_value,
+    )
+
+
+def test_rejects_a_malformed_param(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["parse_subset"].side_effect = ValueError("Unexpected --model.")
+
+    assert run(["a", "run", "--model"]) == 2
+
+    assert "Error: Unexpected --model." in capsys.readouterr().err
+    drivers["remote_start"].assert_not_called()
+
+
+def test_help_says_params_pick_a_subset(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["--help"]) == 0
+
+    help_text = " ".join(capsys.readouterr().out.split())
+    assert "With run, --PARAM=VALUE runs only the matrix cells where that param" in (
+        help_text
+    )
 
 
 def test_exits_zero_when_a_run_fails(
@@ -331,7 +387,7 @@ def test_shows_the_live_view_in_a_terminal(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, None
+        collaborators["load_config"].return_value, "a", None, 3, None, {}
     )
     drivers["run_tui"].assert_called_once_with(
         drivers["remote_start"].return_value, "a"

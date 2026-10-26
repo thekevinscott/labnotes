@@ -5,6 +5,7 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from textual.widgets import DataTable
 
 from labnotes.tui.run_app import RunApp
 
@@ -1128,6 +1129,25 @@ def test_slash_filters_rows_by_params() -> None:
                 ["r3", "--m r3", "○"],
             ]
             assert not app.query_one("#filter").display
+
+    asyncio.run(drive())
+
+
+def test_numbers_shown_rows_from_one() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2", "r3"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            table = app.query_one(DataTable)
+            labels = [str(row.label) for row in table.ordered_rows]
+            assert labels == ["1", "2", "3"]
+            await pilot.press("slash", "m", "space", "r", "2", "enter")
+            labels = [str(row.label) for row in table.ordered_rows]
+            assert labels == ["1"]
 
     asyncio.run(drive())
 

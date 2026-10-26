@@ -252,7 +252,11 @@ class RunApp(App[None]):
         for run, cells in self.cells.items():
             hidden = self.hiding and run in self.failed
             if self.filter in str(cells.get("params", "")) and not hidden:
-                table.add_row(*(cells.get(c, "") for c in self.columns), key=run)
+                table.add_row(
+                    *(cells.get(c, "") for c in self.columns),
+                    key=run,
+                    label=str(table.row_count + 1),
+                )
         table.move_cursor(row=row)
 
     def waiting_cells(self, run: str, args: str) -> dict[str, object]:

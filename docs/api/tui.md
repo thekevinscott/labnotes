@@ -2,6 +2,8 @@
 
 `labnotes experiments NAME run` opens the TUI when stdout and stderr are both a terminal. The listing forms open a read-only [browser](#browsing) the same way.
 
+Each table numbers its rows from 1 down the left edge. The numbers follow the rows shown, so a filter renumbers them.
+
 ## Statuses
 
 | Glyph | Status |

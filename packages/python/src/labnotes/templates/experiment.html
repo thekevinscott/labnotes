@@ -51,6 +51,45 @@
   {% set nested = e.run_groups is not none %}
   {% set width = e.run_columns | length + (2 if nested else 1) %}
   {% set narrowed = view.status or view.filters or view.picked %}
+  {% set grid = e.run_grid %}
+  {% if e.mode == 'matrix' and e.runs %}
+  <nav class="view-toggle" aria-label="Runs view">
+    <a href="?#runs" title="Table" aria-label="Table"{% if not grid %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M2 8h12M2 12.5h12"/></svg></a>
+    <a href="?view=grid#runs" title="Grid" aria-label="Grid"{% if grid %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></a>
+  </nav>
+  {% endif %}
+  {% if grid %}
+  <div class="scroll">
+  <table class="runs-grid">
+    <thead>
+      {% if grid.column_key is not none %}
+      <tr class="axis-row">
+        {% if grid.row_keys %}<td colspan="{{ grid.row_keys | length }}"></td>{% endif %}
+        <th scope="colgroup" colspan="{{ grid.columns | length }}" class="axis">{{ grid.column_key }}</th>
+      </tr>
+      <tr>
+        {% for key in grid.row_keys %}<th scope="col" class="label">{{ key }}</th>{% endfor %}
+        {% for column in grid.columns %}<th scope="col">{{ column | value }}</th>{% endfor %}
+      </tr>
+      {% endif %}
+    </thead>
+    <tbody>
+      {% for row in grid.rows %}
+      <tr>
+        {% for label in row.labels %}<th scope="row">{{ label | value }}</th>{% endfor %}
+        {% for cell in row.cells %}
+        {% set goal = e.runs_per_cell or 1 %}
+        <td class="grid-cell{{ ' done' if cell.completed >= goal }}{{ ' empty' if not cell.runs }}" title="{% for key, value in cell['values'].items() %}{{ key }} = {{ value | value }}{{ ', ' if not loop.last }}{% endfor %}{{ ': ' if cell['values'] }}{{ cell.completed }} complete of {{ cell.runs }} recorded">
+          <a href="{{ cell.href }}"><span class="num">{{ cell.completed }}<span class="of">/{{ goal }}</span></span>
+          <span class="meter"><span class="meter-fill" style="width: {{ [cell.completed / goal * 100, 100] | min }}%"></span></span></a>
+        </td>
+        {% endfor %}
+      </tr>
+      {% endfor %}
+    </tbody>
+  </table>
+  </div>
+  {% else %}
   {% if narrowed %}<p class="narrowed"><span class="num">{{ e.runs_list | length }}</span> of <span class="num">{{ e.runs }}</span> <a class="clear" href="{{ '?sort=' ~ (view.sort | urlencode) ~ ('&order=desc' if view.descending else '') if view.sort else '?' }}#runs">Clear filters</a></p>{% endif %}
   {% if e.runs %}
   <form id="run-filters" method="get" action="#runs">
@@ -116,6 +155,7 @@
   </div>
   {% else %}
   <p class="empty">No runs recorded yet.</p>
+  {% endif %}
   {% endif %}
 </section>
 {% endif %}

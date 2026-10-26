@@ -1,0 +1,1 @@
+**Added** — the Runs tab of a `matrix` experiment has icons above the table to switch to a grid. The grid has one cell per combination of the params that vary, with how many runs count toward `repeats`. Clicking a cell opens the table filtered to that combination. The grid lives at `?view=grid`. Ad-hoc experiments show only the table.

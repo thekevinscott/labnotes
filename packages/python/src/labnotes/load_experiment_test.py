@@ -6,6 +6,7 @@ from typing import cast
 from unittest import mock
 
 import pytest
+from starlette.datastructures import QueryParams
 
 from labnotes.load_experiment import load_experiment
 
@@ -103,7 +104,7 @@ def test_loads_config_notes_progress_and_runs(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     tables = make_tables(experiment())
-    params = mock.Mock()
+    params = QueryParams()
 
     loaded = asyncio.run(load_experiment(tables, ROOT, "adhoc", "it's", params))
 
@@ -157,7 +158,9 @@ def test_shows_only_id_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(None)), ROOT, "adhoc", "a", mock.Mock())
+        load_experiment(
+            make_tables(experiment(None)), ROOT, "adhoc", "a", QueryParams()
+        )
     )
 
     assert loaded is not None
@@ -171,7 +174,7 @@ def test_falls_back_to_the_project_mode(
 
     loaded = asyncio.run(
         load_experiment(
-            make_tables(experiment(config)), ROOT, "matrix", "a", mock.Mock()
+            make_tables(experiment(config)), ROOT, "matrix", "a", QueryParams()
         )
     )
 
@@ -184,7 +187,7 @@ def test_returns_none_for_an_unknown_experiment(
 ) -> None:
     assert (
         asyncio.run(
-            load_experiment(make_tables([]), ROOT, "adhoc", "nope", mock.Mock())
+            load_experiment(make_tables([]), ROOT, "adhoc", "nope", QueryParams())
         )
         is None
     )
@@ -198,7 +201,7 @@ def test_lists_a_param_named_id_once(
     with pytest.warns(UserWarning, match="Params id clash"):
         loaded = asyncio.run(
             load_experiment(
-                make_tables(experiment(config)), ROOT, "adhoc", "a", mock.Mock()
+                make_tables(experiment(config)), ROOT, "adhoc", "a", QueryParams()
             )
         )
 
@@ -218,7 +221,7 @@ def test_renders_notes_with_their_saved_outputs(
 
     loaded = asyncio.run(
         load_experiment(
-            make_tables(experiment()), ROOT, "adhoc", "a", mock.Mock(), outputs_for
+            make_tables(experiment()), ROOT, "adhoc", "a", QueryParams(), outputs_for
         )
     )
 
@@ -240,7 +243,7 @@ def test_marks_notes_without_python_blocks_as_not_runnable(
     collaborators["python_blocks"].return_value = []
 
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", mock.Mock())
+        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", QueryParams())
     )
 
     assert loaded is not None
@@ -256,7 +259,7 @@ def test_notes_a_counts_rule_set_in_the_config(
 
     loaded = asyncio.run(
         load_experiment(
-            make_tables(experiment(config)), ROOT, "adhoc", "a", mock.Mock()
+            make_tables(experiment(config)), ROOT, "adhoc", "a", QueryParams()
         )
     )
 
@@ -271,7 +274,7 @@ def test_names_the_runs_view_command(
 
     loaded = asyncio.run(
         load_experiment(
-            make_tables(experiment(config)), ROOT, "adhoc", "a", mock.Mock()
+            make_tables(experiment(config)), ROOT, "adhoc", "a", QueryParams()
         )
     )
 
@@ -283,7 +286,9 @@ def test_has_no_counts_rule_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     loaded = asyncio.run(
-        load_experiment(make_tables(experiment(None)), ROOT, "adhoc", "a", mock.Mock())
+        load_experiment(
+            make_tables(experiment(None)), ROOT, "adhoc", "a", QueryParams()
+        )
     )
 
     assert loaded is not None
@@ -298,7 +303,7 @@ def test_groups_adhoc_runs_by_invocation_once_any_has_several(
     config = {**CONFIG, "mode": "adhoc"}
     tables = make_tables(experiment(config))
 
-    loaded = asyncio.run(load_experiment(tables, ROOT, "matrix", "a", mock.Mock()))
+    loaded = asyncio.run(load_experiment(tables, ROOT, "matrix", "a", QueryParams()))
 
     assert loaded is not None
     source = collaborators["list_runs"].await_args.args[1]
@@ -314,3 +319,55 @@ def test_groups_adhoc_runs_by_invocation_once_any_has_several(
     else:
         count_groups.assert_not_awaited()
         assert loaded["run_groups"] is None
+
+
+def test_has_no_grid_unless_asked(collaborators: dict[str, mock.MagicMock]) -> None:
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", QueryParams())
+    )
+
+    assert loaded is not None
+    assert loaded["run_grid"] is None
+
+
+def test_pivots_counts_by_the_params_that_vary_for_a_grid(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    tables = make_tables(experiment())
+    params = QueryParams("view=grid")
+
+    with mock.patch("labnotes.load_experiment.pivot_runs") as pivot_runs:
+        loaded = asyncio.run(load_experiment(tables, ROOT, "adhoc", "a", params))
+
+    assert loaded is not None
+    assert loaded["run_grid"] is pivot_runs.return_value
+    count_runs = collaborators["count_runs"]
+    source = collaborators["list_runs"].await_args.args[1]
+    count_runs.assert_awaited_with(tables, source, "checked", group_by=["x"])
+    pivot_runs.assert_called_once_with({"x": [1, 2]}, count_runs.return_value)
+
+
+def test_has_no_grid_for_adhoc_runs(collaborators: dict[str, mock.MagicMock]) -> None:
+    config = {**CONFIG, "mode": "adhoc"}
+    tables = make_tables(experiment(config))
+
+    loaded = asyncio.run(
+        load_experiment(tables, ROOT, "matrix", "a", QueryParams("view=grid"))
+    )
+
+    assert loaded is not None
+    assert loaded["run_grid"] is None
+    collaborators["count_runs"].assert_awaited_once()
+
+
+def test_takes_the_last_view_asked_for(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    params = QueryParams("view=grid&view=table")
+
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", params)
+    )
+
+    assert loaded is not None
+    assert loaded["run_grid"] is None

@@ -28,7 +28,7 @@ An experiment's Runs tab shows a table of its runs, with each param as a column,
 
 In [`adhoc`](cli/adhoc) mode, runs are grouped by the invocation that made them. Each group row shows its counts and the param values its runs share. Groups start collapsed; while a filter is on, the groups with matches open and show how many of their runs matched.
 
-In [`matrix`](cli/matrix) mode, each combination of params shows its progress toward `repeats`.
+In [`matrix`](cli/matrix) mode, the icons above the table switch between the table and a grid. The grid has one cell per combination of the params that vary: the last param runs across, the rest run down. Each cell shows how many runs count toward `repeats`, and clicking it opens the table filtered to that combination. Ad-hoc experiments have no grid.
 
 The `experiment.toml` button opens the experiment's config.
 

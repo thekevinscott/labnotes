@@ -17,6 +17,7 @@ from labnotes.list_runs import list_runs
 from labnotes.models import QueryParams
 from labnotes.nests_runs import nests_runs
 from labnotes.parse_run_view import parse_run_view
+from labnotes.pivot_runs import pivot_runs
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
 from labnotes.runs_view_command import runs_view_command
@@ -65,6 +66,19 @@ async def load_experiment(
         if nested
         else None
     )
+    matrix = summary["mode"] == "matrix"
+    gridded = matrix and params.getlist("view")[-1:] == ["grid"]
+    axes = {key: varies[key] for key in choices if len(varies[key]) > 1}
+    grid = (
+        pivot_runs(
+            axes,
+            await count_runs(
+                tables, source, str(summary["completed_run"]), group_by=list(axes)
+            ),
+        )
+        if gridded
+        else None
+    )
     return {
         "name": row["name"],
         "display_name": row["display_name"],
@@ -86,6 +100,7 @@ async def load_experiment(
         "runs_list": runs,
         "runs_live": await daemon_running(root),
         "run_groups": groups,
+        "run_grid": grid,
         "run_columns": shown,
         "run_view": view,
         "run_choices": choices,

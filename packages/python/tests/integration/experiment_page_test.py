@@ -454,3 +454,44 @@ def test_restart_clears_the_notebook_state(tmp_path: Path) -> None:
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
+
+
+def test_switches_matrix_runs_to_a_grid_and_back(site: str) -> None:
+    async def check(page: Page) -> None:
+        toggle = page.get_by_role("navigation", name="Runs view")
+        await expect(toggle.get_by_role("link", name="Table")).to_have_attribute(
+            "aria-current", "page"
+        )
+        await toggle.get_by_role("link", name="Grid").click()
+
+        grid = page.locator(".runs-grid")
+        await expect(
+            grid.get_by_role("columnheader", name="source-language")
+        ).to_be_visible()
+        cells = grid.locator(".grid-cell")
+        await expect(cells).to_have_text(["1/2", "0/2"])
+        await expect(page.locator(".runs-table")).to_have_count(0)
+
+        await cells.nth(1).get_by_role("link").click()
+
+        await expect(page.locator(".runs-table")).to_be_visible()
+        await expect(page.get_by_label("Filter source-language")).to_have_text("fr")
+        await expect(page.get_by_role("cell", name="run1", exact=True)).to_have_count(0)
+
+    browse(f"{site}/experiments/alpha", check)
+
+
+def test_offers_no_grid_for_adhoc_runs(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(
+        tmp_path / "alpha/experiment.toml",
+        'command = "go"\nmode = "adhoc"\n[params]\nx = [1, 2]\n',
+    )
+    run(tmp_path, "run1", {"x": 1}, exit_code=0)
+
+    async def check(page: Page) -> None:
+        await expect(page.locator(".runs-table")).to_be_visible()
+        await expect(page.get_by_role("navigation", name="Runs view")).to_have_count(0)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha?view=grid", check)

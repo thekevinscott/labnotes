@@ -217,6 +217,22 @@ h3 {
 .new-note { font: inherit; color: var(--ink-2); background: none; border: 0; padding: 0 0.2rem; cursor: pointer; }
 .new-note:hover { color: var(--ink); }
 
+/* Runs grid: counted runs per combination of the params that vary. */
+.runs-grid { border-collapse: separate; border-spacing: 3px; font-size: 0.86rem; }
+.runs-grid th { font-family: var(--mono); font-size: 0.8rem; font-weight: 500; color: var(--ink-2); text-align: left; white-space: nowrap; padding: 0 0.75rem 0.3rem; }
+.runs-grid thead th { vertical-align: bottom; }
+.runs-grid th.label { color: var(--ink-3); }
+.runs-grid th.axis { font-family: var(--sans); font-size: 0.68rem; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase; color: var(--ink-3); border-bottom: 1px solid var(--rule); }
+.grid-cell { min-width: 6rem; padding: 0; background: var(--surface); border: 1px solid var(--rule); border-radius: 7px; }
+.grid-cell a { display: block; padding: 0.5rem 0.7rem 0.6rem; color: var(--ink); text-decoration: none; }
+.grid-cell:hover { border-color: var(--rule-strong); }
+.grid-cell .num { display: block; margin-bottom: 0.4rem; }
+.grid-cell .of { color: var(--ink-3); }
+.grid-cell.empty .num { color: var(--ink-3); }
+.grid-cell.done { border-color: color-mix(in srgb, var(--accent) 35%, var(--rule)); }
+.grid-cell .meter { display: block; height: 4px; border-radius: 2px; background: var(--track); overflow: hidden; }
+.grid-cell .meter-fill { display: block; height: 100%; background: var(--accent); }
+
 /* Runs table */
 .narrowed { color: var(--ink-2); font-size: 0.88rem; margin: 0 0 0.75rem; }
 .narrowed .clear { margin-left: 0.8rem; color: var(--ink-3); }
@@ -390,6 +406,12 @@ h3 {
 }
 .view-toggle button + button { border-left: 1px solid var(--rule-strong); }
 .view-toggle button[aria-pressed="true"] { background: var(--accent-soft); color: var(--ink); }
+#runs .view-toggle { display: flex; width: fit-content; float: none; margin: 0 0 0.75rem auto; }
+.view-toggle a { display: flex; padding: 0.3rem 0.55rem; background: var(--surface); color: var(--ink-3); }
+.view-toggle a + a { border-left: 1px solid var(--rule-strong); }
+.view-toggle a:hover { color: var(--ink); }
+.view-toggle a[aria-current="page"] { background: var(--accent-soft); color: var(--ink); }
+.view-toggle svg { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; }
 
 /* Index as cards: the same table, laid out as a grid. */
 .ledger[data-view="cards"] { display: block; background: none; border: 0; border-radius: 0; overflow: visible; }

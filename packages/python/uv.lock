@@ -237,15 +237,15 @@ wheels = [
 
 [[package]]
 name = "curtaincall"
-version = "0.3.0"
+version = "0.4.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "pexpect" },
     { name = "pyte" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/ca/12/056a3c89fcbc135b15a7cef872472a73bdad3594ddfccbe11b9a028b2f5f/curtaincall-0.3.0.tar.gz", hash = "sha256:afc9e9ce00a256982d69a737976527d38217082ca79fcafcf381fa2cd2bba041", size = 68784, upload-time = "2026-02-16T01:44:39.874Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/4c/c3/14a2abeb4d38d1c381c33fb3fbd4d55675a0f98be8c39b15d688c546b3f3/curtaincall-0.4.0.tar.gz", hash = "sha256:b68c9652cb33eb0955e5b9307573302e8b6f260930a67ab69152c48db79b75cc", size = 33924, upload-time = "2026-10-26T14:16:25.535Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/f8/52/1092ca83246b88a880f2fe35e38919b9e069c0ce97708880c4234ab72c32/curtaincall-0.3.0-py3-none-any.whl", hash = "sha256:4a754fa4a8ad726a00ec24ebb545f8f5a34a0f8d159936845d125bfeb2dfb652", size = 21504, upload-time = "2026-02-16T01:44:38.567Z" },
+    { url = "https://files.pythonhosted.org/packages/bc/43/6c5749737b1fbb9a2757adf6df70ded2a38e832b63d4b4f9e75b6adf1080/curtaincall-0.4.0-py3-none-any.whl", hash = "sha256:2294a8b8e2d8cd10f47f5004ae7bc9b68ce9f7f1182c364dba294b3d190aa726", size = 29057, upload-time = "2026-10-26T14:16:24.342Z" },
 ]
 
 [[package]]
@@ -602,7 +602,7 @@ requires-dist = [
 
 [package.metadata.requires-dev]
 dev = [
-    { name = "curtaincall", specifier = ">=0.3.0" },
+    { name = "curtaincall", specifier = ">=0.4.0" },
     { name = "mypy", specifier = ">=2.4.0" },
     { name = "playwright", specifier = ">=1.64.0" },
     { name = "pytest", specifier = ">=8.0" },

@@ -44,6 +44,12 @@ dev = [
     "types-psutil>=7.2.2.20260906",
 ]
 
+# thekevinscott's own packages skip the user-level uv release cooldown.
+[tool.uv.exclude-newer-package]
+curtaincall = false
+dirsql = false
+posix-tools = false
+
 [tool.hatch.version]
 source = "vcs"
 

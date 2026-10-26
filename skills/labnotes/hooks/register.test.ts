@@ -5,6 +5,7 @@ import { PLANNED, PROPS, SLOW, lines, mountPane, shown, start } from './harness'
 test('follows labnotes status, registers its tool and says when runs finish', SLOW, async ($, on) => {
   const started = await start($, on)
   expect(started.tools).toEqual(['show_runs'])
+  expect(started.commands).toEqual(['labnotes'])
   expect(started.spawned).toEqual([{ argv: ['uvx', 'labnotes', 'run', 'status', '--follow', '--json'] }])
 
   const text = lines(
@@ -35,6 +36,18 @@ test('opens the pane from its tool, saying when it cannot show it', SLOW, async 
   expect(await $.tool.call(call)).toMatchObject({ text: 'labnotes pane opened. Click it to use its keys.' })
   started.isPlaced = false
   expect(await $.tool.call(call)).toMatchObject({ text: 'labnotes pane opened but not shown: too narrow' })
+  expect(started.opened).toEqual(['labnotes', 'labnotes'])
+})
+
+test('opens the pane from /labnotes, with no model turn', SLOW, async ($, on) => {
+  const started = await start($, on)
+  expect(await $.command.run({ command: 'labnotes', args: '' })).toMatchObject({
+    text: 'labnotes pane opened. Click it to use its keys.',
+  })
+  started.isPlaced = false
+  expect(await $.command.run({ command: 'labnotes', args: '' })).toMatchObject({
+    text: 'labnotes pane opened but not shown: too narrow',
+  })
   expect(started.opened).toEqual(['labnotes', 'labnotes'])
 })
 

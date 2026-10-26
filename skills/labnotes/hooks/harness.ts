@@ -33,6 +33,7 @@ export type Started = {
   ran: (readonly string[])[]
   toasts: string[]
   tools: string[]
+  commands: string[]
   send: (text: string) => void
   tail: string[]
   blockTail: string[]
@@ -72,6 +73,7 @@ export const start = async (
     ran: [],
     toasts: [],
     tools: [],
+    commands: [],
     send: () => {},
     tail: [],
     blockTail: [],
@@ -85,6 +87,10 @@ export const start = async (
   on('tool.register', async (_, e) => {
     started.tools.push(e.name)
     return { value: { tool: e.name } }
+  })
+  on('command.register', async (_, e) => {
+    started.commands.push(e.name)
+    return { value: { command: e.name } }
   })
   on('ui.toast', async (_, e) => {
     started.toasts.push(e.text)

@@ -81,3 +81,9 @@ path = "src/labnotes/experiments.py"
 rules = ["mutation"]
 lines = [120]
 reason = "click hands back the \"json\" choice literal itself, so is not equals !="
+
+[[python.exempt]]
+path = "src/labnotes/tui/run_app.py"
+rules = ["mutation"]
+lines = [221]
+reason = "the leave action name is the string literal from the Binding, which CPython interns, so is equals =="

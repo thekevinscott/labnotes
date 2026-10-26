@@ -99,7 +99,7 @@ def test_rejects_an_unknown_action(
 def test_needs_run_for_params(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    assert run(["a", "runs", "--model=small"]) == 2
+    assert run(["a", "runs", "--model=small", "--lang=en"]) == 2
 
     assert "Unexpected --model=small. --PARAM=VALUE needs run." in (
         capsys.readouterr().err

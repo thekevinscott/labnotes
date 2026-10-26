@@ -3,31 +3,15 @@ from collections.abc import Callable
 from pathlib import Path
 
 import httpx2
-from posix_tools import tail as tail_lines
 
 from labnotes.daemon.daemon_client import daemon_client
+from labnotes.daemon.last_stderr import last_stderr
 from labnotes.daemon.run_logs import RunLogs
 from labnotes.utils.run_usage import run_usage
 
 Event = dict[str, object]
 TAIL_SECONDS = 1.0
 USAGE_SECONDS = 30.0
-
-
-async def last_stderr(folder: Path) -> str | None:
-    try:
-        lines = await tail_lines(folder / "stderr.log", n=50)
-    except FileNotFoundError:
-        return None
-    for line in reversed(lines):
-        if (
-            text := line.rstrip(b"\r\n")
-            .rsplit(b"\r")[-1]
-            .decode(errors="replace")
-            .strip()
-        ):
-            return text
-    return None
 
 
 async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) -> None:

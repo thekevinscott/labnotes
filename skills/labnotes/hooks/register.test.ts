@@ -41,11 +41,17 @@ test('opens the pane from its tool, saying when it cannot show it', SLOW, async 
 
 test('opens the pane from /labnotes-runs, with no model turn', SLOW, async ($, on) => {
   const started = await start($, on)
-  expect(await $.command.run({ command: 'labnotes-runs', args: '' })).toMatchObject({
+  const run = {
+    command: 'labnotes-runs',
+    args: '',
+    origin: { kind: 'composer' as const },
+    presentation: { isFullscreen: false, columns: 160 },
+  }
+  expect(await $.command.run(run)).toMatchObject({
     text: 'labnotes pane opened. Click it to use its keys.',
   })
   started.isPlaced = false
-  expect(await $.command.run({ command: 'labnotes-runs', args: '' })).toMatchObject({
+  expect(await $.command.run(run)).toMatchObject({
     text: 'labnotes pane opened but not shown: too narrow',
   })
   expect(started.opened).toEqual(['labnotes', 'labnotes'])

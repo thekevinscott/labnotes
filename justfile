@@ -24,6 +24,13 @@ py-e2e:
 py-build:
     cd packages/python && uv build
 
+# ---- Pane ----------------------------------------------------------------
+
+# Lays the types Claude Code generates, then type-checks the mod.
+pane-typecheck:
+    python3 scripts/pane_types.py
+    pnpm --package=typescript@5.9.3 dlx tsc --noEmit -p skills/labnotes
+
 # ---- Docs ----------------------------------------------------------------
 
 docs-install:

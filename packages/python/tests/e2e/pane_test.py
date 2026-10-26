@@ -108,13 +108,6 @@ def claude(terminal, project: Path, home: Path, uvx: dict[str, str]) -> Terminal
     )
 
 
-def click(term: Terminal, text: re.Pattern[str]) -> None:
-    # curtaincall has no mouse helper: an SGR mouse press and release.
-    cell = term.get_by_text(text).cells[0]
-    at = f"{cell.col + 1};{cell.row + 1}"
-    term.write(f"\x1b[<0;{at}M\x1b[<0;{at}m")
-
-
 def test_the_pane_shows_runs_and_stops_one(claude: Terminal, runs: None) -> None:
     expect(claude.get_by_text(PROMPT)).to_be_visible(timeout=60)
     claude.write("/labnotes-runs")
@@ -124,7 +117,7 @@ def test_the_pane_shows_runs_and_stops_one(claude: Terminal, runs: None) -> None
     expect(claude.get_by_text(RUN_A)).to_be_visible(timeout=30)
     expect(claude.get_by_text(RUN_B)).to_be_visible()
 
-    click(claude, RUN_A)
+    claude.get_by_text(RUN_A).click()
     claude.write("x")
     expect(
         claude.get_by_text(re.compile(r"Stopping \S+/a-[0-9a-f]{4}\."))

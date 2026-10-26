@@ -18,6 +18,14 @@ Each combination of `[params]` is done once it has `repeats` runs that count. `r
 
 By default a run counts when it exited 0 and its `run.json` doesn't hold `"excluded": true`. Set `counts` in `experiment.toml` to replace that rule with a SQL condition over `runs`, like `exit_code = 0 AND created > '2026-10-01'`.
 
+To run part of the matrix, name params on the command line:
+
+```sh
+labnotes experiments my-experiment run --model=opus --effort=low
+```
+
+That plans only the combinations where `model` is `opus` and `effort` is `low`. Each flag must name a param in `[params]` and one of its values; anything else is an error. The rest of the matrix still counts toward progress, so a plain `run` later picks up the combinations this one skipped.
+
 A run that exits 75 is [retried](../api/config#retries-1) in the same `run`. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more.
 
 Runs will appear on disk as flat folders, each named for the UTC time it was planned:

@@ -25,13 +25,13 @@ reason = "quiet counts up by one from zero, so it reaches IDLE_EXIT_SECONDS befo
 [[python.exempt]]
 path = "src/labnotes/daemon/daemon_app.py"
 rules = ["mutation"]
-lines = [132]
+lines = [134]
 reason = "start answers 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
 
 [[python.exempt]]
 path = "src/labnotes/daemon/remote_start.py"
 rules = ["mutation"]
-lines = [49]
+lines = [51]
 reason = "the daemon answers a run with 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
 
 [[python.exempt]]
@@ -67,7 +67,7 @@ reason = "WorkerState members are singletons, so is equals =="
 [[python.exempt]]
 path = "src/labnotes/runner/run_experiment.py"
 rules = ["mutation"]
-lines = [188, 269]
+lines = [193, 274]
 reason = "a retry is only scheduled below the budget and each one adds one, so tried never passes retries: >= equals ==; both sides are small ints, which CPython caches, so is equals =="
 
 [[python.exempt]]
@@ -79,5 +79,5 @@ reason = "exit_code is non-negative here; when bit 7 is set, - 128 equals ^ 128,
 [[python.exempt]]
 path = "src/labnotes/experiments.py"
 rules = ["mutation"]
-lines = [109]
+lines = [120]
 reason = "click hands back the \"json\" choice literal itself, so is not equals !="

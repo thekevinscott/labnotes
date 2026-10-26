@@ -81,6 +81,10 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             side_effect=lambda params, choices, taken: next(names),
         ) as new_param_run_id,
         mock.patch(
+            "labnotes.runner.run_experiment.in_subset",
+            side_effect=lambda cell, only: cell != B or not only,
+        ) as in_subset,
+        mock.patch(
             "labnotes.runner.run_experiment.invocation_meta",
             new=mock.AsyncMock(return_value={"commit": "abc"}),
         ) as invocation_meta,
@@ -96,6 +100,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "execute_run": execute_run,
             "signal_tree": signal_tree,
             "invocation_meta": invocation_meta,
+            "in_subset": in_subset,
         }
 
 
@@ -107,6 +112,7 @@ def run(
     mode: str = "matrix",
     retries: int = 2,
     retry_seconds: float = 0.0,
+    only: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
@@ -124,6 +130,7 @@ def run(
             report,
             listening,
             retry_seconds=retry_seconds,
+            only=only,
         )
     )
 
@@ -138,6 +145,22 @@ def test_plans_the_runs_still_needed(
     )
     collaborators["param_grid"].assert_called_once_with({"m": ["a", "b"]})
     collaborators["plan_runs"].assert_called_once_with([A, B], 2, [A])
+    assert collaborators["in_subset"].call_args_list == [
+        mock.call(A, {}),
+        mock.call(B, {}),
+    ]
+
+
+def test_plans_only_the_cells_in_the_subset(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock(), only={"m": "a"})
+
+    collaborators["plan_runs"].assert_called_once_with([A], 2, [A])
+    assert collaborators["in_subset"].call_args_list == [
+        mock.call(A, {"m": "a"}),
+        mock.call(B, {"m": "a"}),
+    ]
 
 
 def test_adhoc_plans_every_run_again(

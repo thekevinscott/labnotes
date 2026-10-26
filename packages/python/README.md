@@ -95,6 +95,8 @@ line per event instead.
 
 - `--concurrency N` runs N at a time (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.
+- `--PARAM=VALUE` runs only the cells where that param has that value, like
+  `--model=small`.
 - With runs going, Ctrl-C asks first. Enter (or a second Ctrl-C) leaves them
   running. `s` stops the running scripts and records their end, then kills any
   still going 5 seconds later. Escape goes back. SIGTERM stops them like `s`.

@@ -13,6 +13,7 @@ from labnotes.models import (
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
+from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_meta import invocation_meta
 from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
@@ -36,6 +37,7 @@ async def run_experiment(
     listen: Listen,
     timeout: float | None = None,
     retry_seconds: float = RETRY_SECONDS,
+    only: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     meta = None
     if experiment.meta is not None:
@@ -52,7 +54,10 @@ async def run_experiment(
     def taken(run: str) -> bool:
         return run in planned or run in existing
 
-    cells = plan_runs(param_grid(experiment.params), experiment.repeats, finished)
+    grid = [
+        cell for cell in param_grid(experiment.params) if in_subset(cell, only or {})
+    ]
+    cells = plan_runs(grid, experiment.repeats, finished)
     group = None
     match experiment.mode:
         case "adhoc" if len(cells) > 1:

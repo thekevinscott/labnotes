@@ -20,6 +20,16 @@ runs end and prints a line per event:
 uvx labnotes experiments NAME run
 ```
 
+To run part of the grid, name params on the command line instead of editing
+`experiment.toml`. This runs only the cells where `model` is `small`:
+
+```bash
+uvx labnotes experiments NAME run --model=small
+```
+
+Each flag must name a param in `[params]` and one of its values. Several flags
+narrow further. The experiment's totals still count the full grid.
+
 Always pass `--format json` (or `--format table`) to `labnotes experiments`.
 Without it, a terminal gets an interactive browser that waits for keys.
 

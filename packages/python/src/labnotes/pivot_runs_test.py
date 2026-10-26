@@ -1,28 +1,45 @@
+from collections.abc import Iterator
+from unittest import mock
+
+import pytest
+
 from labnotes.pivot_runs import pivot_runs
+
+
+@pytest.fixture(autouse=True)
+def grid_cell() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.pivot_runs.grid_cell",
+        side_effect=lambda values, counts: {"values": values, "counts": counts},
+    ) as grid_cell:
+        yield grid_cell
 
 
 def test_puts_the_last_axis_across_and_the_rest_down() -> None:
     axes: dict[str, list[object]] = {"model": ["a", "b"], "lang": ["en", "fr"]}
-    counts: list[dict[str, object]] = [
-        {"model": "a", "lang": "fr", "runs": 3, "completed": 2},
-    ]
+    found = {"model": "a", "lang": "fr", "runs": 3, "completed": 2}
 
-    grid = pivot_runs(axes, counts)
+    grid = pivot_runs(axes, [found])
 
     assert grid["row_keys"] == ["model"]
     assert grid["column_key"] == "lang"
     assert grid["columns"] == ["en", "fr"]
-    rows = grid["rows"]
-    assert [row["labels"] for row in rows] == [["a"], ["b"]]
-    first = rows[0]["cells"]
-    assert first[0] == {
-        "values": {"model": "a", "lang": "en"},
-        "runs": 0,
-        "completed": 0,
-        "href": "?f.model=a&f.lang=en#runs",
-    }
-    assert first[1]["runs"] == 3
-    assert first[1]["completed"] == 2
+    assert grid["rows"] == [
+        {
+            "labels": ["a"],
+            "cells": [
+                {"values": {"model": "a", "lang": "en"}, "counts": {}},
+                {"values": {"model": "a", "lang": "fr"}, "counts": found},
+            ],
+        },
+        {
+            "labels": ["b"],
+            "cells": [
+                {"values": {"model": "b", "lang": "en"}, "counts": {}},
+                {"values": {"model": "b", "lang": "fr"}, "counts": {}},
+            ],
+        },
+    ]
 
 
 def test_crosses_every_leading_axis_into_rows() -> None:
@@ -37,24 +54,26 @@ def test_crosses_every_leading_axis_into_rows() -> None:
         [2, "x"],
         [2, "y"],
     ]
-    assert grid["rows"][0]["cells"][0]["href"] == "?f.a=1&f.b=x&f.c=true#runs"
 
 
 def test_matches_booleans_to_the_integers_sql_returns() -> None:
     axes: dict[str, list[object]] = {"flag": [True, False]}
-    counts: list[dict[str, object]] = [{"flag": 1, "runs": 1, "completed": 1}]
+    found: dict[str, object] = {"flag": 1, "runs": 1, "completed": 1}
 
-    [row] = pivot_runs(axes, counts)["rows"]
+    [row] = pivot_runs(axes, [found])["rows"]
 
     assert row["labels"] == []
-    assert [cell["completed"] for cell in row["cells"]] == [1, 0]
+    assert row["cells"] == [
+        {"values": {"flag": True}, "counts": found},
+        {"values": {"flag": False}, "counts": {}},
+    ]
 
 
 def test_one_cell_when_nothing_varies() -> None:
-    grid = pivot_runs({}, [{"runs": 4, "completed": 3}])
+    found: dict[str, object] = {"runs": 4, "completed": 3}
+
+    grid = pivot_runs({}, [found])
 
     assert grid["row_keys"] == []
     assert grid["column_key"] is None
-    [row] = grid["rows"]
-    [cell] = row["cells"]
-    assert cell == {"values": {}, "runs": 4, "completed": 3, "href": "?#runs"}
+    assert grid["rows"] == [{"labels": [], "cells": [{"values": {}, "counts": found}]}]

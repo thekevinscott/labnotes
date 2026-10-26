@@ -1,15 +1,7 @@
 from itertools import product
 from typing import TypedDict
-from urllib.parse import urlencode
 
-from labnotes.format_value import format_value
-
-
-class Cell(TypedDict):
-    values: dict[str, object]
-    runs: object
-    completed: object
-    href: str
+from labnotes.grid_cell import Cell, grid_cell
 
 
 class Row(TypedDict):
@@ -28,16 +20,6 @@ def _key(value: object) -> object:
     return int(value) if isinstance(value, bool) else value
 
 
-def _cell(values: dict[str, object], counts: dict[str, object]) -> Cell:
-    filters = [(f"f.{key}", format_value(value)) for key, value in values.items()]
-    return {
-        "values": values,
-        "runs": counts.get("runs", 0),
-        "completed": counts.get("completed", 0),
-        "href": f"?{urlencode(filters)}#runs",
-    }
-
-
 def pivot_runs(axes: dict[str, list[object]], counts: list[dict[str, object]]) -> Grid:
     by_cell = {tuple(_key(row[key]) for key in axes): row for row in counts}
     row_keys = [*axes]
@@ -51,7 +33,7 @@ def pivot_runs(axes: dict[str, list[object]], counts: list[dict[str, object]]) -
             if column_key is not None:
                 values[column_key] = column
             found = by_cell.get(tuple(_key(values[key]) for key in axes), {})
-            cells.append(_cell(values, found))
+            cells.append(grid_cell(values, found))
         rows.append({"labels": list(labels), "cells": cells})
     return {
         "row_keys": row_keys,

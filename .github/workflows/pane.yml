@@ -4,6 +4,7 @@ on:
   pull_request:
     paths:
       - 'skills/labnotes/**'
+      - 'scripts/pane_types*.py'
       - '.github/workflows/pane.yml'
 
 permissions:
@@ -23,3 +24,24 @@ jobs:
       - run: claude --version
       - run: claude plugin test skills/labnotes
       - run: claude plugin validate skills/labnotes
+
+  typecheck:
+    name: Type-check (tsc)
+    runs-on: ubuntu-latest
+    env:
+      CLAUDE_CODE_VERSION: 2.1.310
+      DISABLE_AUTOUPDATER: 1
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+      - uses: pnpm/action-setup@v5
+        with:
+          version: 10.33.0
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - run: curl -fsSL https://claude.ai/install.sh | bash -s "$CLAUDE_CODE_VERSION"
+      - run: echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+      - run: uv run --no-project --with pytest pytest scripts
+      - run: python3 scripts/pane_types.py
+      - run: pnpm --package=typescript@5.9.3 dlx tsc --noEmit -p skills/labnotes

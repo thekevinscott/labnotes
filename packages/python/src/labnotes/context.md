@@ -132,14 +132,10 @@ sets the seconds between samples; 0 turns it off.
 
 In a terminal, `run` shows a live table of runs (status, time, memory and
 folder size) and stays
-open when they finish. Failed runs show their status in red; `f` hides or shows them, and `r` on one
-runs it again under a new id, with `retry_of` set. `j` and `k` move the cursor, `g` and `G` jump to the
+open when they finish. Failed runs show their status in red. `j` and `k` move the cursor, `g` and `G` jump to the
 first and last row. Runs not started yet show grayed as `pending`, and as
-`skipped` once stopped. Move the cursor to a pending run and press `n` to run it
-next. `m` grabs a pending run; `j` and `k` move it through the queue, Enter or `m`
-drops it, Escape puts it back. Space deselects a pending run so it won't run; Space again puts it back at
-the end of the queue. `/` filters rows by params text; Enter keeps the filter,
-Escape clears it. `D` deselects every pending run the filter shows. `x` stops the
+`skipped` once stopped. `/` filters rows by params text; Enter keeps the filter,
+Escape clears it. `x` stops the
 running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
@@ -180,9 +176,8 @@ going. Elsewhere, it prints a line per event instead.
   waits for a daemon when none is up. `--json` prints one JSON object per line.
   Following doesn't keep the daemon up.
 - `labnotes run control NAME ACTION [ARG]` sends one live-view control to a
-  running experiment: `kill`, `retry`, `run_next` or `toggle` a run, `move` a
-  run to a place in the queue counted from 0,
-  `set_concurrency` to a number, `interrupt` or `finish`.
+  running experiment: `kill` a run, `set_concurrency` to a number,
+  `interrupt` or `finish`.
 - A second `run` of the same experiment fails while the first is going.
 - It exits 0 even if runs fail; the summary line counts failures. A run that
   was retried counts as retried, not failed. If it can't

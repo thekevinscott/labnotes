@@ -15,7 +15,6 @@ export const GLYPHS: Record<Exclude<RunStatus, 'running' | 'failed'>, string> = 
   pending: '○',
   passed: '✓',
   skipped: '–',
-  deselected: '⊘',
 }
 export const SPINNER = '|/-\\'
 
@@ -81,16 +80,6 @@ export const describeEvent = (event: LabnotesEvent): string => {
       return `${event.run} started ${paramArgs(event.params)}`.trimEnd()
     case 'ended':
       return `${event.run} ${event.error || `exited ${event.exit_code}`}`
-    case 'queued':
-      return `${event.run} runs next.`
-    case 'moved': {
-      const pending = event.pending as string[]
-      return `${event.run} moved to ${pending.indexOf(String(event.run)) + 1} of ${pending.length} in the queue.`
-    }
-    case 'deselected':
-      return `${event.run} deselected.`
-    case 'reselected':
-      return `${event.run} back in the queue.`
     case 'stopping run':
       return `Stopping ${event.run}.`
     case 'killing run':
@@ -122,29 +111,19 @@ const planned = (run: unknown): Row => {
 const setRow = (rows: Row[], name: unknown, change: Partial<Row>): Row[] =>
   rows.map(row => (row.run === name ? { ...row, ...change } : row))
 
-const reorder = (rows: Row[], event: LabnotesEvent): Row[] => {
-  const waiting = [...(event.pending as string[]), ...(event.held as string[])]
-  const moved = waiting.flatMap(name => rows.filter(row => row.run === name))
-  return [...rows.filter(row => !waiting.includes(row.run)), ...moved]
-}
-
 const say = (experiment: Experiment, event: LabnotesEvent, rows = experiment.rows): Experiment => ({
   ...experiment,
   rows,
   message: describeEvent(event),
-  nextRun: null,
 })
 
 const applyRun = (experiment: Experiment, event: LabnotesEvent, now: number): Experiment => {
   const { rows } = experiment
   switch (event.event) {
     case 'started': {
-      const isNext = event.run === experiment.nextRun
       return {
         ...experiment,
         isIdle: false,
-        message: isNext ? '' : experiment.message,
-        nextRun: isNext ? null : experiment.nextRun,
         rows: setRow(rows, event.run, {
           params: paramArgs(event.params),
           status: 'running',
@@ -159,19 +138,11 @@ const applyRun = (experiment: Experiment, event: LabnotesEvent, now: number): Ex
       const status = reason === undefined ? 'passed' : 'failed'
       return { ...experiment, rows: setRow(rows, event.run, { status, reason: reason as string, endedAt: now }) }
     }
-    case 'queued':
-      return { ...say(experiment, event, reorder(rows, event)), nextRun: String(event.run) }
-    case 'moved':
-      return say(experiment, event, reorder(rows, event))
-    case 'deselected':
-      return say(experiment, event, reorder(setRow(rows, event.run, { status: 'deselected' }), event))
-    case 'reselected':
-      return say(experiment, event, reorder(setRow(rows, event.run, { status: 'pending' }), event))
     case 'retried':
       return say(experiment, event, [...rows, planned({ run: event.retry, params: event.params })])
     case 'idle': {
       const idle = { ...experiment, isIdle: true }
-      return { ...idle, message: summarize(idle), nextRun: null }
+      return { ...idle, message: summarize(idle) }
     }
     case 'concurrency':
       return { ...experiment, concurrency: Number(event.concurrency) }
@@ -211,7 +182,6 @@ export const applyEvent = (
       concurrency: Number(event.concurrency ?? 1),
       rows: ((event.runs as unknown[]) ?? []).map(planned),
       message: '',
-      nextRun: null,
       isIdle: false,
       isFinished: false,
       error: null,

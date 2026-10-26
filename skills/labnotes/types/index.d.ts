@@ -1,4 +1,4 @@
-export type RunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped' | 'deselected'
+export type RunStatus = 'pending' | 'running' | 'passed' | 'failed' | 'skipped'
 
 export type Row = {
   run: string
@@ -17,7 +17,6 @@ export type Experiment = {
   concurrency: number
   rows: Row[]
   message: string
-  nextRun: string | null
   isIdle: boolean
   isFinished: boolean
   error: string | null

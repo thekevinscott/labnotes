@@ -19,10 +19,10 @@ def test_run_views_do_not_share_their_picks() -> None:
     assert RunView().picked == {}
 
 
-def test_move_takes_a_run_and_its_new_place() -> None:
-    hint = typing.get_type_hints(Controls)["move"]
+def test_set_concurrency_takes_a_number() -> None:
+    hint = typing.get_type_hints(Controls)["set_concurrency"]
 
-    assert hint == Callable[[str, int], None]
+    assert hint == Callable[[int], None]
 
 
 def test_a_config_holds_many_experiments_by_default() -> None:

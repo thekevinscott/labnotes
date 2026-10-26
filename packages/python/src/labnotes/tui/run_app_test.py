@@ -451,255 +451,6 @@ def test_skips_pending_runs_when_stopping() -> None:
     asyncio.run(drive())
 
 
-def test_moves_queued_runs_up_the_pending_rows() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2", "r3", "r4"))
-        report(
-            {
-                "event": "started",
-                "run": "r1",
-                "params": {"m": "a"},
-                "folder": "/runs/r1",
-            }
-        )
-        report(
-            {"event": "queued", "run": "r4", "pending": ["r4", "r2", "r3"], "held": []}
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert [row[0] for row in rows(app)] == ["r1", "r4", "r2", "r3"]
-            assert styles(app)[1] == ["dim"] * 4
-            table: Any = app.query_one("#runs")
-            assert table.cursor_row == 1
-            assert status(app) == "said queued"
-
-    asyncio.run(drive())
-
-
-def test_clears_the_next_run_note_once_it_starts() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2", "r3"))
-        report({"event": "queued", "run": "r3", "pending": ["r3", "r2"], "held": []})
-        report(
-            {
-                "event": "started",
-                "run": "r1",
-                "params": {"m": "a"},
-                "folder": "/runs/r1",
-            }
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert status(app) == "said queued"
-            run = "".join(["r", "3"])
-            app.show_event(
-                {
-                    "event": "started",
-                    "run": run,
-                    "params": {"m": "c"},
-                    "folder": "/runs",
-                }
-            )
-            assert status(app) == ""
-
-    asyncio.run(drive())
-
-
-def test_keeps_later_notes_when_the_next_run_starts() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2"))
-        report({"event": "queued", "run": "r2", "pending": ["r2"], "held": []})
-        report({"event": "killing"})
-        report(
-            {
-                "event": "started",
-                "run": "r2",
-                "params": {"m": "b"},
-                "folder": "/runs/r2",
-            }
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert status(app) == "said killing"
-
-    asyncio.run(drive())
-
-
-def test_moves_deselected_runs_to_the_bottom() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2", "r3", "r4"))
-        report(
-            {
-                "event": "started",
-                "run": "r1",
-                "params": {"m": "a"},
-                "folder": "/runs/r1",
-            }
-        )
-        report(
-            {
-                "event": "deselected",
-                "run": "r2",
-                "pending": ["r3", "r4"],
-                "held": ["r2"],
-            }
-        )
-        report({"event": "stopping"})
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert [row[:3:2] for row in rows(app)] == [
-                ["r1", "|"],
-                ["r3", "–"],
-                ["r4", "–"],
-                ["r2", "⊘"],
-            ]
-            assert styles(app)[3][2] == "dim"
-
-    asyncio.run(drive())
-
-
-def test_puts_reselected_runs_back_in_the_queue() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2", "r3"))
-        report(
-            {
-                "event": "deselected",
-                "run": "r1",
-                "pending": ["r2", "r3"],
-                "held": ["r1"],
-            }
-        )
-        report(
-            {
-                "event": "reselected",
-                "run": "r1",
-                "pending": ["r2", "r3", "r1"],
-                "held": [],
-            }
-        )
-        report({"event": "stopping"})
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert [row[:3:2] for row in rows(app)] == [
-                ["r2", "–"],
-                ["r3", "–"],
-                ["r1", "–"],
-            ]
-
-    asyncio.run(drive())
-
-
-def test_space_toggles_the_row_under_the_cursor() -> None:
-    toggle = mock.Mock()
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(mock.Mock(toggle=toggle))
-        report(planned("r1", "r2"))
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("down", "space")
-            toggle.assert_called_once_with("r2")
-
-    asyncio.run(drive())
-
-
-def test_space_leaves_the_cursor_on_the_next_row() -> None:
-    reports: list[Report] = []
-
-    def deselect(run: str) -> None:
-        reports[0](
-            {"event": "deselected", "run": run, "pending": ["r1", "r3"], "held": [run]}
-        )
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        reports.append(report)
-        listen(mock.Mock(toggle=deselect))
-        report(planned("r1", "r2", "r3"))
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("down", "space")
-            await pilot.pause()
-            table: Any = app.query_one("#runs")
-            assert [row[0] for row in rows(app)] == ["r1", "r3", "r2"]
-            assert table.cursor_row == 1
-
-    asyncio.run(drive())
-
-
-def test_space_does_nothing_without_rows() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        with mock.patch.object(app, "controls") as controls:
-            async with app.run_test() as pilot:
-                await pilot.press("space")
-            controls.toggle.assert_not_called()
-
-    asyncio.run(drive())
-
-
-def test_n_runs_the_row_under_the_cursor_next() -> None:
-    run_next = mock.Mock()
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(mock.Mock(run_next=run_next))
-        report(planned("r1", "r2", "r3"))
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("down", "down", "n")
-            run_next.assert_called_once_with("r3")
-
-    asyncio.run(drive())
-
-
-def test_n_does_nothing_without_rows() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        with mock.patch.object(app, "controls") as controls:
-            async with app.run_test() as pilot:
-                await pilot.press("n")
-            controls.run_next.assert_not_called()
-
-    asyncio.run(drive())
-
-
 def test_plus_and_minus_change_the_concurrency() -> None:
     set_concurrency = mock.Mock()
 
@@ -938,7 +689,7 @@ def test_table_keys_wait_while_the_prompt_is_open() -> None:
         app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("ctrl+c", "x", "n", "j", "m")
+            await pilot.press("ctrl+c", "x", "j")
             await pilot.pause()
             assert controls.method_calls == []
             assert app.screen.query("#prompt")
@@ -1171,6 +922,28 @@ def test_an_empty_filter_hides_the_field() -> None:
     asyncio.run(drive())
 
 
+def test_escape_shows_on_the_table_only_with_the_filter_open() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert not app.check_action("leave", ())
+            await pilot.press("slash")
+            assert app.check_action("leave", ())
+            await pilot.press("r", "enter")
+            assert app.check_action("leave", ())
+            await pilot.press("escape")
+            assert not app.check_action("leave", ())
+            await pilot.press("enter")
+            assert app.check_action("leave", ())
+
+    asyncio.run(drive())
+
+
 def test_filtering_keeps_the_cursor_on_a_shown_row() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3"))
@@ -1185,32 +958,6 @@ def test_filtering_keeps_the_cursor_on_a_shown_row() -> None:
             assert table.cursor_row == 2
             await pilot.press("slash", "1", "enter")
             assert table.cursor_row == 0
-
-    asyncio.run(drive())
-
-
-def test_shift_d_deselects_the_shown_pending_runs() -> None:
-    toggle = mock.Mock()
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(mock.Mock(toggle=toggle))
-        report(planned("r1", "r2", "r3", "s1"))
-        report(
-            {
-                "event": "started",
-                "run": "r1",
-                "params": {"m": "r1"},
-                "folder": "/runs/r1",
-            }
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("slash", "r", "enter", "D")
-            assert toggle.call_args_list == [mock.call("r2"), mock.call("r3")]
 
     asyncio.run(drive())
 
@@ -1243,115 +990,6 @@ def test_x_does_nothing_without_rows() -> None:
             async with app.run_test() as pilot:
                 await pilot.press("x")
             controls.kill.assert_not_called()
-
-    asyncio.run(drive())
-
-
-def test_f_hides_and_shows_failed_runs() -> None:
-    reports: list[Report] = []
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        reports.append(report)
-        report(planned("r1", "r2", "r3"))
-        for run in ("r1", "r2"):
-            report(
-                {
-                    "event": "started",
-                    "run": run,
-                    "params": {"m": run},
-                    "folder": "/runs",
-                }
-            )
-        report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
-        report({"event": "ended", "run": "r2", "exit_code": 1, "error": None})
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("f")
-            assert [row[0] for row in rows(app)] == ["r1", "r3"]
-            assert status(app) == "Failed runs hidden."
-            reports[0](
-                {
-                    "event": "started",
-                    "run": "r3",
-                    "params": {"m": "r3"},
-                    "folder": "/runs/r3",
-                }
-            )
-            reports[0]({"event": "ended", "run": "r3", "exit_code": 2, "error": None})
-            await pilot.pause()
-            assert [row[0] for row in rows(app)] == ["r1"]
-            await pilot.press("f")
-            assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
-            assert status(app) == "Failed runs shown."
-
-    asyncio.run(drive())
-
-
-def test_r_retries_a_failed_run_as_a_new_pending_row() -> None:
-    controls = mock.Mock()
-    retry = controls.retry
-    reports: list[Report] = []
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        reports.append(report)
-        listen(controls)
-        report(planned("r1", "r2"))
-        for run, code in (("r1", 0), ("r2", 1)):
-            report(
-                {
-                    "event": "started",
-                    "run": run,
-                    "params": {"m": run},
-                    "folder": "/runs",
-                }
-            )
-            report({"event": "ended", "run": run, "exit_code": code, "error": None})
-        report({"event": "idle"})
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert status(app) == "1 passed, 1 failed. Ctrl-C to quit."
-            await pilot.press("r", "down", "r")
-            retry.assert_called_once_with("r2")
-            again = {"event": "retried", "run": "r2", "retry": "r3"}
-            reports[0]({**again, "params": {"m": "r2"}})
-            await pilot.pause()
-            assert rows(app)[2] == ["r3", "--m r2", "○", ""]
-            assert styles(app)[2][2] == "dim"
-            assert status(app) == "said retried"
-            reports[0](
-                {
-                    "event": "started",
-                    "run": "r3",
-                    "params": {"m": "r2"},
-                    "folder": "/runs/r3",
-                }
-            )
-            await pilot.press("ctrl+c", "enter")
-            await pilot.pause()
-            assert not app.is_running
-            controls.finish.assert_not_called()
-
-    asyncio.run(drive())
-
-
-def test_r_does_nothing_without_rows() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        with mock.patch.object(app, "controls") as controls:
-            async with app.run_test() as pilot:
-                await pilot.press("r")
-            controls.retry.assert_not_called()
 
     asyncio.run(drive())
 
@@ -1422,15 +1060,13 @@ def test_only_back_and_quit_work_while_following_output() -> None:
                 live = [action for action in actions if app.check_action(action, ())]
                 assert live == ["interrupt", "leave"]
                 assert app.check_action("command_palette", ())
-                await pilot.press("n", "space", "x", "plus")
-                controls.run_next.assert_not_called()
-                controls.toggle.assert_not_called()
+                await pilot.press("x", "plus")
                 controls.kill.assert_not_called()
                 controls.set_concurrency.assert_not_called()
                 await pilot.press("escape")
-                assert app.check_action("run_next", ())
-                await pilot.press("n")
-                controls.run_next.assert_called_once_with("r1")
+                assert app.check_action("kill_run", ())
+                await pilot.press("x")
+                controls.kill.assert_called_once_with("r1")
 
     asyncio.run(drive())
 
@@ -1608,245 +1244,6 @@ def test_has_no_error_when_the_runs_finish() -> None:
             assert not app.is_running
             assert app.error is None
             assert app.results == [{"exit_code": 0}]
-
-    asyncio.run(drive())
-
-
-def grabbing(
-    move: Callable[[str, int], None] | None = None,
-) -> tuple[Callable[..., Any], list[Report], mock.Mock]:
-    reports: list[Report] = []
-    controls = mock.Mock()
-    if move is not None:
-        controls.move.side_effect = move
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        reports.append(report)
-        listen(controls)
-        report(planned("r1", "r2", "r3", "r4"))
-        report({"event": "started", "run": "r1", "params": {"m": "a"}, "folder": "/r1"})
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    return start, reports, controls
-
-
-def order(app: RunApp) -> list[object]:
-    return [row[0] for row in rows(app)]
-
-
-def cursor(app: RunApp) -> int:
-    table: Any = app.query_one("#runs")
-    return int(table.cursor_row)
-
-
-def test_enter_drops_a_grabbed_run_where_j_moved_it() -> None:
-    start, _, controls = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m")
-            assert status(app) == (
-                "Moving r2. j/k moves it, Enter drops it, Escape puts it back."
-            )
-            await pilot.press("j")
-            assert order(app) == ["r1", "r3", "r2", "r4"]
-            assert cursor(app) == 2
-            await pilot.press("down")
-            assert order(app) == ["r1", "r3", "r4", "r2"]
-            assert cursor(app) == 3
-            controls.move.assert_not_called()
-            await pilot.press("enter")
-            controls.move.assert_called_once_with("r2", 2)
-            assert app.grabbed is None
-            assert status(app) == ""
-            assert app.query_one("#runs").display
-
-    asyncio.run(drive())
-
-
-def test_m_drops_a_grabbed_run_where_k_moved_it() -> None:
-    start, _, controls = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("G", "m", "k", "up", "m")
-            assert order(app) == ["r1", "r4", "r2", "r3"]
-            controls.move.assert_called_once_with("r4", 0)
-
-    asyncio.run(drive())
-
-
-def test_a_grabbed_run_stays_inside_the_pending_runs() -> None:
-    start, _, controls = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m", "k")
-            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 1)
-            await pilot.press("enter", "G", "m", "j")
-            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 3)
-
-    asyncio.run(drive())
-
-
-def test_escape_puts_a_grabbed_run_back() -> None:
-    start, _, controls = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m", "j", "j", "escape")
-            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 1)
-            assert status(app) == ""
-            assert app.grabbed is None
-            controls.move.assert_not_called()
-            await pilot.press("j")
-            assert cursor(app) == 2
-
-    asyncio.run(drive())
-
-
-def test_putting_back_keeps_runs_added_while_grabbed_last() -> None:
-    start, reports, _ = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m", "j")
-            reports[0](
-                {"event": "retried", "run": "r1", "retry": "r5", "params": {"m": "e"}}
-            )
-            await pilot.press("escape")
-            assert order(app) == ["r1", "r2", "r3", "r4", "r5"]
-
-    asyncio.run(drive())
-
-
-def test_only_pending_runs_can_be_grabbed() -> None:
-    start, _, _ = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("m")
-            assert app.grabbed is None
-            await pilot.press("j")
-            assert (order(app), cursor(app)) == (["r1", "r2", "r3", "r4"], 1)
-
-    asyncio.run(drive())
-
-
-def test_m_does_nothing_without_rows() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.press("m")
-            assert app.grabbed is None
-
-    asyncio.run(drive())
-
-
-def test_only_grab_keys_work_while_grabbed() -> None:
-    start, _, controls = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert not app.check_action("shift", (1,))
-            assert not app.check_action("drop", ())
-            assert not app.check_action("put_back", ())
-            await pilot.press("j", "m")
-            actions = [binding.action for binding in RunApp.BINDINGS]  # type: ignore[union-attr]
-            live = [action for action in actions if app.check_action(action, ())]
-            assert live == ["interrupt", "grab", "drop", "put_back"]
-            assert app.check_action("shift", (1,))
-            assert app.check_action("command_palette", ())
-            await pilot.press("n", "space", "x", "plus", "slash")
-            assert controls.method_calls == []
-            assert not app.query_one("#filter").display
-            app.on_data_table_row_selected(mock.Mock())
-            assert app.viewing is None
-
-    asyncio.run(drive())
-
-
-def test_a_grabbed_run_that_starts_goes_back_and_lets_go() -> None:
-    start, reports, controls = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m", "j")
-            run = "".join(["r", "2"])
-            reports[0](
-                {"event": "started", "run": run, "params": {"m": "b"}, "folder": "/"}
-            )
-            assert app.grabbed is None
-            assert order(app) == ["r1", "r2", "r3", "r4"]
-            await pilot.press("m")
-            assert app.grabbed is None
-            controls.move.assert_not_called()
-
-    asyncio.run(drive())
-
-
-def test_a_reorder_from_the_daemon_lets_go_of_the_grabbed_run() -> None:
-    start, reports, _ = grabbing()
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m", "j")
-            reports[0](
-                {
-                    "event": "queued",
-                    "run": "r4",
-                    "pending": ["r4", "r2", "r3"],
-                    "held": [],
-                }
-            )
-            assert app.grabbed is None
-            assert order(app) == ["r1", "r4", "r2", "r3"]
-            assert app.check_action("run_next", ())
-
-    asyncio.run(drive())
-
-
-def test_shows_where_the_daemon_moved_a_run() -> None:
-    def move(run: str, place: int) -> None:
-        reports[0](
-            {"event": "moved", "run": run, "pending": ["r3", "r2", "r4"], "held": []}
-        )
-
-    start, reports, _ = grabbing(move)
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            await pilot.press("j", "m", "j", "enter")
-            await pilot.pause()
-            assert (order(app), cursor(app)) == (["r1", "r3", "r2", "r4"], 2)
-            assert status(app) == "said moved"
-            reports[0](
-                {"event": "started", "run": "r3", "params": {"m": "c"}, "folder": "/"}
-            )
-            assert status(app) == "said moved"
 
     asyncio.run(drive())
 

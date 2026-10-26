@@ -301,18 +301,16 @@ def test_nests_adhoc_runs_in_one_folder_per_command(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["run_ids"].return_value = {"r1", "r1/taken"}
-    listen, report = mock.Mock(), mock.Mock()
+    report = mock.Mock()
 
     async def execute(
         root: Path, folder: Path, *args: object, **_: object
     ) -> dict[str, object]:
-        if folder.name == "n2":
-            listen.call_args.args[0].retry("r1/n1")
-        return {"exit_code": 0, "error": None}
+        return {"exit_code": 75 if folder.name == "n1" else 0, "error": None}
 
     collaborators["execute_run"].side_effect = execute
 
-    run(tmp_path, report, listen=listen, mode="adhoc")
+    run(tmp_path, report, mode="adhoc")
 
     assert started_runs(report) == ["r1/n1", "r1/n2", "r1/n3"]
     assert (tmp_path / "exp" / "r1" / "n1").is_dir()
@@ -330,16 +328,10 @@ def test_gives_a_lone_adhoc_run_its_own_stamped_folder(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
-    listen = mock.Mock()
+    collaborators["execute_run"].side_effect = exiting(75, 0)
+    report = mock.Mock()
 
-    def retry_first(event: dict[str, object]) -> None:
-        if event == {"event": "ended", "run": "r1", "exit_code": 0, "error": None}:
-            retry = listen.call_args.args[0].retry
-            asyncio.get_running_loop().call_soon(retry, "r1")
-
-    report = mock.Mock(side_effect=retry_first)
-
-    run(tmp_path, report, listen=listen, mode="adhoc")
+    run(tmp_path, report, mode="adhoc")
 
     assert started_runs(report) == ["r1", "r2"]
     assert (tmp_path / "exp" / "r1").is_dir()
@@ -483,39 +475,6 @@ def test_signals_the_tree_the_run_waits_on(
     assert collaborators["signal_tree"].call_args.args[2] is tree
 
 
-def test_moves_a_pending_run_to_the_front(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen = mock.Mock()
-    report = mock.Mock()
-
-    async def execute(*args: object, **_: object) -> dict[str, object]:
-        controls = listen.call_args.args[0]
-        controls.run_next("r1")
-        # Built at runtime, so an `is` comparison would miss it.
-        controls.run_next("".join(["r", "4"]))
-        return {"exit_code": 0, "error": None}
-
-    ids = iter(["r1", "r2", "r3", "r4"])
-    collaborators["new_stamped_run_id"].side_effect = lambda taken: next(ids)
-    collaborators["plan_runs"].return_value = [A, B, A, B]
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, listen=listen)
-
-    reported = [c.args[0] for c in report.call_args_list]
-    started = [e["run"] for e in reported if e["event"] == "started"]
-    assert started == ["r1", "r4", "r2", "r3"]
-    queued = {
-        "event": "queued",
-        "run": "r4",
-        "pending": ["r4", "r2", "r3"],
-        "held": [],
-    }
-    assert reported[2] == queued
-    assert events(report).count("queued") == 1
-
-
 @pytest.mark.parametrize(
     ("place", "started", "pending"),
     [
@@ -525,35 +484,6 @@ def test_moves_a_pending_run_to_the_front(
         (9, ["r1", "r3", "r4", "r2"], ["r3", "r4", "r2"]),
     ],
 )
-def test_moves_a_pending_run_to_a_place_in_the_queue(
-    tmp_path: Path,
-    collaborators: dict[str, mock.MagicMock],
-    place: int,
-    started: list[str],
-    pending: list[str],
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-    planning(collaborators, 4)
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        if folder.name == "r1":
-            controls = listen.call_args.args[0]
-            controls.move("r1", 0)
-            controls.move("".join(["r", "2"]), place)
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, listen=listen)
-
-    assert started_runs(report) == started
-    moved = {"event": "moved", "run": "r2", "pending": pending, "held": []}
-    assert moved in reported(report)
-    assert events(report).count("moved") == 1
-
-
 def changing_concurrency(listen: mock.Mock, to: int, widths: list[int]) -> object:
     live = 0
 
@@ -622,118 +552,6 @@ def planning(collaborators: dict[str, mock.MagicMock], count: int) -> None:
 
 def started_runs(report: mock.Mock) -> list[object]:
     return [e["run"] for e in reported(report) if e["event"] == "started"]
-
-
-def test_a_deselected_run_does_not_run(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-    planning(collaborators, 3)
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        if folder.name == "r1":
-            listen.call_args.args[0].toggle("r2")
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    results = run(tmp_path, report, listen=listen)
-
-    assert len(results) == 2
-    assert started_runs(report) == ["r1", "r3"]
-    deselected = {"event": "deselected", "run": "r2", "pending": ["r3"], "held": ["r2"]}
-    assert deselected in reported(report)
-
-
-def test_a_reselected_run_goes_to_the_back_of_the_queue(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-    planning(collaborators, 3)
-
-    async def execute(*args: object, **_: object) -> dict[str, object]:
-        if len(started_runs(report)) == 1:
-            controls = listen.call_args.args[0]
-            controls.toggle("r2")
-            controls.toggle("r2")
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, listen=listen)
-
-    assert started_runs(report) == ["r1", "r3", "r2"]
-    reselected = {
-        "event": "reselected",
-        "run": "r2",
-        "pending": ["r3", "r2"],
-        "held": [],
-    }
-    assert reselected in reported(report)
-
-
-def test_a_reselected_run_starts_at_once_when_there_is_room(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-    planning(collaborators, 3)
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        if folder.name == "r1":
-            controls = listen.call_args.args[0]
-            controls.toggle("r3")
-            await asyncio.sleep(0.01)
-            controls.toggle("r3")
-            await asyncio.sleep(0.01)
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, concurrency=2, listen=listen)
-
-    order = [(e["event"], e.get("run")) for e in reported(report)]
-    assert order.index(("started", "r3")) < order.index(("ended", "r1"))
-
-
-def test_toggling_a_run_that_is_not_waiting_does_nothing(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-
-    async def execute(*args: object, **_: object) -> dict[str, object]:
-        listen.call_args.args[0].toggle("r1")
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, listen=listen)
-
-    assert events(report) == ["planned", "started", "ended", "started", "ended", "idle"]
-
-
-def test_toggling_after_stopping_does_nothing(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-    planning(collaborators, 3)
-
-    async def execute(*args: object, **_: object) -> dict[str, object]:
-        controls = listen.call_args.args[0]
-        controls.toggle("r2")
-        controls.interrupt()
-        controls.toggle("r2")
-        return {"exit_code": -15, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, listen=listen)
-
-    assert started_runs(report) == ["r1"]
-    assert events(report).count("reselected") == 0
 
 
 def killing(listen: mock.Mock, *kills: tuple[str, str]) -> object:
@@ -896,71 +714,6 @@ def test_waits_for_finish_once_idle(
         assert len(await task) == 2
 
     settle(go())
-
-
-def test_retry_runs_an_ended_run_again_under_a_new_id(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        if folder.name == "r2":
-            listen.call_args.args[0].retry("r1")
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    results = run(tmp_path, report, listen=listen)
-
-    assert len(results) == 3
-    assert started_runs(report) == ["r1", "r2", "r3"]
-    retried = {"event": "retried", "run": "r1", "retry": "r3", "params": A}
-    assert retried in reported(report)
-    assert collaborators["execute_run"].await_args_list[2].args[3] == A
-    assert collaborators["new_stamped_run_id"].call_args_list[2].args[0]("r3")
-
-
-def test_retry_ignores_runs_that_have_not_ended(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        listen.call_args.args[0].retry(folder.name)
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, listen=listen)
-
-    assert started_runs(report) == ["r1", "r2"]
-
-
-def test_retry_does_nothing_after_stopping(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    listen, report = mock.Mock(), mock.Mock()
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        if folder.name == "r2":
-            controls = listen.call_args.args[0]
-            controls.interrupt()
-            controls.retry("r1")
-        return {"exit_code": 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-    collaborators["plan_runs"].return_value = [A, B, A]
-
-    run(tmp_path, report, listen=listen)
-
-    assert started_runs(report) == ["r1", "r2"]
-    assert "retried" not in events(report)
 
 
 def test_passes_the_timeout_to_each_run(
@@ -1286,78 +1039,3 @@ def test_killing_a_waiting_retry_cancels_it(
         {"event": "retry cancelled", "run": "r1"},
         {"event": "idle"},
     ]
-
-
-def test_retrying_a_waiting_run_starts_it_now_and_spends_the_budget(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = [A]
-    collaborators["execute_run"].side_effect = exiting(75, 75)
-    listen, report = calling("retry", "r1")
-
-    run(tmp_path, report, listen=listen, retries=1, retry_seconds=60)
-
-    assert started_runs(report) == ["r1", "r2"]
-    assert retry_parents(collaborators) == [None, "r1"]
-    assert "retry cancelled" not in events(report)
-    assert {"event": "gave up", "run": "r2", "retries": 1} in reported(report)
-
-
-def test_each_retry_of_a_waiting_run_spends_one_more_of_the_budget(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = [A]
-    collaborators["execute_run"].side_effect = exiting(75, 75, 75, 75)
-    collaborators["new_stamped_run_id"].side_effect = iter(["r1", "r2", "r3", "r4"])
-    listen = mock.Mock()
-
-    def retry_at_once(event: dict[str, object]) -> None:
-        if event["event"] == "retrying":
-            retry = listen.call_args.args[0].retry
-            asyncio.get_running_loop().call_soon(retry, event["run"])
-
-    report = mock.Mock(side_effect=retry_at_once)
-
-    run(tmp_path, report, listen=listen, retries=2, retry_seconds=60)
-
-    assert started_runs(report) == ["r1", "r2", "r3"]
-    assert {"event": "gave up", "run": "r3", "retries": 2} in reported(report)
-
-
-def test_a_manual_retry_links_to_its_run_with_a_fresh_budget(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = [A]
-    collaborators["execute_run"].side_effect = exiting(75, 75, 75)
-    collaborators["new_stamped_run_id"].side_effect = iter(["r1", "r2", "r3"])
-    listen = mock.Mock()
-
-    def retry_after_giving_up(event: dict[str, object]) -> None:
-        if event == {"event": "gave up", "run": "r1", "retries": 0}:
-            retry = listen.call_args.args[0].retry
-            asyncio.get_running_loop().call_soon(retry, "r1")
-
-    report = mock.Mock(side_effect=retry_after_giving_up)
-
-    async def go() -> None:
-        config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
-        controls: list[Any] = []
-
-        def hear(heard: Any) -> None:
-            listen(heard)
-            controls.append(heard)
-
-        task = asyncio.create_task(
-            run_experiment(
-                config, "exp", experiment(retries=0), 1, report, hear, retry_seconds=0
-            )
-        )
-        while len(started_runs(report)) < 2 or "idle" not in events(report)[-1:]:
-            await asyncio.sleep(0.001)
-        controls[0].finish()
-        await task
-
-    settle(go())
-
-    assert retry_parents(collaborators) == [None, "r1"]
-    assert {"event": "gave up", "run": "r2", "retries": 0} in reported(report)

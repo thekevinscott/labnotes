@@ -326,7 +326,8 @@ def test_has_no_grid_unless_asked(collaborators: dict[str, mock.MagicMock]) -> N
 def test_pivots_counts_by_the_params_that_vary_for_a_grid(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    tables = make_tables(experiment())
+    config = {**CONFIG, "params": {"x": [1, 2], "y": ["a"], "z": []}}
+    tables = make_tables(experiment(config))
     params = query("grid")
 
     with mock.patch("labnotes.load_experiment.pivot_runs") as pivot_runs:
@@ -351,14 +352,20 @@ def test_has_no_grid_for_adhoc_runs(collaborators: dict[str, mock.MagicMock]) ->
     collaborators["count_runs"].assert_awaited_once()
 
 
+@pytest.mark.parametrize(
+    ("views", "gridded"), [(("grid", "table"), False), (("table", "grid"), True)]
+)
 def test_takes_the_last_view_asked_for(
     collaborators: dict[str, mock.MagicMock],
+    views: tuple[str, ...],
+    gridded: bool,
 ) -> None:
-    params = query("grid", "table")
-
-    loaded = asyncio.run(
-        load_experiment(make_tables(experiment()), ROOT, "adhoc", "a", params)
-    )
+    with mock.patch("labnotes.load_experiment.pivot_runs"):
+        loaded = asyncio.run(
+            load_experiment(
+                make_tables(experiment()), ROOT, "adhoc", "a", query(*views)
+            )
+        )
 
     assert loaded is not None
-    assert loaded["run_grid"] is None
+    assert (loaded["run_grid"] is not None) is gridded

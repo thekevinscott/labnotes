@@ -66,7 +66,8 @@ async def load_experiment(
         if nested
         else None
     )
-    gridded = summary["mode"] == "matrix" and params.getlist("view")[-1:] == ["grid"]
+    matrix = summary["mode"] == "matrix"
+    gridded = matrix and params.getlist("view")[-1:] == ["grid"]
     axes = {key: varies[key] for key in choices if len(varies[key]) > 1}
     grid = (
         pivot_runs(

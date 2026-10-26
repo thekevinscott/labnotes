@@ -13,7 +13,7 @@ reason = "last_stream is always the same str object taken from STREAMS, so is eq
 [[python.exempt]]
 path = "src/labnotes/load_experiment.py"
 rules = ["mutation"]
-lines = [61]
+lines = [61, 69]
 reason = "summarize_config returns mode matrix or adhoc; \"matrix\" <= \"adhoc\" is false like ==, and both are interned literals so is equals =="
 
 [[python.exempt]]

@@ -64,7 +64,7 @@ export const register: Register = on => {
         "Open the labnotes pane: a live table of this project's runs, with keys to steer them (the same view as the terminal's `labnotes experiments NAME run`). Call it after starting runs, or when the person asks to watch them.",
     })
     await $.command.register({
-      name: 'labnotes',
+      name: 'labnotes-runs',
       description: "Open the labnotes pane: a live table of this project's runs",
       immediate: true,
     })
@@ -105,7 +105,7 @@ export const register: Register = on => {
     return { result: said, text: said }
   }).catch(() => ({ result: NOT_OPENED, text: NOT_OPENED, isError: true as const }))
 
-  on('command.run', { command: 'labnotes' }, async $ => ({ text: await openPane($) })).catch(() => ({
+  on('command.run', { command: 'labnotes-runs' }, async $ => ({ text: await openPane($) })).catch(() => ({
     text: NOT_OPENED,
   }))
 

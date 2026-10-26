@@ -1,0 +1,1 @@
+**Fixed** — The Claude Code command that opens the runs pane is now `/labnotes-runs`. Claude Code refused `/labnotes` because the skill already owns that name, and the refusal stopped the mod from following runs, so the pane stayed empty and no toasts came.

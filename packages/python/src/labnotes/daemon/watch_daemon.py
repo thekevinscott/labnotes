@@ -5,6 +5,7 @@ from pathlib import Path
 import httpx2
 
 from labnotes.daemon.daemon_client import daemon_client
+from labnotes.daemon.last_stderr import last_stderr
 from labnotes.daemon.run_logs import RunLogs
 from labnotes.utils.run_usage import run_usage
 
@@ -61,6 +62,11 @@ async def watch_daemon(root: Path, follow: bool, emit: Callable[[Event], None]) 
                         logs.add(name, run, Path(str(event["folder"])))
                     case {"event": "ended", "experiment": str(name), "run": str(run)}:
                         tail()
+                        folder = logs.folders.get((name, run))
+                        if event.get("exit_code") != 0 and folder is not None:
+                            line = await last_stderr(folder)
+                            if line is not None:
+                                event = {**event, "last_stderr": line}
                         logs.drop(name, run)
                 emit(event)
     except httpx2.TransportError:

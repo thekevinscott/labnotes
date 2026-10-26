@@ -65,12 +65,12 @@ Controls the runs going in the project. Runs belong to the project's daemon, so 
 labnotes run status [-f] [--json]
 ```
 
-Shows what each experiment is running, the latest line each running run logged, and what each running run uses, like `exp: r1 uses 3.2 GB of memory, 5.2 GB on disk.` Memory is the resident memory of the run's command and everything it started. With `-f`, the usage repeats every 30 seconds.
+Shows what each experiment is running, the latest line each running run logged, and what each running run uses, like `exp: r1 uses 3.2 GB of memory, 5.2 GB on disk.` Memory is the resident memory of the run's command and everything it started. With `-f`, the usage repeats every 30 seconds. When a run fails, its end line carries the last non-blank line of its `stderr.log`, like `exp: r1 exited 1: ValueError: boom`.
 
 | Option | Description |
 | --- | --- |
 | `-f, --follow` | Keep reporting until interrupted. |
-| `--json` | One JSON event per line. Retries show as `retrying` (with `attempt`, `retries` and `seconds`), `retried`, `gave up` and `retry cancelled`. Usage shows as `usage`, with `memory` and `size` in bytes. |
+| `--json` | One JSON event per line. Retries show as `retrying` (with `attempt`, `retries` and `seconds`), `retried`, `gave up` and `retry cancelled`. Usage shows as `usage`, with `memory` and `size` in bytes. A failed run's `ended` event adds `last_stderr`. |
 
 ### `run stop`
 

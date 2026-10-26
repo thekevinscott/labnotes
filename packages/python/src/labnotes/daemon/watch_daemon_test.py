@@ -257,3 +257,63 @@ def test_stops_tailing_and_sampling_once_the_stream_ends(
 
 def test_samples_usage_every_thirty_seconds() -> None:
     assert USAGE_SECONDS == 30.0
+
+
+def ended(exit_code: int | None, **extra: object) -> dict[str, object]:
+    return {
+        "event": "ended",
+        "experiment": "exp",
+        "run": "r1",
+        "exit_code": exit_code,
+        **extra,
+    }
+
+
+def endings(emitted: list[dict[str, object]]) -> list[dict[str, object]]:
+    return [event for event in emitted if event["event"] == "ended"]
+
+
+@pytest.mark.parametrize(
+    "result",
+    [
+        {"exit_code": 1},
+        {"exit_code": -15, "ended_by": "signal"},
+        {"exit_code": None, "error": "no shell"},
+    ],
+)
+def test_adds_the_last_stderr_line_when_a_run_fails(
+    tmp_path: Path, daemon: dict[str, Any], result: dict[str, object]
+) -> None:
+    (tmp_path / "stderr.log").write_text("Traceback\nValueError: boom\n\n")
+    failed = {**ended(None), **result}
+    daemon["sent"].extend([started(tmp_path), failed, {"event": "replayed"}])
+
+    assert endings(watch(follow=False)) == [
+        {**failed, "last_stderr": "ValueError: boom"}
+    ]
+
+
+def test_leaves_a_passing_runs_stderr_alone(
+    tmp_path: Path, daemon: dict[str, Any]
+) -> None:
+    (tmp_path / "stderr.log").write_text("warning: noisy\n")
+    daemon["sent"].extend([started(tmp_path), ended(0), {"event": "replayed"}])
+
+    assert endings(watch(follow=False)) == [ended(0)]
+
+
+@pytest.mark.parametrize("log", [None, "", "\n  \n"])
+def test_adds_nothing_without_stderr(
+    tmp_path: Path, daemon: dict[str, Any], log: str | None
+) -> None:
+    if log is not None:
+        (tmp_path / "stderr.log").write_text(log)
+    daemon["sent"].extend([started(tmp_path), ended(1), {"event": "replayed"}])
+
+    assert endings(watch(follow=False)) == [ended(1)]
+
+
+def test_adds_nothing_for_a_run_it_never_saw_start(daemon: dict[str, Any]) -> None:
+    daemon["sent"].extend([ended(1), {"event": "replayed"}])
+
+    assert watch(follow=False) == [ended(1)]

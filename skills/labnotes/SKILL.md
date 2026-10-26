@@ -42,3 +42,4 @@ socket directly; its location is internal.
 In Claude Code, the `show_runs` tool opens a pane with the same live table.
 Call it after starting runs, or when the person asks to watch them. They
 click the pane to use its keys.
+The person can also open it themselves with `/labnotes`.

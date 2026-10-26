@@ -22,6 +22,13 @@ const isLoneAdhoc = (event: LabnotesEvent) =>
 
 let stopTail = () => {}
 
+const openPane = async ($: EngineInterface) => {
+  const opened = await $.ui.open({ id: PANE, title: 'labnotes' })
+  return opened.isPlaced
+    ? 'labnotes pane opened. Click it to use its keys.'
+    : `labnotes pane opened but not shown: ${opened.reason}`
+}
+
 const follow = ($: EngineInterface, run: string, folder: string) => {
   stopTail()
   const tail = $.process.spawn({ argv: TAIL, cwd: folder })
@@ -56,6 +63,11 @@ export const register: Register = on => {
       description:
         "Open the labnotes pane: a live table of this project's runs, with keys to steer them (the same view as the terminal's `labnotes experiments NAME run`). Call it after starting runs, or when the person asks to watch them.",
     })
+    await $.command.register({
+      name: 'labnotes',
+      description: "Open the labnotes pane: a live table of this project's runs",
+      immediate: true,
+    })
     void (async () => {
       let held = ''
       for await (const { stream, text } of $.process.spawn({ argv: STATUS })) {
@@ -89,12 +101,13 @@ export const register: Register = on => {
   })
 
   on('tool.call', { tool: 'mcp__labnotes__show_runs' }, async $ => {
-    const opened = await $.ui.open({ id: PANE, title: 'labnotes' })
-    const said = opened.isPlaced
-      ? 'labnotes pane opened. Click it to use its keys.'
-      : `labnotes pane opened but not shown: ${opened.reason}`
+    const said = await openPane($)
     return { result: said, text: said }
   }).catch(() => ({ result: NOT_OPENED, text: NOT_OPENED, isError: true as const }))
+
+  on('command.run', { command: 'labnotes' }, async $ => ({ text: await openPane($) })).catch(() => ({
+    text: NOT_OPENED,
+  }))
 
   on('ui.message', { component: 'Pane', requestId: PANE }, async ($, e) => {
     const message = e.data as PaneMessage

@@ -39,7 +39,7 @@ def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
 @pytest.fixture
 def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
     names = iter(["n1", "n2", "n3"])
-    ids = iter(["r1", "r2", "r3"])
+    ids = iter(["r1", "r2", "r3", "r4"])
     with (
         mock.patch("labnotes.runner.run_experiment.open_tables") as open_tables,
         mock.patch(
@@ -93,6 +93,13 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.runner.run_experiment.invocation_hook", new=mock.AsyncMock()
         ) as invocation_hook,
+        mock.patch(
+            "labnotes.runner.run_experiment.hook_ids", return_value={"id": "i"}
+        ) as hook_ids,
+        mock.patch(
+            "labnotes.runner.run_experiment.fill_ids",
+            side_effect=lambda command, ids: command,
+        ) as fill_ids,
     ):
         yield {
             "open_tables": open_tables,
@@ -107,6 +114,8 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "invocation_meta": invocation_meta,
             "invocation_hook": invocation_hook,
             "in_subset": in_subset,
+            "hook_ids": hook_ids,
+            "fill_ids": fill_ids,
         }
 
 
@@ -321,6 +330,36 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
     assert events[-1] == "tearing down"
 
 
+def test_fills_the_ids_into_setup_and_teardown(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["fill_ids"].side_effect = lambda command, ids: f"{command} {ids}"
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    collaborators["hook_ids"].assert_called_once_with(
+        {"setup": "up", "teardown": "down"}, "r3", ["r1", "r2"]
+    )
+    assert collaborators["invocation_hook"].await_args_list == [
+        mock.call(tmp_path, "setup", "up {'id': 'i'}"),
+        mock.call(tmp_path, "teardown", "down {'id': 'i'}"),
+    ]
+
+
+def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["hook_ids"].side_effect = ValueError("no run_id")
+    report = mock.Mock()
+
+    with pytest.raises(ValueError, match="no run_id"):
+        start_with_hooks(tmp_path, report)
+
+    report.assert_not_called()
+    collaborators["invocation_hook"].assert_not_awaited()
+    collaborators["execute_run"].assert_not_awaited()
+
+
 def test_starts_no_runs_and_still_tears_down_when_setup_fails(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -475,7 +514,68 @@ def test_stamps_no_folder_when_an_adhoc_command_plans_nothing(
 
     run(tmp_path, mock.Mock(), mode="adhoc")
 
-    collaborators["new_stamped_run_id"].assert_not_called()
+    assert not (tmp_path / "exp").exists()
+
+
+def test_fills_each_runs_id_and_the_invocation_id_into_its_command(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["fill_ids"].side_effect = lambda command, ids: f"{command} {ids}"
+
+    run(tmp_path, mock.Mock())
+
+    calls = collaborators["execute_run"].await_args_list
+    assert [c.args[2] for c in calls] == [
+        "run {'run_id': 'r1', 'invocation_id': 'r3'}",
+        "run {'run_id': 'r2', 'invocation_id': 'r3'}",
+    ]
+
+
+def test_reserves_a_matrix_invocation_id_against_later_runs(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock())
+
+    taken = collaborators["new_stamped_run_id"].call_args.args[0]
+    assert taken("r3")
+
+
+def test_stamps_an_invocation_id_when_a_matrix_plans_nothing(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = []
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    collaborators["hook_ids"].assert_called_once_with(
+        {"setup": "up", "teardown": "down"}, "r1", []
+    )
+
+
+def test_names_an_adhoc_invocation_for_its_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock(), mode="adhoc")
+
+    assert collaborators["fill_ids"].call_args_list[:2] == [
+        mock.call("run", {"run_id": "r1/n1", "invocation_id": "r1"}),
+        mock.call("run", {"run_id": "r1/n2", "invocation_id": "r1"}),
+    ]
+
+
+@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
+def test_names_a_lone_runs_invocation_for_the_run_even_when_retried(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], mode: str
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 0)
+
+    run(tmp_path, mock.Mock(), mode=mode)
+
+    assert collaborators["fill_ids"].call_args_list == [
+        mock.call("run", {"run_id": "r1", "invocation_id": "r1"}),
+        mock.call("run", {"run_id": "r2", "invocation_id": "r1"}),
+    ]
 
 
 def test_names_every_run_before_the_first_starts(
@@ -485,7 +585,7 @@ def test_names_every_run_before_the_first_starts(
         assert not collaborators["execute_run"].await_count
         return next(ids)
 
-    ids = iter(["r1", "r2"])
+    ids = iter(["r1", "r2", "r3"])
     collaborators["new_stamped_run_id"].side_effect = started
 
     run(tmp_path, mock.Mock())
@@ -653,7 +753,7 @@ def test_lowering_concurrency_lets_running_runs_finish_first(
 ) -> None:
     listen, report = mock.Mock(), mock.Mock()
     widths: list[int] = []
-    ids = iter(["r1", "r2", "r3", "r4"])
+    ids = iter(["r1", "r2", "r3", "r4", "r5"])
     collaborators["new_stamped_run_id"].side_effect = lambda taken: next(ids)
     collaborators["plan_runs"].return_value = [A, B, A, B]
     collaborators["execute_run"].side_effect = changing_concurrency(listen, 0, widths)
@@ -675,7 +775,7 @@ def test_a_failing_run_fails_the_experiment(
 
 
 def planning(collaborators: dict[str, mock.MagicMock], count: int) -> None:
-    ids = iter([f"r{n}" for n in range(1, count + 1)])
+    ids = iter([f"r{n}" for n in range(1, count + 2)])
     collaborators["new_stamped_run_id"].side_effect = lambda taken: next(ids)
     collaborators["plan_runs"].return_value = [A, B] * (count // 2) + [A] * (count % 2)
 

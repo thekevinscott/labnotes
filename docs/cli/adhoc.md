@@ -30,4 +30,6 @@ When nothing varies but `repeats` is more than 1, the nested runs get haiku name
 
 A run that exits 75 is [retried](../api/config#retries-1) in a new run folder: inside the same invocation folder when there is one, or a new stamped folder for a lone run.
 
+`{invocation_id}` in the `command`, `setup` or `teardown` becomes the invocation folder's name, and `{run_id}` in the `command` becomes `folder/run`. For a single run, both are the run's folder name. See [`command`](../api/config#command).
+
 The frontend groups an `adhoc` experiment's runs by the invocation that made them. When an invocation plans a single run, the CLI opens straight on its output.

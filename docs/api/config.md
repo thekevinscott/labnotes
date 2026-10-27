@@ -142,7 +142,15 @@ effort = ["low", "high"]
 - Type: string
 - Required
 
-Shell command for one run, run from the project root. `{run_dir}` becomes the run folder's absolute path, shell-quoted. Params are appended as flags (see [`[params]`](#params)). The command can write structured output with [`log`](sdk#log).
+Shell command for one run, run from the project root. Params are appended as flags (see [`[params]`](#params)). The command can write structured output with [`log`](sdk#log).
+
+These placeholders are filled in, each shell-quoted:
+
+- `{run_dir}`: the run folder's absolute path.
+- `{run_id}`: the run's id, the path under `runs/`. In an [adhoc](../cli/adhoc) invocation folder that is `folder/run`, like `20261020-000429-brave-fox/opus-low-1a2b`. A [retry](#retries-1) gets its own id.
+- `{invocation_id}`: one id shared by every run one `run` command starts, retries included. When the command plans a single run, it is that run's id. In adhoc mode with more than one run, it is the invocation folder's name. In matrix mode with more than one run, labnotes stamps one the same way, like `20261020-000429-brave-fox`; no folder has that name, and `run.json` doesn't record it, so pass it to the command if the run should keep it.
+
+`run.json` records the command with every placeholder filled.
 
 ### `meta`
 
@@ -172,6 +180,8 @@ Shell command that labnotes runs once per `run`, from the project root, after [`
 
 A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
 
+`{invocation_id}` is filled in as in [`command`](#command). So is `{run_id}`, but only when the `run` command plans a single run, as setup runs once for all of them. With any other number of runs, `{run_id}` in setup or teardown fails the invocation before setup or any run starts.
+
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 
 Stopping the invocation during setup doesn't stop the setup command. Once it finishes, no run starts and teardown runs.
@@ -186,6 +196,8 @@ Shell command that labnotes runs once per `run`, from the project root, after ev
 A non-zero exit fails the invocation, with the command and its stderr in the error. The runs' results are already recorded. If setup or the invocation had already failed, that error is the one reported, and the teardown failure is shown as a line of output.
 
 In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. If the daemon itself is killed, teardown doesn't run.
+
+It gets `{invocation_id}` and `{run_id}` the same way as `setup`. With a single run that was retried, `{run_id}` is the first attempt's id.
 
 `--teardown COMMAND` overrides it, and it composes with `.labnotes.toml` the same way as `setup`.
 

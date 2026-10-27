@@ -1,5 +1,6 @@
 import asyncio
 import dataclasses
+import os
 from collections.abc import Callable
 from pathlib import Path
 
@@ -21,6 +22,8 @@ def remote_start(
     setup: str | None = None,
     teardown: str | None = None,
 ) -> Start:
+    environment = dict(os.environ)
+
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         try:
             return await follow(report, listen)
@@ -54,6 +57,7 @@ def remote_start(
                     "args": args,
                     "setup": setup,
                     "teardown": teardown,
+                    "environment": environment,
                 },
             )
             if reply.status_code != 202:

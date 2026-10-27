@@ -34,6 +34,7 @@ def daemon() -> Iterator[dict[str, Any]]:
         mock.patch(
             "labnotes.daemon.remote_start.httpx2.EventSource", side_effect=stream
         ) as event_source,
+        mock.patch("labnotes.daemon.remote_start.os.environ", {"CALLER": "yes"}),
     ):
         daemon_client.return_value.__aenter__.return_value = client
         yield {
@@ -89,6 +90,7 @@ def test_runs_the_experiment_through_the_daemon(
             "args": None,
             "setup": None,
             "teardown": None,
+            "environment": mock.ANY,
         },
     )
     assert report.call_args_list == [
@@ -96,6 +98,9 @@ def test_runs_the_experiment_through_the_daemon(
         mock.call({"event": "ended", "exit_code": 0}),
     ]
     assert results == [{"event": "ended", "exit_code": 0}]
+    assert (
+        daemon["client"].post.call_args.kwargs["json"]["environment"]["CALLER"] == "yes"
+    )
 
 
 def test_sends_no_experiment_config_by_default(daemon: dict[str, Any]) -> None:
@@ -112,7 +117,23 @@ def test_sends_no_experiment_config_by_default(daemon: dict[str, Any]) -> None:
         "args": None,
         "setup": None,
         "teardown": None,
+        "environment": mock.ANY,
     }
+
+
+def test_sends_the_environment_from_when_the_invocation_started(
+    daemon: dict[str, Any],
+) -> None:
+    daemon["sent"].append({"event": "done", "experiment": "exp", "error": None})
+    start = remote_start(CONFIG, "exp", None, 3)
+    with mock.patch.dict(
+        "labnotes.daemon.remote_start.os.environ", {"CALLER": "later"}
+    ):
+        asyncio.run(start(mock.Mock(), mock.Mock()))
+
+    assert (
+        daemon["client"].post.call_args.kwargs["json"]["environment"]["CALLER"] == "yes"
+    )
 
 
 def test_sends_the_subset_to_run(daemon: dict[str, Any]) -> None:

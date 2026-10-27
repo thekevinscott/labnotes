@@ -66,3 +66,4 @@ class ExperimentConfig:
     memory_interval: float = DEFAULT_MEMORY_INTERVAL
     setup: str | None = None
     teardown: str | None = None
+    env: dict[str, str] = field(default_factory=dict)

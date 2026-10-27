@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import signal
 
 import psutil
@@ -13,6 +14,7 @@ from labnotes.models import (
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
+from labnotes.runner.fill_experiment_env import fill_experiment_env
 from labnotes.runner.fill_ids import fill_ids
 from labnotes.runner.hook_ids import hook_ids
 from labnotes.runner.in_subset import in_subset
@@ -42,10 +44,9 @@ async def run_experiment(
     retry_seconds: float = RETRY_SECONDS,
     only: dict[str, str] | None = None,
     args: list[str] | None = None,
+    environment: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
-    meta = None
-    if experiment.meta is not None:
-        meta = await invocation_meta(config.root, experiment.meta)
+    inherited = dict(os.environ) if environment is None else environment
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
     finished: list[dict[str, object]] = []
@@ -85,8 +86,28 @@ async def run_experiment(
         case _:
             invocation = group or new_stamped_run_id(taken)
     planned.add(invocation)
-    hooks = {"setup": experiment.setup, "teardown": experiment.teardown}
+    hooks = {
+        "setup": experiment.setup,
+        "teardown": experiment.teardown,
+        "meta": experiment.meta,
+    }
     ids = hook_ids(hooks, invocation, [run for run, _ in plan])
+    if len(plan) == 1:
+        ids["run_dir"] = str(
+            run_folder(config.root, config.runs, name, plan[0][0]).resolve()
+        )
+    hook_env = {
+        hook: fill_experiment_env(
+            experiment.env, inherited, ids, hook=hook, runs=len(plan)
+        )
+        for hook, command in hooks.items()
+        if command is not None
+    }
+    meta = None
+    if experiment.meta is not None:
+        meta = await invocation_meta(
+            config.root, fill_ids(experiment.meta, ids), hook_env["meta"]
+        )
     runs = [{"run": run, "params": params} for run, params in plan]
     report(
         {
@@ -234,6 +255,15 @@ async def run_experiment(
             meta=meta,
             args=args or (),
             memory_interval=experiment.memory_interval,
+            environment=fill_experiment_env(
+                experiment.env,
+                inherited,
+                {
+                    "run_dir": str(folder.resolve()),
+                    "run_id": run,
+                    "invocation_id": invocation,
+                },
+            ),
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})
@@ -248,7 +278,10 @@ async def run_experiment(
         if experiment.teardown is not None:
             report({"event": "tearing down"})
             await invocation_hook(
-                config.root, "teardown", fill_ids(experiment.teardown, ids)
+                config.root,
+                "teardown",
+                fill_ids(experiment.teardown, ids),
+                hook_env["teardown"],
             )
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
@@ -256,7 +289,9 @@ async def run_experiment(
     try:
         if experiment.setup is not None:
             report({"event": "setting up"})
-            await invocation_hook(config.root, "setup", fill_ids(experiment.setup, ids))
+            await invocation_hook(
+                config.root, "setup", fill_ids(experiment.setup, ids), hook_env["setup"]
+            )
         fill()
         await done.wait()
         await asyncio.gather(*started)

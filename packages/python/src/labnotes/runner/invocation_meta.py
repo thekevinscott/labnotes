@@ -3,12 +3,15 @@ import json
 from pathlib import Path
 
 
-async def invocation_meta(root: Path, command: str) -> dict[str, object]:
+async def invocation_meta(
+    root: Path, command: str, environment: dict[str, str] | None = None
+) -> dict[str, object]:
     process = await asyncio.create_subprocess_shell(
         command,
         cwd=root,
         stdout=asyncio.subprocess.PIPE,
         stderr=asyncio.subprocess.PIPE,
+        env=environment,
     )
     stdout, stderr = await process.communicate()
     detail = stderr.decode(errors="replace").strip()

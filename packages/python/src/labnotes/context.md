@@ -15,7 +15,7 @@ path = "{experiment}/runs/{run}" # one folder per run
 
 Paths are relative to the root. `{experiment}` and `{run}` stand for folder names; the experiments and files paths use `{experiment}`, the runs path both. A project laid out differently keeps its folders and changes the paths: look at where its experiments, notes and runs live, then write the templates that match.
 
-When `experiment.toml` sits next to `.labnotes.toml`, the root is the one experiment, named after its folder. Paths then drop `{experiment}`: files default to `files/`, runs to `runs/{run}`, and `[experiments] path` is rejected. An `[experiment]` table in `.labnotes.toml` holds the same keys as `experiment.toml` and is the base each `experiment.toml` layers over (top-level keys replace, `params` merge by name). With no `[experiments] path`, it also makes the root the one experiment.
+When `experiment.toml` sits next to `.labnotes.toml`, the root is the one experiment, named after its folder. Paths then drop `{experiment}`: files default to `files/`, runs to `runs/{run}`, and `[experiments] path` is rejected. An `[experiment]` table in `.labnotes.toml` holds the same keys as `experiment.toml` and is the base each `experiment.toml` layers over (top-level keys replace, `params` and `env` merge by name). With no `[experiments] path`, it also makes the root the one experiment.
 
 `labnotes experiments` reads three tables from those paths:
 
@@ -99,6 +99,13 @@ failed (so teardown must cope with a partial setup). A failing setup starts no
 run; a failing teardown fails the invocation. Both get `{invocation_id}`, and
 `{run_id}` only when one run is planned; otherwise `{run_id}` there fails the
 invocation before anything starts.
+`[env]` in `experiment.toml` sets string environment values for `command`,
+`meta`, `setup`, and `teardown`. `[experiment.env]` in `.labnotes.toml`
+provides shared values; experiment values replace them by name. Variables in
+the environment that starts `labnotes experiments NAME run` win over both,
+including inline assignments. Values can use raw `{run_dir}`, `{run_id}` and
+`{invocation_id}` placeholders. In hooks and meta, `{run_id}` and `{run_dir}`
+require exactly one planned run. `LABNOTES_*` names are reserved for labnotes.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.

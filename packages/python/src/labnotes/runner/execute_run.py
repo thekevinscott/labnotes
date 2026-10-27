@@ -34,6 +34,7 @@ async def execute_run(
     args: Sequence[str] = (),
     *,
     memory_interval: float,
+    environment: dict[str, str] | None = None,
 ) -> dict[str, object]:
     resolved = shell_command(command, folder, params, args)
     run: dict[str, object] = {
@@ -64,7 +65,7 @@ async def execute_run(
                 env={
                     "FORCE_COLOR": "1",
                     "CLICOLOR_FORCE": "1",
-                    **os.environ,
+                    **(os.environ if environment is None else environment),
                     LOG_ENV: str(folder / "log.jsonl"),
                     RUN_ENV: str(folder.resolve()),
                 },

@@ -1,0 +1,1 @@
+Experiment `[env]` values now merge with project `[experiment.env]` defaults and reach run commands, setup, teardown, and meta. The starting CLI environment takes precedence, even when an existing daemon runs the experiment.

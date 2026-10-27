@@ -93,6 +93,7 @@ Experiment config kept in `.labnotes.toml`. It takes the same keys as [`experime
 
 - Top-level keys in `experiment.toml` replace the base's.
 - `params` merge by name; a param in `experiment.toml` replaces the base's values for that name.
+- `env` merges by name; a variable in `experiment.toml` replaces the base's value for that name.
 - The merged result is what gets checked, so a key can live in either file, such as `command` in one and `params` in the other.
 - `run -e PATH` replaces the `experiment.toml` layer; the base still applies.
 
@@ -135,6 +136,10 @@ counts = "exit_code = 0 AND created > '2026-10-01'"
 [params]
 model = ["opus", "sonnet"]
 effort = ["low", "high"]
+
+[env]
+PYTHONUNBUFFERED = "1"
+OUTPUT_DIR = "{run_dir}"
 ```
 
 ### `command`
@@ -151,6 +156,17 @@ These placeholders are filled in, each shell-quoted:
 - `{invocation_id}`: one id shared by every run one `run` command starts, retries included. When the command plans a single run, it is that run's id. In adhoc mode with more than one run, it is the invocation folder's name. In matrix mode with more than one run, labnotes stamps one the same way, like `20261020-000429-brave-fox`; no folder has that name, and `run.json` doesn't record it, so pass it to the command if the run should keep it.
 
 `run.json` records the command with every placeholder filled.
+
+### `[env]`
+
+- Type: table of string values
+- Default: none
+
+Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`). Each invocation sends that starting environment to the daemon, including when it is already running.
+
+Values may use `{run_dir}`, `{run_id}`, and `{invocation_id}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, `{run_id}` and `{run_dir}` require exactly one planned run; with several or no runs, use `{invocation_id}` instead. For retries, the hooks use the first planned run. Run commands get the current attempt's values.
+
+Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.
 
 ### `meta`
 

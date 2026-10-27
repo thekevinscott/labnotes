@@ -31,6 +31,7 @@ def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
         memory_interval=0.5,
         setup=None,
         teardown=None,
+        env={},
     )
     config.name = None
     return config
@@ -263,12 +264,15 @@ def test_gives_every_run_the_meta_read_once_at_the_start(
 ) -> None:
     start_with_meta(tmp_path, mock.Mock())
 
-    collaborators["invocation_meta"].assert_awaited_once_with(tmp_path, "git log -1")
+    collaborators["invocation_meta"].assert_awaited_once_with(
+        tmp_path, "git log -1", mock.ANY
+    )
+    assert collaborators["hook_ids"].call_args.args[0]["meta"] == "git log -1"
     calls = collaborators["execute_run"].await_args_list
     assert [c.kwargs["meta"] for c in calls] == [{"commit": "abc"}] * 2
 
 
-def test_fails_before_planning_when_the_meta_command_fails(
+def test_fails_before_reporting_when_the_meta_command_fails(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["invocation_meta"].side_effect = ValueError("meta failed")
@@ -278,7 +282,7 @@ def test_fails_before_planning_when_the_meta_command_fails(
         start_with_meta(tmp_path, report)
 
     report.assert_not_called()
-    collaborators["open_tables"].assert_not_called()
+    collaborators["open_tables"].assert_called_once()
     collaborators["execute_run"].assert_not_awaited()
 
 
@@ -322,8 +326,8 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
 
     assert [c[0] for c in order.mock_calls] == ["hook", "run", "run", "hook"]
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up"),
-        mock.call(tmp_path, "teardown", "down"),
+        mock.call(tmp_path, "setup", "up", mock.ANY),
+        mock.call(tmp_path, "teardown", "down", mock.ANY),
     ]
     events = [c.args[0]["event"] for c in report.call_args_list]
     assert events[1] == "setting up"
@@ -338,11 +342,11 @@ def test_fills_the_ids_into_setup_and_teardown(
     start_with_hooks(tmp_path, mock.Mock())
 
     collaborators["hook_ids"].assert_called_once_with(
-        {"setup": "up", "teardown": "down"}, "r3", ["r1", "r2"]
+        {"setup": "up", "teardown": "down", "meta": None}, "r3", ["r1", "r2"]
     )
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up {'id': 'i'}"),
-        mock.call(tmp_path, "teardown", "down {'id': 'i'}"),
+        mock.call(tmp_path, "setup", "up {'id': 'i'}", mock.ANY),
+        mock.call(tmp_path, "teardown", "down {'id': 'i'}", mock.ANY),
     ]
 
 
@@ -360,6 +364,32 @@ def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     collaborators["execute_run"].assert_not_awaited()
 
 
+def test_rejects_run_id_in_hook_environment_before_any_subprocess_starts(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    configured = experiment()
+    configured.setup = "up"
+    configured.env = {"LABEL": "{run_id}"}
+    report = mock.Mock()
+
+    with pytest.raises(ValueError, match=r"setup env.LABEL uses \{run_id\}"):
+        settle(
+            run_experiment(
+                mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+                "exp",
+                configured,
+                1,
+                report,
+                mock.Mock(),
+                environment={},
+            )
+        )
+
+    report.assert_not_called()
+    collaborators["invocation_hook"].assert_not_awaited()
+    collaborators["execute_run"].assert_not_awaited()
+
+
 def test_starts_no_runs_and_still_tears_down_when_setup_fails(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -370,7 +400,7 @@ def test_starts_no_runs_and_still_tears_down_when_setup_fails(
 
     collaborators["execute_run"].assert_not_awaited()
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
-        tmp_path, "teardown", "down"
+        tmp_path, "teardown", "down", mock.ANY
     )
 
 
@@ -418,7 +448,7 @@ def test_tears_down_after_an_interrupt_during_setup(
 
     collaborators["execute_run"].assert_not_awaited()
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
-        tmp_path, "teardown", "down"
+        tmp_path, "teardown", "down", mock.ANY
     )
 
 
@@ -548,7 +578,7 @@ def test_stamps_an_invocation_id_when_a_matrix_plans_nothing(
     start_with_hooks(tmp_path, mock.Mock())
 
     collaborators["hook_ids"].assert_called_once_with(
-        {"setup": "up", "teardown": "down"}, "r1", []
+        {"setup": "up", "teardown": "down", "meta": None}, "r1", []
     )
 
 

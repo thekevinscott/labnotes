@@ -2,12 +2,15 @@ import asyncio
 from pathlib import Path
 
 
-async def invocation_hook(root: Path, hook: str, command: str) -> None:
+async def invocation_hook(
+    root: Path, hook: str, command: str, environment: dict[str, str] | None = None
+) -> None:
     process = await asyncio.create_subprocess_shell(
         command,
         cwd=root,
         stdout=asyncio.subprocess.DEVNULL,
         stderr=asyncio.subprocess.PIPE,
+        env=environment,
     )
     _, stderr = await process.communicate()
     if process.returncode != 0:

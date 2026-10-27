@@ -2,7 +2,7 @@ import asyncio
 import contextlib
 import os
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 
 import psutil
@@ -31,10 +31,11 @@ async def execute_run(
     stop: Callable[[], None] = lambda: None,
     stopped: Callable[[], bool] = lambda: False,
     meta: dict[str, object] | None = None,
+    args: Sequence[str] = (),
     *,
     memory_interval: float,
 ) -> dict[str, object]:
-    resolved = shell_command(command, folder, params)
+    resolved = shell_command(command, folder, params, args)
     run: dict[str, object] = {
         "params": params,
         "command": resolved,
@@ -45,6 +46,8 @@ async def execute_run(
         "ended_by": None,
         "signal": None,
     }
+    if args:
+        run["args"] = list(args)
     if retry_of is not None:
         run["retry_of"] = retry_of
     if meta is not None:

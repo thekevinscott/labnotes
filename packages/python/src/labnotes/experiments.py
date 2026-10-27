@@ -17,12 +17,25 @@ from labnotes.tui.browse_tui import browse_tui
 from labnotes.tui.run_tui import run_tui
 
 BYTES = ("memory", "size")
+PASSTHROUGH = "labnotes.passthrough"
+
+
+class PassthroughCommand(click.Command):
+    def parse_args(self, ctx: click.Context, args: list[str]) -> list[str]:
+        if "--" in args:
+            at = args.index("--")
+            ctx.meta[PASSTHROUGH] = args[at + 1 :]
+            args = args[:at]
+        return super().parse_args(ctx, args)
 
 
 @click.command(
+    cls=PassthroughCommand,
     help="List experiments, show one, list its runs, or run it."
     " `new [NAME]` creates one. With run, --PARAM=VALUE runs only the"
-    " matrix cells where that param has that value.",
+    " matrix cells where that param has that value, and anything after --"
+    " is appended to every run's command and recorded in run.json, so never"
+    " pass secrets there.",
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
 @click.argument("name", required=False)
@@ -63,6 +76,7 @@ def experiments(
     experiment_config: Path | None,
     timeout: int | None,
 ) -> None:
+    passthrough: list[str] | None = ctx.meta.get(PASSTHROUGH)
     config = load_config(ctx)
     if config is None:
         raise click.ClickException(
@@ -82,7 +96,13 @@ def experiments(
             except ValueError as error:
                 raise click.UsageError(str(error)) from error
             start = remote_start(
-                config, name, experiment_config, concurrency, timeout, only
+                config,
+                name,
+                experiment_config,
+                concurrency,
+                timeout,
+                only,
+                passthrough or None,
             )
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():
@@ -101,6 +121,8 @@ def experiments(
             passed = len(results) - failed - retried
             click.echo(f"{passed} passed, {failed} failed.{again}")
             return
+    if passthrough is not None:
+        raise click.UsageError("-- ARGS needs run.")
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
     if action not in (None, "runs"):

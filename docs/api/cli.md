@@ -48,6 +48,7 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 | `--concurrency N` | With `run`: how many runs at once. Overrides `experiment.toml` and `.labnotes.toml`; 1 if none sets it. |
 | `-e, --experiment-config FILE` | With `run`: read this file instead of the experiment's `experiment.toml`. |
 | `--PARAM=VALUE` | With `run`: run only the cells where that param has that value, like `--model=small`. PARAM must be a key in `[params]` and VALUE one of its values, written as `runs` shows it (`true`, `2`). One value per param; several params narrow further. Counts, progress and `repeats` still cover every cell. |
+| `-- ARGS` | With `run`: append ARGS to every run's command, after the params, like `-- --auth api`. Each run's `run.json` records them as `args` and in `command`. Use it for per-launch settings that aren't part of the design or a matrix axis; runs started with different ARGS still count toward the same cells. A flag that names a param or one already in the command is an error. ARGS are written to disk as given, so never pass secrets. |
 | `--timeout SECONDS` | With `run`: stop any one run still going after this many seconds, the same way as [`run stop`](#run-stop). Takes a whole number over 0, like `600`. No default: unset, runs have no time limit. |
 
 `run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75 is retried on its own; see [`retries`](config#retries-1).

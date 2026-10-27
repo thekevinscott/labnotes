@@ -1,9 +1,12 @@
 import shlex
+from collections.abc import Sequence
 from pathlib import Path
 
 from labnotes.runner.param_args import param_args
 
 
-def shell_command(command: str, folder: Path, params: dict[str, object]) -> str:
+def shell_command(
+    command: str, folder: Path, params: dict[str, object], args: Sequence[str] = ()
+) -> str:
     filled = command.replace("{run_dir}", shlex.quote(str(folder)))
-    return f"{filled} {shlex.join(param_args(params))}".rstrip()
+    return f"{filled} {shlex.join([*param_args(params), *args])}".rstrip()

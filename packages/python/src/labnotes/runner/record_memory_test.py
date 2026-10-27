@@ -46,7 +46,7 @@ def record(
         containers.return_value.usage.return_value = container_bytes
         asyncio.run(record_memory(path, 42, 1234.5, 5.0))
     assert tree_usage.call_args_list == [mock.call(42, 1234.5)] * len(usages)
-    containers.assert_called_once_with(path.parent.name)
+    containers.assert_called_once_with(str(path.parent.resolve()))
     return seen
 
 

@@ -131,7 +131,7 @@ Runs can take a long time. Start `run` in the background, then check on it with 
 While a run goes, labnotes appends a memory sample to `memory.jsonl` in its run
 folder every 5 seconds: one JSON line, `{"time": <unix seconds>, "rss": <bytes>,
 "processes": <count>}`, for the command's process tree and its labeled Docker
-containers. `LABNOTES_RUN` is the run folder name; scripts label containers
+containers. `LABNOTES_RUN` is the absolute run folder path; scripts label containers
 with `docker run --label "labnotes.run=$LABNOTES_RUN" ...` to count their memory.
 `processes` counts host processes in the run's tree, not containers. It keeps
 every sample, so a run killed for memory still shows the climb.

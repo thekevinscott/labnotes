@@ -66,7 +66,7 @@ async def execute_run(
                     "CLICOLOR_FORCE": "1",
                     **os.environ,
                     LOG_ENV: str(folder / "log.jsonl"),
-                    RUN_ENV: folder.name,
+                    RUN_ENV: str(folder.resolve()),
                 },
                 stdout=stdout,
                 stderr=stderr,

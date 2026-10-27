@@ -8,7 +8,7 @@ from labnotes.utils.tree_usage import tree_usage
 
 
 async def record_memory(path: Path, pid: int, created: float, interval: float) -> None:
-    containers = ContainerMemory(path.parent.name)
+    containers = ContainerMemory(str(path.parent.resolve()))
     try:
         await containers.start()
         with path.open("a", encoding="utf-8") as samples:

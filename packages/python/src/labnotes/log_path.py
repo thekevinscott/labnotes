@@ -1,7 +1,6 @@
 import os
 from pathlib import Path
 
-# Environment contracts between the runner and its script; config is otherwise never env.
 LOG_ENV = "LABNOTES_LOG"
 RUN_ENV = "LABNOTES_RUN"
 

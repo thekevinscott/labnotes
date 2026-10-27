@@ -269,7 +269,29 @@ def test_gives_the_child_its_own_run_id(
     run(tmp_path)
 
     env = collaborators["spawn"].await_args.kwargs["env"]
-    assert env["LABNOTES_RUN"] == tmp_path.name
+    assert env["LABNOTES_RUN"] == str(tmp_path.resolve())
+
+
+def test_runs_with_the_same_folder_name_have_different_ids(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    first = tmp_path / "experiment-a" / "same"
+    second = tmp_path / "experiment-b" / "same"
+    first.mkdir(parents=True)
+    second.mkdir(parents=True)
+
+    with mock.patch(
+        "labnotes.runner.execute_run.iso_time",
+        side_effect=["start", "end", "start", "end"],
+    ):
+        run(first)
+        first_id = collaborators["spawn"].await_args.kwargs["env"]["LABNOTES_RUN"]
+        run(second)
+        second_id = collaborators["spawn"].await_args.kwargs["env"]["LABNOTES_RUN"]
+
+    assert first_id == str(first.resolve())
+    assert second_id == str(second.resolve())
+    assert first_id != second_id
 
 
 def test_keeps_color_settings_the_user_chose(

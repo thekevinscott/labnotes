@@ -52,7 +52,9 @@ def test_event_stream_failure_keeps_sampling_available() -> None:
                 "labnotes.runner.container_memory.shutil.which",
                 return_value="/usr/bin/docker",
             ),
-            mock.patch("labnotes.runner.container_memory.docker_output", return_value=""),
+            mock.patch(
+                "labnotes.runner.container_memory.docker_output", return_value=""
+            ),
             mock.patch(
                 "labnotes.runner.container_memory.asyncio.create_subprocess_exec",
                 side_effect=OSError("daemon unavailable"),

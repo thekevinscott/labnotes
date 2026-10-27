@@ -7,7 +7,7 @@ from pathlib import Path
 
 import psutil
 
-from labnotes.log_path import LOG_ENV
+from labnotes.log_path import LOG_ENV, RUN_ENV
 from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.record_memory import record_memory
 from labnotes.runner.shell_command import shell_command
@@ -66,6 +66,7 @@ async def execute_run(
                     "CLICOLOR_FORCE": "1",
                     **os.environ,
                     LOG_ENV: str(folder / "log.jsonl"),
+                    RUN_ENV: str(folder.resolve()),
                 },
                 stdout=stdout,
                 stderr=stderr,

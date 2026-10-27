@@ -240,13 +240,13 @@ Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the
 - Type: number of seconds, 0 or more
 - Default: `5`
 
-How often to sample a running run's memory. Each sample is the resident memory of the run's command and everything it started, appended as one JSON line to `memory.jsonl` in the run folder and flushed right away:
+How often to sample a running run's memory. Each sample adds the RSS of the run's process tree and the active memory of its [labeled Docker containers](../cli/experiments#running-experiments), appended as one JSON line to `memory.jsonl` in the run folder and flushed right away:
 
 ```json
 {"time": 1792800000.5, "rss": 3249999999, "processes": 3}
 ```
 
-`time` is Unix seconds, `rss` is bytes, and `processes` is how many processes it counted. labnotes keeps every sample, so a run that climbed and was then killed for memory still shows the climb. At 5 seconds a 10-hour run writes about 7,200 lines. `0` turns sampling off and writes no file. Like any key here, it can be set for every experiment in [`[experiment]`](#experiment).
+`time` is Unix seconds and `rss` is bytes. Container memory uses the same active-usage calculation as `docker stats` (cgroup usage minus inactive file cache). `processes` counts only processes in the run's host process tree; containers do not increase it. Without Docker, sampling continues with process-tree RSS alone. labnotes keeps every sample, so a run that climbed and was then killed for memory still shows the climb. At 5 seconds a 10-hour run writes about 7,200 lines. `0` turns sampling off and writes no file. Like any key here, it can be set for every experiment in [`[experiment]`](#experiment).
 
 ### `[views]`
 

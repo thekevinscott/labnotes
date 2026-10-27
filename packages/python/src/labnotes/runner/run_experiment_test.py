@@ -321,16 +321,18 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
     assert events[-1] == "tearing down"
 
 
-def test_starts_no_runs_and_skips_teardown_when_setup_fails(
+def test_starts_no_runs_and_still_tears_down_when_setup_fails(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["invocation_hook"].side_effect = ValueError("setup failed")
+    collaborators["invocation_hook"].side_effect = [ValueError("setup failed"), None]
 
     with pytest.raises(ValueError, match="setup failed"):
         start_with_hooks(tmp_path, mock.Mock())
 
-    collaborators["invocation_hook"].assert_awaited_once()
     collaborators["execute_run"].assert_not_awaited()
+    assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
+        tmp_path, "teardown", "down"
+    )
 
 
 def test_fails_after_the_runs_when_teardown_fails(
@@ -349,11 +351,13 @@ def test_tears_down_and_keeps_the_runs_failure(
 ) -> None:
     collaborators["execute_run"].side_effect = RuntimeError("run broke")
     collaborators["invocation_hook"].side_effect = [None, ValueError("down failed")]
+    report = mock.Mock()
 
     with pytest.raises(RuntimeError, match="run broke"):
-        start_with_hooks(tmp_path, mock.Mock())
+        start_with_hooks(tmp_path, report)
 
     assert collaborators["invocation_hook"].await_count == 2
+    report.assert_called_with({"event": "teardown failed", "error": "down failed"})
 
 
 def test_tears_down_after_an_interrupt_during_setup(

@@ -170,7 +170,7 @@ Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every
 
 Shell command that labnotes runs once per `run`, from the project root, after [`meta`](#meta) and before the first run starts. While it runs, the TUI and headless output show `Setting up.`
 
-A non-zero exit fails the invocation: no run starts and [`teardown`](#teardown) doesn't run. The error names the command and shows its stderr. Its stdout is discarded.
+A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
 
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 
@@ -181,9 +181,9 @@ Stopping the invocation during setup doesn't stop the setup command. Once it fin
 - Type: string
 - Default: none
 
-Shell command that labnotes runs once per `run`, from the project root, after every run has ended, retries included. It runs whether the runs passed, failed, or were stopped, but not when [`setup`](#setup) failed. While it runs, output shows `Tearing down.`
+Shell command that labnotes runs once per `run`, from the project root, after every run has ended, retries included. It runs whether the runs passed, failed, or were stopped, and even when [`setup`](#setup) failed, the same as a `teardown` export in vitest's `globalSetup`. While it runs, output shows `Tearing down.`
 
-A non-zero exit fails the invocation, with the command and its stderr in the error. The runs' results are already recorded.
+A non-zero exit fails the invocation, with the command and its stderr in the error. The runs' results are already recorded. If setup or the invocation had already failed, that error is the one reported, and the teardown failure is shown as a line of output.
 
 In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. If the daemon itself is killed, teardown doesn't run.
 

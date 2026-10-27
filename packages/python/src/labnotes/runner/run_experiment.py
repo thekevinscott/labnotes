@@ -1,5 +1,4 @@
 import asyncio
-import contextlib
 import json
 import signal
 
@@ -241,17 +240,19 @@ async def run_experiment(
             await invocation_hook(config.root, "teardown", experiment.teardown)
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
-    if experiment.setup is not None:
-        report({"event": "setting up"})
-        await invocation_hook(config.root, "setup", experiment.setup)
+    # Like vitest's globalSetup: a failed setup still gets its teardown.
     try:
+        if experiment.setup is not None:
+            report({"event": "setting up"})
+            await invocation_hook(config.root, "setup", experiment.setup)
         fill()
         await done.wait()
         await asyncio.gather(*started)
     except BaseException:
-        # The original failure is the one worth reporting.
-        with contextlib.suppress(Exception):
+        try:
             await teardown()
+        except Exception as failure:  # noqa: BLE001
+            report({"event": "teardown failed", "error": str(failure)})
         raise
     await teardown()
     return results

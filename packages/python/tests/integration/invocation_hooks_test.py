@@ -71,7 +71,7 @@ def test_prefers_the_experiments_setup_and_then_the_flags(tmp_path: Path) -> Non
     ]
 
 
-def test_runs_nothing_when_setup_fails(
+def test_runs_nothing_but_still_tears_down_when_setup_fails(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = make_project(
@@ -85,7 +85,7 @@ def test_runs_nothing_when_setup_fails(
     assert "setup command echo no db >&2; exit 4 exited 4: no db" in (
         capsys.readouterr().err
     )
-    assert not (root / "journal.txt").exists()
+    assert journal(root) == ["down"]
 
 
 def test_fails_the_invocation_when_teardown_fails(

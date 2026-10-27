@@ -91,9 +91,9 @@ as `meta`. If it fails or prints anything else, no run starts. Queued runs keep
 the value from the start, even if the code changed while they waited.
 `setup` and `teardown` (same places; `--setup`/`--teardown` override) are shell
 commands run once per `run` from the root: setup before the first run starts,
-teardown after the last one ends, even if runs failed or were stopped. A
-failing setup starts no run and skips teardown; a failing teardown fails the
-invocation.
+teardown after the last one ends, even if runs failed, were stopped, or setup
+failed (so teardown must cope with a partial setup). A failing setup starts no
+run; a failing teardown fails the invocation.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.

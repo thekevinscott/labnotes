@@ -28,6 +28,16 @@ def test_runs_from_the_root(tmp_path: Path) -> None:
     assert meta(tmp_path, command) == {"cwd": str(tmp_path)}
 
 
+def test_passes_the_invocations_environment(tmp_path: Path) -> None:
+    command = python(
+        "import json, os; print(json.dumps({'value': os.environ['VALUE']}))"
+    )
+
+    assert asyncio.run(invocation_meta(tmp_path, command, {"VALUE": "from-cli"})) == {
+        "value": "from-cli"
+    }
+
+
 def test_fails_on_a_non_zero_exit_with_the_command_and_its_stderr(
     tmp_path: Path,
 ) -> None:

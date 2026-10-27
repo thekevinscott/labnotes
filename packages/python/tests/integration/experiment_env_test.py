@@ -1,7 +1,10 @@
 import json
+import os
 import shlex
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from conftest import write
@@ -32,8 +35,14 @@ if stage == "meta":
 """
 
 
+@pytest.fixture
+def caller_environment() -> Iterator[dict[str, str]]:
+    with mock.patch.dict(os.environ, {"BOTH": "first"}):
+        yield os.environ
+
+
 def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, caller_environment: dict[str, str]
 ) -> None:
     write(tmp_path / "capture.py", CAPTURE)
     write(
@@ -53,7 +62,7 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     )
 
     for caller in ("first", "second"):
-        monkeypatch.setenv("BOTH", caller)
+        caller_environment["BOTH"] = caller
         with pytest.raises(SystemExit) as exit_info:
             main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
         assert exit_info.value.code == 0

@@ -22,7 +22,7 @@ class ContainerMemory:
     async def start(self) -> None:
         if shutil.which("docker") is None:
             return
-        since = str(int(time.time()) - 1)
+        since = str(int(time.time()))
         ids = await asyncio.to_thread(
             docker_output,
             "ps",
@@ -68,7 +68,8 @@ class ContainerMemory:
             self.cgroups[container_id] = path
 
     async def _watch(self) -> None:
-        assert self.events is not None and self.events.stdout is not None
+        assert self.events is not None
+        assert self.events.stdout is not None
         while line := await self.events.stdout.readline():
             container_id, _, action = line.decode().strip().partition(" ")
             if action == "start":

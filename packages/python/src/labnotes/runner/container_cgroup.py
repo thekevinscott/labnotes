@@ -11,5 +11,5 @@ def container_cgroup(pid: int) -> Path | None:
         return None
     for line in lines:
         if line.startswith("0::"):
-            return CGROUP_ROOT / line[3:].lstrip("/")
+            return CGROUP_ROOT / line.removeprefix("0::").lstrip("/")
     return None

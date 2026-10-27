@@ -1,4 +1,5 @@
 import asyncio
+from collections.abc import Awaitable
 from pathlib import Path
 from unittest import mock
 
@@ -88,6 +89,29 @@ def test_ignores_containers_without_a_readable_host_cgroup() -> None:
     asyncio.run(check())
 
 
+def test_only_positive_container_pids_have_cgroups(tmp_path: Path) -> None:
+    async def check() -> None:
+        containers = ContainerMemory("run-a")
+        with (
+            mock.patch(
+                "labnotes.runner.container_memory.docker_output",
+                side_effect=["-1", "0", "1"],
+            ),
+            mock.patch(
+                "labnotes.runner.container_memory.container_cgroup",
+                return_value=tmp_path,
+            ) as cgroup,
+        ):
+            await containers._add("negative")
+            await containers._add("stopped")
+            assert containers.cgroups == {}
+            await containers._add("positive")
+        assert containers.cgroups == {"positive": tmp_path}
+        cgroup.assert_called_once_with(1)
+
+    asyncio.run(check())
+
+
 def test_finds_containers_already_running_when_sampling_starts(tmp_path: Path) -> None:
     async def check() -> None:
         (tmp_path / "memory.current").write_text("150\n")
@@ -111,13 +135,18 @@ def test_finds_containers_already_running_when_sampling_starts(tmp_path: Path) -
                 return_value=tmp_path,
             ),
             mock.patch(
+                "labnotes.runner.container_memory.time.time", return_value=1234.5
+            ),
+            mock.patch(
                 "labnotes.runner.container_memory.asyncio.create_subprocess_exec",
                 new=mock.AsyncMock(return_value=process),
-            ),
+            ) as events,
         ):
             containers = ContainerMemory("run-a")
             await containers.start()
             assert containers.usage() == 110
+            assert events.await_args is not None
+            assert events.await_args.args[2:4] == ("--since", "1234")
             await containers.close()
 
     asyncio.run(check())
@@ -164,7 +193,7 @@ def test_tracks_labeled_container_starts_and_stops_without_polling(
             assert commands.call_count == 2
             assert events.await_args is not None
             assert "label=labnotes.run=run-a" in events.await_args.args
-            reader.feed_data(b"container-1 die\n")
+            reader.feed_data(b"container-1 stop\n")
             for _ in range(100):
                 if containers.usage() == 0:
                     break
@@ -214,7 +243,15 @@ def test_close_does_not_terminate_an_exited_event_stream() -> None:
         process = mock.Mock(returncode=0)
         process.wait = mock.AsyncMock(return_value=0)
         containers.events = process
-        await containers.close()
+
+        async def wait_for(wait: Awaitable[int], timeout: float) -> int:
+            assert timeout == 1
+            return await wait
+
+        with mock.patch(
+            "labnotes.runner.container_memory.asyncio.wait_for", new=wait_for
+        ):
+            await containers.close()
         process.terminate.assert_not_called()
 
     asyncio.run(check())

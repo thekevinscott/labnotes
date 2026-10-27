@@ -24,3 +24,15 @@ def test_unreachable_docker_returns_none() -> None:
         side_effect=OSError("daemon unavailable"),
     ):
         assert docker_output("ps") is None
+
+
+def test_nonzero_docker_status_returns_none() -> None:
+    with mock.patch(
+        "labnotes.runner.docker_output.subprocess.run",
+        side_effect=[
+            mock.Mock(returncode=1, stdout="wrong\n"),
+            mock.Mock(returncode=-1, stdout="wrong\n"),
+        ],
+    ):
+        assert docker_output("ps") is None
+        assert docker_output("ps") is None

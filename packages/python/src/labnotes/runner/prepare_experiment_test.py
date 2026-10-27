@@ -1,4 +1,5 @@
 import asyncio
+import dataclasses
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -164,3 +165,42 @@ def test_runs_from_the_defaults_alone(
     collaborators["read_experiment_config"].assert_called_once_with(
         tmp_path / ".labnotes.toml", "", "matrix", 3, 4, {"command": "go"}
     )
+
+
+@dataclasses.dataclass(frozen=True)
+class Hooks:
+    setup: str
+    teardown: str
+    concurrency: int = 1
+
+
+@pytest.mark.parametrize(
+    ("setup", "teardown", "expected"),
+    [
+        (None, None, ("toml up", "toml down")),
+        ("flag up", None, ("flag up", "toml down")),
+        (None, "flag down", ("toml up", "flag down")),
+        ("flag up", "flag down", ("flag up", "flag down")),
+    ],
+)
+def test_overrides_the_hooks_with_the_flags(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    setup: str | None,
+    teardown: str | None,
+    expected: tuple[str, str],
+) -> None:
+    collaborators["read_experiment_config"].return_value = Hooks("toml up", "toml down")
+
+    experiment, _ = asyncio.run(
+        prepare_experiment(
+            make_config(tmp_path),
+            "exp",
+            None,
+            None,
+            setup=setup,
+            teardown=teardown,
+        )
+    )
+
+    assert (experiment.setup, experiment.teardown) == expected

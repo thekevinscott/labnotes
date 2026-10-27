@@ -87,6 +87,8 @@ def test_runs_the_experiment_through_the_daemon(
             "timeout": None,
             "only": None,
             "args": None,
+            "setup": None,
+            "teardown": None,
         },
     )
     assert report.call_args_list == [
@@ -108,6 +110,8 @@ def test_sends_no_experiment_config_by_default(daemon: dict[str, Any]) -> None:
         "timeout": None,
         "only": None,
         "args": None,
+        "setup": None,
+        "teardown": None,
     }
 
 
@@ -233,3 +237,13 @@ def test_sends_the_timeout(daemon: dict[str, Any]) -> None:
     go(timeout=90)
 
     assert daemon["client"].post.call_args.kwargs["json"]["timeout"] == 90
+
+
+def test_sends_the_setup_and_teardown_to_run(daemon: dict[str, Any]) -> None:
+    daemon["sent"].append({"event": "done", "experiment": "exp", "error": None})
+
+    start = remote_start(CONFIG, "exp", None, 3, setup="up", teardown="down")
+    asyncio.run(start(mock.Mock(), mock.Mock()))
+
+    sent = daemon["client"].post.call_args.kwargs["json"]
+    assert (sent["setup"], sent["teardown"]) == ("up", "down")

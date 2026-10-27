@@ -80,6 +80,8 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                 body.get("concurrency"),  # type: ignore[arg-type]
                 body.get("only"),  # type: ignore[arg-type]
                 body.get("args"),  # type: ignore[arg-type]
+                body.get("setup"),  # type: ignore[arg-type]
+                body.get("teardown"),  # type: ignore[arg-type]
             )
         except ValueError as error:
             return refuse(400, str(error))

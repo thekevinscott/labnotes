@@ -49,5 +49,11 @@ def test_an_experiment_has_no_meta_command_by_default() -> None:
     assert ExperimentConfig("run", 1, {}).meta is None
 
 
+def test_an_experiment_has_no_setup_or_teardown_by_default() -> None:
+    experiment = ExperimentConfig("run", 1, {})
+
+    assert (experiment.setup, experiment.teardown) == (None, None)
+
+
 def test_experiments_default_to_the_default_memory_interval() -> None:
     assert ExperimentConfig("run", 1, {}).memory_interval == 5.0

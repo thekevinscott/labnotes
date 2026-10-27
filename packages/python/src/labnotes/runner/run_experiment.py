@@ -14,6 +14,7 @@ from labnotes.models import (
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.in_subset import in_subset
+from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
 from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
@@ -233,8 +234,25 @@ async def run_experiment(
         ):
             retry_later(run)
 
+    async def teardown() -> None:
+        if experiment.teardown is not None:
+            report({"event": "tearing down"})
+            await invocation_hook(config.root, "teardown", experiment.teardown)
+
     listen(Controls(interrupt, set_concurrency, kill, finish))
-    fill()
-    await done.wait()
-    await asyncio.gather(*started)
+    # Like vitest's globalSetup: a failed setup still gets its teardown.
+    try:
+        if experiment.setup is not None:
+            report({"event": "setting up"})
+            await invocation_hook(config.root, "setup", experiment.setup)
+        fill()
+        await done.wait()
+        await asyncio.gather(*started)
+    except BaseException:
+        try:
+            await teardown()
+        except Exception as failure:  # noqa: BLE001
+            report({"event": "teardown failed", "error": str(failure)})
+        raise
+    await teardown()
     return results

@@ -33,6 +33,12 @@ def describe_event(event: dict[str, object]) -> str:
             return "No runs left."
         case "concurrency":
             return f"{event['concurrency']} at a time."
+        case "setting up":
+            return "Setting up."
+        case "tearing down":
+            return "Tearing down."
+        case "teardown failed":
+            return str(event["error"])
         case "stopping":
             return "Stopping runs. Ctrl-C again to kill them."
         case _:

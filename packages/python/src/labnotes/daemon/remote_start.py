@@ -18,6 +18,8 @@ def remote_start(
     timeout: float | None = None,
     only: dict[str, str] | None = None,
     args: list[str] | None = None,
+    setup: str | None = None,
+    teardown: str | None = None,
 ) -> Start:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         try:
@@ -50,6 +52,8 @@ def remote_start(
                     "timeout": timeout,
                     "only": only,
                     "args": args,
+                    "setup": setup,
+                    "teardown": teardown,
                 },
             )
             if reply.status_code != 202:

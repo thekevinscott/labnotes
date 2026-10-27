@@ -123,6 +123,8 @@ One per experiment folder. `labnotes experiments new [NAME]` creates one. `run -
 name = "Model and effort"
 command = "uv run scripts/study.py --output {run_dir}"
 meta = "uv run scripts/meta.py"
+setup = "docker compose up -d db"
+teardown = "docker compose down"
 repeats = 5
 mode = "matrix"
 concurrency = 2
@@ -160,6 +162,32 @@ A non-zero exit, output that isn't JSON, or JSON that isn't an object fails the 
 The command runs once, not per run. A run that waits in the queue keeps the value from the start of the invocation, so if the code changes while it waits, its recorded commit is out of date.
 
 Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment.
+
+### `setup`
+
+- Type: string
+- Default: none
+
+Shell command that labnotes runs once per `run`, from the project root, after [`meta`](#meta) and before the first run starts. While it runs, the TUI and headless output show `Setting up.`
+
+A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
+
+`--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
+
+Stopping the invocation during setup doesn't stop the setup command. Once it finishes, no run starts and teardown runs.
+
+### `teardown`
+
+- Type: string
+- Default: none
+
+Shell command that labnotes runs once per `run`, from the project root, after every run has ended, retries included. It runs whether the runs passed, failed, or were stopped, and even when [`setup`](#setup) failed, the same as a `teardown` export in vitest's `globalSetup`. While it runs, output shows `Tearing down.`
+
+A non-zero exit fails the invocation, with the command and its stderr in the error. The runs' results are already recorded. If setup or the invocation had already failed, that error is the one reported, and the teardown failure is shown as a line of output.
+
+In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. If the daemon itself is killed, teardown doesn't run.
+
+`--teardown COMMAND` overrides it, and it composes with `.labnotes.toml` the same way as `setup`.
 
 ### `name`
 

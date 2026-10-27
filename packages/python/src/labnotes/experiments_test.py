@@ -221,7 +221,7 @@ def test_runs_an_experiment_through_the_daemon(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, None, {}
+        collaborators["load_config"].return_value, "a", None, 3, None, {}, None
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["remote_start"].return_value
@@ -258,7 +258,42 @@ def test_runs_the_subset_given_as_params(
         None,
         5,
         drivers["parse_subset"].return_value,
+        None,
     )
+
+
+def test_passes_args_after_the_double_dash_through(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    argv = ["a", "run", "--model=small", "--", "--auth", "api", "--", "x"]
+
+    assert run(argv) == 0
+
+    drivers["parse_subset"].assert_called_once_with(["--model=small"])
+    assert drivers["remote_start"].call_args.args[6] == ["--auth", "api", "--", "x"]
+
+
+def test_sends_no_args_for_a_bare_double_dash(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--"]) == 0
+
+    assert drivers["remote_start"].call_args.args[6] is None
+
+
+@pytest.mark.parametrize("argv", [["a", "--", "--auth"], ["a", "runs", "--"]])
+def test_rejects_args_without_run(
+    argv: list[str],
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(argv) == 2
+
+    assert "Error: -- ARGS needs run." in capsys.readouterr().err
+    drivers["remote_start"].assert_not_called()
 
 
 def test_rejects_a_malformed_param(
@@ -283,6 +318,7 @@ def test_help_says_params_pick_a_subset(
     assert "With run, --PARAM=VALUE runs only the matrix cells where that param" in (
         help_text
     )
+    assert "anything after -- is appended to every run's command" in help_text
 
 
 def test_exits_zero_when_a_run_fails(
@@ -387,7 +423,7 @@ def test_shows_the_live_view_in_a_terminal(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, None, {}
+        collaborators["load_config"].return_value, "a", None, 3, None, {}, None
     )
     drivers["run_tui"].assert_called_once_with(
         drivers["remote_start"].return_value, "a"

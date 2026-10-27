@@ -1,6 +1,7 @@
 from pathlib import Path
 
 from labnotes.models import ExperimentConfig, LabnotesConfig
+from labnotes.runner.check_args import check_args
 from labnotes.runner.check_subset import check_subset
 from labnotes.runner.read_experiment_config import read_experiment_config
 from labnotes.tables.file_text import file_text
@@ -12,6 +13,7 @@ async def prepare_experiment(
     experiment_config: Path | None,
     concurrency: int | None,
     only: dict[str, str] | None = None,
+    args: list[str] | None = None,
 ) -> tuple[ExperimentConfig, int]:
     if config.experiment not in (None, name):
         raise ValueError(
@@ -33,4 +35,6 @@ async def prepare_experiment(
     )
     if only:
         check_subset(experiment.params, only)
+    if args:
+        check_args(experiment.params, experiment.command, args)
     return experiment, experiment.concurrency if concurrency is None else concurrency

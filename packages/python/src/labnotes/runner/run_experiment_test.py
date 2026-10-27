@@ -113,6 +113,7 @@ def run(
     retries: int = 2,
     retry_seconds: float = 0.0,
     only: dict[str, str] | None = None,
+    args: list[str] | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
@@ -131,6 +132,7 @@ def run(
             listening,
             retry_seconds=retry_seconds,
             only=only,
+            args=args,
         )
     )
 
@@ -322,6 +324,18 @@ def test_nests_adhoc_runs_in_one_folder_per_command(
     named = [c.args[:2] for c in collaborators["new_param_run_id"].call_args_list]
     choices = {"m": ["a", "b"]}
     assert named == [(A, choices), (B, choices), (A, choices)]
+
+
+def test_passes_the_args_to_every_run_and_retry(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 0)
+
+    run(tmp_path, mock.Mock(), args=["--auth", "api"])
+
+    calls = collaborators["execute_run"].await_args_list
+    assert [c.kwargs["args"] for c in calls] == [["--auth", "api"]] * 2
 
 
 def test_gives_a_lone_adhoc_run_its_own_stamped_folder(

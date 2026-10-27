@@ -32,3 +32,9 @@ def test_leaves_a_command_without_params_alone(param_args: mock.MagicMock) -> No
     param_args.return_value = []
 
     assert shell_command("study ${HOME}", Path("/r"), {}) == "study ${HOME}"
+
+
+def test_appends_args_after_the_params() -> None:
+    assert shell_command("study", Path("/r"), {}, ["--auth", "a b"]) == (
+        "study --m 'a b' --auth 'a b'"
+    )

@@ -95,7 +95,7 @@ def test_runs_the_command_from_the_root(
     run(tmp_path)
 
     collaborators["shell_command"].assert_called_once_with(
-        "uv run x.py", tmp_path, PARAMS
+        "uv run x.py", tmp_path, PARAMS, ()
     )
     spawn = collaborators["spawn"]
     assert spawn.await_args.args == ("study",)
@@ -104,6 +104,17 @@ def test_runs_the_command_from_the_root(
     assert "start_new_session" not in kwargs
     assert kwargs["stdout"].name == str(tmp_path / "stdout.log")
     assert kwargs["stderr"].name == str(tmp_path / "stderr.log")
+
+
+def test_appends_and_records_the_args(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    result = run(tmp_path, args=("--auth", "api"))
+
+    collaborators["shell_command"].assert_called_once_with(
+        "uv run x.py", tmp_path, PARAMS, ("--auth", "api")
+    )
+    assert result["args"] == ["--auth", "api"]
 
 
 def test_records_the_run_before_and_after(

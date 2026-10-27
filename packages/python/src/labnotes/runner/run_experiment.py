@@ -38,6 +38,7 @@ async def run_experiment(
     timeout: float | None = None,
     retry_seconds: float = RETRY_SECONDS,
     only: dict[str, str] | None = None,
+    args: list[str] | None = None,
 ) -> list[dict[str, object]]:
     meta = None
     if experiment.meta is not None:
@@ -220,6 +221,7 @@ async def run_experiment(
             stop=lambda: kill(run),
             stopped=lambda: run in stopped,
             meta=meta,
+            args=args or (),
             memory_interval=experiment.memory_interval,
         )
         del running[run], trees[run]

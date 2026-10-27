@@ -1,0 +1,1 @@
+**Added** — `labnotes experiments NAME run -- ARGS` appends ARGS to every run's command, after the params, like `-- --auth api`. Each run's `run.json` records them as `args` and in `command`, and retries keep them. They don't change which cells a run counts toward. A flag that names a param or one already in the command is an error.

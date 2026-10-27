@@ -17,6 +17,7 @@ def remote_start(
     concurrency: int | None,
     timeout: float | None = None,
     only: dict[str, str] | None = None,
+    args: list[str] | None = None,
 ) -> Start:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         try:
@@ -48,6 +49,7 @@ def remote_start(
                     "concurrency": concurrency,
                     "timeout": timeout,
                     "only": only,
+                    "args": args,
                 },
             )
             if reply.status_code != 202:

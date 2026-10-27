@@ -77,8 +77,6 @@ def experiments(
     timeout: int | None,
 ) -> None:
     passthrough: list[str] | None = ctx.meta.get(PASSTHROUGH)
-    if passthrough is not None and action != "run":
-        raise click.UsageError("-- ARGS needs run.")
     config = load_config(ctx)
     if config is None:
         raise click.ClickException(
@@ -123,6 +121,8 @@ def experiments(
             passed = len(results) - failed - retried
             click.echo(f"{passed} passed, {failed} failed.{again}")
             return
+    if passthrough is not None:
+        raise click.UsageError("-- ARGS needs run.")
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
     if action not in (None, "runs"):

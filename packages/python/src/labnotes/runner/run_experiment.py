@@ -80,11 +80,15 @@ async def run_experiment(
         run = new_id(params)
         planned.add(run)
         plan.append((run, params))
+    hook_run_dir: str | None
     match plan:
         case [(invocation, _)]:
-            pass
+            hook_run_dir = str(
+                run_folder(config.root, config.runs, name, invocation).resolve()
+            )
         case _:
             invocation = group or new_stamped_run_id(taken)
+            hook_run_dir = None
     planned.add(invocation)
     hooks = {
         "setup": experiment.setup,
@@ -92,10 +96,8 @@ async def run_experiment(
         "meta": experiment.meta,
     }
     ids = hook_ids(hooks, invocation, [run for run, _ in plan])
-    if len(plan) == 1:
-        ids["run_dir"] = str(
-            run_folder(config.root, config.runs, name, plan[0][0]).resolve()
-        )
+    if hook_run_dir is not None:
+        ids["run_dir"] = hook_run_dir
     hook_env = {
         hook: fill_experiment_env(
             experiment.env, inherited, ids, hook=hook, runs=len(plan)

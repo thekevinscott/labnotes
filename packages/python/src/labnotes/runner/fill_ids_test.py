@@ -1,3 +1,5 @@
+from inspect import Parameter, signature
+
 from labnotes.runner.fill_ids import fill_ids
 
 
@@ -24,3 +26,7 @@ def test_fills_environment_values_without_shell_quoting() -> None:
         )
         == "prefix /a b g/a"
     )
+
+
+def test_quote_is_keyword_only() -> None:
+    assert signature(fill_ids).parameters["quote"].kind is Parameter.KEYWORD_ONLY

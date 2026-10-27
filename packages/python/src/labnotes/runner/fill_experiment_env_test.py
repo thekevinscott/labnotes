@@ -1,3 +1,5 @@
+from inspect import Parameter, signature
+
 import pytest
 
 from labnotes.runner.fill_experiment_env import fill_experiment_env
@@ -48,3 +50,18 @@ def test_ignores_an_overridden_placeholder() -> None:
         hook="meta",
         runs=2,
     ) == {"LABEL": "caller"}
+
+
+def test_an_overridden_key_does_not_skip_later_configured_keys() -> None:
+    assert fill_experiment_env(
+        {"BOTH": "configured", "LATER": "present"},
+        {"BOTH": "caller"},
+        {"invocation_id": "g"},
+    ) == {"BOTH": "caller", "LATER": "present"}
+
+
+def test_hook_and_run_count_are_keyword_only() -> None:
+    parameters = signature(fill_experiment_env).parameters
+    assert parameters["hook"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["runs"].kind is Parameter.KEYWORD_ONLY
+    assert parameters["runs"].default == 1

@@ -231,7 +231,9 @@ def test_ignores_other_events_and_stream_end() -> None:
         reader.feed_eof()
         containers = ContainerMemory("run-a")
         containers.events = mock.Mock(stdout=reader)
-        await containers._watch()
+        with mock.patch.object(containers, "_add") as add:
+            await containers._watch()
+        add.assert_not_called()
         assert containers.cgroups == {}
 
     asyncio.run(check())

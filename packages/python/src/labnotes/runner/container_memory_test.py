@@ -191,3 +191,28 @@ def test_kills_event_stream_if_termination_times_out() -> None:
         process.kill.assert_called_once()
 
     asyncio.run(check())
+
+
+def test_ignores_other_events_and_stream_end() -> None:
+    async def check() -> None:
+        reader = asyncio.StreamReader()
+        reader.feed_data(b"container-1 pause\n")
+        reader.feed_eof()
+        containers = ContainerMemory("run-a")
+        containers.events = mock.Mock(stdout=reader)
+        await containers._watch()
+        assert containers.cgroups == {}
+
+    asyncio.run(check())
+
+
+def test_close_does_not_terminate_an_exited_event_stream() -> None:
+    async def check() -> None:
+        containers = ContainerMemory("run-a")
+        process = mock.Mock(returncode=0)
+        process.wait = mock.AsyncMock(return_value=0)
+        containers.events = process
+        await containers.close()
+        process.terminate.assert_not_called()
+
+    asyncio.run(check())

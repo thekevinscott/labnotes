@@ -1,11 +1,11 @@
 import asyncio
+import dataclasses
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from labnotes.models import ExperimentConfig
 from labnotes.runner.prepare_experiment import prepare_experiment
 
 
@@ -167,6 +167,13 @@ def test_runs_from_the_defaults_alone(
     )
 
 
+@dataclasses.dataclass(frozen=True)
+class Hooks:
+    setup: str
+    teardown: str
+    concurrency: int = 1
+
+
 @pytest.mark.parametrize(
     ("setup", "teardown", "expected"),
     [
@@ -183,9 +190,7 @@ def test_overrides_the_hooks_with_the_flags(
     teardown: str | None,
     expected: tuple[str, str],
 ) -> None:
-    collaborators["read_experiment_config"].return_value = ExperimentConfig(
-        "run", 1, {}, setup="toml up", teardown="toml down"
-    )
+    collaborators["read_experiment_config"].return_value = Hooks("toml up", "toml down")
 
     experiment, _ = asyncio.run(
         prepare_experiment(

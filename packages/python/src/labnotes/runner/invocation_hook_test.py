@@ -24,3 +24,10 @@ def test_fails_without_detail_when_stderr_is_empty(tmp_path: Path) -> None:
         asyncio.run(invocation_hook(tmp_path, "teardown", "exit 1"))
 
     assert str(error.value) == "teardown command exit 1 exited 1"
+
+
+def test_fails_when_a_signal_ends_the_command(tmp_path: Path) -> None:
+    with pytest.raises(ValueError) as error:
+        asyncio.run(invocation_hook(tmp_path, "setup", "kill -9 $$"))
+
+    assert str(error.value) == "setup command kill -9 $$ exited -9"

@@ -79,7 +79,11 @@ async def run_experiment(
         run = new_id(params)
         planned.add(run)
         plan.append((run, params))
-    invocation = plan[0][0] if len(plan) == 1 else group or new_stamped_run_id(taken)
+    match plan:
+        case [(invocation, _)]:
+            pass
+        case _:
+            invocation = group or new_stamped_run_id(taken)
     planned.add(invocation)
     hooks = {"setup": experiment.setup, "teardown": experiment.teardown}
     ids = hook_ids(hooks, invocation, [run for run, _ in plan])

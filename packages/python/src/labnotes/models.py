@@ -64,3 +64,5 @@ class ExperimentConfig:
     retries: int = DEFAULT_RETRIES
     meta: str | None = None
     memory_interval: float = DEFAULT_MEMORY_INTERVAL
+    setup: str | None = None
+    teardown: str | None = None

@@ -1,3 +1,4 @@
+import dataclasses
 from pathlib import Path
 
 from labnotes.models import ExperimentConfig, LabnotesConfig
@@ -14,6 +15,8 @@ async def prepare_experiment(
     concurrency: int | None,
     only: dict[str, str] | None = None,
     args: list[str] | None = None,
+    setup: str | None = None,
+    teardown: str | None = None,
 ) -> tuple[ExperimentConfig, int]:
     if config.experiment not in (None, name):
         raise ValueError(
@@ -33,6 +36,10 @@ async def prepare_experiment(
         config.retries,
         config.defaults,
     )
+    if setup is not None:
+        experiment = dataclasses.replace(experiment, setup=setup)
+    if teardown is not None:
+        experiment = dataclasses.replace(experiment, teardown=teardown)
     if only:
         check_subset(experiment.params, only)
     if args:

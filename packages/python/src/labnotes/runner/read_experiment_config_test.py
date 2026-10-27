@@ -205,3 +205,41 @@ def test_layers_retries_over_the_defaults(source: str, retries: int) -> None:
 def test_rejects_a_bad_default(defaults: dict[str, object], message: str) -> None:
     with pytest.raises(ValueError, match=message):
         read_experiment_config(PATH, 'command = "run"\n', "adhoc", 1, 2, defaults)
+
+
+def test_reads_setup_and_teardown() -> None:
+    config = read_experiment_config(
+        PATH, 'command = "run"\nsetup = "up"\nteardown = "down"\n', "adhoc", 1, 2
+    )
+
+    assert (config.setup, config.teardown) == ("up", "down")
+
+
+def test_has_no_setup_or_teardown_by_default() -> None:
+    config = read_experiment_config(PATH, 'command = "run"\n', "adhoc", 1, 2)
+
+    assert (config.setup, config.teardown) == (None, None)
+
+
+def test_prefers_the_experiment_hooks_over_the_defaults() -> None:
+    config = read_experiment_config(
+        PATH,
+        'command = "run"\nsetup = "mine"\n',
+        "adhoc",
+        1,
+        2,
+        {"setup": "shared", "teardown": "shared down"},
+    )
+
+    assert (config.setup, config.teardown) == ("mine", "shared down")
+
+
+@pytest.mark.parametrize("hook", ["setup", "teardown"])
+@pytest.mark.parametrize("value", ['""', '"  "', "3"])
+def test_rejects_a_hook_that_is_not_a_command(hook: str, value: str) -> None:
+    with pytest.raises(ValueError) as error:
+        read_experiment_config(
+            PATH, f'command = "run"\n{hook} = {value}\n', "adhoc", 1, 2
+        )
+
+    assert str(error.value) == f"{PATH}: {hook} must be a string"

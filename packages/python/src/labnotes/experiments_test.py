@@ -221,7 +221,15 @@ def test_runs_an_experiment_through_the_daemon(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, None, {}, None
+        collaborators["load_config"].return_value,
+        "a",
+        None,
+        3,
+        None,
+        {},
+        None,
+        None,
+        None,
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["remote_start"].return_value
@@ -244,6 +252,15 @@ def test_runs_an_experiment_from_a_named_config(
     assert drivers["remote_start"].call_args.args[1:4] == ("a", path, None)
 
 
+def test_passes_the_setup_and_teardown_flags(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--setup", "up", "--teardown", "down"]) == 0
+
+    assert drivers["remote_start"].call_args.args[7:] == ("up", "down")
+
+
 def test_runs_the_subset_given_as_params(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
@@ -258,6 +275,8 @@ def test_runs_the_subset_given_as_params(
         None,
         5,
         drivers["parse_subset"].return_value,
+        None,
+        None,
         None,
     )
 
@@ -423,7 +442,15 @@ def test_shows_the_live_view_in_a_terminal(
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
     drivers["remote_start"].assert_called_once_with(
-        collaborators["load_config"].return_value, "a", None, 3, None, {}, None
+        collaborators["load_config"].return_value,
+        "a",
+        None,
+        3,
+        None,
+        {},
+        None,
+        None,
+        None,
     )
     drivers["run_tui"].assert_called_once_with(
         drivers["remote_start"].return_value, "a"

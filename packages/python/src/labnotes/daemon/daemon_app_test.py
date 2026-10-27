@@ -126,11 +126,20 @@ def test_starts_a_session_and_streams_its_events(
             timeout=90,
             only={"model": "small"},
             args=["--auth", "api"],
+            setup="up",
+            teardown="down",
         )
 
         assert response.status_code == 202
         collaborators["prepare_experiment"].assert_awaited_once_with(
-            CONFIG, "exp", Path("/x.toml"), 2, {"model": "small"}, ["--auth", "api"]
+            CONFIG,
+            "exp",
+            Path("/x.toml"),
+            2,
+            {"model": "small"},
+            ["--auth", "api"],
+            "up",
+            "down",
         )
         args = collaborators["run_experiment"].call_args.args
         assert args[:4] == (CONFIG, "exp", EXPERIMENT, 3)
@@ -165,7 +174,7 @@ def test_reads_the_default_experiment_config(
         app = daemon_app(CONFIG)
         await start(app)
         collaborators["prepare_experiment"].assert_awaited_once_with(
-            CONFIG, "exp", None, None, None, None
+            CONFIG, "exp", None, None, None, None, None, None
         )
         assert collaborators["run_experiment"].call_args.args[6] is None
         assert collaborators["run_experiment"].call_args.kwargs == {

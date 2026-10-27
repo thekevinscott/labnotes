@@ -66,6 +66,18 @@ class PassthroughCommand(click.Command):
     help="With run: stop any run still going after this many seconds."
     " Unset, runs have no time limit.",
 )
+@click.option(
+    "--setup",
+    metavar="COMMAND",
+    help="With run: shell command to run once before any run starts."
+    " Overrides experiment.toml and .labnotes.toml.",
+)
+@click.option(
+    "--teardown",
+    metavar="COMMAND",
+    help="With run: shell command to run once after every run ends."
+    " Overrides experiment.toml and .labnotes.toml.",
+)
 @click.pass_context
 def experiments(
     ctx: click.Context,
@@ -75,6 +87,8 @@ def experiments(
     concurrency: int | None,
     experiment_config: Path | None,
     timeout: int | None,
+    setup: str | None,
+    teardown: str | None,
 ) -> None:
     passthrough: list[str] | None = ctx.meta.get(PASSTHROUGH)
     config = load_config(ctx)
@@ -103,6 +117,8 @@ def experiments(
                 timeout,
                 only,
                 passthrough or None,
+                setup,
+                teardown,
             )
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():

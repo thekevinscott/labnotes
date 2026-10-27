@@ -50,6 +50,8 @@ def param_args() -> Iterator[mock.MagicMock]:
             "r1 boom",
         ),
         ({"event": "stopping"}, "Stopping runs. Ctrl-C again to kill them."),
+        ({"event": "setting up"}, "Setting up."),
+        ({"event": "tearing down"}, "Tearing down."),
         ({"event": "killing"}, "Killing runs."),
     ],
 )

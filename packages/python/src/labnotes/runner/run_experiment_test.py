@@ -29,6 +29,8 @@ def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
         retries=retries,
         meta=None,
         memory_interval=0.5,
+        setup=None,
+        teardown=None,
     )
     config.name = None
     return config
@@ -88,6 +90,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.invocation_meta",
             new=mock.AsyncMock(return_value={"commit": "abc"}),
         ) as invocation_meta,
+        mock.patch(
+            "labnotes.runner.run_experiment.invocation_hook", new=mock.AsyncMock()
+        ) as invocation_hook,
     ):
         yield {
             "open_tables": open_tables,
@@ -100,6 +105,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "execute_run": execute_run,
             "signal_tree": signal_tree,
             "invocation_meta": invocation_meta,
+            "invocation_hook": invocation_hook,
             "in_subset": in_subset,
         }
 
@@ -265,6 +271,112 @@ def test_fails_before_planning_when_the_meta_command_fails(
     report.assert_not_called()
     collaborators["open_tables"].assert_not_called()
     collaborators["execute_run"].assert_not_awaited()
+
+
+def start_with_hooks(
+    tmp_path: Path,
+    report: mock.Mock,
+    listen: Callable[[Any], None] = lambda controls: controls.finish(),
+) -> list[dict[str, object]]:
+    configured = experiment()
+    configured.setup = "up"
+    configured.teardown = "down"
+    return settle(
+        run_experiment(
+            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            "exp",
+            configured,
+            1,
+            report,
+            listen,
+        )
+    )
+
+
+def test_runs_no_hooks_when_none_are_configured(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock())
+
+    collaborators["invocation_hook"].assert_not_awaited()
+
+
+def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    order = mock.Mock()
+    order.attach_mock(collaborators["invocation_hook"], "hook")
+    order.attach_mock(collaborators["execute_run"], "run")
+    report = mock.Mock()
+
+    start_with_hooks(tmp_path, report)
+
+    assert [c[0] for c in order.mock_calls] == ["hook", "run", "run", "hook"]
+    assert collaborators["invocation_hook"].await_args_list == [
+        mock.call(tmp_path, "setup", "up"),
+        mock.call(tmp_path, "teardown", "down"),
+    ]
+    events = [c.args[0]["event"] for c in report.call_args_list]
+    assert events[1] == "setting up"
+    assert events[-1] == "tearing down"
+
+
+def test_starts_no_runs_and_skips_teardown_when_setup_fails(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["invocation_hook"].side_effect = ValueError("setup failed")
+
+    with pytest.raises(ValueError, match="setup failed"):
+        start_with_hooks(tmp_path, mock.Mock())
+
+    collaborators["invocation_hook"].assert_awaited_once()
+    collaborators["execute_run"].assert_not_awaited()
+
+
+def test_fails_after_the_runs_when_teardown_fails(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["invocation_hook"].side_effect = [None, ValueError("down failed")]
+
+    with pytest.raises(ValueError, match="down failed"):
+        start_with_hooks(tmp_path, mock.Mock())
+
+    assert collaborators["execute_run"].await_count == 2
+
+
+def test_tears_down_and_keeps_the_runs_failure(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["execute_run"].side_effect = RuntimeError("run broke")
+    collaborators["invocation_hook"].side_effect = [None, ValueError("down failed")]
+
+    with pytest.raises(RuntimeError, match="run broke"):
+        start_with_hooks(tmp_path, mock.Mock())
+
+    assert collaborators["invocation_hook"].await_count == 2
+
+
+def test_tears_down_after_an_interrupt_during_setup(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    heard: list[Any] = []
+
+    async def setup_then_interrupt(*args: object) -> None:
+        if args[1] == "setup":
+            heard[0].interrupt()
+
+    collaborators["invocation_hook"].side_effect = setup_then_interrupt
+
+    def listen(controls: Any) -> None:
+        heard.append(controls)
+        controls.finish()
+
+    start_with_hooks(tmp_path, mock.Mock(), listen)
+
+    collaborators["execute_run"].assert_not_awaited()
+    assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
+        tmp_path, "teardown", "down"
+    )
 
 
 def test_titles_the_plan_with_the_experiments_name(

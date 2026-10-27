@@ -19,3 +19,10 @@ def test_reads_the_host_cgroup_of_a_container_pid(tmp_path: Path) -> None:
 def test_missing_process_has_no_cgroup(tmp_path: Path) -> None:
     with mock.patch("labnotes.runner.container_cgroup.PROC_ROOT", tmp_path):
         assert container_cgroup(42) is None
+
+
+def test_process_without_cgroup_v2_has_no_path(tmp_path: Path) -> None:
+    (tmp_path / "42").mkdir()
+    (tmp_path / "42" / "cgroup").write_text("1:memory:/docker/example\n")
+    with mock.patch("labnotes.runner.container_cgroup.PROC_ROOT", tmp_path):
+        assert container_cgroup(42) is None

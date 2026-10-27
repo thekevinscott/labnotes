@@ -45,6 +45,47 @@ def test_unreachable_docker_does_not_start_an_event_stream() -> None:
     asyncio.run(check())
 
 
+def test_event_stream_failure_keeps_sampling_available() -> None:
+    async def check() -> None:
+        with (
+            mock.patch(
+                "labnotes.runner.container_memory.shutil.which",
+                return_value="/usr/bin/docker",
+            ),
+            mock.patch("labnotes.runner.container_memory.docker_output", return_value=""),
+            mock.patch(
+                "labnotes.runner.container_memory.asyncio.create_subprocess_exec",
+                side_effect=OSError("daemon unavailable"),
+            ),
+        ):
+            containers = ContainerMemory("run-a")
+            await containers.start()
+            assert containers.usage() == 0
+            await containers.close()
+
+    asyncio.run(check())
+
+
+def test_ignores_containers_without_a_readable_host_cgroup() -> None:
+    async def check() -> None:
+        containers = ContainerMemory("run-a")
+        with (
+            mock.patch(
+                "labnotes.runner.container_memory.docker_output",
+                side_effect=[None, "invalid", "0", "42"],
+            ),
+            mock.patch(
+                "labnotes.runner.container_memory.container_cgroup",
+                return_value=None,
+            ),
+        ):
+            for _ in range(4):
+                await containers._add("container-1")
+        assert containers.cgroups == {}
+
+    asyncio.run(check())
+
+
 def test_finds_containers_already_running_when_sampling_starts(tmp_path: Path) -> None:
     async def check() -> None:
         (tmp_path / "memory.current").write_text("150\n")
@@ -137,3 +178,16 @@ def test_disappeared_cgroup_does_not_break_a_sample(tmp_path: Path) -> None:
     containers = ContainerMemory("run-a")
     containers.cgroups["gone"] = tmp_path / "missing"
     assert containers.usage() == 0
+
+
+def test_kills_event_stream_if_termination_times_out() -> None:
+    async def check() -> None:
+        containers = ContainerMemory("run-a")
+        process = mock.Mock(returncode=None)
+        process.wait = mock.AsyncMock(side_effect=[TimeoutError, 0])
+        containers.events = process
+        await containers.close()
+        process.terminate.assert_called_once()
+        process.kill.assert_called_once()
+
+    asyncio.run(check())

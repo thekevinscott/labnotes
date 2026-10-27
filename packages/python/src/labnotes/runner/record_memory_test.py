@@ -21,7 +21,9 @@ def clock() -> Iterator[mock.MagicMock]:
         yield clock
 
 
-def record(path: Path, usages: list[tuple[int, int] | None]) -> list[list[str]]:
+def record(
+    path: Path, usages: list[tuple[int, int] | None], *, container_bytes: int = 0
+) -> list[list[str]]:
     seen: list[list[str]] = []
     pauses = iter(range(len(usages)))
 
@@ -36,10 +38,15 @@ def record(path: Path, usages: list[tuple[int, int] | None]) -> list[list[str]]:
             "labnotes.runner.record_memory.tree_usage", side_effect=usages
         ) as tree_usage,
         mock.patch("labnotes.runner.record_memory.asyncio.sleep", new=pause),
+        mock.patch("labnotes.runner.record_memory.ContainerMemory") as containers,
         pytest.raises(Stop),
     ):
+        containers.return_value.start = mock.AsyncMock()
+        containers.return_value.close = mock.AsyncMock()
+        containers.return_value.usage.return_value = container_bytes
         asyncio.run(record_memory(path, 42, 1234.5, 5.0))
     assert tree_usage.call_args_list == [mock.call(42, 1234.5)] * len(usages)
+    containers.assert_called_once_with(path.parent.name)
     return seen
 
 
@@ -81,3 +88,12 @@ def test_appends_to_samples_already_there(
 
     assert seen[0][0] == '{"rss": 1}'
     assert len(seen[0]) == 2
+
+
+def test_adds_container_memory_without_counting_containers_as_processes(
+    tmp_path: Path, clock: mock.MagicMock
+) -> None:
+    folder = tmp_path / "runs"
+    folder.mkdir()
+    seen = record(folder / "memory.jsonl", [(100, 2)], container_bytes=50)
+    assert json.loads(seen[0][0]) == {"time": 10.5, "rss": 150, "processes": 2}

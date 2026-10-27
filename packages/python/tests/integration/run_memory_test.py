@@ -1,5 +1,7 @@
 import asyncio
 import json
+import shutil
+import subprocess
 import sys
 from pathlib import Path
 
@@ -35,6 +37,18 @@ held = b"y" * 60_000_000
 for child in children:
     child.wait()
 time.sleep(0.5)
+"""
+
+
+CONTAINER = """
+import os
+import subprocess
+
+subprocess.run([
+    "docker", "run", "--rm", "--label", f"labnotes.run={os.environ['LABNOTES_RUN']}",
+    "python:3.12-slim", "python", "-c",
+    "held = b'x' * 200_000_000; import time; time.sleep(3)",
+], check=True)
 """
 
 
@@ -95,6 +109,30 @@ def test_counts_every_process_the_run_starts(tmp_path: Path) -> None:
     assert max(sample["processes"] for sample in samples) >= 4
     # Four interpreters hold 240 MB between them; each adds tens of MB of its own.
     assert 240_000_000 < peak["rss"] < 480_000_000
+
+
+def test_counts_a_labeled_containers_memory(tmp_path: Path) -> None:
+    if shutil.which("docker") is None:
+        pytest.skip("docker is unavailable")
+    try:
+        available = subprocess.run(
+            ["docker", "info", "--format", "{{.CgroupVersion}}"],
+            capture_output=True,
+            text=True,
+            timeout=3,
+            check=False,
+        )
+    except (OSError, subprocess.TimeoutExpired):
+        pytest.skip("docker daemon is unavailable")
+    if available.returncode != 0:
+        pytest.skip("docker daemon is unavailable")
+
+    root = make_project(tmp_path, "memory_interval = 0.2\n", CONTAINER)
+    folder = run_once(root)
+    samples = [
+        json.loads(line) for line in (folder / "memory.jsonl").read_text().splitlines()
+    ]
+    assert max(sample["rss"] for sample in samples) > 200_000_000
 
 
 def test_records_no_memory_with_the_interval_at_0(tmp_path: Path) -> None:

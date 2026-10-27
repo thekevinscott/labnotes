@@ -57,6 +57,8 @@ When labnotes [runs a script](../cli/experiments#running-experiments), it sets `
 
 Each run gets its own `LABNOTES_LOG`. labnotes replaces any value the script inherits from outside, so a script started by another run still logs to its own run folder.
 
+labnotes also sets `LABNOTES_RUN` to the run folder name, replacing any inherited value. Scripts can use it to [label Docker containers](../cli/experiments#running-experiments) so their memory is counted with the run.
+
 ### Outside labnotes
 
 With `LABNOTES_LOG` unset, as when you run the script yourself, `log` prints `content` to stdout. Blocks without `content`, such as `start` and `stop`, print nothing.

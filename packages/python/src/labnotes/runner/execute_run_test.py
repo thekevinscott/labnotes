@@ -259,6 +259,19 @@ def test_points_the_child_at_its_run_log(
     assert env["LABNOTES_LOG"] == str(tmp_path / "log.jsonl")
 
 
+def test_gives_the_child_its_own_run_id(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LABNOTES_RUN", "parent-run")
+
+    run(tmp_path)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["LABNOTES_RUN"] == tmp_path.name
+
+
 def test_keeps_color_settings_the_user_chose(
     tmp_path: Path,
     collaborators: dict[str, mock.MagicMock],

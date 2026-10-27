@@ -1,8 +1,9 @@
 import os
 from pathlib import Path
 
-# The one env contract between runner and script; config is otherwise never env.
+# Environment contracts between the runner and its script; config is otherwise never env.
 LOG_ENV = "LABNOTES_LOG"
+RUN_ENV = "LABNOTES_RUN"
 
 
 def log_path() -> Path | None:

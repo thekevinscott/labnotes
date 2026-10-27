@@ -15,6 +15,13 @@ def test_params_merge_by_name_with_the_layer_winning() -> None:
     assert composed == {"params": {"m": [1], "n": [3], "o": [4]}}
 
 
+def test_env_merges_by_name_with_the_layer_winning() -> None:
+    assert compose_experiment(
+        {"env": {"BASE": "a", "BOTH": "shared"}},
+        {"env": {"BOTH": "own", "OWN": "b"}},
+    ) == {"env": {"BASE": "a", "BOTH": "own", "OWN": "b"}}
+
+
 def test_params_from_one_side_pass_through() -> None:
     assert compose_experiment({"params": {"m": [1]}}, {}) == {"params": {"m": [1]}}
     assert compose_experiment({}, {"params": {"m": [1]}}) == {"params": {"m": [1]}}

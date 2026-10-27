@@ -234,6 +234,35 @@ def test_prefers_the_experiment_hooks_over_the_defaults() -> None:
     assert (config.setup, config.teardown) == ("mine", "shared down")
 
 
+def test_merges_environment_keys_with_the_experiment_winning() -> None:
+    config = read_experiment_config(
+        PATH,
+        'command = "run"\n[env]\nBOTH = "own"\nOWN = "second"\n',
+        "adhoc",
+        1,
+        2,
+        {"env": {"BASE": "first", "BOTH": "shared"}},
+    )
+    assert config.env == {"BASE": "first", "BOTH": "own", "OWN": "second"}
+
+
+@pytest.mark.parametrize(
+    ("source", "message"),
+    [
+        ('command = "run"\nenv = 3\n', "env must be a table"),
+        ('command = "run"\n[env]\nFOO = 3\n', "env.FOO must be a string"),
+        ('command = "run"\n[env]\nFOO = true\n', "env.FOO must be a string"),
+        (
+            'command = "run"\n[env]\nLABNOTES_RUN = "wrong"\n',
+            "env.LABNOTES_RUN is reserved",
+        ),
+    ],
+)
+def test_rejects_invalid_environment_values(source: str, message: str) -> None:
+    with pytest.raises(ValueError, match=message):
+        read_experiment_config(PATH, source, "adhoc", 1, 2)
+
+
 @pytest.mark.parametrize("hook", ["setup", "teardown"])
 @pytest.mark.parametrize("value", ['""', '"  "', "3"])
 def test_rejects_a_hook_that_is_not_a_command(hook: str, value: str) -> None:

@@ -109,6 +109,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
                     body.get("timeout"),  # type: ignore[arg-type]
                     only=body.get("only"),  # type: ignore[arg-type]
                     args=body.get("args"),  # type: ignore[arg-type]
+                    environment=body.get("environment"),  # type: ignore[arg-type]
                 )
             # Clients hear why the session ended; the daemon keeps serving.
             except Exception as failure:  # noqa: BLE001

@@ -35,6 +35,7 @@ class Session:
         timeout: float | None,
         only: dict[str, str] | None = None,
         args: list[str] | None = None,
+        environment: dict[str, str] | None = None,
     ) -> list[object]:
         self.report = report
         self.end = asyncio.Event()
@@ -128,6 +129,7 @@ def test_starts_a_session_and_streams_its_events(
             args=["--auth", "api"],
             setup="up",
             teardown="down",
+            environment={"CALLER": "yes"},
         )
 
         assert response.status_code == 202
@@ -147,6 +149,7 @@ def test_starts_a_session_and_streams_its_events(
         assert collaborators["run_experiment"].call_args.kwargs == {
             "only": {"model": "small"},
             "args": ["--auth", "api"],
+            "environment": {"CALLER": "yes"},
         }
         assert await next_event(stream) == {
             "event": "planned",
@@ -180,6 +183,7 @@ def test_reads_the_default_experiment_config(
         assert collaborators["run_experiment"].call_args.kwargs == {
             "only": None,
             "args": None,
+            "environment": None,
         }
 
     asyncio.run(go())

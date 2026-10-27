@@ -26,6 +26,7 @@ SETTINGS = {
     "views",
     "setup",
     "teardown",
+    "env",
 }
 HOOKS = ("setup", "teardown")
 VIEWS = {"runs"}
@@ -88,6 +89,14 @@ def read_experiment_config(
         run = values.get(hook)
         if run is not None and (not isinstance(run, str) or not run.strip()):
             raise ValueError(f"{path}: {hook} must be a string")
+    env = values.get("env", {})
+    if not isinstance(env, dict):
+        raise ValueError(f"{path}: env must be a table, like [env]")
+    for key, value in env.items():
+        if key.startswith("LABNOTES_"):
+            raise ValueError(f"{path}: env.{key} is reserved for labnotes")
+        if not isinstance(value, str):
+            raise ValueError(f"{path}: env.{key} must be a string")
     views = values.get("views", {})
     if not isinstance(views, dict):
         raise ValueError(f"{path}: views must be a table, like [views]")
@@ -110,4 +119,5 @@ def read_experiment_config(
         memory_interval,
         values.get("setup"),
         values.get("teardown"),
+        env,
     )

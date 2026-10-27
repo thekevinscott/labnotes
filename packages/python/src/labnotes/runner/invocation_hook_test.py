@@ -12,6 +12,16 @@ def test_runs_the_command_from_the_root(tmp_path: Path) -> None:
     assert (tmp_path / "made").exists()
 
 
+def test_passes_the_invocations_environment(tmp_path: Path) -> None:
+    asyncio.run(
+        invocation_hook(
+            tmp_path, "setup", 'printf %s "$VALUE" > made', {"VALUE": "from-cli"}
+        )
+    )
+
+    assert (tmp_path / "made").read_text() == "from-cli"
+
+
 def test_fails_with_the_exit_code_and_stderr(tmp_path: Path) -> None:
     with pytest.raises(ValueError) as error:
         asyncio.run(invocation_hook(tmp_path, "setup", "echo broke >&2; exit 3"))

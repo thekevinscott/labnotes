@@ -272,6 +272,24 @@ def test_gives_the_child_its_own_run_id(
     assert env["LABNOTES_RUN"] == str(tmp_path.resolve())
 
 
+def test_uses_the_invocations_environment_and_preserves_its_own_run_vars(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(
+        tmp_path,
+        environment={
+            "VALUE": "from-cli",
+            "LABNOTES_LOG": "wrong",
+            "LABNOTES_RUN": "wrong",
+        },
+    )
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["VALUE"] == "from-cli"
+    assert env["LABNOTES_LOG"] == str(tmp_path / "log.jsonl")
+    assert env["LABNOTES_RUN"] == str(tmp_path.resolve())
+
+
 def test_runs_with_the_same_folder_name_have_different_ids(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

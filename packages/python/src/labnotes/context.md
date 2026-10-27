@@ -72,12 +72,15 @@ Each run gets a new run folder. In `matrix` mode it is named for the UTC time it
 its folder the same way. One that plans more gets one folder named that way, and its runs nest
 inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id is that path under `runs/`. Either way, folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
-script so it writes its outputs there.
+script so it writes its outputs there. `{run_id}` becomes the run id, and
+`{invocation_id}` an id every run of one `run` command shares: the run id when
+it plans one run, else the adhoc invocation folder's name, or in `matrix` mode a
+stamped id that names no folder. All three are shell-quoted.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, `command`, created,
 ended, exit code, `ended_by`, `signal`), `stdout.log` and `stderr.log` to the
-run folder. `command` is the shell command the run executed, with `{run_dir}`
+run folder. `command` is the shell command the run executed, with the placeholders
 and the params filled in, written before the run starts, so a killed run has it
 and a later edit to `experiment.toml` doesn't hide what a run did. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
 `"signal"` (a signal labnotes didn't send, like the out-of-memory killer),
@@ -93,7 +96,9 @@ the value from the start, even if the code changed while they waited.
 commands run once per `run` from the root: setup before the first run starts,
 teardown after the last one ends, even if runs failed, were stopped, or setup
 failed (so teardown must cope with a partial setup). A failing setup starts no
-run; a failing teardown fails the invocation.
+run; a failing teardown fails the invocation. Both get `{invocation_id}`, and
+`{run_id}` only when one run is planned; otherwise `{run_id}` there fails the
+invocation before anything starts.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.

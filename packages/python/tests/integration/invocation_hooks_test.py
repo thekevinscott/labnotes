@@ -97,3 +97,67 @@ def test_fails_the_invocation_when_teardown_fails(
 
     assert "teardown command exit 5 exited 5" in capsys.readouterr().err
     assert journal(root) == ["run a", "run b"]
+
+
+def make_id_project(root: Path, hooks: str, params: str = "") -> Path:
+    write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
+    write(
+        root / "exp" / "experiment.toml",
+        "command = \"sh -c 'echo run $1 $2 >> journal.txt' sh "
+        '{run_id} {invocation_id}"\n' + hooks + params,
+    )
+    return root
+
+
+def run_ids(root: Path) -> list[str]:
+    runs = root / "exp" / "runs"
+    return sorted(str(p.parent.relative_to(runs)) for p in runs.rglob("run.json"))
+
+
+def test_gives_a_lone_run_and_its_hooks_the_same_ids(tmp_path: Path) -> None:
+    root = make_id_project(
+        tmp_path,
+        'setup = "echo up {run_id} {invocation_id} >> journal.txt"\n'
+        'teardown = "echo down {run_id} {invocation_id} >> journal.txt"\n',
+    )
+
+    assert labnotes(root, ["experiments", "exp", "run"]) == 0
+
+    [run] = run_ids(root)
+    assert journal(root) == [
+        f"up {run} {run}",
+        f"run {run} {run}",
+        f"down {run} {run}",
+    ]
+
+
+def test_names_the_invocation_for_the_folder_its_runs_share(tmp_path: Path) -> None:
+    root = make_id_project(
+        tmp_path,
+        'setup = "echo up {invocation_id} >> journal.txt"\n'
+        'teardown = "echo down {invocation_id} >> journal.txt"\n',
+        '[params]\nm = ["a", "b"]\n',
+    )
+
+    assert labnotes(root, ["experiments", "exp", "run"]) == 0
+
+    runs = run_ids(root)
+    group = runs[0].split("/")[0]
+    assert [run.split("/")[0] for run in runs] == [group, group]
+    lines = journal(root)
+    assert (lines[0], lines[-1]) == (f"up {group}", f"down {group}")
+    assert sorted(lines[1:-1]) == [f"run {run} {group}" for run in runs]
+
+
+def test_refuses_run_id_in_setup_when_the_invocation_has_many_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_project(tmp_path, own='setup = "echo up {run_id} >> journal.txt"\n')
+
+    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+
+    assert (
+        "setup command echo up {run_id} >> journal.txt uses {run_id}, but this "
+        "invocation plans 2 runs." in capsys.readouterr().err
+    )
+    assert not (root / "journal.txt").exists()

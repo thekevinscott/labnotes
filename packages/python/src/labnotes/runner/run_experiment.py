@@ -13,6 +13,8 @@ from labnotes.models import (
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
+from labnotes.runner.fill_ids import fill_ids
+from labnotes.runner.hook_ids import hook_ids
 from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
@@ -77,6 +79,14 @@ async def run_experiment(
         run = new_id(params)
         planned.add(run)
         plan.append((run, params))
+    match plan:
+        case [(invocation, _)]:
+            pass
+        case _:
+            invocation = group or new_stamped_run_id(taken)
+    planned.add(invocation)
+    hooks = {"setup": experiment.setup, "teardown": experiment.teardown}
+    ids = hook_ids(hooks, invocation, [run for run, _ in plan])
     runs = [{"run": run, "params": params} for run, params in plan]
     report(
         {
@@ -212,7 +222,7 @@ async def run_experiment(
         result = await execute_run(
             config.root,
             folder,
-            experiment.command,
+            fill_ids(experiment.command, {"run_id": run, "invocation_id": invocation}),
             params,
             running[run],
             stopping,
@@ -237,14 +247,16 @@ async def run_experiment(
     async def teardown() -> None:
         if experiment.teardown is not None:
             report({"event": "tearing down"})
-            await invocation_hook(config.root, "teardown", experiment.teardown)
+            await invocation_hook(
+                config.root, "teardown", fill_ids(experiment.teardown, ids)
+            )
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
     # Like vitest's globalSetup: a failed setup still gets its teardown.
     try:
         if experiment.setup is not None:
             report({"event": "setting up"})
-            await invocation_hook(config.root, "setup", experiment.setup)
+            await invocation_hook(config.root, "setup", fill_ids(experiment.setup, ids))
         fill()
         await done.wait()
         await asyncio.gather(*started)

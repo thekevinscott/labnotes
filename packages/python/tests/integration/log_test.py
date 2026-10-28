@@ -22,8 +22,8 @@ def test_loads_only_the_standard_library() -> None:
     code = (
         "import sys\n"
         "before = set(sys.modules)\n"
-        "from labnotes import log\n"
-        "print(callable(log))\n"
+        "from labnotes import get_state, log, set_state\n"
+        "print(all(callable(f) for f in (get_state, log, set_state)))\n"
         "print('\\n'.join(sorted(set(sys.modules) - before)))\n"
     )
     result = subprocess.run(
@@ -35,8 +35,11 @@ def test_loads_only_the_standard_library() -> None:
     assert is_callable == "True"
     assert {name for name in loaded if name.startswith("labnotes")} == {
         "labnotes",
+        "labnotes.get_state",
         "labnotes.log",
         "labnotes.log_path",
+        "labnotes.set_state",
+        "labnotes.state_path",
         "labnotes.view",
         "labnotes.view.answer",
         "labnotes.view.build",

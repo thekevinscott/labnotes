@@ -73,8 +73,10 @@ its folder the same way. One that plans more gets one folder named that way, and
 inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id is that path under `runs/`. Either way, folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
 script so it writes its outputs there. `{invocation_dir}` is the shared adhoc
-group folder's absolute path when several runs are planned; otherwise it equals
-each run's `{run_dir}`. Both placeholders are shell-quoted.
+group folder's absolute path when several runs are planned. With one planned
+run it stays at the first attempt's folder across retries, while `{run_dir}`
+changes per attempt. With several matrix runs, it equals each run's `{run_dir}`.
+Both placeholders are shell-quoted.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, `command`, created,

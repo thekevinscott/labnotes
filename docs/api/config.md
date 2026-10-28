@@ -152,7 +152,7 @@ Shell command for one run, run from the project root. Params are appended as fla
 These placeholders are filled in, each shell-quoted:
 
 - `{run_dir}`: the run folder's absolute path.
-- `{invocation_dir}`: the absolute path of the invocation folder shared by an [adhoc](../cli/adhoc) command that plans several runs. For a single adhoc run or any matrix run, it equals that run's `{run_dir}`. A retry gets its own `{run_dir}`; in a multi-run adhoc invocation it keeps the same `{invocation_dir}`.
+- `{invocation_dir}`: the absolute path of the invocation folder shared by an [adhoc](../cli/adhoc) command that plans several runs. When one run is planned, it is the first attempt's `{run_dir}` and stays fixed across retries. With several matrix runs, each run uses its own `{run_dir}`. Every retry gets a new `{run_dir}`.
 
 `run.json` records the command with every placeholder filled.
 
@@ -163,7 +163,7 @@ These placeholders are filled in, each shell-quoted:
 
 Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`). Each invocation sends that starting environment to the daemon, including when it is already running.
 
-Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, use `{invocation_dir}`; `{run_dir}` is unavailable in hooks. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks use the first planned run. Run commands get the current attempt's values.
+Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, use `{invocation_dir}`; `{run_dir}` is unavailable in hooks. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks and run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
 
 Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.
 

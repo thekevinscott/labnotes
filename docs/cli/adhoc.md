@@ -30,6 +30,6 @@ When nothing varies but `repeats` is more than 1, the nested runs get haiku name
 
 A run that exits 75 is [retried](../api/config#retries-1) in a new run folder: inside the same invocation folder when there is one, or a new stamped folder for a lone run.
 
-`{invocation_dir}` in `command`, `setup` or `teardown` becomes the invocation folder's absolute path when several runs are planned. That folder exists before setup runs, so setup can leave files there for teardown. `{run_dir}` in `command` is each run folder's absolute path. For a single run, `{invocation_dir}` is its run folder. Both are shell-quoted. `{run_dir}` is unavailable in setup and teardown. See [`command`](../api/config#command).
+`{invocation_dir}` in `command`, `setup` or `teardown` becomes the invocation folder's absolute path when several runs are planned. That folder exists before setup runs, so setup can leave files there for teardown. `{run_dir}` in `command` is each run folder's absolute path. For a single planned run, `{invocation_dir}` is its first attempt's folder and stays there if the run retries; `{run_dir}` moves to each retry's folder. Both are shell-quoted. `{run_dir}` is unavailable in setup and teardown. See [`command`](../api/config#command).
 
 The frontend groups an `adhoc` experiment's runs by the invocation that made them. When an invocation plans a single run, the CLI opens straight on its output.

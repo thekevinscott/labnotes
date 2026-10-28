@@ -239,7 +239,7 @@ async def run_experiment(
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
-        run_invocation_dir = group_dir or str(folder.resolve())
+        run_invocation_dir = dirs.get("invocation_dir") or str(folder.resolve())
         report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
         trees[run] = set()

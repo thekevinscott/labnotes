@@ -266,6 +266,7 @@ async def run_experiment(
             stopped=lambda: run in stopped,
             meta=meta,
             args=args or (),
+            state_file=state_file,
             memory_interval=experiment.memory_interval,
             environment=fill_experiment_env(
                 experiment.env,
@@ -301,9 +302,10 @@ async def run_experiment(
         if dirs
         else TemporaryDirectory(prefix="labnotes-state-")
     ) as state_dir:
+        state_file = Path(state_dir) / "state.json"
         for hook in ("setup", "teardown"):
             if hook in hook_env:
-                hook_env[hook][STATE_ENV] = str(Path(state_dir) / "state.json")
+                hook_env[hook][STATE_ENV] = str(state_file)
         # Like vitest's globalSetup: a failed setup still gets its teardown.
         try:
             if experiment.setup is not None:

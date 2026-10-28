@@ -14,6 +14,7 @@ from labnotes.runner.shell_command import shell_command
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
 from labnotes.runner.wait_for_tree import wait_for_tree
 from labnotes.runner.write_run_json import write_run_json
+from labnotes.state_path import RUN_STATE_ENV
 from labnotes.tables.iso_time import iso_time
 from labnotes.tui.format_elapsed import format_elapsed
 
@@ -33,6 +34,7 @@ async def execute_run(
     meta: dict[str, object] | None = None,
     args: Sequence[str] = (),
     *,
+    state_file: Path,
     memory_interval: float,
     environment: dict[str, str] | None = None,
 ) -> dict[str, object]:
@@ -74,6 +76,7 @@ async def execute_run(
                     },
                     LOG_ENV: str(folder / "log.jsonl"),
                     RUN_ENV: str(folder.resolve()),
+                    RUN_STATE_ENV: str(state_file),
                 },
                 stdout=stdout,
                 stderr=stderr,

@@ -82,6 +82,7 @@ def run(
             TREE,  # type: ignore[arg-type]
             timeout=timeout,
             stop=mock.Mock() if stop is None else stop,
+            state_file=tmp_path / "state.json",
             memory_interval=memory_interval,
             **options,
         )
@@ -273,20 +274,25 @@ def test_gives_the_child_its_own_run_id(
 
 
 @pytest.mark.parametrize("explicit_environment", [False, True])
-def test_clears_inherited_hook_state_from_run_commands(
+def test_replaces_inherited_state_with_read_only_invocation_state(
     tmp_path: Path,
     collaborators: dict[str, mock.MagicMock],
     monkeypatch: pytest.MonkeyPatch,
     explicit_environment: bool,
 ) -> None:
-    inherited = {"LABNOTES_STATE": "/parent/state.json", "LABNOTES_OTHER": "parent"}
+    inherited = {
+        "LABNOTES_STATE": "/parent/state.json",
+        "LABNOTES_RUN_STATE": "/parent/run-state.json",
+        "LABNOTES_OTHER": "parent",
+    }
     for key, value in inherited.items():
         monkeypatch.setenv(key, value)
 
     run(tmp_path, environment=inherited if explicit_environment else None)
 
     env = collaborators["spawn"].await_args.kwargs["env"]
-    assert [key for key in env if key in inherited] == []
+    assert [key for key in env if key in inherited] == ["LABNOTES_RUN_STATE"]
+    assert env["LABNOTES_RUN_STATE"] == str(tmp_path / "state.json")
 
 
 def test_uses_the_invocations_environment_and_preserves_its_own_run_vars(
@@ -404,6 +410,7 @@ def test_cancels_the_kill_once_a_timed_out_run_ends(
                 TREE,  # type: ignore[arg-type]
                 timeout=0.01,
                 stop=stop,
+                state_file=tmp_path / "state.json",
                 memory_interval=0,
             )
             await asyncio.sleep(0.1)

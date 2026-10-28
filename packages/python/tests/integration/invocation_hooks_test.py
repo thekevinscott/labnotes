@@ -214,15 +214,43 @@ GET_STATE = (
     "import json\nfrom pathlib import Path\nfrom labnotes import get_state\n"
     "Path('received.json').write_text(json.dumps(get_state()))\n"
 )
+READ_ONLY_STATE = """import json
+import sys
+from pathlib import Path
+from labnotes import get_state, set_state
+
+Path(sys.argv[1], 'received.json').write_text(json.dumps(get_state()))
+try:
+    set_state({'resource': 'changed by run'})
+except RuntimeError:
+    pass
+else:
+    raise AssertionError('Run state must be read-only')
+with Path('journal.txt').open('a') as journal:
+    journal.write('run\\n')
+"""
+NO_STATE = """from labnotes import get_state, set_state
+for call in (get_state, lambda: set_state({'meta': True})):
+    try:
+        call()
+    except RuntimeError:
+        pass
+    else:
+        raise AssertionError('Meta must not have state')
+print('{}')
+"""
 
 
 def make_state_project(root: Path, mode: str, params: str, setup_exit: int = 0) -> Path:
     write(root / "setup.py", SET_STATE + f"raise SystemExit({setup_exit})\n")
     write(root / "teardown.py", GET_STATE)
+    write(root / "run.py", READ_ONLY_STATE)
+    write(root / "meta.py", NO_STATE)
     write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
     write(
         root / "exp" / "experiment.toml",
-        "command = \"sh -c 'echo run ${LABNOTES_STATE:-none} >> journal.txt'\"\n"
+        f'command = "{sys.executable} run.py {{run_dir}}"\n'
+        f'meta = "{sys.executable} meta.py"\n'
         f'mode = "{mode}"\n'
         f'setup = "{sys.executable} setup.py"\n'
         f'teardown = "{sys.executable} teardown.py"\n' + params,
@@ -230,11 +258,11 @@ def make_state_project(root: Path, mode: str, params: str, setup_exit: int = 0) 
     return root
 
 
-@pytest.fixture
-def outer_state(tmp_path: Path) -> Iterator[Path]:
+@pytest.fixture(params=["LABNOTES_STATE", "LABNOTES_RUN_STATE"])
+def outer_state(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Path]:
     outer = tmp_path / "outer.json"
     outer.write_text('{"outer": true}')
-    with mock.patch.dict(os.environ, {"LABNOTES_STATE": str(outer)}):
+    with mock.patch.dict(os.environ, {request.param: str(outer)}):
         yield outer
 
 
@@ -242,18 +270,21 @@ def outer_state(tmp_path: Path) -> Iterator[Path]:
     ("mode", "params"),
     [("adhoc", ""), ("adhoc", MANY), ("matrix", ""), ("matrix", MANY)],
 )
-def test_passes_merged_state_from_setup_to_teardown(
+def test_runs_read_setup_state_without_changing_teardown_or_outer_state(
     tmp_path: Path, outer_state: Path, mode: str, params: str
 ) -> None:
     root = make_state_project(tmp_path / "project", mode, params)
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
-    assert json.loads((root / "received.json").read_text()) == {
-        "resource": "two",
-        "kept": True,
-    }
-    assert set(journal(root)) == {"run none"}
+    expected = {"resource": "two", "kept": True}
+    assert json.loads((root / "received.json").read_text()) == expected
+    runs = list((root / "exp" / "runs").rglob("run.json"))
+    assert len(runs) == (2 if params else 1)
+    for run in runs:
+        assert json.loads(run.with_name("received.json").read_text()) == expected
+        assert "resource" not in run.read_text()
+    assert journal(root) == ["run"] * len(runs)
     assert outer_state.read_text() == '{"outer": true}'
 
 

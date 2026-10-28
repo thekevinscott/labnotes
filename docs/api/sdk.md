@@ -65,7 +65,7 @@ With `LABNOTES_LOG` unset, as when you run the script yourself, `log` prints `co
 
 ## `set_state` and `get_state`
 
-Use state to pass resource IDs or other cleanup information from [setup](config#setup) to [teardown](config#teardown):
+Use state to pass resource IDs or connection details from [setup](config#setup) to run commands and [teardown](config#teardown):
 
 ```python
 # setup.py
@@ -76,7 +76,7 @@ set_state({"port": 8000})
 ```
 
 ```python
-# teardown.py
+# run.py or teardown.py
 from labnotes import get_state
 
 state = get_state()  # {"container": "abc123", "port": 8000}
@@ -84,9 +84,11 @@ state = get_state()  # {"container": "abc123", "port": 8000}
 
 `set_state(values: dict[str, object]) -> None` merges by top-level key. A repeated key replaces its entire value; other keys survive. Values must be JSON serializable. `get_state() -> dict[str, object]` returns the saved state, or `{}` if setup has not written any. Teardown may follow a failed setup, so it should handle missing keys.
 
-Both functions use only the standard library and raise `RuntimeError` outside setup and teardown hooks. They take no invocation IDs.
+Run commands can call `get_state()` after setup finishes. Every run, including queued runs and retries, reads the same invocation state file. `set_state()` raises `RuntimeError` in runs: only setup and teardown can write, so parallel runs cannot overwrite each other's state or change what teardown receives.
 
-Labnotes sets `LABNOTES_STATE` for setup and teardown to `state.json` in `{invocation_dir}`. That file stays in the invocation folder. When several matrix runs have no shared folder, labnotes uses a temporary file that remains available through teardown and is removed afterward, including when a hook fails. Run commands and `meta` do not receive the state variable; state is not copied into `run.json`.
+Both functions use only the standard library and raise `RuntimeError` outside an invocation and in `meta`. They take no invocation IDs.
+
+Labnotes sets `LABNOTES_STATE` for setup and teardown to `state.json` in `{invocation_dir}`, and `LABNOTES_RUN_STATE` for run commands to the same file. That file stays in the invocation folder. When several matrix runs have no shared folder, labnotes uses a temporary file that remains available through all runs and teardown and is removed afterward, including when a hook fails. `meta` receives neither state variable; state is not copied into `run.json`.
 
 When a hook or run starts another labnotes invocation, the inner invocation clears inherited `LABNOTES_*` context for its children, then sets its own hook state and run variables. Its SDK calls cannot bind to the outer invocation through those inherited values.
 

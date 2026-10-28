@@ -103,13 +103,16 @@ run is planned. That folder exists before setup starts. In matrix mode with
 several runs there is no shared folder, so `{invocation_dir}` in a hook fails.
 `{run_dir}` is never filled in hooks; use `{invocation_dir}` instead. An
 unavailable placeholder fails before anything starts.
-Setup can call `labnotes.set_state({"container": "abc"})`; teardown reads the
+Setup can call `labnotes.set_state({"container": "abc"})`; runs and teardown read the
 dict with `labnotes.get_state()`. Writes merge by top-level key, replacing an
 existing value without dropping other keys. Values must be JSON serializable;
-reading before any write returns `{}`. Both functions raise `RuntimeError`
-outside setup/teardown hooks. Labnotes gives only those hooks `LABNOTES_STATE`,
+reading before any write returns `{}`. Runs can only read: `set_state` raises
+`RuntimeError` there. Both functions raise outside an invocation and in `meta`.
+Labnotes gives setup/teardown `LABNOTES_STATE` and runs `LABNOTES_RUN_STATE`,
 pointing to `{invocation_dir}/state.json` or, without a shared folder, a temp
-file kept through teardown and then removed. Runs and `meta` do not receive it.
+file kept through all runs and teardown and then removed. Queued runs and retries
+read the same file after setup finishes. `meta` receives neither state variable;
+state is never copied into `run.json`.
 Nested labnotes invocations clear inherited `LABNOTES_*` context for their
 children and set their own hook and run variables.
 `[env]` in `experiment.toml` sets string environment values for `command`,

@@ -4,7 +4,7 @@ from labnotes.state_path import state_path
 
 
 def get_state() -> dict[str, object]:
-    """Read invocation state so teardown can clean up what setup created."""
+    """Read setup's invocation state from a hook or run command."""
     path = state_path()
     try:
         state = json.loads(path.read_text(encoding="utf-8"))

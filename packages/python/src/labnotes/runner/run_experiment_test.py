@@ -386,6 +386,9 @@ def test_gives_both_hooks_the_state_file_in_the_invocation_folder(
         for c in collaborators["invocation_hook"].await_args_list
     ]
     assert paths == [str(tmp_path / "exp" / "r1" / "state.json")] * 2
+    assert collaborators["execute_run"].await_args.kwargs["state_file"] == Path(
+        paths[0]
+    )
 
 
 def test_keeps_a_temp_state_file_through_teardown_without_a_shared_folder(
@@ -403,6 +406,9 @@ def test_keeps_a_temp_state_file_through_teardown_without_a_shared_folder(
 
     [(path, existed), teardown] = seen
     assert (existed, teardown) == (True, (path, True))
+    assert [
+        c.kwargs["state_file"] for c in collaborators["execute_run"].await_args_list
+    ] == [Path(path)] * 2
     assert not Path(path).parent.exists()
 
 
@@ -1197,6 +1203,9 @@ def test_retries_a_tempfail_with_the_same_params(
     assert started_runs(report) == ["r1", "r2"]
     assert [c.args[3] for c in collaborators["execute_run"].await_args_list] == [A, A]
     assert retry_parents(collaborators) == [None, "r1"]
+    assert [
+        c.kwargs["state_file"] for c in collaborators["execute_run"].await_args_list
+    ] == [tmp_path / "exp" / "r1" / "state.json"] * 2
     assert events(report) == [
         "planned",
         "started",

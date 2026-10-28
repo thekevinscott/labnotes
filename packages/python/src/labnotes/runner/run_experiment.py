@@ -2,7 +2,9 @@ import asyncio
 import json
 import os
 import signal
+from contextlib import nullcontext
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
 import psutil
 
@@ -27,6 +29,7 @@ from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.run_folder import run_folder
 from labnotes.runner.signal_tree import signal_tree
+from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.open_tables import open_tables
@@ -293,24 +296,32 @@ async def run_experiment(
             )
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
-    # Like vitest's globalSetup: a failed setup still gets its teardown.
-    try:
-        if experiment.setup is not None:
-            report({"event": "setting up"})
-            await invocation_hook(
-                config.root,
-                "setup",
-                fill_dirs(experiment.setup, dirs),
-                hook_env["setup"],
-            )
-        fill()
-        await done.wait()
-        await asyncio.gather(*started)
-    except BaseException:
+    with (
+        nullcontext(dirs["invocation_dir"])
+        if dirs
+        else TemporaryDirectory(prefix="labnotes-state-")
+    ) as state_dir:
+        for hook in ("setup", "teardown"):
+            if hook in hook_env:
+                hook_env[hook][STATE_ENV] = str(Path(state_dir) / "state.json")
+        # Like vitest's globalSetup: a failed setup still gets its teardown.
         try:
-            await teardown()
-        except Exception as failure:  # noqa: BLE001
-            report({"event": "teardown failed", "error": str(failure)})
-        raise
-    await teardown()
+            if experiment.setup is not None:
+                report({"event": "setting up"})
+                await invocation_hook(
+                    config.root,
+                    "setup",
+                    fill_dirs(experiment.setup, dirs),
+                    hook_env["setup"],
+                )
+            fill()
+            await done.wait()
+            await asyncio.gather(*started)
+        except BaseException:
+            try:
+                await teardown()
+            except Exception as failure:  # noqa: BLE001
+                report({"event": "teardown failed", "error": str(failure)})
+            raise
+        await teardown()
     return results

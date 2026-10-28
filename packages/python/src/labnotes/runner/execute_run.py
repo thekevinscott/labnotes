@@ -65,7 +65,13 @@ async def execute_run(
                 env={
                     "FORCE_COLOR": "1",
                     "CLICOLOR_FORCE": "1",
-                    **(os.environ if environment is None else environment),
+                    **{
+                        key: value
+                        for key, value in (
+                            os.environ if environment is None else environment
+                        ).items()
+                        if not key.startswith("LABNOTES_")
+                    },
                     LOG_ENV: str(folder / "log.jsonl"),
                     RUN_ENV: str(folder.resolve()),
                 },

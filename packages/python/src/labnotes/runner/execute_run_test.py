@@ -272,6 +272,23 @@ def test_gives_the_child_its_own_run_id(
     assert env["LABNOTES_RUN"] == str(tmp_path.resolve())
 
 
+@pytest.mark.parametrize("explicit_environment", [False, True])
+def test_clears_inherited_hook_state_from_run_commands(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+    explicit_environment: bool,
+) -> None:
+    inherited = {"LABNOTES_STATE": "/parent/state.json", "LABNOTES_OTHER": "parent"}
+    for key, value in inherited.items():
+        monkeypatch.setenv(key, value)
+
+    run(tmp_path, environment=inherited if explicit_environment else None)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert [key for key in env if key in inherited] == []
+
+
 def test_uses_the_invocations_environment_and_preserves_its_own_run_vars(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

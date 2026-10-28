@@ -374,6 +374,38 @@ def test_fills_the_dirs_into_setup_and_teardown(
     ]
 
 
+def test_gives_both_hooks_the_state_file_in_the_invocation_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    paths = [
+        c.args[3]["LABNOTES_STATE"]
+        for c in collaborators["invocation_hook"].await_args_list
+    ]
+    assert paths == [str(tmp_path / "exp" / "r1" / "state.json")] * 2
+
+
+def test_keeps_a_temp_state_file_through_teardown_without_a_shared_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    seen: list[tuple[str, bool]] = []
+
+    async def hook(root: Path, name: str, command: str, env: dict[str, str]) -> None:
+        folder = Path(env["LABNOTES_STATE"]).parent
+        seen.append((env["LABNOTES_STATE"], folder.is_dir()))
+
+    collaborators["invocation_hook"].side_effect = hook
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    [(path, existed), teardown] = seen
+    assert (existed, teardown) == (True, (path, True))
+    assert not Path(path).parent.exists()
+
+
 def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

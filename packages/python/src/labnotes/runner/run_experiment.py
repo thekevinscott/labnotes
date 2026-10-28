@@ -85,21 +85,17 @@ async def run_experiment(
         str(run_folder(config.root, config.runs, name, run).resolve())
         for run, _ in plan
     ]
-    invocation_dir = (
+    group_dir = (
         str(run_folder(config.root, config.runs, name, group).resolve())
         if group is not None
-        else run_dirs[0]
-        if len(run_dirs) == 1
         else None
     )
-    if group is not None:
-        planned.add(group)
     hooks = {
         "setup": experiment.setup,
         "teardown": experiment.teardown,
         "meta": experiment.meta,
     }
-    dirs = hook_dirs(hooks, invocation_dir if group is not None else None, run_dirs)
+    dirs = hook_dirs(hooks, group_dir, run_dirs)
     hook_env = {
         hook: fill_experiment_env(
             experiment.env, inherited, dirs, hook=hook, runs=len(plan)
@@ -112,8 +108,8 @@ async def run_experiment(
         meta = await invocation_meta(
             config.root, fill_dirs(experiment.meta, dirs), hook_env["meta"]
         )
-    if invocation_dir is not None:
-        Path(invocation_dir).mkdir(parents=True, exist_ok=True)
+    if dirs:
+        Path(dirs["invocation_dir"]).mkdir(parents=True, exist_ok=True)
     runs = [{"run": run, "params": params} for run, params in plan]
     report(
         {
@@ -243,11 +239,7 @@ async def run_experiment(
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
-        run_invocation_dir = (
-            invocation_dir
-            if group is not None and invocation_dir is not None
-            else str(folder.resolve())
-        )
+        run_invocation_dir = group_dir or str(folder.resolve())
         report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
         trees[run] = set()

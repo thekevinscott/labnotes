@@ -96,7 +96,11 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         ) as invocation_hook,
         mock.patch(
             "labnotes.runner.run_experiment.hook_dirs",
-            return_value={"invocation_dir": "/i"},
+            side_effect=lambda hooks, group_dir, run_dirs: (
+                {"invocation_dir": group_dir or run_dirs[0]}
+                if group_dir is not None or len(run_dirs) == 1
+                else {}
+            ),
         ) as hook_dirs,
         mock.patch(
             "labnotes.runner.run_experiment.fill_dirs",
@@ -335,7 +339,21 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
     assert events[-1] == "tearing down"
 
 
-def test_fills_the_ids_into_setup_and_teardown(
+def test_setup_uses_an_existing_invocation_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    folder = tmp_path / "exp" / "r1"
+    folder.mkdir(parents=True)
+    (folder / "machine.txt").write_text("remote")
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    assert (folder / "machine.txt").read_text() == "remote"
+    assert collaborators["invocation_hook"].await_count == 2
+
+
+def test_fills_the_dirs_into_setup_and_teardown(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["fill_dirs"].side_effect = lambda command, dirs: f"{command} {dirs}"
@@ -348,8 +366,8 @@ def test_fills_the_ids_into_setup_and_teardown(
         [str(tmp_path / "exp" / "r1"), str(tmp_path / "exp" / "r2")],
     )
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up {'invocation_dir': '/i'}", mock.ANY),
-        mock.call(tmp_path, "teardown", "down {'invocation_dir': '/i'}", mock.ANY),
+        mock.call(tmp_path, "setup", "up {}", mock.ANY),
+        mock.call(tmp_path, "teardown", "down {}", mock.ANY),
     ]
 
 

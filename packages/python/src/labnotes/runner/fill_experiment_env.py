@@ -1,12 +1,12 @@
 from collections.abc import Mapping
 
-from labnotes.runner.fill_ids import fill_ids
+from labnotes.runner.fill_dirs import fill_dirs
 
 
 def fill_experiment_env(
     configured: Mapping[str, str],
     inherited: Mapping[str, str],
-    ids: Mapping[str, str],
+    dirs: Mapping[str, str],
     *,
     hook: str | None = None,
     runs: int = 1,
@@ -20,12 +20,15 @@ def fill_experiment_env(
     for key, value in configured.items():
         if key in caller:
             continue
-        for name in ("run_dir", "run_id"):
-            if f"{{{name}}}" in value and name not in ids:
+        if hook is not None and "{run_dir}" in value:
+            raise ValueError(
+                f"{hook} env.{key} uses {{run_dir}}; use {{invocation_dir}} instead."
+            )
+        for name in ("run_dir", "invocation_dir"):
+            if f"{{{name}}}" in value and name not in dirs:
                 raise ValueError(
                     f"{hook} env.{key} uses {{{name}}}, but this invocation plans "
-                    f"{runs} runs. {{{name}}} needs exactly one; "
-                    "use {invocation_id} instead."
+                    f"{runs} runs. {{{name}}} needs exactly one run in this mode."
                 )
-        filled[key] = fill_ids(value, ids, quote=False)
+        filled[key] = fill_dirs(value, dirs, quote=False)
     return {**filled, **caller}

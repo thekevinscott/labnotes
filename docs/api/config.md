@@ -152,8 +152,7 @@ Shell command for one run, run from the project root. Params are appended as fla
 These placeholders are filled in, each shell-quoted:
 
 - `{run_dir}`: the run folder's absolute path.
-- `{run_id}`: the run's id, the path under `runs/`. In an [adhoc](../cli/adhoc) invocation folder that is `folder/run`, like `20261020-000429-brave-fox/opus-low-1a2b`. A [retry](#retries-1) gets its own id.
-- `{invocation_id}`: one id shared by every run one `run` command starts, retries included. When the command plans a single run, it is that run's id. In adhoc mode with more than one run, it is the invocation folder's name. In matrix mode with more than one run, labnotes stamps one the same way, like `20261020-000429-brave-fox`; no folder has that name, and `run.json` doesn't record it, so pass it to the command if the run should keep it.
+- `{invocation_dir}`: the absolute path of the invocation folder shared by an [adhoc](../cli/adhoc) command that plans several runs. For a single adhoc run or any matrix run, it equals that run's `{run_dir}`. A retry gets its own `{run_dir}`; in a multi-run adhoc invocation it keeps the same `{invocation_dir}`.
 
 `run.json` records the command with every placeholder filled.
 
@@ -164,7 +163,7 @@ These placeholders are filled in, each shell-quoted:
 
 Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`). Each invocation sends that starting environment to the daemon, including when it is already running.
 
-Values may use `{run_dir}`, `{run_id}`, and `{invocation_id}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, `{run_id}` and `{run_dir}` require exactly one planned run; with several or no runs, use `{invocation_id}` instead. For retries, the hooks use the first planned run. Run commands get the current attempt's values.
+Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, use `{invocation_dir}`; `{run_dir}` is unavailable in hooks. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks use the first planned run. Run commands get the current attempt's values.
 
 Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.
 
@@ -196,7 +195,7 @@ Shell command that labnotes runs once per `run`, from the project root, after [`
 
 A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
 
-`{invocation_id}` is filled in as in [`command`](#command). So is `{run_id}`, but only when the `run` command plans a single run, as setup runs once for all of them. With any other number of runs, `{run_id}` in setup or teardown fails the invocation before setup or any run starts.
+`{invocation_dir}` is filled in as in [`command`](#command). Its folder exists before setup starts, so setup can write files that teardown reads. In a multi-run adhoc invocation it is the shared group folder; for one run it is that run's folder. In matrix mode with several planned runs, `{invocation_dir}` fails because there is no shared folder. `{run_dir}` is never filled in setup or teardown; use `{invocation_dir}` instead. An unavailable placeholder fails the invocation before setup or any run starts.
 
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 
@@ -213,7 +212,7 @@ A non-zero exit fails the invocation, with the command and its stderr in the err
 
 In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. If the daemon itself is killed, teardown doesn't run.
 
-It gets `{invocation_id}` and `{run_id}` the same way as `setup`. With a single run that was retried, `{run_id}` is the first attempt's id.
+It gets `{invocation_dir}` the same way as `setup`. With a single run that was retried, the hooks use the first attempt's folder.
 
 `--teardown COMMAND` overrides it, and it composes with `.labnotes.toml` the same way as `setup`.
 

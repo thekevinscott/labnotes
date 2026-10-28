@@ -72,10 +72,9 @@ Each run gets a new run folder. In `matrix` mode it is named for the UTC time it
 its folder the same way. One that plans more gets one folder named that way, and its runs nest
 inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id is that path under `runs/`. Either way, folder listings sort by start. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
-script so it writes its outputs there. `{run_id}` becomes the run id, and
-`{invocation_id}` an id every run of one `run` command shares: the run id when
-it plans one run, else the adhoc invocation folder's name, or in `matrix` mode a
-stamped id that names no folder. All three are shell-quoted.
+script so it writes its outputs there. `{invocation_dir}` is the shared adhoc
+group folder's absolute path when several runs are planned; otherwise it equals
+each run's `{run_dir}`. Both placeholders are shell-quoted.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, `command`, created,
@@ -96,16 +95,20 @@ the value from the start, even if the code changed while they waited.
 commands run once per `run` from the root: setup before the first run starts,
 teardown after the last one ends, even if runs failed, were stopped, or setup
 failed (so teardown must cope with a partial setup). A failing setup starts no
-run; a failing teardown fails the invocation. Both get `{invocation_id}`, and
-`{run_id}` only when one run is planned; otherwise `{run_id}` there fails the
-invocation before anything starts.
+run; a failing teardown fails the invocation. Both get `{invocation_dir}` only:
+the shared folder for a multi-run adhoc invocation, or the run folder when one
+run is planned. That folder exists before setup starts. In matrix mode with
+several runs there is no shared folder, so `{invocation_dir}` in a hook fails.
+`{run_dir}` is never filled in hooks; use `{invocation_dir}` instead. An
+unavailable placeholder fails before anything starts.
 `[env]` in `experiment.toml` sets string environment values for `command`,
 `meta`, `setup`, and `teardown`. `[experiment.env]` in `.labnotes.toml`
 provides shared values; experiment values replace them by name. Variables in
 the environment that starts `labnotes experiments NAME run` win over both,
-including inline assignments. Values can use raw `{run_dir}`, `{run_id}` and
-`{invocation_id}` placeholders. In hooks and meta, `{run_id}` and `{run_dir}`
-require exactly one planned run. `LABNOTES_*` names are reserved for labnotes.
+including inline assignments. Values can use raw `{run_dir}` and
+`{invocation_dir}` placeholders. In hooks and meta, only `{invocation_dir}` is
+available, and it requires one planned run in matrix mode.
+`LABNOTES_*` names are reserved for labnotes.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next
 `run` replaces it. Other keys you add to `run.json` are kept and show in `run`.

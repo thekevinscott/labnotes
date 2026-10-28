@@ -95,12 +95,13 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.invocation_hook", new=mock.AsyncMock()
         ) as invocation_hook,
         mock.patch(
-            "labnotes.runner.run_experiment.hook_ids", return_value={"id": "i"}
-        ) as hook_ids,
+            "labnotes.runner.run_experiment.hook_dirs",
+            return_value={"invocation_dir": "/i"},
+        ) as hook_dirs,
         mock.patch(
-            "labnotes.runner.run_experiment.fill_ids",
+            "labnotes.runner.run_experiment.fill_dirs",
             side_effect=lambda command, ids: command,
-        ) as fill_ids,
+        ) as fill_dirs,
     ):
         yield {
             "open_tables": open_tables,
@@ -115,8 +116,8 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "invocation_meta": invocation_meta,
             "invocation_hook": invocation_hook,
             "in_subset": in_subset,
-            "hook_ids": hook_ids,
-            "fill_ids": fill_ids,
+            "hook_dirs": hook_dirs,
+            "fill_dirs": fill_dirs,
         }
 
 
@@ -267,7 +268,7 @@ def test_gives_every_run_the_meta_read_once_at_the_start(
     collaborators["invocation_meta"].assert_awaited_once_with(
         tmp_path, "git log -1", mock.ANY
     )
-    assert collaborators["hook_ids"].call_args.args[0]["meta"] == "git log -1"
+    assert collaborators["hook_dirs"].call_args.args[0]["meta"] == "git log -1"
     calls = collaborators["execute_run"].await_args_list
     assert [c.kwargs["meta"] for c in calls] == [{"commit": "abc"}] * 2
 
@@ -337,26 +338,28 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
 def test_fills_the_ids_into_setup_and_teardown(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["fill_ids"].side_effect = lambda command, ids: f"{command} {ids}"
+    collaborators["fill_dirs"].side_effect = lambda command, dirs: f"{command} {dirs}"
 
     start_with_hooks(tmp_path, mock.Mock())
 
-    collaborators["hook_ids"].assert_called_once_with(
-        {"setup": "up", "teardown": "down", "meta": None}, "r3", ["r1", "r2"]
+    collaborators["hook_dirs"].assert_called_once_with(
+        {"setup": "up", "teardown": "down", "meta": None},
+        None,
+        [str(tmp_path / "exp" / "r1"), str(tmp_path / "exp" / "r2")],
     )
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up {'id': 'i'}", mock.ANY),
-        mock.call(tmp_path, "teardown", "down {'id': 'i'}", mock.ANY),
+        mock.call(tmp_path, "setup", "up {'invocation_dir': '/i'}", mock.ANY),
+        mock.call(tmp_path, "teardown", "down {'invocation_dir': '/i'}", mock.ANY),
     ]
 
 
 def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["hook_ids"].side_effect = ValueError("no run_id")
+    collaborators["hook_dirs"].side_effect = ValueError("no run_dir")
     report = mock.Mock()
 
-    with pytest.raises(ValueError, match="no run_id"):
+    with pytest.raises(ValueError, match="no run_dir"):
         start_with_hooks(tmp_path, report)
 
     report.assert_not_called()
@@ -364,15 +367,15 @@ def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     collaborators["execute_run"].assert_not_awaited()
 
 
-def test_rejects_run_id_in_hook_environment_before_any_subprocess_starts(
+def test_rejects_run_dir_in_hook_environment_before_any_subprocess_starts(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     configured = experiment()
     configured.setup = "up"
-    configured.env = {"LABEL": "{run_id}"}
+    configured.env = {"LABEL": "{run_dir}"}
     report = mock.Mock()
 
-    with pytest.raises(ValueError, match=r"setup env.LABEL uses \{run_id\}"):
+    with pytest.raises(ValueError, match=r"setup env.LABEL uses \{run_dir\}"):
         settle(
             run_experiment(
                 mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
@@ -547,54 +550,67 @@ def test_stamps_no_folder_when_an_adhoc_command_plans_nothing(
     assert not (tmp_path / "exp").exists()
 
 
-def test_fills_each_runs_id_and_the_invocation_id_into_its_command(
+def test_fills_each_matrix_runs_directories_into_its_command(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["fill_ids"].side_effect = lambda command, ids: f"{command} {ids}"
+    collaborators["fill_dirs"].side_effect = lambda command, dirs: f"{command} {dirs}"
 
     run(tmp_path, mock.Mock())
 
     calls = collaborators["execute_run"].await_args_list
     assert [c.args[2] for c in calls] == [
-        "run {'run_id': 'r1', 'invocation_id': 'r3'}",
-        "run {'run_id': 'r2', 'invocation_id': 'r3'}",
+        f"run {{'run_dir': '{tmp_path / 'exp' / 'r1'}', "
+        f"'invocation_dir': '{tmp_path / 'exp' / 'r1'}'}}",
+        f"run {{'run_dir': '{tmp_path / 'exp' / 'r2'}', "
+        f"'invocation_dir': '{tmp_path / 'exp' / 'r2'}'}}",
     ]
 
 
-def test_reserves_a_matrix_invocation_id_against_later_runs(
+def test_matrix_does_not_stamp_an_unused_invocation_id(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     run(tmp_path, mock.Mock())
 
-    taken = collaborators["new_stamped_run_id"].call_args.args[0]
-    assert taken("r3")
+    assert collaborators["new_stamped_run_id"].call_count == 2
 
 
-def test_stamps_an_invocation_id_when_a_matrix_plans_nothing(
+def test_has_no_invocation_directory_when_a_matrix_plans_nothing(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = []
 
     start_with_hooks(tmp_path, mock.Mock())
 
-    collaborators["hook_ids"].assert_called_once_with(
-        {"setup": "up", "teardown": "down", "meta": None}, "r1", []
+    collaborators["hook_dirs"].assert_called_once_with(
+        {"setup": "up", "teardown": "down", "meta": None}, None, []
     )
 
 
-def test_names_an_adhoc_invocation_for_its_folder(
+def test_uses_the_adhoc_group_folder_for_the_invocation(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     run(tmp_path, mock.Mock(), mode="adhoc")
 
-    assert collaborators["fill_ids"].call_args_list[:2] == [
-        mock.call("run", {"run_id": "r1/n1", "invocation_id": "r1"}),
-        mock.call("run", {"run_id": "r1/n2", "invocation_id": "r1"}),
+    assert collaborators["fill_dirs"].call_args_list[:2] == [
+        mock.call(
+            "run",
+            {
+                "run_dir": str(tmp_path / "exp" / "r1" / "n1"),
+                "invocation_dir": str(tmp_path / "exp" / "r1"),
+            },
+        ),
+        mock.call(
+            "run",
+            {
+                "run_dir": str(tmp_path / "exp" / "r1" / "n2"),
+                "invocation_dir": str(tmp_path / "exp" / "r1"),
+            },
+        ),
     ]
 
 
 @pytest.mark.parametrize("mode", ["adhoc", "matrix"])
-def test_names_a_lone_runs_invocation_for_the_run_even_when_retried(
+def test_uses_each_attempts_folder_for_a_lone_run_even_when_retried(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock], mode: str
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
@@ -602,9 +618,21 @@ def test_names_a_lone_runs_invocation_for_the_run_even_when_retried(
 
     run(tmp_path, mock.Mock(), mode=mode)
 
-    assert collaborators["fill_ids"].call_args_list == [
-        mock.call("run", {"run_id": "r1", "invocation_id": "r1"}),
-        mock.call("run", {"run_id": "r2", "invocation_id": "r1"}),
+    assert collaborators["fill_dirs"].call_args_list == [
+        mock.call(
+            "run",
+            {
+                "run_dir": str(tmp_path / "exp" / "r1"),
+                "invocation_dir": str(tmp_path / "exp" / "r1"),
+            },
+        ),
+        mock.call(
+            "run",
+            {
+                "run_dir": str(tmp_path / "exp" / "r2"),
+                "invocation_dir": str(tmp_path / "exp" / "r2"),
+            },
+        ),
     ]
 
 

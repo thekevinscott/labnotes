@@ -99,12 +99,12 @@ def test_fails_the_invocation_when_teardown_fails(
     assert journal(root) == ["run a", "run b"]
 
 
-def make_id_project(root: Path, hooks: str, params: str = "") -> Path:
+def make_dir_project(root: Path, hooks: str, params: str = "") -> Path:
     write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
     write(
         root / "exp" / "experiment.toml",
         "command = \"sh -c 'echo run $1 $2 >> journal.txt' sh "
-        '{run_id} {invocation_id}"\n' + hooks + params,
+        '{run_dir} {invocation_dir}"\n' + hooks + params,
     )
     return root
 
@@ -114,28 +114,38 @@ def run_ids(root: Path) -> list[str]:
     return sorted(str(p.parent.relative_to(runs)) for p in runs.rglob("run.json"))
 
 
-def test_gives_a_lone_run_and_its_hooks_the_same_ids(tmp_path: Path) -> None:
-    root = make_id_project(
-        tmp_path,
-        'setup = "echo up {run_id} {invocation_id} >> journal.txt"\n'
-        'teardown = "echo down {run_id} {invocation_id} >> journal.txt"\n',
+@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
+def test_gives_a_lone_run_and_its_hooks_the_same_quoted_dirs(
+    tmp_path: Path, mode: str
+) -> None:
+    root = make_dir_project(
+        tmp_path / "with spaces",
+        'setup = "test -d {invocation_dir} && echo remote > '
+        '{invocation_dir}/machine.txt && echo up {invocation_dir} >> journal.txt"\n'
+        'teardown = "cat {invocation_dir}/machine.txt >> journal.txt && '
+        'echo down {invocation_dir} >> journal.txt"\n'
+        f'mode = "{mode}"\n',
     )
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
     [run] = run_ids(root)
+    folder = str((root / "exp" / "runs" / run).resolve())
     assert journal(root) == [
-        f"up {run} {run}",
-        f"run {run} {run}",
-        f"down {run} {run}",
+        f"up {folder}",
+        f"run {folder} {folder}",
+        "remote",
+        f"down {folder}",
     ]
 
 
-def test_names_the_invocation_for_the_folder_its_runs_share(tmp_path: Path) -> None:
-    root = make_id_project(
+def test_uses_the_invocation_folder_shared_by_adhoc_runs(tmp_path: Path) -> None:
+    root = make_dir_project(
         tmp_path,
-        'setup = "echo up {invocation_id} >> journal.txt"\n'
-        'teardown = "echo down {invocation_id} >> journal.txt"\n',
+        'setup = "test -d {invocation_dir} && echo remote > '
+        '{invocation_dir}/machine.txt && echo up {invocation_dir} >> journal.txt"\n'
+        'teardown = "cat {invocation_dir}/machine.txt >> journal.txt && '
+        'echo down {invocation_dir} >> journal.txt"\n',
         '[params]\nm = ["a", "b"]\n',
     )
 
@@ -144,20 +154,46 @@ def test_names_the_invocation_for_the_folder_its_runs_share(tmp_path: Path) -> N
     runs = run_ids(root)
     group = runs[0].split("/")[0]
     assert [run.split("/")[0] for run in runs] == [group, group]
+    group_dir = str((root / "exp" / "runs" / group).resolve())
     lines = journal(root)
-    assert (lines[0], lines[-1]) == (f"up {group}", f"down {group}")
-    assert sorted(lines[1:-1]) == [f"run {run} {group}" for run in runs]
+    assert (lines[0], lines[-2:]) == (
+        f"up {group_dir}",
+        ["remote", f"down {group_dir}"],
+    )
+    assert sorted(lines[1:-2]) == [
+        f"run {(root / 'exp' / 'runs' / run).resolve()} {group_dir}" for run in runs
+    ]
 
 
-def test_refuses_run_id_in_setup_when_the_invocation_has_many_runs(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+@pytest.mark.parametrize("params", ["", '[params]\nm = ["a", "b"]\n'])
+def test_refuses_run_dir_in_setup_for_any_run_count(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str], params: str
 ) -> None:
-    root = make_project(tmp_path, own='setup = "echo up {run_id} >> journal.txt"\n')
+    root = make_dir_project(
+        tmp_path, 'setup = "echo up {run_dir} >> journal.txt"\n', params
+    )
 
     assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
 
     assert (
-        "setup command echo up {run_id} >> journal.txt uses {run_id}, but this "
-        "invocation plans 2 runs." in capsys.readouterr().err
+        "setup command echo up {run_dir} >> journal.txt uses {run_dir}; "
+        "use {invocation_dir} instead." in capsys.readouterr().err
+    )
+    assert not (root / "journal.txt").exists()
+
+
+def test_refuses_invocation_dir_in_matrix_setup_with_many_runs(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_project(
+        tmp_path,
+        own='mode = "matrix"\nsetup = "echo up {invocation_dir} >> journal.txt"\n',
+    )
+
+    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+
+    assert (
+        "setup command echo up {invocation_dir} >> journal.txt uses {invocation_dir}"
+        in (capsys.readouterr().err)
     )
     assert not (root / "journal.txt").exists()

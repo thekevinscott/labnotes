@@ -20,7 +20,7 @@ from pathlib import Path
 import psutil
 
 stage = sys.argv[1]
-keys = ("BASE", "BOTH", "OWN", "DIR", "RID", "INV")
+keys = ("BASE", "BOTH", "OWN", "INV_DIR")
 record = {"stage": stage, **{key: os.environ[key] for key in keys}}
 record["daemon"] = next(
     parent.pid
@@ -58,7 +58,7 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
         f'setup = "{command} setup"\n'
         f'teardown = "{command} teardown"\n'
         '[env]\nBOTH = "experiment"\nOWN = "own"\n'
-        'DIR = "{run_dir}"\nRID = "{run_id}"\nINV = "{invocation_id}"\n',
+        'INV_DIR = "{invocation_dir}"\n',
     )
 
     for caller in ("first", "second"):
@@ -77,8 +77,5 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     assert {row["OWN"] for row in rows} == {"own"}
     assert len({row["daemon"] for row in rows}) == 1
     for invocation in (rows[:4], rows[4:]):
-        assert len({row["DIR"] for row in invocation}) == 1
-        assert len({row["RID"] for row in invocation}) == 1
-        assert len({row["INV"] for row in invocation}) == 1
-        assert invocation[0]["RID"] == invocation[0]["INV"]
-        assert Path(invocation[0]["DIR"]).is_absolute()
+        assert len({row["INV_DIR"] for row in invocation}) == 1
+        assert Path(invocation[0]["INV_DIR"]).is_absolute()

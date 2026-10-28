@@ -1,6 +1,9 @@
 import json
+import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 from conftest import write
@@ -203,10 +206,9 @@ def test_refuses_invocation_dir_in_matrix_setup_with_many_runs(
 
 
 SET_STATE = (
-    "import os\nfrom labnotes import set_state\n"
+    "from labnotes import set_state\n"
     "set_state({'resource': 'one', 'kept': True})\n"
     "set_state({'resource': 'two'})\n"
-    "raise SystemExit(int(os.environ.get('FAIL_SETUP', '0')))\n"
 )
 GET_STATE = (
     "import json\nfrom pathlib import Path\nfrom labnotes import get_state\n"
@@ -214,8 +216,8 @@ GET_STATE = (
 )
 
 
-def make_state_project(root: Path, mode: str, params: str) -> Path:
-    write(root / "setup.py", SET_STATE)
+def make_state_project(root: Path, mode: str, params: str, setup_exit: int = 0) -> Path:
+    write(root / "setup.py", SET_STATE + f"raise SystemExit({setup_exit})\n")
     write(root / "teardown.py", GET_STATE)
     write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
     write(
@@ -228,16 +230,21 @@ def make_state_project(root: Path, mode: str, params: str) -> Path:
     return root
 
 
+@pytest.fixture
+def outer_state(tmp_path: Path) -> Iterator[Path]:
+    outer = tmp_path / "outer.json"
+    outer.write_text('{"outer": true}')
+    with mock.patch.dict(os.environ, {"LABNOTES_STATE": str(outer)}):
+        yield outer
+
+
 @pytest.mark.parametrize(
     ("mode", "params"),
     [("adhoc", ""), ("adhoc", MANY), ("matrix", ""), ("matrix", MANY)],
 )
 def test_passes_merged_state_from_setup_to_teardown(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, params: str
+    tmp_path: Path, outer_state: Path, mode: str, params: str
 ) -> None:
-    outer = tmp_path / "outer.json"
-    outer.write_text('{"outer": true}')
-    monkeypatch.setenv("LABNOTES_STATE", str(outer))
     root = make_state_project(tmp_path / "project", mode, params)
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
@@ -247,14 +254,11 @@ def test_passes_merged_state_from_setup_to_teardown(
         "kept": True,
     }
     assert set(journal(root)) == {"run none"}
-    assert outer.read_text() == '{"outer": true}'
+    assert outer_state.read_text() == '{"outer": true}'
 
 
-def test_gives_teardown_the_state_set_before_setup_failed(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    monkeypatch.setenv("FAIL_SETUP", "3")
-    root = make_state_project(tmp_path, "matrix", MANY)
+def test_gives_teardown_the_state_set_before_setup_failed(tmp_path: Path) -> None:
+    root = make_state_project(tmp_path, "matrix", MANY, setup_exit=3)
 
     assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
 

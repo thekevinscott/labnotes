@@ -135,9 +135,12 @@ def run(
     retry_seconds: float = 0.0,
     only: dict[str, str] | None = None,
     args: list[str] | None = None,
+    env: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
+    configured = experiment(mode, retries)
+    configured.env = env or {}
 
     def listening(controls: object) -> None:
         hear(controls)
@@ -147,7 +150,7 @@ def run(
         run_experiment(
             config,
             "exp",
-            experiment(mode, retries),
+            configured,
             concurrency,
             report,
             listening,
@@ -628,13 +631,18 @@ def test_uses_the_adhoc_group_folder_for_the_invocation(
 
 
 @pytest.mark.parametrize("mode", ["adhoc", "matrix"])
-def test_uses_each_attempts_folder_for_a_lone_run_even_when_retried(
+def test_keeps_a_lone_runs_invocation_dir_across_retries(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock], mode: str
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
     collaborators["execute_run"].side_effect = exiting(75, 0)
 
-    run(tmp_path, mock.Mock(), mode=mode)
+    run(
+        tmp_path,
+        mock.Mock(),
+        mode=mode,
+        env={"INVOCATION_DIR": "{invocation_dir}", "RUN_DIR": "{run_dir}"},
+    )
 
     assert collaborators["fill_dirs"].call_args_list == [
         mock.call(
@@ -648,9 +656,21 @@ def test_uses_each_attempts_folder_for_a_lone_run_even_when_retried(
             "run",
             {
                 "run_dir": str(tmp_path / "exp" / "r2"),
-                "invocation_dir": str(tmp_path / "exp" / "r2"),
+                "invocation_dir": str(tmp_path / "exp" / "r1"),
             },
         ),
+    ]
+    environments = [
+        call.kwargs["environment"]
+        for call in collaborators["execute_run"].await_args_list
+    ]
+    assert [env["RUN_DIR"] for env in environments] == [
+        str(tmp_path / "exp" / "r1"),
+        str(tmp_path / "exp" / "r2"),
+    ]
+    assert [env["INVOCATION_DIR"] for env in environments] == [
+        str(tmp_path / "exp" / "r1"),
+        str(tmp_path / "exp" / "r1"),
     ]
 
 

@@ -1,0 +1,1 @@
+**Fixed** — `{invocation_dir}` in a single planned run now stays at the first attempt's folder across retries, so run commands and environment values can read files written by setup and teardown can use the same folder. `{run_dir}` still points to each attempt's own folder.

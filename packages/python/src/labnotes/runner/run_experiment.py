@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import signal
+from pathlib import Path
 
 import psutil
 
@@ -15,8 +16,8 @@ from labnotes.models import (
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.fill_experiment_env import fill_experiment_env
-from labnotes.runner.fill_ids import fill_ids
-from labnotes.runner.hook_ids import hook_ids
+from labnotes.runner.fill_dirs import fill_dirs
+from labnotes.runner.hook_dirs import hook_dirs
 from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
@@ -80,27 +81,24 @@ async def run_experiment(
         run = new_id(params)
         planned.add(run)
         plan.append((run, params))
-    hook_run_dir: str | None
-    match plan:
-        case [(invocation, _)]:
-            hook_run_dir = str(
-                run_folder(config.root, config.runs, name, invocation).resolve()
-            )
-        case _:
-            invocation = group or new_stamped_run_id(taken)
-            hook_run_dir = None
-    planned.add(invocation)
+    run_dirs = [
+        str(run_folder(config.root, config.runs, name, run).resolve())
+        for run, _ in plan
+    ]
+    group_dir = (
+        str(run_folder(config.root, config.runs, name, group).resolve())
+        if group is not None
+        else None
+    )
     hooks = {
         "setup": experiment.setup,
         "teardown": experiment.teardown,
         "meta": experiment.meta,
     }
-    ids = hook_ids(hooks, invocation, [run for run, _ in plan])
-    if hook_run_dir is not None:
-        ids["run_dir"] = hook_run_dir
+    dirs = hook_dirs(hooks, group_dir, run_dirs)
     hook_env = {
         hook: fill_experiment_env(
-            experiment.env, inherited, ids, hook=hook, runs=len(plan)
+            experiment.env, inherited, dirs, hook=hook, runs=len(plan)
         )
         for hook, command in hooks.items()
         if command is not None
@@ -108,8 +106,10 @@ async def run_experiment(
     meta = None
     if experiment.meta is not None:
         meta = await invocation_meta(
-            config.root, fill_ids(experiment.meta, ids), hook_env["meta"]
+            config.root, fill_dirs(experiment.meta, dirs), hook_env["meta"]
         )
+    if dirs:
+        Path(dirs["invocation_dir"]).mkdir(parents=True, exist_ok=True)
     runs = [{"run": run, "params": params} for run, params in plan]
     report(
         {
@@ -238,14 +238,21 @@ async def run_experiment(
 
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
-        folder.mkdir(parents=True)
+        folder.mkdir(parents=True, exist_ok=True)
+        run_invocation_dir = group_dir or str(folder.resolve())
         report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
         trees[run] = set()
         result = await execute_run(
             config.root,
             folder,
-            fill_ids(experiment.command, {"run_id": run, "invocation_id": invocation}),
+            fill_dirs(
+                experiment.command,
+                {
+                    "run_dir": str(folder.resolve()),
+                    "invocation_dir": run_invocation_dir,
+                },
+            ),
             params,
             running[run],
             stopping,
@@ -262,8 +269,7 @@ async def run_experiment(
                 inherited,
                 {
                     "run_dir": str(folder.resolve()),
-                    "run_id": run,
-                    "invocation_id": invocation,
+                    "invocation_dir": run_invocation_dir,
                 },
             ),
         )
@@ -282,7 +288,7 @@ async def run_experiment(
             await invocation_hook(
                 config.root,
                 "teardown",
-                fill_ids(experiment.teardown, ids),
+                fill_dirs(experiment.teardown, dirs),
                 hook_env["teardown"],
             )
 
@@ -292,7 +298,10 @@ async def run_experiment(
         if experiment.setup is not None:
             report({"event": "setting up"})
             await invocation_hook(
-                config.root, "setup", fill_ids(experiment.setup, ids), hook_env["setup"]
+                config.root,
+                "setup",
+                fill_dirs(experiment.setup, dirs),
+                hook_env["setup"],
             )
         fill()
         await done.wait()

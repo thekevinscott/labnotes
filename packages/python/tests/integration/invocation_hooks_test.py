@@ -1,3 +1,5 @@
+import json
+import sys
 from pathlib import Path
 
 import pytest
@@ -5,6 +7,7 @@ from conftest import write
 
 from labnotes.cli import main
 
+MANY = '[params]\nm = ["a", "b"]\n'
 COMMAND = """command = "sh -c 'echo run $2 >> journal.txt' sh"
 [params]
 m = ["a", "b"]
@@ -196,4 +199,67 @@ def test_refuses_invocation_dir_in_matrix_setup_with_many_runs(
         "setup command echo up {invocation_dir} >> journal.txt uses {invocation_dir}"
         in (capsys.readouterr().err)
     )
+    assert not (root / "journal.txt").exists()
+
+
+SET_STATE = (
+    "import os\nfrom labnotes import set_state\n"
+    "set_state({'resource': 'one', 'kept': True})\n"
+    "set_state({'resource': 'two'})\n"
+    "raise SystemExit(int(os.environ.get('FAIL_SETUP', '0')))\n"
+)
+GET_STATE = (
+    "import json\nfrom pathlib import Path\nfrom labnotes import get_state\n"
+    "Path('received.json').write_text(json.dumps(get_state()))\n"
+)
+
+
+def make_state_project(root: Path, mode: str, params: str) -> Path:
+    write(root / "setup.py", SET_STATE)
+    write(root / "teardown.py", GET_STATE)
+    write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
+    write(
+        root / "exp" / "experiment.toml",
+        "command = \"sh -c 'echo run ${LABNOTES_STATE:-none} >> journal.txt'\"\n"
+        f'mode = "{mode}"\n'
+        f'setup = "{sys.executable} setup.py"\n'
+        f'teardown = "{sys.executable} teardown.py"\n' + params,
+    )
+    return root
+
+
+@pytest.mark.parametrize(
+    ("mode", "params"),
+    [("adhoc", ""), ("adhoc", MANY), ("matrix", ""), ("matrix", MANY)],
+)
+def test_passes_merged_state_from_setup_to_teardown(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, mode: str, params: str
+) -> None:
+    outer = tmp_path / "outer.json"
+    outer.write_text('{"outer": true}')
+    monkeypatch.setenv("LABNOTES_STATE", str(outer))
+    root = make_state_project(tmp_path / "project", mode, params)
+
+    assert labnotes(root, ["experiments", "exp", "run"]) == 0
+
+    assert json.loads((root / "received.json").read_text()) == {
+        "resource": "two",
+        "kept": True,
+    }
+    assert set(journal(root)) == {"run none"}
+    assert outer.read_text() == '{"outer": true}'
+
+
+def test_gives_teardown_the_state_set_before_setup_failed(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("FAIL_SETUP", "3")
+    root = make_state_project(tmp_path, "matrix", MANY)
+
+    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+
+    assert json.loads((root / "received.json").read_text()) == {
+        "resource": "two",
+        "kept": True,
+    }
     assert not (root / "journal.txt").exists()

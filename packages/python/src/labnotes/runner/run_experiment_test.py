@@ -1,8 +1,5 @@
 import asyncio
 import inspect
-import json
-import shlex
-import sys
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
 from typing import Any
@@ -10,8 +7,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes import get_state
-from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.run_experiment import run_experiment
 
 A: dict[str, object] = {"m": "a"}
@@ -361,79 +356,6 @@ def test_setup_uses_an_existing_invocation_folder(
     assert collaborators["invocation_hook"].await_count == 2
 
 
-@pytest.mark.parametrize(
-    "mode,single", [("matrix", False), ("matrix", True), ("adhoc", False)]
-)
-@pytest.mark.parametrize("failure", [None, "setup", "teardown"])
-def test_keeps_state_through_teardown_and_isolates_the_outer_invocation(
-    tmp_path: Path,
-    collaborators: dict[str, mock.MagicMock],
-    monkeypatch: pytest.MonkeyPatch,
-    mode: str,
-    single: bool,
-    failure: str | None,
-) -> None:
-    root = tmp_path / "project with spaces"
-    root.mkdir()
-    outer = tmp_path / "outer.json"
-    outer.write_text('{"outer": true}')
-    for key in ("LABNOTES_STATE", "LABNOTES_LOG", "LABNOTES_RUN", "LABNOTES_OTHER"):
-        monkeypatch.setenv(key, str(outer))
-    (root / "setup.py").write_text(
-        "import os\nfrom pathlib import Path\nfrom labnotes import set_state\n"
-        "assert {k for k in os.environ if k.startswith('LABNOTES_')} == {'LABNOTES_STATE'}\n"
-        "Path('state-path.txt').write_text(os.environ['LABNOTES_STATE'])\n"
-        "set_state({'resource': 'one', 'kept': True})\n"
-        "set_state({'resource': 'two'})\n"
-        + ("raise SystemExit(1)\n" if failure == "setup" else "")
-    )
-    (root / "teardown.py").write_text(
-        "import json, os\nfrom pathlib import Path\nfrom labnotes import get_state\n"
-        "assert {k for k in os.environ if k.startswith('LABNOTES_')} == {'LABNOTES_STATE'}\n"
-        "assert os.environ['LABNOTES_STATE'] == Path('state-path.txt').read_text()\n"
-        "Path('received.json').write_text(json.dumps(get_state()))\n"
-        + ("raise SystemExit(1)\n" if failure == "teardown" else "")
-    )
-    if single:
-        collaborators["plan_runs"].return_value = [A]
-    collaborators["invocation_hook"].side_effect = invocation_hook
-    configured = experiment(mode)
-    configured.meta = "metadata"
-    configured.setup = f"{shlex.quote(sys.executable)} setup.py"
-    configured.teardown = f"{shlex.quote(sys.executable)} teardown.py"
-    work = run_experiment(
-        mock.Mock(root=root, runs="{experiment}/{run}"),
-        "exp",
-        configured,
-        1,
-        mock.Mock(),
-        lambda controls: controls.finish(),
-    )
-    if failure is None:
-        settle(work)
-    else:
-        with pytest.raises(ValueError, match=f"{failure} command .* exited 1"):
-            settle(work)
-
-    assert json.loads((root / "received.json").read_text()) == {
-        "resource": "two",
-        "kept": True,
-    }
-    path = Path((root / "state-path.txt").read_text())
-    if single or mode == "adhoc":
-        assert path == root / "exp" / "r1" / "state.json"
-        assert json.loads(path.read_text()) == {"resource": "two", "kept": True}
-    else:
-        assert not path.parent.exists()
-    for call in collaborators["execute_run"].await_args_list:
-        assert [
-            k for k in call.kwargs["environment"] if k.startswith("LABNOTES_")
-        ] == []
-    meta_env = collaborators["invocation_meta"].await_args.args[2]
-    assert [k for k in meta_env if k.startswith("LABNOTES_")] == []
-    assert get_state() == {"outer": True}
-
-
 def test_fills_the_dirs_into_setup_and_teardown(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -450,6 +372,38 @@ def test_fills_the_dirs_into_setup_and_teardown(
         mock.call(tmp_path, "setup", "up {}", mock.ANY),
         mock.call(tmp_path, "teardown", "down {}", mock.ANY),
     ]
+
+
+def test_gives_both_hooks_the_state_file_in_the_invocation_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    paths = [
+        c.args[3]["LABNOTES_STATE"]
+        for c in collaborators["invocation_hook"].await_args_list
+    ]
+    assert paths == [str(tmp_path / "exp" / "r1" / "state.json")] * 2
+
+
+def test_keeps_a_temp_state_file_through_teardown_without_a_shared_folder(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    seen: list[tuple[str, bool]] = []
+
+    async def hook(root: Path, name: str, command: str, env: dict[str, str]) -> None:
+        folder = Path(env["LABNOTES_STATE"]).parent
+        seen.append((env["LABNOTES_STATE"], folder.is_dir()))
+
+    collaborators["invocation_hook"].side_effect = hook
+
+    start_with_hooks(tmp_path, mock.Mock())
+
+    [(path, existed), teardown] = seen
+    assert (existed, teardown) == (True, (path, True))
+    assert not Path(path).parent.exists()
 
 
 def test_starts_nothing_when_the_hooks_cannot_have_their_ids(

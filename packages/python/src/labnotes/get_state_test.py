@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from labnotes import get_state
+from labnotes.get_state import get_state
 
 
 @pytest.mark.parametrize("value", [None, ""])

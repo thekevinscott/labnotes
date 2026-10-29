@@ -1,0 +1,1 @@
+**Added** — `run.json` records `git` with the full HEAD commit and a `dirty` flag for staged or unstaged changes to tracked files; untracked files do not count. The command's working directory is checked before every run, including retries. Git lookup failures record `null` without preventing the run. Older records lack the key.

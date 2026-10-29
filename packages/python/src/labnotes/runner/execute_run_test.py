@@ -21,6 +21,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as shell_command,
         mock.patch("labnotes.runner.execute_run.write_run_json") as write_run_json,
         mock.patch(
+            "labnotes.runner.execute_run.run_git",
+            return_value={"commit": "abc", "dirty": False},
+        ) as run_git,
+        mock.patch(
             "labnotes.runner.execute_run.iso_time", side_effect=["start", "end"]
         ),
         mock.patch(
@@ -41,6 +45,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "wait_for_tree": wait_for_tree,
             "shell_command": shell_command,
             "write_run_json": write_run_json,
+            "run_git": run_git,
             "spawn": spawn,
             "process": process,
             "psutil": psutil,
@@ -137,12 +142,25 @@ def test_records_the_run_before_and_after(
         "error": None,
         "ended_by": None,
         "signal": None,
+        "git": {"commit": "abc", "dirty": False},
     }
     spawned = {**started, "pid": 42, "pid_created": 1234.5}
     assert snapshots == [started, spawned, {**spawned, "ended": "end", "exit_code": 3}]
     assert result == snapshots[-1]
+    collaborators["run_git"].assert_called_once_with(tmp_path / "root")
     assert collaborators["write_run_json"].call_args.args[0] == tmp_path
     collaborators["psutil"].Process.assert_called_once_with(42)
+
+
+def test_runs_without_git_metadata(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["run_git"].return_value = None
+
+    result = run(tmp_path)
+
+    assert result["git"] is None
+    assert result["exit_code"] == 3
 
 
 def test_records_the_pid_alone_when_the_process_is_already_gone(

@@ -57,6 +57,8 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 
 In the runs listing, `memory` is the resident memory of a running run's command and everything it started, and `size` is what its run folder holds on disk, hidden files and folders aside. A symlink to a file counts as its target's size; symlinked folders aren't followed. A finished run has a size and no memory. The table shows them like `3.2 GB`; `--format json` gives bytes, with `null` where there's nothing to show. The command's process id is in the run's `run.json` as `pid`, with its start time as `pid_created`; memory is only read while that process is the same one and the record hasn't ended, so a reused pid after a crash shows no memory.
 
+Each run's `run.json` also records `git`: `{"commit": "<full HEAD SHA>", "dirty": false}`, captured from the command's working directory before it starts. `dirty` counts staged and unstaged changes to tracked files only; untracked files do not count. Every run, including a retry, gets a fresh lookup. `git` is `null` outside a Git repository, when Git is unavailable, or if the lookup fails (including a repository with no commits). Older records lack this key.
+
 A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with, and `"ended_by": "timeout"`. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
 ## `run`

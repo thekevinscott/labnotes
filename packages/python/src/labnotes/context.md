@@ -80,7 +80,7 @@ Both placeholders are shell-quoted.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, `command`, created,
-ended, exit code, `ended_by`, `signal`), `stdout.log` and `stderr.log` to the
+ended, exit code, `ended_by`, `signal`, `git`), `stdout.log` and `stderr.log` to the
 run folder. `command` is the shell command the run executed, with the placeholders
 and the params filled in, written before the run starts, so a killed run has it
 and a later edit to `experiment.toml` doesn't hide what a run did. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
@@ -88,6 +88,11 @@ and a later edit to `experiment.toml` doesn't hide what a run did. `ended_by` is
 `"lost"` (its process died unseen; the daemon marks these when it starts, with
 `ended` set and `exit_code` null) or null (the script exited itself). `signal` is the signal number read from the
 exit code (negative, or 128 + N from the shell), else null.
+`git` is `{"commit": "<full HEAD SHA>", "dirty": false}`, read from the command's
+working directory before each run starts, including retries. `dirty` counts staged
+and unstaged changes to tracked files only, ignoring untracked files. `git` is
+null outside a Git repository, if Git is missing, or if lookup fails (including
+a repository with no commits). Older records lack the key.
 `meta` in `experiment.toml` (or `[experiment]` in `.labnotes.toml`) is a shell
 command that prints one JSON object, such as the git commit. labnotes runs it
 once from the root when `run` starts and copies it into every run's `run.json`

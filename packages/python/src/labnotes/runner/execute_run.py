@@ -10,6 +10,7 @@ import psutil
 from labnotes.log_path import LOG_ENV, RUN_ENV
 from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.record_memory import record_memory
+from labnotes.runner.run_git import run_git
 from labnotes.runner.shell_command import shell_command
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
 from labnotes.runner.wait_for_tree import wait_for_tree
@@ -48,6 +49,7 @@ async def execute_run(
         "error": None,
         "ended_by": None,
         "signal": None,
+        "git": await asyncio.to_thread(run_git, root),
     }
     if args:
         run["args"] = list(args)

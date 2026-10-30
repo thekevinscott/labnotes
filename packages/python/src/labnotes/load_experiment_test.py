@@ -399,3 +399,30 @@ def test_reports_live_only_for_an_unfinished_run_with_a_live_process(
         check.assert_called_once()
     else:
         check.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("created", "expected"),
+    [("not-a-time", None), (12.5, 12.5)],
+)
+def test_live_run_check_ignores_an_invalid_process_start_time(
+    collaborators: dict[str, mock.MagicMock],
+    created: str | float,
+    expected: float | None,
+) -> None:
+    collaborators["list_runs"].return_value = [
+        {
+            "labnotes_unfinished": True,
+            "run": json.dumps({"pid": 7, "pid_created": created}),
+        }
+    ]
+    with mock.patch(
+        "labnotes.load_experiment.process_alive", return_value=True
+    ) as check:
+        loaded = asyncio.run(
+            load_experiment(make_tables(experiment()), ROOT, "matrix", "a", query())
+        )
+
+    assert loaded is not None
+    assert loaded["runs_live"] is True
+    check.assert_called_once_with(7, expected)

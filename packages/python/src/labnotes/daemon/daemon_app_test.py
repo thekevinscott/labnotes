@@ -10,6 +10,7 @@ import pytest
 from labnotes.daemon.daemon_app import daemon_app
 
 CONFIG = mock.Mock(name="config")
+CURRENT = mock.Mock(name="current config")
 EXPERIMENT = mock.Mock(name="experiment")
 
 
@@ -60,10 +61,14 @@ def collaborators() -> Iterator[dict[str, Any]]:
         mock.patch(
             "labnotes.daemon.daemon_app.run_experiment", side_effect=session.__call__
         ) as run_experiment,
+        mock.patch(
+            "labnotes.daemon.daemon_app.read_config", return_value=CURRENT
+        ) as read_config,
         mock.patch("labnotes.daemon.daemon_app.GRACE_SECONDS", 0),
     ):
         yield {
             "session": session,
+            "read_config": read_config,
             "prepare_experiment": prepare_experiment,
             "run_experiment": run_experiment,
         }
@@ -133,8 +138,9 @@ def test_starts_a_session_and_streams_its_events(
         )
 
         assert response.status_code == 202
+        collaborators["read_config"].assert_called_once_with(CONFIG.path)
         collaborators["prepare_experiment"].assert_awaited_once_with(
-            CONFIG,
+            CURRENT,
             "exp",
             Path("/x.toml"),
             2,
@@ -144,7 +150,7 @@ def test_starts_a_session_and_streams_its_events(
             "down",
         )
         args = collaborators["run_experiment"].call_args.args
-        assert args[:4] == (CONFIG, "exp", EXPERIMENT, 3)
+        assert args[:4] == (CURRENT, "exp", EXPERIMENT, 3)
         assert args[6] == 90
         assert collaborators["run_experiment"].call_args.kwargs == {
             "only": {"model": "small"},
@@ -177,7 +183,7 @@ def test_reads_the_default_experiment_config(
         app = daemon_app(CONFIG)
         await start(app)
         collaborators["prepare_experiment"].assert_awaited_once_with(
-            CONFIG, "exp", None, None, None, None, None, None
+            CURRENT, "exp", None, None, None, None, None, None
         )
         assert collaborators["run_experiment"].call_args.args[6] is None
         assert collaborators["run_experiment"].call_args.kwargs == {
@@ -185,6 +191,22 @@ def test_reads_the_default_experiment_config(
             "args": None,
             "environment": None,
         }
+
+    asyncio.run(go())
+
+
+def test_refuses_a_run_when_the_project_config_is_broken(
+    collaborators: dict[str, Any],
+) -> None:
+    collaborators["read_config"].side_effect = ValueError("bad toml")
+
+    async def go() -> None:
+        app = daemon_app(CONFIG)
+        response = await start(app)
+        assert response.status_code == 400
+        assert payload(response) == {"error": "bad toml"}
+        collaborators["prepare_experiment"].assert_not_awaited()
+        assert app.state.idle()
 
     asyncio.run(go())
 

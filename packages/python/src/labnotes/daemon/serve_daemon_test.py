@@ -9,16 +9,25 @@ from labnotes.daemon.serve_daemon import serve_daemon
 
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
+    socket = mock.MagicMock(name="socket")
     with (
         mock.patch("labnotes.daemon.serve_daemon.hold_folder") as hold_folder,
+        mock.patch(
+            "labnotes.daemon.serve_daemon.socket_path", return_value=socket
+        ) as socket_path,
         mock.patch(
             "labnotes.daemon.serve_daemon.run_daemon", new=mock.AsyncMock()
         ) as run_daemon,
     ):
-        yield {"hold_folder": hold_folder, "run_daemon": run_daemon}
+        yield {
+            "hold_folder": hold_folder,
+            "run_daemon": run_daemon,
+            "socket_path": socket_path,
+            "socket": socket,
+        }
 
 
-def test_serves_while_holding_the_project(
+def test_serves_while_holding_its_versions_lock(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     config = mock.Mock(root=Path("/p"))
@@ -32,7 +41,11 @@ def test_serves_while_holding_the_project(
 
     serve_daemon(config)
 
-    collaborators["hold_folder"].assert_called_once_with(Path("/p"))
+    collaborators["socket_path"].assert_called_once_with(Path("/p"))
+    lock_file = collaborators["socket"].with_suffix.return_value
+    collaborators["socket"].with_suffix.assert_called_once_with(".lock")
+    lock_file.touch.assert_called_once_with()
+    collaborators["hold_folder"].assert_called_once_with(lock_file)
     collaborators["run_daemon"].assert_awaited_once_with(config)
     lock.__exit__.assert_called_once()
 

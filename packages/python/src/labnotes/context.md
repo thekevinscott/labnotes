@@ -207,6 +207,11 @@ going. Elsewhere, it prints a line per event instead.
   `/tmp/labnotes-<uid>/` and exits once nothing is running and no client has
   been connected for 15 seconds. Runs belong to the daemon, so quitting the
   live view, closing its terminal, or killing `run` outright leaves them going.
+- Each labnotes version starts its own daemon. After an upgrade, new runs go
+  to the new version's daemon while an older one finishes its runs and exits.
+  `run status`, `run stop` and `run control` reach only the daemon of the
+  version you call them with. Each `run` reads `.labnotes.toml` as it is on
+  disk, even when the daemon is already up.
 - Ctrl-C stops the running scripts and records their end. A second Ctrl-C
   kills them. SIGTERM stops them the same way, then kills any still going 5
   seconds later. Once the runs are done, either one closes the live view.
@@ -220,7 +225,8 @@ going. Elsewhere, it prints a line per event instead.
 - `labnotes run control NAME ACTION [ARG]` sends one live-view control to a
   running experiment: `kill` a run, `set_concurrency` to a number,
   `interrupt` or `finish`.
-- A second `run` of the same experiment fails while the first is going.
+- A second `run` of the same experiment fails while the first is going on
+  the same daemon.
 - It exits 0 even if runs fail; the summary line counts failures. A run that
   was retried counts as retried, not failed. If it can't
   start or reach the daemon, it prints the cause on one line and exits 1.

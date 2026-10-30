@@ -11,6 +11,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from labnotes.models import Controls, LabnotesConfig
+from labnotes.read_config import read_config
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
@@ -73,8 +74,9 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
     async def start(name: str, body: dict[str, object]) -> Response:
         path = body.get("experiment_config")
         try:
+            current = read_config(config.path)
             experiment, concurrency = await prepare_experiment(
-                config,
+                current,
                 name,
                 None if path is None else Path(str(path)),
                 body.get("concurrency"),  # type: ignore[arg-type]
@@ -100,7 +102,7 @@ def daemon_app(config: LabnotesConfig) -> Starlette:
             error = None
             try:
                 await run_experiment(
-                    config,
+                    current,
                     name,
                     experiment,
                     concurrency,

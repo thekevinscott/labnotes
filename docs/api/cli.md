@@ -63,7 +63,7 @@ A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in
 
 ## `run`
 
-Controls the runs going in the project. Runs belong to the project's daemon, so these work from any shell.
+Controls the runs going in the project. Runs belong to the project's daemon, so these work from any shell. Each labnotes version runs its own daemon, so these reach only the runs started by the same version: after an upgrade, call the older version (`uvx labnotes@0.0.136 run status`) to see runs it still has going.
 
 ### `run status`
 

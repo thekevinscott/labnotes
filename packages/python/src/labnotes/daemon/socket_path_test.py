@@ -1,6 +1,8 @@
 import hashlib
 import os
+from importlib.metadata import version
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -20,7 +22,7 @@ def test_sits_in_a_fixed_folder_per_user(
     path = socket_path(Path("/p"))
 
     folder = Path("/tmp") / f"labnotes-{os.getuid()}"
-    assert path == folder / f"{digest(Path('/p'))}.sock"
+    assert path == folder / f"{digest(Path('/p'))}-{version('labnotes')}.sock"
     assert folder.stat().st_mode & 0o777 == 0o700
 
 
@@ -40,3 +42,11 @@ def test_names_a_project_the_same_through_a_symlink(tmp_path: Path) -> None:
     (tmp_path / "link").symlink_to(tmp_path / "real")
 
     assert socket_path(tmp_path / "link") == socket_path(tmp_path / "real")
+
+
+def test_names_each_labnotes_version_apart() -> None:
+    with mock.patch("labnotes.daemon.socket_path.version", return_value="1.2.3"):
+        older = socket_path(Path("/p"))
+
+    assert older.name.endswith("-1.2.3.sock")
+    assert socket_path(Path("/p")) != older

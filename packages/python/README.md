@@ -97,13 +97,12 @@ line per event instead.
 - `-e PATH` reads another file instead of `experiment.toml`.
 - `--PARAM=VALUE` runs only the cells where that param has that value, like
   `--model=small`.
-- With runs going, Ctrl-C asks first. Enter (or a second Ctrl-C) leaves them
-  running. `s` stops the running scripts and records their end, then kills any
-  still going 5 seconds later. Escape goes back. SIGTERM stops them like `s`.
-- A second `run` of the same experiment fails with "already running" while the
-  daemon still has the first going.
-- It exits 0 even if runs fail; the summary line counts failures. If it can't
-  start or reach the daemon, it prints the cause on one line and exits 1.
+- With runs going, Ctrl-C asks first. Enter (or a second Ctrl-C) stops the running scripts and records their end,
+  then kills any still going 5 seconds later. Escape goes back. SIGTERM and
+  SIGHUP stop them the same way.
+- The foreground process schedules the next run when a slot frees. Closing
+  its terminal stops the runs. Agents should use a dedicated tmux window.
+- It exits 0 even if runs fail; the summary line counts failures.
 
 `labnotes server` serves a local site at http://127.0.0.1:8000 from the same
 `.labnotes.toml`: a table of experiments, and a page per experiment with its

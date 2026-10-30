@@ -1,10 +1,4 @@
 [[python.exempt]]
-path = "src/labnotes/runner/hold_folder.py"
-rules = ["mutation"]
-lines = [12]
-reason = "LOCK_EX and LOCK_NB are disjoint bits, so | equals + and ^"
-
-[[python.exempt]]
 path = "src/labnotes/tui/run_output.py"
 rules = ["mutation"]
 lines = [44]
@@ -15,30 +9,6 @@ path = "src/labnotes/load_experiment.py"
 rules = ["mutation"]
 lines = [61, 69]
 reason = "summarize_config returns mode matrix or adhoc; \"matrix\" <= \"adhoc\" is false like ==, and both are interned literals so is equals =="
-
-[[python.exempt]]
-path = "src/labnotes/daemon/exit_when_idle.py"
-rules = ["mutation"]
-lines = [12]
-reason = "quiet counts up by one from zero, so it reaches IDLE_EXIT_SECONDS before passing it: < equals != and, for small ints, is not"
-
-[[python.exempt]]
-path = "src/labnotes/daemon/daemon_app.py"
-rules = ["mutation"]
-lines = [134]
-reason = "start answers 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
-
-[[python.exempt]]
-path = "src/labnotes/daemon/remote_start.py"
-rules = ["mutation"]
-lines = [51]
-reason = "the daemon answers a run with 202, 400, 409 or 500, so every status but 202 is above it: != equals >"
-
-[[python.exempt]]
-path = "src/labnotes/run_control.py"
-rules = ["mutation"]
-lines = [39]
-reason = "argument counts are small ints, which CPython caches, so is not equals !="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_cells.py"

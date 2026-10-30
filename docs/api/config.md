@@ -161,7 +161,7 @@ These placeholders are filled in, each shell-quoted:
 - Type: table of string values
 - Default: none
 
-Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`). Each invocation sends that starting environment to the daemon, including when it is already running.
+Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
 
 Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, use `{invocation_dir}`; `{run_dir}` is unavailable in hooks. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks and run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
 
@@ -210,7 +210,7 @@ Shell command that labnotes runs once per `run`, from the project root, after ev
 
 A non-zero exit fails the invocation, with the command and its stderr in the error. The runs' results are already recorded. If setup or the invocation had already failed, that error is the one reported, and the teardown failure is shown as a line of output.
 
-In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. If the daemon itself is killed, teardown doesn't run.
+In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. Closing the terminal stops the runs before teardown.
 
 It gets `{invocation_dir}` the same way as `setup`. With a single run that was retried, the hooks use the first attempt's folder.
 

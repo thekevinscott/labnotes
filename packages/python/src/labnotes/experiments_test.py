@@ -195,7 +195,7 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.experiments.run_headless", return_value=results
         ) as run_headless,
-        mock.patch("labnotes.experiments.remote_start") as remote_start,
+        mock.patch("labnotes.experiments.start_experiment") as start_experiment,
         mock.patch("labnotes.experiments.run_tui", return_value=results) as run_tui,
         mock.patch("labnotes.experiments.sys") as sys,
         mock.patch(
@@ -206,21 +206,21 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         sys.stderr.isatty.return_value = True
         yield {
             "run_headless": run_headless,
-            "remote_start": remote_start,
+            "start_experiment": start_experiment,
             "run_tui": run_tui,
             "sys": sys,
             "parse_subset": parse_subset,
         }
 
 
-def test_runs_an_experiment_through_the_daemon(
+def test_runs_an_experiment_in_process(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    drivers["remote_start"].assert_called_once_with(
+    drivers["start_experiment"].assert_called_once_with(
         collaborators["load_config"].return_value,
         "a",
         None,
@@ -232,7 +232,7 @@ def test_runs_an_experiment_through_the_daemon(
         None,
     )
     drivers["run_headless"].assert_called_once_with(
-        drivers["remote_start"].return_value
+        drivers["start_experiment"].return_value
     )
     drivers["run_tui"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"
@@ -249,7 +249,7 @@ def test_runs_an_experiment_from_a_named_config(
 
     assert run(["a", "run", "-e", str(path)]) == 0
 
-    assert drivers["remote_start"].call_args.args[1:4] == ("a", path, None)
+    assert drivers["start_experiment"].call_args.args[1:4] == ("a", path, None)
 
 
 def test_passes_the_setup_and_teardown_flags(
@@ -258,7 +258,7 @@ def test_passes_the_setup_and_teardown_flags(
 ) -> None:
     assert run(["a", "run", "--setup", "up", "--teardown", "down"]) == 0
 
-    assert drivers["remote_start"].call_args.args[7:] == ("up", "down")
+    assert drivers["start_experiment"].call_args.args[7:] == ("up", "down")
 
 
 def test_runs_the_subset_given_as_params(
@@ -268,7 +268,7 @@ def test_runs_the_subset_given_as_params(
     assert run(["a", "run", "--model=small", "--timeout", "5", "--lang=en"]) == 0
 
     drivers["parse_subset"].assert_called_once_with(["--model=small", "--lang=en"])
-    drivers["remote_start"].assert_called_once_with(
+    drivers["start_experiment"].assert_called_once_with(
         collaborators["load_config"].return_value,
         "a",
         None,
@@ -290,7 +290,7 @@ def test_passes_args_after_the_double_dash_through(
     assert run(argv) == 0
 
     drivers["parse_subset"].assert_called_once_with(["--model=small"])
-    assert drivers["remote_start"].call_args.args[6] == ["--auth", "api", "--", "x"]
+    assert drivers["start_experiment"].call_args.args[6] == ["--auth", "api", "--", "x"]
 
 
 def test_sends_no_args_for_a_bare_double_dash(
@@ -299,7 +299,7 @@ def test_sends_no_args_for_a_bare_double_dash(
 ) -> None:
     assert run(["a", "run", "--"]) == 0
 
-    assert drivers["remote_start"].call_args.args[6] is None
+    assert drivers["start_experiment"].call_args.args[6] is None
 
 
 @pytest.mark.parametrize("argv", [["a", "--", "--auth"], ["a", "runs", "--"]])
@@ -312,7 +312,7 @@ def test_rejects_args_without_run(
     assert run(argv) == 2
 
     assert "Error: -- ARGS needs run." in capsys.readouterr().err
-    drivers["remote_start"].assert_not_called()
+    drivers["start_experiment"].assert_not_called()
 
 
 def test_rejects_a_malformed_param(
@@ -325,7 +325,7 @@ def test_rejects_a_malformed_param(
     assert run(["a", "run", "--model"]) == 2
 
     assert "Error: Unexpected --model." in capsys.readouterr().err
-    drivers["remote_start"].assert_not_called()
+    drivers["start_experiment"].assert_not_called()
 
 
 def test_help_says_params_pick_a_subset(
@@ -404,7 +404,7 @@ def test_needs_a_concurrency_of_at_least_one(
 ) -> None:
     assert run(["a", "run", "--concurrency", "0"]) == 2
 
-    drivers["remote_start"].assert_not_called()
+    drivers["start_experiment"].assert_not_called()
 
 
 @pytest.mark.parametrize("path", ["missing.toml", "."])
@@ -416,7 +416,7 @@ def test_needs_an_experiment_config_file(
 ) -> None:
     assert run(["a", "run", "-e", str(tmp_path / path)]) == 2
 
-    drivers["remote_start"].assert_not_called()
+    drivers["start_experiment"].assert_not_called()
 
 
 def test_prints_events_when_stderr_is_not_a_terminal(
@@ -441,7 +441,7 @@ def test_shows_the_live_view_in_a_terminal(
 
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    drivers["remote_start"].assert_called_once_with(
+    drivers["start_experiment"].assert_called_once_with(
         collaborators["load_config"].return_value,
         "a",
         None,
@@ -453,7 +453,7 @@ def test_shows_the_live_view_in_a_terminal(
         None,
     )
     drivers["run_tui"].assert_called_once_with(
-        drivers["remote_start"].return_value, "a"
+        drivers["start_experiment"].return_value, "a"
     )
     drivers["run_headless"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"
@@ -498,7 +498,7 @@ def test_sends_the_timeout_in_seconds(
 ) -> None:
     assert run(["a", "run", "--timeout", "90"]) == 0
 
-    assert drivers["remote_start"].call_args.args[4] == 90
+    assert drivers["start_experiment"].call_args.args[4] == 90
 
 
 @pytest.mark.parametrize("given", ["0", "-5"])
@@ -511,7 +511,7 @@ def test_needs_a_timeout_over_zero(
     assert run(["a", "run", "--timeout", given]) == 2
 
     assert "is not in the range x>=1" in capsys.readouterr().err
-    drivers["remote_start"].assert_not_called()
+    drivers["start_experiment"].assert_not_called()
 
 
 def test_help_says_runs_have_no_timeout_by_default(

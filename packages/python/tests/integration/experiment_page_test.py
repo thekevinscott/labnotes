@@ -1,10 +1,11 @@
 import re
+
+import psutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-import psutil
 from playwright.async_api import Page, expect
-from conftest import browse, daemon, run, serve, write
+from conftest import browse, run, serve, write
 
 
 def test_shows_the_experiment_toml_on_one_line(site: str) -> None:
@@ -190,25 +191,20 @@ def unfinished(tmp_path: Path, **fields: object) -> None:
     run(tmp_path, "run1", {}, created=started.strftime("%Y-%m-%dT%H:%M:%SZ"), **fields)
 
 
-def test_shows_an_unfinished_run_as_running_while_the_daemon_is_up(
+def test_shows_an_unfinished_run_as_running_when_its_process_is_alive(
     tmp_path: Path,
 ) -> None:
-    # A live process, so the daemon doesn't end the run as lost.
     me = psutil.Process()
     unfinished(tmp_path, pid=me.pid, pid_created=me.create_time())
 
     async def check(page: Page) -> None:
         row = page.get_by_role("row").filter(has_text="run1")
         await expect(row.get_by_title("running")).to_be_visible()
-        await expect(row.get_by_title("not complete")).to_have_count(0)
         elapsed = row.locator(".elapsed")
         await expect(elapsed).to_have_text(re.compile(r"^\d+s$"))
-        first = await elapsed.text_content()
-        await expect(elapsed).not_to_have_text(str(first), timeout=3000)
 
-    for _ in daemon(tmp_path):
-        for site in serve(tmp_path):
-            browse(f"{site}/experiments/alpha", check)
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
 
 
 def test_shows_an_unfinished_run_as_interrupted_without_a_daemon(

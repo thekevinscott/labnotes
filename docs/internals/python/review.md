@@ -30,7 +30,7 @@ If the agent didn't run these, ask. If they fail, the agent should fix before yo
 12. **`putitoutthere.toml`** — `globs` cover every source path that should cascade.
 13. **CLI shape** — a user-facing CLI is declared under `[project.scripts]` and parses its own arguments; no hand-rolled `sys.argv` handling.
 14. **OS boundaries tested for real** — code that hands a path or name to the OS (sockets, files, subprocess, signals) has at least one test that runs it unmocked, at a realistic depth and length. Unit tests that stub the call only prove the code agrees with itself; a Unix socket path over 107 bytes shipped that way.
-15. **Failure paths reach the user** — for each external step (daemon start, connection, subprocess), a test forces it to fail and checks the user sees a non-zero exit and the cause, not a fake success.
+15. **Failure paths reach the user** — for each external step (config loading, subprocess, server startup), a test forces it to fail and checks the user sees a non-zero exit and the cause, not a fake success.
 
 ---
 

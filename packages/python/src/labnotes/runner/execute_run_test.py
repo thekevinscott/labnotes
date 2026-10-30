@@ -292,6 +292,26 @@ def test_gives_the_child_its_own_run_id(
 
 
 @pytest.mark.parametrize("explicit_environment", [False, True])
+@pytest.mark.parametrize("existing", [None, "", "team=one", "team=one\nproject=two\n"])
+def test_labels_the_run_without_changing_the_inherited_environment(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    explicit_environment: bool,
+    existing: str | None,
+) -> None:
+    inherited = {} if existing is None else {"BOTBOX_LABELS": existing}
+    caller = {"BOTBOX_LABELS": "caller=ignored"} if explicit_environment else inherited
+    with mock.patch.dict("labnotes.runner.execute_run.os.environ", caller, clear=True):
+        run(tmp_path, environment=inherited if explicit_environment else None)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    label = f"labnotes.run={tmp_path.resolve()}"
+    assert env["BOTBOX_LABELS"] == (f"{existing}\n{label}" if existing else label)
+    assert env["LABNOTES_RUN"] == str(tmp_path.resolve())
+    assert inherited == ({} if existing is None else {"BOTBOX_LABELS": existing})
+
+
+@pytest.mark.parametrize("explicit_environment", [False, True])
 def test_replaces_inherited_state_with_read_only_invocation_state(
     tmp_path: Path,
     collaborators: dict[str, mock.MagicMock],

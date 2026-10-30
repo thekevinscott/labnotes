@@ -59,6 +59,8 @@ Each run gets its own `LABNOTES_LOG`. labnotes replaces any value the script inh
 
 labnotes also sets `LABNOTES_RUN` to the absolute run folder path, replacing any inherited value. Scripts can use it to [label Docker containers](../cli/experiments#running-experiments) so their memory is counted with the run. The path distinguishes runs across experiments and projects on the machine.
 
+For botbox, labnotes sets `BOTBOX_LABELS` in each run's environment to include `labnotes.run=<absolute run folder>`, matching `LABNOTES_RUN`, so sandbox memory is counted with no configuration. Existing labels from the caller's environment or `[env]` are kept, and the labnotes label is appended on a new line. Consumers should not set the `labnotes.run` label themselves in `BOTBOX_LABELS` or experiment configuration. Setup, teardown, and meta hooks do not receive the generated label; retries receive their own attempt's folder.
+
 ### Outside labnotes
 
 With `LABNOTES_LOG` unset, as when you run the script yourself, `log` prints `content` to stdout. Blocks without `content`, such as `start` and `stop`, print nothing.

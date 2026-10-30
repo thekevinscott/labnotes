@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -126,8 +127,17 @@ def test_retries_fill_a_matrix_without_extra_replicates(
     assert [event["event"] for event in events] == ["planned", "idle"]
 
 
+@pytest.fixture
+def botbox_labels() -> Iterator[str]:
+    labels = "team=research"
+    with mock.patch.dict(os.environ, {"BOTBOX_LABELS": labels}):
+        yield labels
+
+
 @pytest.mark.parametrize("mode", ["adhoc", "matrix"])
-def test_labels_each_retry_with_its_own_folder(tmp_path: Path, mode: str) -> None:
+def test_labels_each_retry_with_its_own_folder(
+    tmp_path: Path, mode: str, botbox_labels: str
+) -> None:
     root = make_project(tmp_path, "75", f'mode = "{mode}"\n')
     write(
         root / "script.py",
@@ -136,15 +146,14 @@ def test_labels_each_retry_with_its_own_folder(tmp_path: Path, mode: str) -> Non
         "os.environ['BOTBOX_LABELS'])\n" + SCRIPT,
     )
 
-    with mock.patch.dict(os.environ, {"BOTBOX_LABELS": "team=research"}):
-        run_now(root)
+    run_now(root)
 
     first, second = chain(root)
     assert (first["exit_code"], second["exit_code"]) == (75, 0)
     for run in (first, second):
         folder = root / "exp" / "runs" / run["id"]
         assert (folder / "labels.txt").read_text() == (
-            f"team=research\nlabnotes.run={folder.resolve()}"
+            f"{botbox_labels}\nlabnotes.run={folder.resolve()}"
         )
 
 

@@ -1,5 +1,4 @@
 import json
-import os
 import re
 import shlex
 import shutil
@@ -16,26 +15,6 @@ MOD = PACKAGE.parents[1] / "skills" / "labnotes"
 PROMPT = re.compile(r"shift\+tab to cycle|\? for shortcuts")
 RUN_A = re.compile(r"a-[0-9a-f]{4} +--m a")
 RUN_B = re.compile(r"b-[0-9a-f]{4} +--m b")
-
-
-@pytest.fixture
-def uvx(tmp_path: Path) -> dict[str, str]:
-    # The mod runs `uvx labnotes`. With this checkout installed as the uv tool,
-    # uvx runs it, offline, rather than a published release.
-    env = {"UV_NO_CONFIG": "1", "UV_TOOL_DIR": str(tmp_path / "tools")}
-    constraints = tmp_path / "constraints.txt"
-    uv = ["uv", "--directory", str(PACKAGE)]
-    subprocess.run(
-        [*uv, "export", "-q", "--frozen", "--no-dev", "--no-emit-project"]
-        + ["-o", str(constraints)],
-        check=True,
-    )
-    subprocess.run(
-        [*uv, "tool", "install", "-q", "-c", str(constraints), "."],
-        check=True,
-        env={**os.environ, **env, "UV_TOOL_BIN_DIR": str(tmp_path / "bin")},
-    )
-    return {**env, "UV_OFFLINE": "1"}
 
 
 @pytest.fixture

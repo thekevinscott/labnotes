@@ -5,7 +5,7 @@ from pathlib import Path
 import click
 
 from labnotes.create_experiment import create_experiment
-from labnotes.daemon.remote_start import remote_start
+from labnotes.runner.start_experiment import start_experiment
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
 from labnotes.parse_subset import parse_subset
@@ -109,7 +109,7 @@ def experiments(
                 only = parse_subset(ctx.args)
             except ValueError as error:
                 raise click.UsageError(str(error)) from error
-            start = remote_start(
+            start = start_experiment(
                 config,
                 name,
                 experiment_config,

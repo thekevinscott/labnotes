@@ -57,7 +57,7 @@ Ctrl-C with nothing running quits. With runs going, it asks what to do with them
 
 So two Ctrl-Cs always quit without losing work. To stop one run, use `x` on its row.
 
-Runs left going belong to the project's daemon, so `run` again reopens the same table, and [`labnotes run status`](cli#run-status) reports on them from any shell.
+The live table belongs to the foreground `run` process. Quitting it stops its runs.
 
 Closing the terminal leaves the runs going. Sending SIGTERM stops them like `s`.
 

@@ -10,7 +10,7 @@ You can use `labnotes` without installation:
 uvx labnotes
 ```
 
-`labnotes` is designed to work entirely with local files. 
+`labnotes` is designed to work entirely with local files.
 
 
 `labnotes` organizes its data largely by _folder_; folders structure how it views files. (Config can overrule these but this will be the default.)
@@ -63,7 +63,7 @@ View experiments with:
 uvx labnotes experiments
 ```
 
-Which returns name, last run, created, files (num), runs (num). 
+Which returns name, last run, created, files (num), runs (num).
 
 View a particular experiment with:
 
@@ -102,7 +102,7 @@ Dynamic parameters get recorded for a particular run in a run.json file in the r
 
 Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI lets you filter runs by a parameter, raise or lower concurrency as runs go, and kill specific runs. Failed runs show in red.
 
-ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) leaves them running, `s` stops them, and esc goes back.
+ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) stops them, `s` also stops them, and esc goes back.
 
 ## Skill
 
@@ -112,7 +112,7 @@ You can install the `labnotes` skill with:
 npx skills add thekevinscott/labnotes
 ```
 
-In Claude Code the skill also brings a pane with the run table and its keys. The agent opens it with its `show_runs` tool. `q` goes back (or puts a moved run back) and `X` stops all runs there, since the pane never sees escape or ctrl-c.
+Agents start runs in a dedicated tmux window and watch the live table there. Closing the window stops the runs.
 
 ## Frontend
 

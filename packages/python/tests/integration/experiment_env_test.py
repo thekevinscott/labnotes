@@ -22,12 +22,6 @@ import psutil
 stage = sys.argv[1]
 keys = ("BASE", "BOTH", "OWN", "INV_DIR")
 record = {"stage": stage, **{key: os.environ[key] for key in keys}}
-record["daemon"] = next(
-    parent.pid
-    for parent in psutil.Process().parents()
-    if parent.cmdline()[-2:] == ["labnotes", "daemon"]
-    or parent.cmdline()[-1:] == ["daemon"]
-)
 with Path("journal.jsonl").open("a") as journal:
     journal.write(json.dumps(record) + "\\n")
 if stage == "meta":
@@ -75,7 +69,6 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     assert [row["BOTH"] for row in rows] == ["first"] * 4 + ["second"] * 4
     assert {row["BASE"] for row in rows} == {"base"}
     assert {row["OWN"] for row in rows} == {"own"}
-    assert len({row["daemon"] for row in rows}) == 1
     for invocation in (rows[:4], rows[4:]):
         assert len({row["INV_DIR"] for row in invocation}) == 1
         assert Path(invocation[0]["INV_DIR"]).is_absolute()

@@ -1,6 +1,6 @@
 ---
 name: labnotes
-description: Run and inspect experiments with the labnotes CLI - set up an experiment's experiment.toml, run its param grid, change concurrency or stop runs that are going, check what has run and which runs failed, or answer a question about its runs. Use only when the project has a .labnotes.toml at its root. Do not use to edit notes (edit the files directly).
+description: Run and inspect experiments with the labnotes CLI - set up an experiment's experiment.toml, run its param grid, change concurrency in the live view or stop runs that are going, check what has run and which runs failed, or answer a question about its runs. Use only when the project has a .labnotes.toml at its root. Do not use to edit notes (edit the files directly).
 allowed-tools: Bash(uvx labnotes:*), Bash(labnotes:*)
 ---
 
@@ -12,9 +12,10 @@ Learn how to use `labnotes` before running it:
 uvx labnotes context
 ```
 
-Start runs from a background shell command, so you hear when they finish
-without holding the conversation. Without a terminal, `run` blocks until its
-runs end and prints a line per event:
+Start runs in a dedicated tmux window. Keep the labnotes process in the
+foreground there so it can schedule the next run as a slot frees. Closing the
+window stops its runs cleanly. Without a terminal, `run` blocks until all runs
+end and prints a line per event:
 
 ```bash
 uvx labnotes experiments NAME run
@@ -33,13 +34,6 @@ narrow further. The experiment's totals still count the full grid.
 Always pass `--format json` (or `--format table`) to `labnotes experiments`.
 Without it, a terminal gets an interactive browser that waits for keys.
 
-Stop them with `uvx labnotes run stop`. Check on them with
-`uvx labnotes run status`. Change them while they run with
-`uvx labnotes run control NAME ACTION [ARG]`, e.g.
-`uvx labnotes run control NAME set_concurrency 5`. Don't talk to the daemon's
-socket directly; its location is internal.
-
-In Claude Code, the `show_runs` tool opens a pane with the same live table.
-Call it after starting runs, or when the person asks to watch them. They
-click the pane to use its keys.
-The person can also open it themselves with `/labnotes-runs`.
+Watch runs in the tmux window. Stop them with Ctrl-C there, or close the
+window. To inspect saved runs from another shell, use
+`uvx labnotes experiments NAME runs --format json`.

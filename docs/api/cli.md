@@ -51,7 +51,7 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 | `-- ARGS` | With `run`: append ARGS to every run's command, after the params, like `-- --auth api`. Each run's `run.json` records them as `args` and in `command`. Use it for per-launch settings that aren't part of the design or a matrix axis; runs started with different ARGS still count toward the same cells. A flag that names a param or one already in the command is an error. ARGS are written to disk as given, so never pass secrets. |
 | `--setup COMMAND` | With `run`: shell command to run once before any run starts. Overrides [`setup`](config#setup) in `experiment.toml` and `.labnotes.toml`. |
 | `--teardown COMMAND` | With `run`: shell command to run once after every run ends. Overrides [`teardown`](config#teardown) in `experiment.toml` and `.labnotes.toml`. |
-| `--timeout SECONDS` | With `run`: stop any one run still going after this many seconds, the same way as [`run stop`](#run-stop). Takes a whole number over 0, like `600`. No default: unset, runs have no time limit. |
+| `--timeout SECONDS` | With `run`: stop any one run still going after this many seconds, with SIGTERM, then SIGKILL after five seconds. Takes a whole number over 0, like `600`. No default: unset, runs have no time limit. |
 
 `run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75 is retried on its own; see [`retries`](config#retries-1).
 
@@ -60,46 +60,6 @@ In the runs listing, `memory` is the resident memory of a running run's command 
 Each run's `run.json` also records `git`: `{"commit": "<full HEAD SHA>", "dirty": false}`, captured from the command's working directory before it starts. `dirty` counts staged and unstaged changes to tracked files only; untracked files do not count. Every run, including a retry, gets a fresh lookup. `git` is `null` outside a Git repository, when Git is unavailable, or if the lookup fails (including a repository with no commits). Older records lack this key.
 
 A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with, and `"ended_by": "timeout"`. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
-
-## `run`
-
-Controls the runs going in the project. Runs belong to the project's daemon, so these work from any shell. Each labnotes version runs its own daemon, so these reach only the runs started by the same version: after an upgrade, call the older version (`uvx labnotes@0.0.136 run status`) to see runs it still has going.
-
-### `run status`
-
-```bash
-labnotes run status [-f] [--json]
-```
-
-Shows what each experiment is running, the latest line each running run logged, and what each running run uses, like `exp: r1 uses 3.2 GB of memory, 5.2 GB on disk.` Memory is the resident memory of the run's command and everything it started. With `-f`, the usage repeats every 30 seconds. When a run fails, its end line carries the last non-blank line of its `stderr.log`, like `exp: r1 exited 1: ValueError: boom`.
-
-| Option | Description |
-| --- | --- |
-| `-f, --follow` | Keep reporting until interrupted. |
-| `--json` | One JSON event per line. Retries show as `retrying` (with `attempt`, `retries` and `seconds`), `retried`, `gave up` and `retry cancelled`. Usage shows as `usage`, with `memory` and `size` in bytes. A failed run's `ended` event adds `last_stderr`. |
-
-### `run stop`
-
-```bash
-labnotes run stop
-```
-
-Stops every run. Scripts get SIGTERM, then SIGKILL 5 seconds later. Each stopped run's `run.json` records `"ended_by": "stop"`, so it reads apart from a run something else killed (`"ended_by": "signal"`).
-
-### `run control`
-
-```bash
-labnotes run control NAME ACTION [ARG]
-```
-
-Sends one control to an experiment's runs, the same as a [TUI](tui) key.
-
-| Action | Argument | Does |
-| --- | --- | --- |
-| `kill` | run | Stops a running run. A second `kill` kills it. On a run waiting to retry, cancels the retry. |
-| `set_concurrency` | number | Sets how many run at once. |
-| `finish` | | Lets running runs finish and starts no more. |
-| `interrupt` | | Stops every running run. |
 
 ## `server`
 

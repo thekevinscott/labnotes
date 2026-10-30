@@ -85,7 +85,7 @@ run folder. `command` is the shell command the run executed, with the placeholde
 and the params filled in, written before the run starts, so a killed run has it
 and a later edit to `experiment.toml` doesn't hide what a run did. `ended_by` is `"timeout"`, `"stop"` (labnotes stopped it),
 `"signal"` (a signal labnotes didn't send, like the out-of-memory killer),
-`"lost"` (its process died unseen; the daemon marks these when it starts, with
+`"lost"` (its process died unseen; the next run marks these when it starts, with
 `ended` set and `exit_code` null) or null (the script exited itself). `signal` is the signal number read from the
 exit code (negative, or 128 + N from the shell), else null.
 `git` is `{"commit": "<full HEAD SHA>", "dirty": false}`, read from the command's
@@ -157,10 +157,10 @@ adding a repeat. When the retries run out, the last run keeps exit 75: it never
 got to test its params, so treat it as blocked, not as a result. Stopping the
 runs, or `x` on a run waiting to retry, cancels the retry. A run that was stopped never retries. The live view
 shows a waiting retry as `retry in 30s` and the end as `gave up (exit 75)`;
-`run status --json` reports `retrying`, `retried`, `gave up` and
+The live view reports `retrying`, `retried`, `gave up` and
 `retry cancelled` events.
 
-Runs can take a long time. Start `run` in the background, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going. Each run lists `size`, the bytes in its run folder, and a running run lists `memory`, the resident bytes of its command and everything it started.
+Runs can take a long time. Start `run` in a dedicated tmux window, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going. Each run lists `size`, the bytes in its run folder, and a running run lists `memory`, the resident bytes of its command and everything it started.
 
 While a run goes, labnotes appends a memory sample to `memory.jsonl` in its run
 folder every 5 seconds: one JSON line, `{"time": <unix seconds>, "rss": <bytes>,
@@ -202,33 +202,17 @@ going. Elsewhere, it prints a line per event instead.
   `run.json` gets `"error": "timed out after ..."` and `"ended_by": "timeout"`
   next to its exit code.
   Unset, runs have no time limit.
-- `run` hands its runs to the project's labnotes daemon, starting it if
-  needed, and shows or waits for them. The daemon listens on a socket in
-  `/tmp/labnotes-<uid>/` and exits once nothing is running and no client has
-  been connected for 15 seconds. Runs belong to the daemon, so quitting the
-  live view, closing its terminal, or killing `run` outright leaves them going.
-- Each labnotes version starts its own daemon. After an upgrade, new runs go
-  to the new version's daemon while an older one finishes its runs and exits.
-  `run status`, `run stop` and `run control` reach only the daemon of the
-  version you call them with. Each `run` reads `.labnotes.toml` as it is on
-  disk, even when the daemon is already up.
-- Ctrl-C stops the running scripts and records their end. A second Ctrl-C
-  kills them. SIGTERM stops them the same way, then kills any still going 5
-  seconds later. Once the runs are done, either one closes the live view.
-- `labnotes run stop` stops every run the daemon has going: SIGTERM, then
-  SIGKILL 5 seconds later.
-- `labnotes run status` prints what the daemon has going, a line per event so
-  far plus the latest line each running run logged and what each running run
-  uses (`usage` events with `--json`). `-f` keeps following, and
-  waits for a daemon when none is up. `--json` prints one JSON object per line.
-  Following doesn't keep the daemon up.
-- `labnotes run control NAME ACTION [ARG]` sends one live-view control to a
-  running experiment: `kill` a run, `set_concurrency` to a number,
-  `interrupt` or `finish`.
-- A second `run` of the same experiment fails while the first is going on
-  the same daemon.
+- `run` owns its runs in the foreground. In a terminal it shows a live table;
+  outside a terminal it prints events until every run ends. A free concurrency
+  slot starts the next planned run. Agents should start it in a dedicated tmux
+  window so it can keep running between turns.
+- Ctrl-C, SIGTERM, SIGHUP, or quitting the live view stops running scripts:
+  SIGTERM first, then SIGKILL after 5 seconds if needed. Runs are recorded
+  as stopped before labnotes exits. The next start marks unfinished records
+  whose processes are gone as lost.
+- A second invocation starts its own run session and reads the current config.
 - It exits 0 even if runs fail; the summary line counts failures. A run that
   was retried counts as retried, not failed. If it can't
-  start or reach the daemon, it prints the cause on one line and exits 1.
+  start a run, it prints the cause on one line and exits 1.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. For a matrix experiment, the Runs tab also has a grid (`?view=grid`): one cell per combination of the params that vary, with how many runs count toward `repeats`. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

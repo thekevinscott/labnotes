@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.daemon.finalize_lost_runs import finalize_lost_runs
+from labnotes.runner.finalize_lost_runs import finalize_lost_runs
 
 CONFIG = mock.Mock(root=Path("/lab"))
 GOING = {"params": {"n": 1}, "ended": None, "exit_code": None, "error": None}
@@ -16,11 +16,11 @@ LOST = {"ended": "1970-01-01T00:01:40Z", "ended_by": "lost"}
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
-        mock.patch("labnotes.daemon.finalize_lost_runs.open_tables") as open_tables,
-        mock.patch("labnotes.daemon.finalize_lost_runs.process_alive") as alive,
-        mock.patch("labnotes.daemon.finalize_lost_runs.write_run_json") as write,
-        mock.patch("labnotes.daemon.finalize_lost_runs.time") as time,
-        mock.patch("labnotes.daemon.finalize_lost_runs.UNFINISHED", "unfinished"),
+        mock.patch("labnotes.runner.finalize_lost_runs.open_tables") as open_tables,
+        mock.patch("labnotes.runner.finalize_lost_runs.process_alive") as alive,
+        mock.patch("labnotes.runner.finalize_lost_runs.write_run_json") as write,
+        mock.patch("labnotes.runner.finalize_lost_runs.time") as time,
+        mock.patch("labnotes.runner.finalize_lost_runs.UNFINISHED", "unfinished"),
     ):
         time.time.return_value = 100
         open_tables.return_value.query = mock.AsyncMock(return_value=[])

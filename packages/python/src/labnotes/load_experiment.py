@@ -8,7 +8,6 @@ from dirsql import DirSQL
 from labnotes.check_counts import check_counts
 from labnotes.count_groups import count_groups
 from labnotes.count_runs import count_runs
-from labnotes.daemon.daemon_running import daemon_running
 from labnotes.experiment_notes import experiment_notes
 from labnotes.experiment_runs import experiment_runs
 from labnotes.format_value import format_value
@@ -24,6 +23,7 @@ from labnotes.runs_view_command import runs_view_command
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
 from labnotes.summarize_config import summarize_config
+from labnotes.utils.process_alive import process_alive
 
 
 def _no_outputs(note: str, content: str) -> Sequence[str]:
@@ -60,6 +60,18 @@ async def load_experiment(
     [totals] = await count_runs(tables, source, str(summary["completed_run"]))
     notes = await experiment_notes(tables, root, name)
     runs = await list_runs(tables, source, str(summary["completed_run"]), view)
+
+    def is_running(row: dict[str, object]) -> bool:
+        record = row.get("run")
+        if not row.get("labnotes_unfinished") or not isinstance(record, str):
+            return False
+        fields = json.loads(record)
+        pid, created = fields.get("pid"), fields.get("pid_created")
+        return isinstance(pid, int) and process_alive(
+            pid, created if isinstance(created, int | float) else None
+        )
+
+    runs_live = any(is_running(run) for run in runs)
     nested = summary["mode"] == "adhoc" and await nests_runs(tables, source)
     groups = (
         group_runs(runs, list(choices), await count_groups(tables, source))
@@ -98,7 +110,7 @@ async def load_experiment(
             for note in notes
         ],
         "runs_list": runs,
-        "runs_live": await daemon_running(root),
+        "runs_live": runs_live,
         "run_groups": groups,
         "run_grid": grid,
         "run_columns": shown,

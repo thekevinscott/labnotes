@@ -599,7 +599,7 @@ def prompt(app: RunApp) -> str:
     return str(widget.content)
 
 
-def test_ctrl_c_asks_before_leaving_runs_going() -> None:
+def test_ctrl_c_asks_before_stopping_runs() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
@@ -611,8 +611,8 @@ def test_ctrl_c_asks_before_leaving_runs_going() -> None:
             assert prompt(app).startswith("2 runs still going.")
             await pilot.press("enter")
             await pilot.pause()
-            assert not app.is_running
-        assert controls.method_calls == []
+            assert app.is_running
+        controls.interrupt.assert_called_once_with()
 
     asyncio.run(drive())
 
@@ -631,7 +631,7 @@ def test_ctrl_q_asks_like_ctrl_c() -> None:
     asyncio.run(drive())
 
 
-def test_ctrl_c_twice_leaves_the_runs_going() -> None:
+def test_ctrl_c_twice_stops_the_runs() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
@@ -640,8 +640,8 @@ def test_ctrl_c_twice_leaves_the_runs_going() -> None:
             await pilot.pause()
             await pilot.press("ctrl+c", "ctrl+c")
             await pilot.pause()
-            assert not app.is_running
-        assert controls.method_calls == []
+            assert app.is_running
+        controls.interrupt.assert_called_once_with()
 
     asyncio.run(drive())
 
@@ -752,7 +752,10 @@ def test_sigterm_stops_the_runs_then_finishes_once_idle(
         app = RunApp(going(controls), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            collaborators["stop_then_kill"].assert_called_once_with(app.stop_runs, 15)
+            assert collaborators["stop_then_kill"].call_args_list == [
+                mock.call(app.stop_runs, 15),
+                mock.call(app.stop_runs, 1),
+            ]
             app.stop_runs()
             controls.interrupt.assert_called_once_with()
             app.show_event({"event": "idle"})
@@ -763,27 +766,15 @@ def test_sigterm_stops_the_runs_then_finishes_once_idle(
     asyncio.run(drive())
 
 
-def test_closing_the_terminal_leaves_the_runs_going() -> None:
+def test_sighup_stops_the_runs() -> None:
     controls = mock.Mock()
-    handlers: dict[object, Any] = {}
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        loop = asyncio.get_running_loop()
-        with mock.patch.object(
-            loop, "add_signal_handler", side_effect=handlers.__setitem__
-        ):
-            listen(controls)
-        return await loop.create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
+        app = RunApp(going(controls, "r1"), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert handlers == {1: app.exit}
-            handlers[1]()
-            await pilot.pause()
-            assert not app.is_running
-        assert controls.method_calls == []
+            app.stop_runs()
+            controls.interrupt.assert_called_once_with()
 
     asyncio.run(drive())
 

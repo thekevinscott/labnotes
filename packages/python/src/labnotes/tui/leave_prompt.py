@@ -10,8 +10,7 @@ class LeavePrompt(ModalScreen[str | None]):
     #prompt { width: auto; padding: 1 2; border: round $accent; }
     """
     BINDINGS = [
-        Binding("enter,ctrl+c", "dismiss('leave')", "Leave running"),
-        Binding("s", "dismiss('stop')", "Stop them"),
+        Binding("enter,ctrl+c,s", "dismiss('stop')", "Stop runs"),
         Binding("escape", "dismiss", "Cancel"),
     ]
 
@@ -23,6 +22,6 @@ class LeavePrompt(ModalScreen[str | None]):
         runs = "run" if self.count == 1 else "runs"
         yield Static(
             f"{self.count} {runs} still going. "
-            "Leave them running (enter) / stop them (s) / cancel (esc).",
+            "Stop them (enter or s) / cancel (esc).",
             id="prompt",
         )

@@ -67,11 +67,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new_callable=mock.AsyncMock,
             return_value={"g": 2},
         ) as count_groups,
-        mock.patch(
-            "labnotes.load_experiment.daemon_running",
-            new_callable=mock.AsyncMock,
-            return_value=True,
-        ) as daemon_running,
     ):
         yield {
             "count_groups": count_groups,
@@ -84,7 +79,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "check_counts": check_counts,
             "sort_href": sort_href,
             "python_blocks": python_blocks,
-            "daemon_running": daemon_running,
         }
 
 
@@ -121,8 +115,7 @@ def test_loads_config_notes_progress_and_runs(
         {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}
     ]
     assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
-    assert loaded["runs_live"] is True
-    collaborators["daemon_running"].assert_awaited_once_with(ROOT)
+    assert loaded["runs_live"] is False
     assert loaded["run_groups"] is None
     collaborators["nests_runs"].assert_not_awaited()
     assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]
@@ -369,3 +362,67 @@ def test_takes_the_last_view_asked_for(
 
     assert loaded is not None
     assert (loaded["run_grid"] is not None) is gridded
+
+
+@pytest.mark.parametrize(
+    ("row", "alive", "expected"),
+    [
+        ({"labnotes_unfinished": False, "run": '{"pid": 7}'}, True, False),
+        ({"labnotes_unfinished": True, "run": None}, True, False),
+        ({"labnotes_unfinished": True, "run": "{}"}, True, False),
+        ({"labnotes_unfinished": True, "run": '{"pid": 7}'}, True, True),
+        (
+            {"labnotes_unfinished": True, "run": '{"pid": 7, "pid_created": 12.5}'},
+            False,
+            False,
+        ),
+    ],
+)
+def test_reports_live_only_for_an_unfinished_run_with_a_live_process(
+    collaborators: dict[str, mock.MagicMock],
+    row: dict[str, object],
+    alive: bool,
+    expected: bool,
+) -> None:
+    collaborators["list_runs"].return_value = [row]
+    with mock.patch(
+        "labnotes.load_experiment.process_alive", return_value=alive
+    ) as check:
+        loaded = asyncio.run(
+            load_experiment(make_tables(experiment()), ROOT, "matrix", "a", query())
+        )
+
+    assert loaded is not None
+    assert loaded["runs_live"] is expected
+    record = row.get("run")
+    if isinstance(record, str) and row["labnotes_unfinished"] and "pid" in record:
+        check.assert_called_once()
+    else:
+        check.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("created", "expected"),
+    [("not-a-time", None), (12.5, 12.5)],
+)
+def test_live_run_check_ignores_an_invalid_process_start_time(
+    collaborators: dict[str, mock.MagicMock],
+    created: str | float,
+    expected: float | None,
+) -> None:
+    collaborators["list_runs"].return_value = [
+        {
+            "labnotes_unfinished": True,
+            "run": json.dumps({"pid": 7, "pid_created": created}),
+        }
+    ]
+    with mock.patch(
+        "labnotes.load_experiment.process_alive", return_value=True
+    ) as check:
+        loaded = asyncio.run(
+            load_experiment(make_tables(experiment()), ROOT, "matrix", "a", query())
+        )
+
+    assert loaded is not None
+    assert loaded["runs_live"] is True
+    check.assert_called_once_with(7, expected)

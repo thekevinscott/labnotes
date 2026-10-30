@@ -94,18 +94,17 @@ def wait_for[T](check: Any) -> T:
 
 def test_reports_a_running_runs_memory_and_size(running: Path) -> None:
     def usage() -> dict[str, Any] | None:
-        for line in cli(running, "run", "status", "--json").splitlines():
-            event = json.loads(line)
-            if event["event"] == "usage" and (event["memory"] or 0) > 80_000_000:
-                return event  # type: ignore[no-any-return]
+        runs = listed(running)
+        if not runs:
+            return None
+        [run] = runs
+        if (run["memory"] or 0) > 80_000_000 and run["size"] > 2_000_000:
+            return run
         return None
 
-    event: dict[str, Any] = wait_for(usage)
-    assert event["experiment"] == "exp"
-    assert event["size"] > 2_000_000
-    said = cli(running, "run", "status")
-    assert " MB of memory, 2.0 MB on disk." in said
-
-    [run] = listed(running)
+    run: dict[str, Any] = wait_for(usage)
     assert run["memory"] > 80_000_000
     assert run["size"] > 2_000_000
+    recorded = json.loads((running / run["folder"] / "run.json").read_text())
+    assert recorded["ended"] is None
+    assert isinstance(recorded["pid"], int)

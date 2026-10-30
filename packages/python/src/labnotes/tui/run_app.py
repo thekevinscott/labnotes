@@ -1,4 +1,3 @@
-import asyncio
 import signal
 import time
 from collections.abc import Sequence
@@ -100,7 +99,7 @@ class RunApp(App[None]):
     def listen(self, controls: Controls) -> None:
         self.controls = controls
         stop_then_kill(self.stop_runs, signal.SIGTERM)
-        asyncio.get_running_loop().add_signal_handler(signal.SIGHUP, self.exit)
+        stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
         table = self.query_one(DataTable)
@@ -286,9 +285,7 @@ class RunApp(App[None]):
         self.action_interrupt()
 
     def answer(self, choice: str | None) -> None:
-        if choice == "leave":
-            self.exit()
-        elif choice == "stop":
+        if choice == "stop":
             self.controls.interrupt()
             self.set_timer(GRACE_SECONDS, self.controls.interrupt)
 

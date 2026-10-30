@@ -362,3 +362,40 @@ def test_takes_the_last_view_asked_for(
 
     assert loaded is not None
     assert (loaded["run_grid"] is not None) is gridded
+
+
+@pytest.mark.parametrize(
+    ("row", "alive", "expected"),
+    [
+        ({"labnotes_unfinished": False, "run": '{"pid": 7}'}, True, False),
+        ({"labnotes_unfinished": True, "run": None}, True, False),
+        ({"labnotes_unfinished": True, "run": "{}"}, True, False),
+        ({"labnotes_unfinished": True, "run": '{"pid": 7}'}, True, True),
+        (
+            {"labnotes_unfinished": True, "run": '{"pid": 7, "pid_created": 12.5}'},
+            False,
+            False,
+        ),
+    ],
+)
+def test_reports_live_only_for_an_unfinished_run_with_a_live_process(
+    collaborators: dict[str, mock.MagicMock],
+    row: dict[str, object],
+    alive: bool,
+    expected: bool,
+) -> None:
+    collaborators["list_runs"].return_value = [row]
+    with mock.patch(
+        "labnotes.load_experiment.process_alive", return_value=alive
+    ) as check:
+        loaded = asyncio.run(
+            load_experiment(make_tables(experiment()), ROOT, "matrix", "a", query())
+        )
+
+    assert loaded is not None
+    assert loaded["runs_live"] is expected
+    record = row.get("run")
+    if isinstance(record, str) and row["labnotes_unfinished"] and "pid" in record:
+        check.assert_called_once()
+    else:
+        check.assert_not_called()

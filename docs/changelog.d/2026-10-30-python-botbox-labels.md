@@ -1,0 +1,1 @@
+Added: Each run's environment now includes `labnotes.run=<absolute run folder>` in `BOTBOX_LABELS`, so botbox sandbox memory is counted without consumer configuration. Existing labels are preserved, retries use the new attempt's folder, and setup, teardown, and meta hooks do not receive the generated label.

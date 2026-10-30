@@ -58,6 +58,10 @@ async def execute_run(
     if meta is not None:
         run["meta"] = meta
     write_run_json(folder, run)
+    run_environment = os.environ if environment is None else environment
+    botbox_labels = f"labnotes.run={folder.resolve()}"
+    if existing_labels := run_environment.get("BOTBOX_LABELS"):
+        botbox_labels = f"{existing_labels}\n{botbox_labels}"
     with (
         (folder / "stdout.log").open("wb") as stdout,
         (folder / "stderr.log").open("wb") as stderr,
@@ -71,13 +75,12 @@ async def execute_run(
                     "CLICOLOR_FORCE": "1",
                     **{
                         key: value
-                        for key, value in (
-                            os.environ if environment is None else environment
-                        ).items()
+                        for key, value in run_environment.items()
                         if not key.startswith("LABNOTES_")
                     },
                     LOG_ENV: str(folder / "log.jsonl"),
                     RUN_ENV: str(folder.resolve()),
+                    "BOTBOX_LABELS": botbox_labels,
                     RUN_STATE_ENV: str(state_file),
                 },
                 stdout=stdout,

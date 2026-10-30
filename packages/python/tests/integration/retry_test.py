@@ -1,8 +1,10 @@
 import asyncio
 import json
+import os
 import sys
 from pathlib import Path
 from typing import Any
+from unittest import mock
 
 import pytest
 
@@ -122,6 +124,28 @@ def test_retries_fill_a_matrix_without_extra_replicates(
     assert tempfail[retry["retry_of"]] == 75
     assert sorted(counted(root, capsys).values()) == [0, 1, 1]
     assert [event["event"] for event in events] == ["planned", "idle"]
+
+
+@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
+def test_labels_each_retry_with_its_own_folder(tmp_path: Path, mode: str) -> None:
+    root = make_project(tmp_path, "75", f'mode = "{mode}"\n')
+    write(
+        root / "script.py",
+        "import os\nfrom pathlib import Path\n"
+        "Path(os.environ['LABNOTES_RUN'], 'labels.txt').write_text("
+        "os.environ['BOTBOX_LABELS'])\n" + SCRIPT,
+    )
+
+    with mock.patch.dict(os.environ, {"BOTBOX_LABELS": "team=research"}):
+        run_now(root)
+
+    first, second = chain(root)
+    assert (first["exit_code"], second["exit_code"]) == (75, 0)
+    for run in (first, second):
+        folder = root / "exp" / "runs" / run["id"]
+        assert (folder / "labels.txt").read_text() == (
+            f"team=research\nlabnotes.run={folder.resolve()}"
+        )
 
 
 def test_gives_up_once_the_retries_run_out(tmp_path: Path) -> None:

@@ -23,6 +23,10 @@ Conventions, supervision rules, and per-language style live under
 - Unit tests are **colocated** with their source (`foo.py` ↔ `foo_test.py`). This is the
   [testing-conventions](https://github.com/thekevinscott/testing-conventions)
   standard, enforced in CI by `.github/workflows/conventions.yml`.
+- Every new public-facing feature ships with both an integration test and an
+  e2e test (`packages/python/tests/e2e/`) that prove its outcome, not just its
+  inputs. Write them first and watch them fail, then make them pass. The PR
+  says which tests went red to green.
 - **CI logic lives in scripts, not workflow YAML.** `run:` / `github-script`
   steps stay trivial glue; anything with iteration, `case` dispatch, or
   text-munging moves to a tested script invoked as a one-liner. A gate more

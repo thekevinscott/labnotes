@@ -44,7 +44,7 @@ jobs:
           python-version: ${{ matrix.python-version }}
       - run: uv run playwright install --with-deps chromium
       - run: uv run pytest src/labnotes tests/integration
-      - run: uv run pytest tests/e2e/foreground_uvx_test.py
+      - run: uv run pytest tests/e2e
       - run: uv run mypy src
 
   build:

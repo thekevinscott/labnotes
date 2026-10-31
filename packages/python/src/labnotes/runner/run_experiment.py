@@ -27,6 +27,7 @@ from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.plan_runs import plan_runs
+from labnotes.runner.project_snapshot import ProjectSnapshot
 from labnotes.runner.run_folder import run_folder
 from labnotes.runner.signal_tree import signal_tree
 from labnotes.state_path import STATE_ENV
@@ -49,7 +50,9 @@ async def run_experiment(
     only: dict[str, str] | None = None,
     args: list[str] | None = None,
     environment: dict[str, str] | None = None,
+    snapshot: ProjectSnapshot | None = None,
 ) -> list[dict[str, object]]:
+    command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
@@ -109,7 +112,7 @@ async def run_experiment(
     meta = None
     if experiment.meta is not None:
         meta = await invocation_meta(
-            config.root, fill_dirs(experiment.meta, dirs), hook_env["meta"]
+            command_root, fill_dirs(experiment.meta, dirs), hook_env["meta"]
         )
     if dirs:
         Path(dirs["invocation_dir"]).mkdir(parents=True, exist_ok=True)
@@ -242,12 +245,15 @@ async def run_experiment(
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
+        if snapshot is not None and snapshot.sha is not None:
+            (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
+            (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")
         run_invocation_dir = dirs.get("invocation_dir") or str(folder.resolve())
         report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
         trees[run] = set()
         result = await execute_run(
-            config.root,
+            command_root,
             folder,
             fill_dirs(
                 experiment.command,
@@ -276,6 +282,11 @@ async def run_experiment(
                     "invocation_dir": run_invocation_dir,
                 },
             ),
+            git_info=(
+                {"commit": snapshot.sha, "dirty": bool(snapshot.diff)}
+                if snapshot is not None and snapshot.sha is not None
+                else None
+            ),
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})
@@ -290,7 +301,7 @@ async def run_experiment(
         if experiment.teardown is not None:
             report({"event": "tearing down"})
             await invocation_hook(
-                config.root,
+                command_root,
                 "teardown",
                 fill_dirs(experiment.teardown, dirs),
                 hook_env["teardown"],
@@ -311,7 +322,7 @@ async def run_experiment(
             if experiment.setup is not None:
                 report({"event": "setting up"})
                 await invocation_hook(
-                    config.root,
+                    command_root,
                     "setup",
                     fill_dirs(experiment.setup, dirs),
                     hook_env["setup"],

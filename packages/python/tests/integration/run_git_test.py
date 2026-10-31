@@ -63,13 +63,13 @@ def test_records_the_repositories_commit_and_tracked_changes(
     assert record["git"] == expected
 
 
-def test_queued_runs_capture_the_commit_before_their_own_command(
+def test_queued_runs_keep_the_invocations_starting_commit(
     tmp_path: Path,
 ) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
-        'command = "git -c user.name=Test -c user.email=test@example.com '
+        f'command = "git -C {tmp_path} -c user.name=Test -c user.email=test@example.com '
         '-c commit.gpgsign=false commit --allow-empty -m next"\nrepeats = 2\n'
     )
     git(tmp_path, "init")
@@ -79,7 +79,6 @@ def test_queued_runs_capture_the_commit_before_their_own_command(
 
     assert len(recorded) == 2
     assert {record["git"]["commit"] for record in recorded} == {
-        git(tmp_path, "rev-parse", "HEAD~2"),
-        git(tmp_path, "rev-parse", "HEAD~1"),
+        git(tmp_path, "rev-parse", "HEAD~2")
     }
     assert all(record["git"]["dirty"] is False for record in recorded)

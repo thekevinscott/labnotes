@@ -112,6 +112,17 @@ def test_runs_the_command_from_the_root(
     assert kwargs["stderr"].name == str(tmp_path / "stderr.log")
 
 
+def test_uses_the_invocation_git_info_instead_of_reading_the_live_tree(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    captured = {"commit": "start", "dirty": True}
+
+    result = run(tmp_path, git_info=captured)
+
+    assert result["git"] == captured
+    collaborators["run_git"].assert_not_called()
+
+
 def test_appends_and_records_the_args(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

@@ -38,6 +38,7 @@ async def execute_run(
     state_file: Path,
     memory_interval: float,
     environment: dict[str, str] | None = None,
+    git_info: dict[str, str | bool] | None = None,
 ) -> dict[str, object]:
     resolved = shell_command(command, folder, params, args)
     run: dict[str, object] = {
@@ -49,7 +50,9 @@ async def execute_run(
         "error": None,
         "ended_by": None,
         "signal": None,
-        "git": await asyncio.to_thread(run_git, root),
+        "git": git_info
+        if git_info is not None
+        else await asyncio.to_thread(run_git, root),
     }
     if args:
         run["args"] = list(args)

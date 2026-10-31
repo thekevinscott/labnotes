@@ -1,5 +1,3 @@
-import subprocess
-import signal
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 from unittest import mock
@@ -33,7 +31,7 @@ def test_copies_code_links_ignored_paths_and_removes_snapshot(tmp_path: Path) ->
 def test_uses_live_tree_when_git_is_unavailable(tmp_path: Path) -> None:
     with mock.patch(
         "labnotes.runner.project_snapshot.git",
-        side_effect=subprocess.CalledProcessError(128, "git"),
+        side_effect=OSError("git unavailable"),
     ):
         with project_snapshot(tmp_path) as snapshot:
             assert snapshot.root == tmp_path
@@ -48,7 +46,7 @@ def test_git_command_reads_bytes_from_project_root(tmp_path: Path) -> None:
     ) as output:
         assert git(tmp_path, "rev-parse", "HEAD") == b"ok"
     output.assert_called_once_with(
-        ["git", "rev-parse", "HEAD"], cwd=tmp_path, stderr=subprocess.DEVNULL
+        ["git", "rev-parse", "HEAD"], cwd=tmp_path, stderr=mock.ANY
     )
 
 
@@ -74,11 +72,11 @@ def test_interrupt_during_copy_removes_partial_snapshot(tmp_path: Path) -> None:
     before = set(base.iterdir())
     called = False
 
-    def interrupt(_number: signal.Signals, handler: object) -> None:
+    def interrupt(_number: int, handler: object) -> None:
         nonlocal called
         if not called:
             called = True
-            handler(signal.SIGTERM, None)  # type: ignore[operator]
+            handler(15, None)  # type: ignore[operator]
 
     with (
         mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),

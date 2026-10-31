@@ -4,6 +4,10 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      release_packages:
+        description: 'Comma-separated name[@bump|version] list'
+        required: true
 
 jobs:
   # Preflight gate for first-publish prerequisites. Fails fast with an
@@ -36,6 +40,8 @@ jobs:
     permissions:
       contents: write
       id-token: write
+    with:
+      release_packages: ${{ inputs.release_packages }}
 
   # PyPI upload runs in the caller's workflow context. Required because
   # PyPI Trusted Publishers can't validate OIDC tokens minted from a

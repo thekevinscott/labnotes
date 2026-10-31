@@ -31,8 +31,13 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
         yield ProjectSnapshot(root)
         return
 
-    sha = git(root, "rev-parse", "HEAD").decode("ascii").strip()
-    diff = git(root, "diff", "HEAD")
+    try:
+        sha = git(root, "rev-parse", "HEAD").decode("ascii").strip()
+        diff = git(root, "diff", "HEAD")
+    except (OSError, subprocess.SubprocessError):
+        logging.warning("Project has no readable Git HEAD; running from the live tree")
+        yield ProjectSnapshot(root)
+        return
     files = git(root, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0")
     ignored = git(
         root, "ls-files", "-oi", "--exclude-standard", "--directory", "-z"

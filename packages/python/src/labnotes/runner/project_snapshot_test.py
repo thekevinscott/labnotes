@@ -38,6 +38,16 @@ def test_uses_live_tree_when_git_is_unavailable(tmp_path: Path) -> None:
             assert snapshot.sha is None
 
 
+def test_uses_live_tree_when_git_has_no_head(tmp_path: Path) -> None:
+    with mock.patch(
+        "labnotes.runner.project_snapshot.git",
+        side_effect=[b"true\n", OSError("no HEAD")],
+    ):
+        with project_snapshot(tmp_path) as snapshot:
+            assert snapshot.root == tmp_path
+            assert snapshot.sha is None
+
+
 def test_git_command_reads_bytes_from_project_root(tmp_path: Path) -> None:
     from labnotes.runner.project_snapshot import git
 

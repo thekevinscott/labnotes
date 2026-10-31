@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest import mock
 
 from labnotes.runner.start_experiment import start_experiment
-from labnotes.runner.project_snapshot import ProjectSnapshot
 
 
 def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
@@ -12,7 +11,7 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
     report = mock.Mock()
     listen = mock.Mock()
     results = [{"exit_code": 0}]
-    snapshot = ProjectSnapshot(Path("snapshot"), "abc", b"")
+    snapshot = mock.sentinel.snapshot
     with (
         mock.patch(
             "labnotes.runner.start_experiment.prepare_experiment",

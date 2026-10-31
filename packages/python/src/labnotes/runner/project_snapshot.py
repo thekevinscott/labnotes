@@ -22,28 +22,6 @@ def git(root: Path, *args: str) -> bytes:
 
 
 @contextmanager
-def interrupt_copy() -> Iterator[None]:
-    """Turn termination during copying into cleanup through TemporaryDirectory."""
-    if threading.current_thread() is not threading.main_thread():
-        yield
-        return
-    previous = {
-        number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGHUP)
-    }
-
-    def stop(_number: int, _frame: object) -> None:
-        raise KeyboardInterrupt
-
-    try:
-        for number in previous:
-            signal.signal(number, stop)
-        yield
-    finally:
-        for number, handler in previous.items():
-            signal.signal(number, handler)
-
-
-@contextmanager
 def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
     """Capture the working tree once for all commands in an invocation."""
     try:
@@ -63,7 +41,21 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
     base.mkdir(parents=True, exist_ok=True)
     with TemporaryDirectory(dir=base) as directory:
         snapshot = Path(directory)
-        with interrupt_copy():
+        previous = (
+            {
+                number: signal.getsignal(number)
+                for number in (signal.SIGTERM, signal.SIGHUP)
+            }
+            if threading.current_thread() is threading.main_thread()
+            else {}
+        )
+
+        def stop(_number: int, _frame: object) -> None:
+            raise KeyboardInterrupt
+
+        try:
+            for number in previous:
+                signal.signal(number, stop)
             for raw in files:
                 if not raw:
                     continue
@@ -86,4 +78,7 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
                 target.symlink_to(
                     root / relative, target_is_directory=(root / relative).is_dir()
                 )
+        finally:
+            for number, handler in previous.items():
+                signal.signal(number, handler)
         yield ProjectSnapshot(snapshot, sha, diff)

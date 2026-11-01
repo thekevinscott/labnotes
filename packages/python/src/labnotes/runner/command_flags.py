@@ -1,4 +1,5 @@
 import re
+from itertools import zip_longest
 from typing import NamedTuple
 
 from labnotes.runner.flag_name import flag_name
@@ -20,15 +21,15 @@ class CommandFlag(NamedTuple):
 def command_flags(command: str) -> list[CommandFlag]:
     words = list(WORD.finditer(command))
     flags: list[CommandFlag] = []
-    for index, word in enumerate(words):
+    for word, after in zip_longest(words, words[1:]):
         name = flag_name(word[0])
         if name is None:
             continue
         joined = "=" in word[0]
         end = word.end()
-        if not joined and index + 1 < len(words):
-            value = words[index + 1][0]
+        if not joined and after is not None:
+            value = after[0]
             if value[0] not in OPERATOR and not value.startswith("-"):
-                end = words[index + 1].end()
+                end = after.end()
         flags.append(CommandFlag(name, word.start(), end, joined))
     return flags

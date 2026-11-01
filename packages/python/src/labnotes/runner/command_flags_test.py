@@ -27,6 +27,7 @@ def test_finds_a_flag_joined_to_its_value() -> None:
         ("run --a  'x y' z", [("a", "--a  'x y'", False)]),
         ('run --a "x \\" y"', [("a", '--a "x \\" y"', False)]),
         ("run --a x\\ y", [("a", "--a x\\ y", False)]),
+        ("run --a x\\; y", [("a", "--a x\\;", False)]),
         ("run --a=x y", [("a", "--a=x", True)]),
         ("run --a='x y' z", [("a", "--a='x y'", True)]),
         ("run --a && b", [("a", "--a", False)]),

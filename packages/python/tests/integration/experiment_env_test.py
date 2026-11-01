@@ -86,6 +86,14 @@ with Path("journal.jsonl").open("a") as journal:
 """
 
 
+@pytest.fixture
+def without_label() -> Iterator[None]:
+    unset = {key: value for key, value in os.environ.items() if key != "LABEL"}
+    with mock.patch.dict(os.environ, unset, clear=True):
+        yield
+
+
+@pytest.mark.usefixtures("without_label")
 def test_run_dir_env_value_is_left_out_of_hooks_and_given_to_the_run(
     tmp_path: Path,
 ) -> None:
@@ -101,10 +109,8 @@ def test_run_dir_env_value_is_left_out_of_hooks_and_given_to_the_run(
         f'command = "{command} run"\nsetup = "{command} setup"\n',
     )
 
-    with mock.patch.dict(os.environ):
-        os.environ.pop("LABEL", None)
-        with pytest.raises(SystemExit) as exit_info:
-            main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
+    with pytest.raises(SystemExit) as exit_info:
+        main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
 
     assert exit_info.value.code == 0
     [folder] = (tmp_path / "exp" / "runs").iterdir()

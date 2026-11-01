@@ -3,6 +3,7 @@ import json
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 
@@ -196,3 +197,123 @@ def test_non_git_project_uses_live_root_and_warns(tmp_path: Path) -> None:
     assert "not a git repository; running from the live tree" in result.stderr
     [stdout] = list((root / "exp/runs").glob("*/stdout.log"))
     assert stdout.read_text().strip() == str(root)
+
+
+def _fixture_repo(tmp_path: Path, cell: str) -> Path:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / ".gitignore").write_text("runs/\n.venv/\n")
+    (root / ".labnotes.toml").write_text('[runs]\npath = "runs/{experiment}/{run}"\n')
+    (root / "exp").mkdir()
+    (root / "exp/experiment.toml").write_text(
+        f'command = "{sys.executable} cell.py {{run_dir}}"\n'
+    )
+    (root / "cell.py").write_text(cell)
+    return root
+
+
+def _commit(root: Path) -> None:
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(
+        [
+            "git",
+            "-c",
+            "user.name=Test",
+            "-c",
+            "user.email=test@example.com",
+            "commit",
+            "-qm",
+            "initial",
+        ],
+        cwd=root,
+        check=True,
+    )
+
+
+def _run(root: Path) -> subprocess.CompletedProcess[str]:
+    return subprocess.run(
+        [
+            sys.executable,
+            "-m",
+            "labnotes",
+            "-c",
+            str(root / ".labnotes.toml"),
+            "experiments",
+            "exp",
+            "run",
+        ],
+        cwd=root,
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+
+def test_ignored_venv_is_not_linked_to_live_project(tmp_path: Path) -> None:
+    root = _fixture_repo(
+        tmp_path,
+        'import pathlib\npathlib.Path(".venv/marker").write_text("snapshot")\n',
+    )
+    venv = root / ".venv"
+    (venv / "bin").mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / ".gitignore").write_text("*\n")
+    _commit(root)
+    result = _run(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert not (venv / "marker").exists()
+
+
+def test_snapshot_git_metadata_matches_live_repo_without_mutating_index(
+    tmp_path: Path,
+) -> None:
+    root = _fixture_repo(
+        tmp_path,
+        "import pathlib, subprocess, sys\nrun = pathlib.Path(sys.argv[1])\nfor name, args in [('head', ['rev-parse', 'HEAD']), ('tag', ['describe', '--tags']), ('status', ['status', '--porcelain'])]:\n    (run / name).write_bytes(subprocess.check_output(['git', *args]))\n",
+    )
+    (root / "dirty.txt").write_text("original\n")
+    _commit(root)
+    subprocess.run(["git", "tag", "v1.2.3"], cwd=root, check=True)
+    (root / "dirty.txt").write_text("changed\n")
+    before_status = subprocess.check_output(["git", "status", "--porcelain"], cwd=root)
+    before_sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root)
+    index_mtime = (root / ".git/index").stat().st_mtime_ns
+    result = _run(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    [run] = list((root / "runs/exp").iterdir())
+    assert (run / "head").read_bytes() == before_sha
+    assert (run / "tag").read_text().strip() == "v1.2.3"
+    assert (run / "status").read_bytes() == before_status
+    assert (root / ".git/index").stat().st_mtime_ns == index_mtime
+    assert (
+        subprocess.check_output(["git", "status", "--porcelain"], cwd=root)
+        == before_status
+    )
+
+
+def test_dangling_tracked_symlink_survives_snapshot(tmp_path: Path) -> None:
+    root = _fixture_repo(
+        tmp_path,
+        "import pathlib, sys\nlink = pathlib.Path('missing-link')\npathlib.Path(sys.argv[1], 'link-result').write_text(str(link.is_symlink()) + ':' + link.readlink().as_posix())\n",
+    )
+    (root / "missing-link").symlink_to("missing-target")
+    _commit(root)
+    result = _run(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    [run] = list((root / "runs/exp").iterdir())
+    assert (run / "link-result").read_text() == "True:missing-target"
+
+
+def test_snapshot_uses_default_temp_directory(tmp_path: Path) -> None:
+    root = _fixture_repo(
+        tmp_path,
+        "import os, pathlib, sys\npathlib.Path(sys.argv[1], 'snapshot-path').write_text(os.getcwd())\n",
+    )
+    _commit(root)
+    result = _run(root)
+    assert result.returncode == 0, result.stdout + result.stderr
+    [run] = list((root / "runs/exp").iterdir())
+    snapshot = Path((run / "snapshot-path").read_text())
+    assert snapshot.parent == Path(tempfile.gettempdir())
+    assert snapshot.name.startswith("labnotes-")

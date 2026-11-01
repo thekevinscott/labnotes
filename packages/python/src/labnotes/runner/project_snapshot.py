@@ -1,16 +1,18 @@
 import logging
+import os
 import signal
 import shutil
 import subprocess
-import threading
 from contextlib import contextmanager
+from collections.abc import Callable
 from dataclasses import dataclass
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from types import FrameType
 
 
-@dataclass(frozen=True)
+@dataclass
 class ProjectSnapshot:
     root: Path
     sha: str | None = None
@@ -38,51 +40,82 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
         logging.warning("Project has no readable Git HEAD; running from the live tree")
         yield ProjectSnapshot(root)
         return
-    files = git(root, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0")
-    ignored = git(
-        root, "ls-files", "-oi", "--exclude-standard", "--directory", "-z"
-    ).split(b"\0")
-    base = Path("/tmp/labnotes")
-    base.mkdir(parents=True, exist_ok=True)
-    with TemporaryDirectory(dir=base) as directory:
+    files = filter(
+        None, git(root, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0")
+    )
+    ignored = filter(
+        None,
+        git(root, "ls-files", "-oi", "--exclude-standard", "--directory", "-z").split(
+            b"\0"
+        ),
+    )
+    with TemporaryDirectory(prefix="labnotes-") as directory:
         snapshot = Path(directory)
-        previous = (
-            {
-                number: signal.getsignal(number)
-                for number in (signal.SIGTERM, signal.SIGHUP)
-            }
-            if threading.current_thread() is threading.main_thread()
-            else {}
-        )
+        previous: dict[
+            signal.Signals,
+            Callable[[int, FrameType | None], object] | int | signal.Handlers | None,
+        ] = {}
 
         def stop(_number: int, _frame: object) -> None:
             raise KeyboardInterrupt
 
         try:
-            for number in previous:
-                signal.signal(number, stop)
+            for number in (signal.SIGTERM, signal.SIGHUP):
+                try:
+                    old_handler = signal.signal(number, stop)
+                except ValueError:
+                    break  # Signals can only be installed from the main thread.
+                previous[number] = old_handler
+            subprocess.run(
+                [
+                    "git",
+                    "clone",
+                    "--quiet",
+                    "--shared",
+                    "--no-checkout",
+                    str(root),
+                    str(snapshot),
+                ],
+                check=True,
+            )
             for raw in files:
-                if not raw:
-                    continue
                 relative = Path(raw.decode())
                 source = root / relative
                 if not source.exists() and not source.is_symlink():
                     continue
                 target = snapshot / relative
                 target.parent.mkdir(parents=True, exist_ok=True)
-                if source.is_dir():
-                    shutil.copytree(source, target)
+                if source.is_symlink():
+                    target.symlink_to(
+                        os.readlink(source), target_is_directory=source.is_dir()
+                    )
+                elif source.is_dir():
+                    shutil.copytree(source, target, symlinks=True)
                 else:
                     shutil.copy2(source, target)
+            skipped: set[Path] = set()
             for raw in ignored:
-                if not raw:
-                    continue
                 relative = Path(raw.decode().rstrip("/"))
+                if any(parent in relative.parents for parent in skipped):
+                    continue
+                if any(
+                    (snapshot / parent).is_symlink()
+                    for parent in relative.parents
+                    if parent != Path(".")
+                ):
+                    continue
+                source = root / relative
+                if source.is_dir() and (source / "pyvenv.cfg").exists():
+                    skipped.add(relative)
+                    continue
                 target = snapshot / relative
+                if target.is_symlink() or target.exists():
+                    continue
                 target.parent.mkdir(parents=True, exist_ok=True)
-                target.symlink_to(
-                    root / relative, target_is_directory=(root / relative).is_dir()
-                )
+                target.symlink_to(source, target_is_directory=source.is_dir())
+            subprocess.run(
+                ["git", "-C", str(snapshot), "reset", "--quiet", sha], check=True
+            )
         finally:
             for number, handler in previous.items():
                 signal.signal(number, handler)

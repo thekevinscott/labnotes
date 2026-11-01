@@ -1,6 +1,5 @@
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
-import signal
 import tempfile
 from unittest import mock
 
@@ -159,13 +158,24 @@ def test_restores_signal_handlers_after_snapshot(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()
     commands = [b"true\n", b"abc\n", b"", b"", b""]
-    before = {
-        number: signal.getsignal(number) for number in (signal.SIGTERM, signal.SIGHUP)
-    }
+    old_term = mock.Mock()
+    old_hup = mock.Mock()
     with (
         mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
         mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+        mock.patch(
+            "labnotes.runner.project_snapshot.signal.signal",
+            side_effect=[old_term, old_hup, None, None],
+        ) as change_handler,
     ):
         with project_snapshot(root):
             pass
-    assert {number: signal.getsignal(number) for number in before} == before
+    assert change_handler.call_count == 4
+    assert change_handler.call_args_list[2].args == (
+        change_handler.call_args_list[0].args[0],
+        old_term,
+    )
+    assert change_handler.call_args_list[3].args == (
+        change_handler.call_args_list[1].args[0],
+        old_hup,
+    )

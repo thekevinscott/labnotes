@@ -179,3 +179,64 @@ def test_restores_signal_handlers_after_snapshot(tmp_path: Path) -> None:
         change_handler.call_args_list[1].args[0],
         old_hup,
     )
+
+
+def test_copies_tracked_directory_without_following_its_symlinks(
+    tmp_path: Path,
+) -> None:
+    root = tmp_path / "project"
+    (root / "folder").mkdir(parents=True)
+    (root / "folder/link").symlink_to("missing-target")
+    commands = [b"true\n", b"abc\n", b"", b"folder\0", b""]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+    ):
+        with project_snapshot(root) as snapshot:
+            assert (snapshot.root / "folder/link").is_symlink()
+            assert (snapshot.root / "folder/link").readlink() == Path("missing-target")
+
+
+def test_skips_virtualenv_and_its_ignored_entries(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    venv = root / ".venv"
+    venv.mkdir(parents=True)
+    (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
+    (venv / ".gitignore").write_text("*\n")
+    commands = [b"true\n", b"abc\n", b"", b"", b".venv/\0.venv/.gitignore\0"]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+    ):
+        with project_snapshot(root) as snapshot:
+            assert not (snapshot.root / ".venv").exists()
+            assert not (snapshot.root / ".venv").is_symlink()
+
+
+def test_skips_entries_under_linked_ignored_directory(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    data = root / "data"
+    data.mkdir(parents=True)
+    (data / "child").write_text("live")
+    commands = [b"true\n", b"abc\n", b"", b"", b"data/\0data/child\0"]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+    ):
+        with project_snapshot(root) as snapshot:
+            assert (snapshot.root / "data").is_symlink()
+            assert (data / "child").read_text() == "live"
+
+
+def test_skips_ignored_path_already_copied(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "same.txt").write_text("copied")
+    commands = [b"true\n", b"abc\n", b"", b"same.txt\0", b"same.txt\0"]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+    ):
+        with project_snapshot(root) as snapshot:
+            assert (snapshot.root / "same.txt").read_text() == "copied"
+            assert not (snapshot.root / "same.txt").is_symlink()

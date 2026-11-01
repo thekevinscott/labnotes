@@ -154,7 +154,7 @@ These placeholders are filled in, each shell-quoted:
 - `{run_dir}`: the run folder's absolute path.
 - `{invocation_dir}`: the absolute path of the invocation folder shared by an [adhoc](../cli/adhoc) command that plans several runs. When one run is planned, it is the first attempt's `{run_dir}` and stays fixed across retries. With several matrix runs, each run uses its own `{run_dir}`. Every retry gets a new `{run_dir}`.
 
-`run.json` records the command with every placeholder filled.
+`run.json` records the command with every placeholder filled. [`setup`](#setup), [`teardown`](#teardown), and [`meta`](#meta) get neither placeholder.
 
 ### `[env]`
 
@@ -163,7 +163,7 @@ These placeholders are filled in, each shell-quoted:
 
 Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
 
-Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. `{run_dir}` is unavailable in `setup`, `teardown`, and `meta`, so a variable whose value uses it is left out of their environment; runs still get it. Use `{invocation_dir}` for a value hooks need. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks and run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
+Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. `setup`, `teardown`, and `meta` get neither placeholder, so a variable whose value uses one is left out of their environment; runs still get it. To pass a value from setup to runs and teardown, use [`set_state`](sdk#set-state-and-get-state). For retries, run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
 
 Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.
 
@@ -180,7 +180,7 @@ meta = "git log -1 --format='{\"commit\":\"%H\"}'"
 
 Every run the invocation starts, retries included, gets a copy as `meta` in its `run.json`, written before the run's command starts, so a run that dies early still has it. The `runs` table has it as a `meta` column, so a rule like [`counts`](#counts) can read `meta ->> 'commit'`. Without `meta`, `run.json` has no `meta` key and the column is `NULL`.
 
-A non-zero exit, output that isn't JSON, or JSON that isn't an object fails the invocation before any run starts. The error names the command and shows its stderr.
+A non-zero exit, output that isn't JSON, or JSON that isn't an object fails the invocation before any run starts. The error names the command and shows its stderr. `{run_dir}` or `{invocation_dir}` in the command fails the invocation before `meta` runs.
 
 The command runs once, not per run. A run that waits in the queue keeps the value from the start of the invocation, so if the code changes while it waits, its recorded commit is out of date.
 
@@ -195,7 +195,7 @@ Shell command that labnotes runs once per `run`, from the project root, after [`
 
 A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
 
-`{invocation_dir}` is filled in as in [`command`](#command). Its folder exists before setup starts, so setup can write files that teardown reads. In a multi-run adhoc invocation it is the shared group folder; for one run it is that run's folder. In matrix mode with several planned runs, `{invocation_dir}` fails because there is no shared folder. `{run_dir}` is never filled in setup or teardown; use `{invocation_dir}` instead. An unavailable placeholder in the command fails the invocation before setup or any run starts. An [`[env]`](#env) value that uses `{run_dir}` is left out of the hook's environment instead.
+Setup gets no folder placeholders. `{run_dir}` or `{invocation_dir}` in the command fails the invocation before setup or any run starts. To hand values to runs and teardown, such as a container ID, call [`set_state`](sdk#set-state-and-get-state) in setup; they read it with `get_state`. An [`[env]`](#env) value that uses a placeholder is left out of the hook's environment instead.
 
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 
@@ -212,7 +212,7 @@ A non-zero exit fails the invocation, with the command and its stderr in the err
 
 In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. Closing the terminal stops the runs before teardown.
 
-It gets `{invocation_dir}` the same way as `setup`. With a single run that was retried, the hooks use the first attempt's folder.
+Like `setup`, it gets no folder placeholders and fails before setup if its command uses one. It reads what setup saved with [`get_state`](sdk#set-state-and-get-state).
 
 `--teardown COMMAND` overrides it, and it composes with `.labnotes.toml` the same way as `setup`.
 

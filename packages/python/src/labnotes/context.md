@@ -102,19 +102,17 @@ the value from the start, even if the code changed while they waited.
 commands run once per `run` from the root: setup before the first run starts,
 teardown after the last one ends, even if runs failed, were stopped, or setup
 failed (so teardown must cope with a partial setup). A failing setup starts no
-run; a failing teardown fails the invocation. Both get `{invocation_dir}` only:
-the shared folder for a multi-run adhoc invocation, or the run folder when one
-run is planned. That folder exists before setup starts. In matrix mode with
-several runs there is no shared folder, so `{invocation_dir}` in a hook fails.
-`{run_dir}` is never filled in hooks; use `{invocation_dir}` instead. An
-unavailable placeholder fails before anything starts.
+run; a failing teardown fails the invocation. Hooks and `meta` get no folder
+placeholders: `{run_dir}` or `{invocation_dir}` in one fails before anything
+starts. Share values through state instead.
 Setup can call `labnotes.set_state({"container": "abc"})`; runs and teardown read the
 dict with `labnotes.get_state()`. Writes merge by top-level key, replacing an
 existing value without dropping other keys. Values must be JSON serializable;
 reading before any write returns `{}`. Runs can only read: `set_state` raises
 `RuntimeError` there. Both functions raise outside an invocation and in `meta`.
 Labnotes gives setup/teardown `LABNOTES_STATE` and runs `LABNOTES_RUN_STATE`,
-pointing to `{invocation_dir}/state.json` or, without a shared folder, a temp
+pointing to `state.json` in the multi-run adhoc group folder or the lone run's
+folder, or, without a shared folder, a temp
 file kept through all runs and teardown and then removed. Queued runs and retries
 read the same file after setup finishes. `meta` receives neither state variable;
 state is never copied into `run.json`.
@@ -125,8 +123,8 @@ children and set their own hook and run variables.
 provides shared values; experiment values replace them by name. Variables in
 the environment that starts `labnotes experiments NAME run` win over both,
 including inline assignments. Values can use raw `{run_dir}` and
-`{invocation_dir}` placeholders. In hooks and meta, only `{invocation_dir}` is
-available, and it requires one planned run in matrix mode.
+`{invocation_dir}` placeholders. Hooks and meta get neither, so values using
+one are left out of their environment; runs still get them.
 `LABNOTES_*` names are reserved for labnotes.
 A run counts when it exited 0 and its `run.json` doesn't hold
 `"excluded": true`, so excluding a run by hand means adding that key; the next

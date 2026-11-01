@@ -95,13 +95,8 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.runner.run_experiment.invocation_hook", new=mock.AsyncMock()
         ) as invocation_hook,
         mock.patch(
-            "labnotes.runner.run_experiment.hook_dirs",
-            side_effect=lambda hooks, group_dir, run_dirs: (
-                {"invocation_dir": group_dir or run_dirs[0]}
-                if group_dir is not None or len(run_dirs) == 1
-                else {}
-            ),
-        ) as hook_dirs,
+            "labnotes.runner.run_experiment.check_hook_placeholders"
+        ) as check_hook_placeholders,
         mock.patch(
             "labnotes.runner.run_experiment.fill_dirs",
             side_effect=lambda command, ids: command,
@@ -120,7 +115,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "invocation_meta": invocation_meta,
             "invocation_hook": invocation_hook,
             "in_subset": in_subset,
-            "hook_dirs": hook_dirs,
+            "check_hook_placeholders": check_hook_placeholders,
             "fill_dirs": fill_dirs,
         }
 
@@ -298,7 +293,8 @@ def test_gives_every_run_the_meta_read_once_at_the_start(
     collaborators["invocation_meta"].assert_awaited_once_with(
         tmp_path, "git log -1", mock.ANY
     )
-    assert collaborators["hook_dirs"].call_args.args[0]["meta"] == "git log -1"
+    check = collaborators["check_hook_placeholders"]
+    assert check.call_args.args[0]["meta"] == "git log -1"
     calls = collaborators["execute_run"].await_args_list
     assert [c.kwargs["meta"] for c in calls] == [{"commit": "abc"}] * 2
 
@@ -379,21 +375,19 @@ def test_setup_uses_an_existing_invocation_folder(
     assert collaborators["invocation_hook"].await_count == 2
 
 
-def test_fills_the_dirs_into_setup_and_teardown(
+def test_checks_the_hooks_and_runs_them_unfilled(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["fill_dirs"].side_effect = lambda command, dirs: f"{command} {dirs}"
 
     start_with_hooks(tmp_path, mock.Mock())
 
-    collaborators["hook_dirs"].assert_called_once_with(
-        {"setup": "up", "teardown": "down", "meta": None},
-        None,
-        [str(tmp_path / "exp" / "r1"), str(tmp_path / "exp" / "r2")],
+    collaborators["check_hook_placeholders"].assert_called_once_with(
+        {"setup": "up", "teardown": "down", "meta": None}
     )
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up {}", mock.ANY),
-        mock.call(tmp_path, "teardown", "down {}", mock.ANY),
+        mock.call(tmp_path, "setup", "up", mock.ANY),
+        mock.call(tmp_path, "teardown", "down", mock.ANY),
     ]
 
 
@@ -435,10 +429,10 @@ def test_keeps_a_temp_state_file_through_teardown_without_a_shared_folder(
     assert not Path(path).parent.exists()
 
 
-def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
+def test_starts_nothing_when_a_hook_uses_a_folder_placeholder(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["hook_dirs"].side_effect = ValueError("no run_dir")
+    collaborators["check_hook_placeholders"].side_effect = ValueError("no run_dir")
     report = mock.Mock()
 
     with pytest.raises(ValueError, match="no run_dir"):
@@ -449,7 +443,7 @@ def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     collaborators["execute_run"].assert_not_awaited()
 
 
-def test_rejects_a_hook_environment_before_any_subprocess_starts(
+def test_fills_hook_environments_without_folders_before_reporting(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     configured = experiment()
@@ -472,11 +466,11 @@ def test_rejects_a_hook_environment_before_any_subprocess_starts(
                 1,
                 report,
                 mock.Mock(),
-                environment={},
+                environment={"CALLER": "1"},
             )
         )
 
-    assert fill.call_args.kwargs["hook"] == "setup"
+    fill.assert_called_once_with({"LABEL": "{invocation_dir}"}, {"CALLER": "1"}, {})
     report.assert_not_called()
     collaborators["invocation_hook"].assert_not_awaited()
     collaborators["execute_run"].assert_not_awaited()
@@ -670,9 +664,9 @@ def test_has_no_invocation_directory_when_a_matrix_plans_nothing(
 
     start_with_hooks(tmp_path, mock.Mock())
 
-    collaborators["hook_dirs"].assert_called_once_with(
-        {"setup": "up", "teardown": "down", "meta": None}, None, []
-    )
+    [setup, _] = collaborators["invocation_hook"].await_args_list
+    assert tmp_path not in Path(setup.args[3]["LABNOTES_STATE"]).parents
+    assert not (tmp_path / "exp").exists()
 
 
 def test_uses_the_adhoc_group_folder_for_the_invocation(

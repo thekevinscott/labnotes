@@ -69,12 +69,10 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     assert [row["BOTH"] for row in rows] == ["first"] * 4 + ["second"] * 4
     assert {row["BASE"] for row in rows} == {"base"}
     assert {row["OWN"] for row in rows} == {"own"}
-    folders = sorted((tmp_path / "exp" / "runs").iterdir())
-    assert [row["INV_DIR"] for row in rows] == [
-        value
-        for folder in folders
-        for value in (None, None, str(folder.resolve()), None)
-    ]
+    folders = sorted(str(p.resolve()) for p in (tmp_path / "exp" / "runs").iterdir())
+    hooks = [row["INV_DIR"] for row in rows if row["stage"] != "run"]
+    assert hooks == [None] * 6
+    assert sorted(row["INV_DIR"] for row in rows if row["stage"] == "run") == folders
 
 
 LABEL_CAPTURE = """

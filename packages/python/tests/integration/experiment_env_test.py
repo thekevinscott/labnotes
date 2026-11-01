@@ -21,7 +21,7 @@ import psutil
 
 stage = sys.argv[1]
 keys = ("BASE", "BOTH", "OWN", "INV_DIR")
-record = {"stage": stage, **{key: os.environ[key] for key in keys}}
+record = {"stage": stage, **{key: os.environ.get(key) for key in keys}}
 with Path("journal.jsonl").open("a") as journal:
     journal.write(json.dumps(record) + "\\n")
 if stage == "meta":
@@ -69,9 +69,10 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     assert [row["BOTH"] for row in rows] == ["first"] * 4 + ["second"] * 4
     assert {row["BASE"] for row in rows} == {"base"}
     assert {row["OWN"] for row in rows} == {"own"}
-    for invocation in (rows[:4], rows[4:]):
-        assert len({row["INV_DIR"] for row in invocation}) == 1
-        assert Path(invocation[0]["INV_DIR"]).is_absolute()
+    folders = sorted(str(p.resolve()) for p in (tmp_path / "exp" / "runs").iterdir())
+    hooks = [row["INV_DIR"] for row in rows if row["stage"] != "run"]
+    assert hooks == [None] * 6
+    assert sorted(row["INV_DIR"] for row in rows if row["stage"] == "run") == folders
 
 
 LABEL_CAPTURE = """
@@ -93,28 +94,45 @@ def without_label() -> Iterator[None]:
         yield
 
 
+MANY = '[params]\nm = ["a", "b"]\n'
+
+
 @pytest.mark.usefixtures("without_label")
-def test_run_dir_env_value_is_left_out_of_hooks_and_given_to_the_run(
-    tmp_path: Path,
+@pytest.mark.parametrize("params", ["", MANY])
+@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
+@pytest.mark.parametrize("placeholder", ["{run_dir}", "{invocation_dir}"])
+def test_folder_env_values_are_left_out_of_hooks_and_given_to_the_runs(
+    tmp_path: Path, params: str, mode: str, placeholder: str
 ) -> None:
     write(tmp_path / "capture.py", LABEL_CAPTURE)
     write(
         tmp_path / ".labnotes.toml",
         '[experiments]\npath = "{experiment}"\n'
-        '[experiment.env]\nLABEL = "{run_dir}"\n',
+        f'[experiment.env]\nLABEL = "{placeholder}"\n',
     )
     command = shlex.join([sys.executable, "capture.py"])
     write(
         tmp_path / "exp" / "experiment.toml",
-        f'command = "{command} run"\nsetup = "{command} setup"\n',
+        f'mode = "{mode}"\n'
+        f'command = "{command} run"\n'
+        f'meta = "{command} meta && echo {{}}"\n'
+        f'setup = "{command} setup"\n'
+        f'teardown = "{command} teardown"\n' + params,
     )
 
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
 
     assert exit_info.value.code == 0
-    [folder] = (tmp_path / "exp" / "runs").iterdir()
-    assert [
+    runs = tmp_path / "exp" / "runs"
+    folders = sorted(path.parent.resolve() for path in runs.rglob("run.json"))
+    shared = folders[0].parent if (mode, params) == ("adhoc", MANY) else None
+    rows = [
         json.loads(line)
         for line in (tmp_path / "journal.jsonl").read_text().splitlines()
-    ] == [["setup", None], ["run", str(folder.resolve())]]
+    ]
+    assert rows[:2] + rows[-1:] == [["meta", None], ["setup", None], ["teardown", None]]
+    assert sorted(row[1] for row in rows[2:-1]) == sorted(
+        str(shared or folder) if placeholder == "{invocation_dir}" else str(folder)
+        for folder in folders
+    )

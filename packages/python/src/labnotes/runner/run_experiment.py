@@ -16,10 +16,10 @@ from labnotes.models import (
     Report,
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
+from labnotes.runner.check_hook_placeholders import check_hook_placeholders
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.fill_experiment_env import fill_experiment_env
 from labnotes.runner.fill_dirs import fill_dirs
-from labnotes.runner.hook_dirs import hook_dirs
 from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
@@ -101,21 +101,21 @@ async def run_experiment(
         "teardown": experiment.teardown,
         "meta": experiment.meta,
     }
-    dirs = hook_dirs(hooks, group_dir, run_dirs)
+    check_hook_placeholders(hooks)
     hook_env = {
-        hook: fill_experiment_env(
-            experiment.env, inherited, dirs, hook=hook, runs=len(plan)
-        )
+        hook: fill_experiment_env(experiment.env, inherited, {})
         for hook, command in hooks.items()
         if command is not None
     }
     meta = None
     if experiment.meta is not None:
-        meta = await invocation_meta(
-            command_root, fill_dirs(experiment.meta, dirs), hook_env["meta"]
-        )
-    if dirs:
-        Path(dirs["invocation_dir"]).mkdir(parents=True, exist_ok=True)
+        meta = await invocation_meta(command_root, experiment.meta, hook_env["meta"])
+    invocation_dir = group_dir
+    match run_dirs:
+        case [run_dir]:
+            invocation_dir = run_dir
+    if invocation_dir is not None:
+        Path(invocation_dir).mkdir(parents=True, exist_ok=True)
     runs = [{"run": run, "params": params} for run, params in plan]
     report(
         {
@@ -248,7 +248,7 @@ async def run_experiment(
         if snapshot is not None and snapshot.sha is not None:
             (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
             (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")
-        run_invocation_dir = dirs.get("invocation_dir") or str(folder.resolve())
+        run_invocation_dir = invocation_dir or str(folder.resolve())
         report({"event": "started", "run": run, "params": params, "folder": folder})
         running[run] = set()
         trees[run] = set()
@@ -303,14 +303,14 @@ async def run_experiment(
             await invocation_hook(
                 command_root,
                 "teardown",
-                fill_dirs(experiment.teardown, dirs),
+                experiment.teardown,
                 hook_env["teardown"],
             )
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
     with (
-        nullcontext(dirs["invocation_dir"])
-        if dirs
+        nullcontext(invocation_dir)
+        if invocation_dir is not None
         else TemporaryDirectory(prefix="labnotes-state-")
     ) as state_dir:
         state_file = Path(state_dir) / "state.json"
@@ -324,7 +324,7 @@ async def run_experiment(
                 await invocation_hook(
                     command_root,
                     "setup",
-                    fill_dirs(experiment.setup, dirs),
+                    experiment.setup,
                     hook_env["setup"],
                 )
             fill()

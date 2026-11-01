@@ -121,39 +121,20 @@ def run_ids(root: Path) -> list[str]:
 
 
 @pytest.mark.parametrize("mode", ["adhoc", "matrix"])
-def test_gives_a_lone_run_and_its_hooks_the_same_quoted_dirs(
+def test_gives_a_lone_run_its_own_folder_as_both_quoted_dirs(
     tmp_path: Path, mode: str
 ) -> None:
-    root = make_dir_project(
-        tmp_path / "with spaces",
-        'setup = "test -d {invocation_dir} && echo remote > '
-        '{invocation_dir}/machine.txt && echo up {invocation_dir} >> journal.txt"\n'
-        'teardown = "cat {invocation_dir}/machine.txt >> journal.txt && '
-        'echo down {invocation_dir} >> journal.txt"\n'
-        f'mode = "{mode}"\n',
-    )
+    root = make_dir_project(tmp_path / "with spaces", f'mode = "{mode}"\n')
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
     [run] = run_ids(root)
     folder = str((root / "exp" / "runs" / run).resolve())
-    assert journal(root) == [
-        f"up {folder}",
-        f"run {folder} {folder}",
-        "remote",
-        f"down {folder}",
-    ]
+    assert journal(root) == [f"run {folder} {folder}"]
 
 
 def test_uses_the_invocation_folder_shared_by_adhoc_runs(tmp_path: Path) -> None:
-    root = make_dir_project(
-        tmp_path,
-        'setup = "test -d {invocation_dir} && echo remote > '
-        '{invocation_dir}/machine.txt && echo up {invocation_dir} >> journal.txt"\n'
-        'teardown = "cat {invocation_dir}/machine.txt >> journal.txt && '
-        'echo down {invocation_dir} >> journal.txt"\n',
-        '[params]\nm = ["a", "b"]\n',
-    )
+    root = make_dir_project(tmp_path, "", '[params]\nm = ["a", "b"]\n')
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
@@ -161,48 +142,45 @@ def test_uses_the_invocation_folder_shared_by_adhoc_runs(tmp_path: Path) -> None
     group = runs[0].split("/")[0]
     assert [run.split("/")[0] for run in runs] == [group, group]
     group_dir = str((root / "exp" / "runs" / group).resolve())
-    lines = journal(root)
-    assert (lines[0], lines[-2:]) == (
-        f"up {group_dir}",
-        ["remote", f"down {group_dir}"],
-    )
-    assert sorted(lines[1:-2]) == [
+    assert sorted(journal(root)) == [
         f"run {(root / 'exp' / 'runs' / run).resolve()} {group_dir}" for run in runs
     ]
 
 
 @pytest.mark.parametrize("params", ["", '[params]\nm = ["a", "b"]\n'])
-def test_refuses_run_dir_in_setup_for_any_run_count(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str], params: str
+@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
+@pytest.mark.parametrize("hook", ["setup", "teardown", "meta"])
+@pytest.mark.parametrize("placeholder", ["{run_dir}", "{invocation_dir}"])
+def test_refuses_a_folder_placeholder_in_any_hook_before_setup(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    params: str,
+    mode: str,
+    hook: str,
+    placeholder: str,
 ) -> None:
+    hooks = {
+        "setup": "echo up >> journal.txt",
+        "teardown": "echo down >> journal.txt",
+        "meta": "echo {}",
+    }
+    hooks[hook] = f"echo {hook} {placeholder} >> journal.txt"
     root = make_dir_project(
-        tmp_path, 'setup = "echo up {run_dir} >> journal.txt"\n', params
-    )
-
-    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
-
-    assert (
-        "setup command echo up {run_dir} >> journal.txt uses {run_dir}; "
-        "use {invocation_dir} instead." in capsys.readouterr().err
-    )
-    assert not (root / "journal.txt").exists()
-
-
-def test_refuses_invocation_dir_in_matrix_setup_with_many_runs(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    root = make_project(
         tmp_path,
-        own='mode = "matrix"\nsetup = "echo up {invocation_dir} >> journal.txt"\n',
+        f'mode = "{mode}"\n'
+        + "".join(f"{name} = '{command}'\n" for name, command in hooks.items()),
+        params,
     )
 
     assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
 
     assert (
-        "setup command echo up {invocation_dir} >> journal.txt uses {invocation_dir}"
-        in (capsys.readouterr().err)
-    )
+        f"{hook} command echo {hook} {placeholder} >> journal.txt uses "
+        f"{placeholder}; setup, teardown, and meta get no folder placeholders. "
+        "Share values with set_state() and get_state()."
+    ) in capsys.readouterr().err
     assert not (root / "journal.txt").exists()
+    assert not (root / "exp" / "runs").exists()
 
 
 SET_STATE = (

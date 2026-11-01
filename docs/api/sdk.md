@@ -90,7 +90,7 @@ Run commands can call `get_state()` after setup finishes. Every run, including q
 
 Both functions use only the standard library and raise `RuntimeError` outside an invocation and in `meta`. They take no invocation IDs.
 
-Labnotes sets `LABNOTES_STATE` for setup and teardown to `state.json` in `{invocation_dir}`, and `LABNOTES_RUN_STATE` for run commands to the same file. That file stays in the invocation folder. When several matrix runs have no shared folder, labnotes uses a temporary file that remains available through all runs and teardown and is removed afterward, including when a hook fails. `meta` receives neither state variable; state is not copied into `run.json`.
+Labnotes sets `LABNOTES_STATE` for setup and teardown to `state.json` in the invocation folder, and `LABNOTES_RUN_STATE` for run commands to the same file. The invocation folder is the shared group folder of a multi-run adhoc invocation, or the run folder when one run is planned. When several matrix runs have no shared folder, labnotes uses a temporary file that remains available through all runs and teardown and is removed afterward, including when a hook fails. `meta` receives neither state variable; state is not copied into `run.json`.
 
 When a hook or run starts another labnotes invocation, the inner invocation clears inherited `LABNOTES_*` context for its children, then sets its own hook state and run variables. Its SDK calls cannot bind to the outer invocation through those inherited values.
 

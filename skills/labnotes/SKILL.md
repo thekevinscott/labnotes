@@ -28,7 +28,8 @@ To run part of the grid, name params on the command line instead of editing
 uvx labnotes experiments NAME run --model=small
 ```
 
-Each flag must name a param in `[params]` and one of its values. Several flags
+Each flag must name a param in `[params]` and one of its values. Repeat a param
+to run several of its values (`--model=small --model=large`). Different params
 narrow further. The experiment's totals still count the full grid.
 
 Always pass `--format json` (or `--format table`) to `labnotes experiments`.

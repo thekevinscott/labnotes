@@ -13,7 +13,7 @@ async def prepare_experiment(
     name: str,
     experiment_config: Path | None,
     concurrency: int | None,
-    only: dict[str, str] | None = None,
+    only: dict[str, list[str]] | None = None,
     args: list[str] | None = None,
     setup: str | None = None,
     teardown: str | None = None,

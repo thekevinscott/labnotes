@@ -133,7 +133,7 @@ def run(
     mode: str = "matrix",
     retries: int = 2,
     retry_seconds: float = 0.0,
-    only: dict[str, str] | None = None,
+    only: dict[str, list[str]] | None = None,
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
@@ -203,12 +203,12 @@ def test_passes_snapshot_root_and_starting_git_info_to_cells(
 def test_plans_only_the_cells_in_the_subset(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    run(tmp_path, mock.Mock(), only={"m": "a"})
+    run(tmp_path, mock.Mock(), only={"m": ["a"]})
 
     collaborators["plan_runs"].assert_called_once_with([A], 2, [A])
     assert collaborators["in_subset"].call_args_list == [
-        mock.call(A, {"m": "a"}),
-        mock.call(B, {"m": "a"}),
+        mock.call(A, {"m": ["a"]}),
+        mock.call(B, {"m": ["a"]}),
     ]
 
 

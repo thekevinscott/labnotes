@@ -98,11 +98,7 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
                 relative = Path(raw.decode().rstrip("/"))
                 if any(parent in relative.parents for parent in skipped):
                     continue
-                if any(
-                    (snapshot / parent).is_symlink()
-                    for parent in relative.parents
-                    if parent != Path(".")
-                ):
+                if any((snapshot / parent).is_symlink() for parent in relative.parents):
                     continue
                 source = root / relative
                 if source.is_dir() and (source / "pyvenv.cfg").exists():

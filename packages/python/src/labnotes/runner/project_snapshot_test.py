@@ -203,7 +203,8 @@ def test_skips_virtualenv_and_its_ignored_entries(tmp_path: Path) -> None:
     venv.mkdir(parents=True)
     (venv / "pyvenv.cfg").write_text("home = /usr/bin\n")
     (venv / ".gitignore").write_text("*\n")
-    commands = [b"true\n", b"abc\n", b"", b"", b".venv/\0.venv/.gitignore\0"]
+    (root / "later").mkdir()
+    commands = [b"true\n", b"abc\n", b"", b"", b".venv/\0.venv/.gitignore\0later/\0"]
     with (
         mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
         mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
@@ -211,6 +212,7 @@ def test_skips_virtualenv_and_its_ignored_entries(tmp_path: Path) -> None:
         with project_snapshot(root) as snapshot:
             assert not (snapshot.root / ".venv").exists()
             assert not (snapshot.root / ".venv").is_symlink()
+            assert (snapshot.root / "later").is_symlink()
 
 
 def test_skips_entries_under_linked_ignored_directory(tmp_path: Path) -> None:
@@ -218,7 +220,8 @@ def test_skips_entries_under_linked_ignored_directory(tmp_path: Path) -> None:
     data = root / "data"
     data.mkdir(parents=True)
     (data / "child").write_text("live")
-    commands = [b"true\n", b"abc\n", b"", b"", b"data/\0data/child\0"]
+    (root / "later").mkdir()
+    commands = [b"true\n", b"abc\n", b"", b"", b"data/\0data/child\0later/\0"]
     with (
         mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
         mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
@@ -226,13 +229,15 @@ def test_skips_entries_under_linked_ignored_directory(tmp_path: Path) -> None:
         with project_snapshot(root) as snapshot:
             assert (snapshot.root / "data").is_symlink()
             assert (data / "child").read_text() == "live"
+            assert (snapshot.root / "later").is_symlink()
 
 
 def test_skips_ignored_path_already_copied(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()
     (root / "same.txt").write_text("copied")
-    commands = [b"true\n", b"abc\n", b"", b"same.txt\0", b"same.txt\0"]
+    (root / "later").mkdir()
+    commands = [b"true\n", b"abc\n", b"", b"same.txt\0", b"same.txt\0later/\0"]
     with (
         mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
         mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
@@ -240,3 +245,33 @@ def test_skips_ignored_path_already_copied(tmp_path: Path) -> None:
         with project_snapshot(root) as snapshot:
             assert (snapshot.root / "same.txt").read_text() == "copied"
             assert not (snapshot.root / "same.txt").is_symlink()
+            assert (snapshot.root / "later").is_symlink()
+
+
+def test_clone_and_reset_check_for_git_errors(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    commands = [b"true\n", b"abc\n", b"", b"", b""]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run") as run,
+    ):
+        with project_snapshot(root):
+            pass
+    assert [call.kwargs["check"] for call in run.call_args_list] == [True, True]
+
+
+def test_non_main_thread_stops_installing_signal_handlers(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    commands = [b"true\n", b"abc\n", b"", b"", b""]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+        mock.patch(
+            "labnotes.runner.project_snapshot.signal.signal", side_effect=ValueError
+        ) as change_handler,
+    ):
+        with project_snapshot(root):
+            pass
+    change_handler.assert_called_once()

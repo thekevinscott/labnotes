@@ -1,0 +1,1 @@
+Changed: An `[env]` value that uses a placeholder hooks don't get, such as `{run_dir}`, is now left out of the `setup`, `teardown`, and `meta` environment instead of failing the invocation. Runs still get it. A placeholder hooks don't get in a hook command still fails.

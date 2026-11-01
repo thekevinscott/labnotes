@@ -1,4 +1,5 @@
 from inspect import Parameter, signature
+from unittest import mock
 
 import pytest
 
@@ -16,19 +17,31 @@ def test_fills_config_values_without_quoting_and_keeps_caller_precedence() -> No
     ) == {"PATH_VALUE": "/a b/run /a b", "BOTH": "caller"}
 
 
-@pytest.mark.parametrize("runs", [1, 2])
-def test_rejects_run_dir_in_hook_environment(runs: int) -> None:
-    with pytest.raises(ValueError) as error:
-        fill_experiment_env(
-            {"LABEL": "{run_dir}"},
+@pytest.mark.parametrize("runs", [0, 1, 2])
+def test_leaves_run_dir_values_out_of_hook_environment(runs: int) -> None:
+    assert fill_experiment_env(
+        {
+            "LABEL": "{run_dir}",
+            "BOTH": "{invocation_dir}/{run_dir}",
+            "LATER": "{invocation_dir}",
+        },
+        {},
+        {"invocation_dir": "/group"},
+        hook="setup",
+        runs=runs,
+    ) == {"LATER": "/group"}
+
+
+def test_leaves_out_values_using_any_placeholder_hooks_do_not_get() -> None:
+    with mock.patch(
+        "labnotes.runner.fill_experiment_env.HOOK_PLACEHOLDERS", ("run_dir",)
+    ):
+        assert fill_experiment_env(
+            {"LABEL": "{invocation_dir}", "RUN": "{run_dir}"},
             {},
-            {"invocation_dir": "/group"},
-            hook="setup",
-            runs=runs,
-        )
-    assert str(error.value) == (
-        "setup env.LABEL uses {run_dir}; use {invocation_dir} instead."
-    )
+            {"run_dir": "/run"},
+            hook="meta",
+        ) == {"RUN": "/run"}
 
 
 def test_rejects_a_matrix_hook_value_needing_invocation_dir() -> None:

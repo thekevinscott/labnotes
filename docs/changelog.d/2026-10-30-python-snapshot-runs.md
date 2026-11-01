@@ -1,0 +1,1 @@
+Changed: Experiment invocations now run setup, cells, and teardown from a fresh copy of the project's Git working tree. Later source edits cannot change code seen by an in-progress invocation. Run folders record the starting commit and diff.

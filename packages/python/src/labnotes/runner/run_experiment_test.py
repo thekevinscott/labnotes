@@ -177,6 +177,29 @@ def test_plans_the_runs_still_needed(
     ]
 
 
+def test_passes_snapshot_root_and_starting_git_info_to_cells(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    snapshot = mock.Mock(root=tmp_path / "snapshot", sha="abc", diff=b"patch")
+    config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+
+    def listening(controls: object) -> None:
+        controls.finish()  # type: ignore[attr-defined]
+
+    settle(
+        run_experiment(
+            config, "exp", experiment(), 1, mock.Mock(), listening, snapshot=snapshot
+        )
+    )
+
+    for call in collaborators["execute_run"].await_args_list:
+        assert call.args[0] == snapshot.root
+        assert call.kwargs["git_info"] == {"commit": "abc", "dirty": True}
+        folder = call.args[1]
+        assert (folder / "git-sha.txt").read_text() == "abc\n"
+        assert (folder / "git-diff.patch").read_bytes() == b"patch"
+
+
 def test_plans_only_the_cells_in_the_subset(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

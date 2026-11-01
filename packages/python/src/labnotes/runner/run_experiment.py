@@ -110,7 +110,10 @@ async def run_experiment(
     meta = None
     if experiment.meta is not None:
         meta = await invocation_meta(command_root, experiment.meta, hook_env["meta"])
-    invocation_dir = run_dirs[0] if len(run_dirs) == 1 else group_dir
+    invocation_dir = group_dir
+    match run_dirs:
+        case [run_dir]:
+            invocation_dir = run_dir
     if invocation_dir is not None:
         Path(invocation_dir).mkdir(parents=True, exist_ok=True)
     runs = [{"run": run, "params": params} for run, params in plan]

@@ -338,6 +338,7 @@ def test_help_says_params_pick_a_subset(
         help_text
     )
     assert "anything after -- is appended to every run's command" in help_text
+    assert "(repeat it for several values)" in help_text
 
 
 def test_exits_zero_when_a_run_fails(

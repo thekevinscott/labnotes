@@ -192,8 +192,10 @@ going. Elsewhere, it prints a line per event instead.
 - `--PARAM=VALUE` runs only the cells where that param has that value, e.g.
   `labnotes experiments NAME run --model=small`. PARAM must be a key in
   `[params]` and VALUE one of its values, written as it shows in `runs`
-  (`true`, `2`); anything else is an error. One value per param; give several
-  params to narrow further (`--model=small --lang=en`). It changes only what
+  (`true`, `2`); anything else is an error. Repeat a param to run any of
+  several values (`--model=small --model=large`); give several params to
+  narrow further (`--model=small --lang=en`). Values are never split on
+  commas. It changes only what
   this `run` starts: counts, progress and `repeats` still cover the full
   matrix, so a later plain `run` fills in the rest. Use it instead of editing
   `experiment.toml` to run a slice.

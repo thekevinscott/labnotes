@@ -1,0 +1,1 @@
+**Changed** — `labnotes experiments NAME run` takes a param more than once to run several of its values in one launch: `--model=opus --model=haiku --effort=xhigh` runs the `xhigh` cells for both models. A cell runs when it matches any value given for a param and every param given. Each value must still be declared in `[params]`. Previously a repeated param was an error.

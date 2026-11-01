@@ -33,7 +33,8 @@ class PassthroughCommand(click.Command):
     cls=PassthroughCommand,
     help="List experiments, show one, list its runs, or run it."
     " `new [NAME]` creates one. With run, --PARAM=VALUE runs only the"
-    " matrix cells where that param has that value, and anything after --"
+    " matrix cells where that param has that value (repeat it for several"
+    " values), and anything after --"
     " is appended to every run's command and recorded in run.json, so never"
     " pass secrets there.",
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},

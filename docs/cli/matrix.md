@@ -24,7 +24,15 @@ To run part of the matrix, name params on the command line:
 labnotes experiments my-experiment run --model=opus --effort=low
 ```
 
-That plans only the combinations where `model` is `opus` and `effort` is `low`. Each flag must name a param in `[params]` and one of its values; anything else is an error. The rest of the matrix still counts toward progress, so a plain `run` later picks up the combinations this one skipped.
+That plans only the combinations where `model` is `opus` and `effort` is `low`. Each flag must name a param in `[params]` and one of its values; anything else is an error.
+
+Repeat a param to run several of its values in one launch:
+
+```sh
+labnotes experiments my-experiment run --effort=high --model=opus --model=haiku
+```
+
+That plans the combinations where `effort` is `high` and `model` is `opus` or `haiku`. Values are taken whole, so a value with a comma in it is still one value. The rest of the matrix still counts toward progress, so a plain `run` later picks up the combinations this one skipped.
 
 A run that exits 75 is [retried](../api/config#retries-1) in the same `run`. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more.
 

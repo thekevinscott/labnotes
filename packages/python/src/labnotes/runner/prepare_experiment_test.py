@@ -77,11 +77,11 @@ def test_checks_the_subset_against_the_params(
 
     with pytest.raises(ValueError, match=r"^No param size\.$"):
         asyncio.run(
-            prepare_experiment(make_config(tmp_path), "exp", None, 2, {"size": "s"})
+            prepare_experiment(make_config(tmp_path), "exp", None, 2, {"size": ["s"]})
         )
 
     collaborators["check_subset"].assert_called_once_with(
-        experiment.params, {"size": "s"}
+        experiment.params, {"size": ["s"]}
     )
 
 

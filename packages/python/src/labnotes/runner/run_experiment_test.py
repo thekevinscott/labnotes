@@ -133,7 +133,7 @@ def run(
     mode: str = "matrix",
     retries: int = 2,
     retry_seconds: float = 0.0,
-    only: dict[str, str] | None = None,
+    only: dict[str, list[str]] | None = None,
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
 ) -> list[dict[str, object]]:
@@ -203,12 +203,12 @@ def test_passes_snapshot_root_and_starting_git_info_to_cells(
 def test_plans_only_the_cells_in_the_subset(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    run(tmp_path, mock.Mock(), only={"m": "a"})
+    run(tmp_path, mock.Mock(), only={"m": ["a"]})
 
     collaborators["plan_runs"].assert_called_once_with([A], 2, [A])
     assert collaborators["in_subset"].call_args_list == [
-        mock.call(A, {"m": "a"}),
-        mock.call(B, {"m": "a"}),
+        mock.call(A, {"m": ["a"]}),
+        mock.call(B, {"m": ["a"]}),
     ]
 
 
@@ -449,15 +449,21 @@ def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     collaborators["execute_run"].assert_not_awaited()
 
 
-def test_rejects_run_dir_in_hook_environment_before_any_subprocess_starts(
+def test_rejects_a_hook_environment_before_any_subprocess_starts(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     configured = experiment()
     configured.setup = "up"
-    configured.env = {"LABEL": "{run_dir}"}
+    configured.env = {"LABEL": "{invocation_dir}"}
     report = mock.Mock()
 
-    with pytest.raises(ValueError, match=r"setup env.LABEL uses \{run_dir\}"):
+    with (
+        mock.patch(
+            "labnotes.runner.run_experiment.fill_experiment_env",
+            side_effect=ValueError("setup env.LABEL"),
+        ) as fill,
+        pytest.raises(ValueError, match=r"setup env.LABEL"),
+    ):
         settle(
             run_experiment(
                 mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
@@ -470,6 +476,7 @@ def test_rejects_run_dir_in_hook_environment_before_any_subprocess_starts(
             )
         )
 
+    assert fill.call_args.kwargs["hook"] == "setup"
     report.assert_not_called()
     collaborators["invocation_hook"].assert_not_awaited()
     collaborators["execute_run"].assert_not_awaited()

@@ -13,7 +13,7 @@ def start_experiment(
     experiment_config: Path | None,
     concurrency: int | None,
     timeout: int | None,
-    only: dict[str, str] | None,
+    only: dict[str, list[str]] | None,
     args: list[str] | None,
     setup: str | None,
     teardown: str | None,

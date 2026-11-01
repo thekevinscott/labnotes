@@ -47,7 +47,7 @@ async def run_experiment(
     listen: Listen,
     timeout: float | None = None,
     retry_seconds: float = RETRY_SECONDS,
-    only: dict[str, str] | None = None,
+    only: dict[str, list[str]] | None = None,
     args: list[str] | None = None,
     environment: dict[str, str] | None = None,
     snapshot: ProjectSnapshot | None = None,

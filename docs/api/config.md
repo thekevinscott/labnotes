@@ -163,7 +163,7 @@ These placeholders are filled in, each shell-quoted:
 
 Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
 
-Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. For `setup`, `teardown`, and `meta`, use `{invocation_dir}`; `{run_dir}` is unavailable in hooks. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks and run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
+Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. `{run_dir}` is unavailable in `setup`, `teardown`, and `meta`, so a variable whose value uses it is left out of their environment; runs still get it. Use `{invocation_dir}` for a value hooks need. In matrix mode, `{invocation_dir}` in a hook requires one planned run because several matrix runs have no shared folder. For retries, the hooks and run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
 
 Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.
 
@@ -195,7 +195,7 @@ Shell command that labnotes runs once per `run`, from the project root, after [`
 
 A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
 
-`{invocation_dir}` is filled in as in [`command`](#command). Its folder exists before setup starts, so setup can write files that teardown reads. In a multi-run adhoc invocation it is the shared group folder; for one run it is that run's folder. In matrix mode with several planned runs, `{invocation_dir}` fails because there is no shared folder. `{run_dir}` is never filled in setup or teardown; use `{invocation_dir}` instead. An unavailable placeholder fails the invocation before setup or any run starts.
+`{invocation_dir}` is filled in as in [`command`](#command). Its folder exists before setup starts, so setup can write files that teardown reads. In a multi-run adhoc invocation it is the shared group folder; for one run it is that run's folder. In matrix mode with several planned runs, `{invocation_dir}` fails because there is no shared folder. `{run_dir}` is never filled in setup or teardown; use `{invocation_dir}` instead. An unavailable placeholder in the command fails the invocation before setup or any run starts. An [`[env]`](#env) value that uses `{run_dir}` is left out of the hook's environment instead.
 
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 

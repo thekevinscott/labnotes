@@ -8,12 +8,20 @@ def test_keeps_every_cell_with_no_subset() -> None:
 
 
 def test_keeps_a_cell_matching_every_param() -> None:
-    assert in_subset(CELL, {"model": "small", "n": "2", "warm": "true"})
+    assert in_subset(CELL, {"model": ["small"], "n": ["2"], "warm": ["true"]})
 
 
 def test_drops_a_cell_missing_any_param() -> None:
-    assert not in_subset(CELL, {"model": "small", "n": "1"})
+    assert not in_subset(CELL, {"model": ["small"], "n": ["1"]})
 
 
 def test_drops_a_cell_whose_value_sorts_before_the_wanted_one() -> None:
-    assert not in_subset(CELL, {"model": "tiny"})
+    assert not in_subset(CELL, {"model": ["tiny"]})
+
+
+def test_keeps_a_cell_matching_any_value_of_a_param() -> None:
+    assert in_subset(CELL, {"model": ["large", "small"], "n": ["2"]})
+
+
+def test_drops_a_cell_matching_no_value_of_a_param() -> None:
+    assert not in_subset(CELL, {"model": ["large", "tiny"]})

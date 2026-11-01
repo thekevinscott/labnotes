@@ -90,11 +90,27 @@ def test_refuses_a_param_or_value_the_experiment_does_not_declare(
     assert not (project / "exp" / "runs").exists()
 
 
-def test_refuses_two_values_for_one_param(
+def test_runs_every_value_given_for_one_param(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    project = make_project(tmp_path)
+    (project / "exp" / "experiment.toml").write_text(
+        f'command = "{sys.executable} script.py"\n'
+        '[params]\nm = ["a", "b", "c"]\nn = [1, 2]\n'
+    )
+
+    assert labnotes(project, ["run", "--m=a", "--m=c", "--n=2"]) == 0
+
+    assert params(project) == [{"m": "a", "n": 2}, {"m": "c", "n": 2}]
+    assert capsys.readouterr().out.endswith("2 passed, 0 failed.\n")
+
+
+def test_refuses_an_undeclared_value_among_several(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     project = make_project(tmp_path)
 
-    assert labnotes(project, ["run", "--m=a", "--m=b"]) == 2
+    assert labnotes(project, ["run", "--m=a", "--m=c"]) == 1
 
-    assert "--m given twice. Pass one value per param." in capsys.readouterr().err
+    assert "Error: No value c for m. Values: a, b." in capsys.readouterr().err
+    assert not (project / "exp" / "runs").exists()

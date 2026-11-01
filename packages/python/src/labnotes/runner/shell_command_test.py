@@ -15,6 +15,15 @@ def param_args() -> Iterator[mock.MagicMock]:
         yield param_args
 
 
+@pytest.fixture(autouse=True)
+def override_flags() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.runner.shell_command.override_flags",
+        side_effect=lambda command, args: (command, args),
+    ) as override_flags:
+        yield override_flags
+
+
 def test_appends_the_params(param_args: mock.MagicMock) -> None:
     assert shell_command("study", Path("/r"), {"m": "a b"}) == "study --m 'a b'"
     param_args.assert_called_once_with({"m": "a b"})
@@ -38,3 +47,15 @@ def test_appends_args_after_the_params() -> None:
     assert shell_command("study", Path("/r"), {}, ["--auth", "a b"]) == (
         "study --m 'a b' --auth 'a b'"
     )
+
+
+def test_overrides_flags_in_the_filled_command(
+    override_flags: mock.MagicMock,
+) -> None:
+    override_flags.side_effect = None
+    override_flags.return_value = ("study --mem 24g", ["--auth", "a b"])
+
+    assert shell_command("study {run_dir}", Path("/r 1"), {}, ("--mem", "24g")) == (
+        "study --mem 24g --m 'a b' --auth 'a b'"
+    )
+    override_flags.assert_called_once_with("study '/r 1'", ["--mem", "24g"])

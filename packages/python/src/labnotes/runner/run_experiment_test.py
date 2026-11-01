@@ -449,15 +449,21 @@ def test_starts_nothing_when_the_hooks_cannot_have_their_ids(
     collaborators["execute_run"].assert_not_awaited()
 
 
-def test_rejects_run_dir_in_hook_environment_before_any_subprocess_starts(
+def test_rejects_a_hook_environment_before_any_subprocess_starts(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     configured = experiment()
     configured.setup = "up"
-    configured.env = {"LABEL": "{run_dir}"}
+    configured.env = {"LABEL": "{invocation_dir}"}
     report = mock.Mock()
 
-    with pytest.raises(ValueError, match=r"setup env.LABEL uses \{run_dir\}"):
+    with (
+        mock.patch(
+            "labnotes.runner.run_experiment.fill_experiment_env",
+            side_effect=ValueError("setup env.LABEL"),
+        ) as fill,
+        pytest.raises(ValueError, match=r"setup env.LABEL"),
+    ):
         settle(
             run_experiment(
                 mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
@@ -470,6 +476,7 @@ def test_rejects_run_dir_in_hook_environment_before_any_subprocess_starts(
             )
         )
 
+    assert fill.call_args.kwargs["hook"] == "setup"
     report.assert_not_called()
     collaborators["invocation_hook"].assert_not_awaited()
     collaborators["execute_run"].assert_not_awaited()

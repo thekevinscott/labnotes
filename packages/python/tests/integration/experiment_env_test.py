@@ -72,3 +72,43 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     for invocation in (rows[:4], rows[4:]):
         assert len({row["INV_DIR"] for row in invocation}) == 1
         assert Path(invocation[0]["INV_DIR"]).is_absolute()
+
+
+LABEL_CAPTURE = """
+import json
+import os
+import sys
+from pathlib import Path
+
+record = [sys.argv[1], os.environ.get("LABEL")]
+with Path("journal.jsonl").open("a") as journal:
+    journal.write(json.dumps(record) + "\\n")
+"""
+
+
+def test_run_dir_env_value_is_left_out_of_hooks_and_given_to_the_run(
+    tmp_path: Path,
+) -> None:
+    write(tmp_path / "capture.py", LABEL_CAPTURE)
+    write(
+        tmp_path / ".labnotes.toml",
+        '[experiments]\npath = "{experiment}"\n'
+        '[experiment.env]\nLABEL = "{run_dir}"\n',
+    )
+    command = shlex.join([sys.executable, "capture.py"])
+    write(
+        tmp_path / "exp" / "experiment.toml",
+        f'command = "{command} run"\nsetup = "{command} setup"\n',
+    )
+
+    with mock.patch.dict(os.environ):
+        os.environ.pop("LABEL", None)
+        with pytest.raises(SystemExit) as exit_info:
+            main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
+
+    assert exit_info.value.code == 0
+    [folder] = (tmp_path / "exp" / "runs").iterdir()
+    assert [
+        json.loads(line)
+        for line in (tmp_path / "journal.jsonl").read_text().splitlines()
+    ] == [["setup", None], ["run", str(folder.resolve())]]

@@ -24,5 +24,21 @@ def test_keeps_an_empty_value() -> None:
     ]
 
 
+def test_takes_one_value_per_flag() -> None:
+    assert group_args(["--a", "x", "y", "--b=1", "z"]) == [
+        Arg("a", "x", ["--a", "x"]),
+        Arg(None, None, ["y"]),
+        Arg("b", "1", ["--b=1"]),
+        Arg(None, None, ["z"]),
+    ]
+
+
+def test_leaves_a_last_flag_without_a_value() -> None:
+    assert group_args(["x", "--a"]) == [
+        Arg(None, None, ["x"]),
+        Arg("a", None, ["--a"]),
+    ]
+
+
 def test_groups_nothing() -> None:
     assert group_args([]) == []

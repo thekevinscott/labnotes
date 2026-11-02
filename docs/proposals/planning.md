@@ -4,55 +4,73 @@
 Not built yet. Discussion lives in [#268](https://github.com/thekevinscott/labnotes/issues/268) and [#242](https://github.com/thekevinscott/labnotes/issues/242).
 :::
 
-## Planning
+## The idea
 
-`run` launches what your experiment is missing. The design in `experiment.toml` asks for `repeats` runs of every combination of `[params]`. `run` takes that, subtracts the runs on disk that already count, and launches the difference:
+An experiment in labnotes is a command you want to run many times with different settings. You describe it in `experiment.toml`:
+
+```toml
+command = "uv run python run.py --output {run_dir}"
+repeats = 3
+
+[params]
+model = ["opus", "sonnet"]
+effort = ["low", "high"]
+```
+
+This asks for every combination of `model` and `effort`, three times each: twelve runs. Each run gets its own folder under `runs/`, where your command writes its results and labnotes keeps a `run.json` saying how it went.
+
+You start runs with one command:
 
 ```sh
 labnotes experiments my-experiment run
 ```
 
-Run it again and it picks up whatever failed or never ran. If nothing is missing, it plans nothing.
+`run` looks at the folders already on disk, works out which of the twelve runs are still missing, and starts those. A run is missing if it never ran, or if it ran and failed. Run it again later and it starts whatever is still missing. When nothing is missing, it says so and does nothing.
 
-Filters narrow the design for one launch:
+That is the whole model. The rest of this page is what happens in the situations that come up in practice.
+
+## You only want some of it
+
+Name the settings you want on the command line:
 
 ```sh
 labnotes experiments my-experiment run --model=opus
 ```
 
-## Launches
+This starts only the missing `opus` runs. A later plain `run` starts the rest.
 
-Every `run` is a launch, and every run records the launch that planned it.
+## You want a fresh set of results
 
-By default every run that counts is in scope, so launches build on each other. To make a fresh pass that ignores earlier runs, start a new launch:
+By default every successful run on disk counts, so each `run` builds on the last. Sometimes you want to start over: you changed your prompt and want twelve new runs, not to top up the old ones. Start a new launch:
 
 ```sh
 labnotes experiments my-experiment run --new
 ```
 
-Only that launch's runs count toward it. If it crashes partway, continue it:
+A launch is one `run` command, and every run records the launch that started it. A new launch counts only its own runs, so it starts all twelve again. Your old runs stay on disk untouched.
+
+## Your machine reboots partway through
+
+Before `run` starts anything, it creates a folder for every run it intends to start, marked `planned`. Then it starts them.
+
+If the machine goes down, those folders are still there. The runs that were going are marked `running`, but no process is behind them any more. Labnotes notices this the next time you use it, because a live run holds a lock on its folder and a dead one can't. It marks those runs `killed`.
+
+Run `run` again and it starts everything that was planned but never started, and everything that was killed. If the launch you were in was a `--new` one, continue it by name:
 
 ```sh
 labnotes experiments my-experiment run --launch 20261102-brave-fox
 ```
 
-Hooks, `state.json` and the TUI work per launch.
+## A long run fails and you don't want to lose its work
 
-## Plan first, then start
-
-`run` writes a folder for every run it plans before it starts any of them, with status `planned`. It does this while holding a lock on the experiment, so two launches never plan the same missing run.
-
-A launch that dies leaves its unstarted runs on disk. The next `run` sees them and starts them.
-
-## Runs and attempts
-
-A run folder holds every try at that run. Each try is an attempt.
+When `run` starts a failed run again, it reuses the same folder. Each try is an attempt, and the folder keeps every attempt:
 
 <Tree>
 my-experiment
     runs
         20261102-000429-brave-fox/
             run.json
+            checkpoint.json
             attempts
                 20261102-000429/
                     stdout.txt
@@ -62,33 +80,31 @@ my-experiment
                     stderr.txt
 </Tree>
 
-`run.json` lists the attempts, each with its start, end, exit code, how it ended, the git commit, and the command as launched. The run's own `exit_code` and status are its last attempt's, so [`counts`](../api/config) and [views](../api/views) read runs the same way however many attempts they took.
+Whatever your code saved last time, like `checkpoint.json` above, is still in `{run_dir}`. `run.json` lists each attempt: when it started and ended, its exit code, whether it failed, was stopped or was killed, and which git commit it ran.
 
-## Failed runs
+Your code decides what to do with that. If its saved state is still good, it continues from there. If not, it clears the folder and starts over. Labnotes doesn't make this call, because only your code knows whether its saved state is still valid.
 
-A failed run doesn't count, so the next `run` plans it again as a new attempt in the same folder. `{run_dir}` still holds what earlier attempts wrote, and `run.json` says how each one ended.
-
-Your code decides whether to pick up from that state or clear it and start over. Labnotes can't know whether saved state is still valid; your code can.
-
-To force a clean start, pass `--fresh`. Failed runs keep their folders and new runs take their place:
+To make every failed run start clean for one launch, pass `--fresh`:
 
 ```sh
 labnotes experiments my-experiment run --fresh
 ```
 
-## Live and dead runs
+## You run two launches at once
 
-While an attempt runs, its process holds a lock on the run folder. The lock goes away when the process ends, however it ends.
+Planning happens under a lock on the experiment. While one `run` is deciding what to start and creating its folders, another waits. The second one sees the first one's planned folders and doesn't start the same runs. You get twelve runs, not more.
 
-A run whose `run.json` says running but whose lock nobody holds is dead. Labnotes marks it killed the next time it looks, and plans it again.
+## You change your code halfway through
 
-Stopping from the TUI, Ctrl-C or a closed terminal records the attempt as stopped, never as a success.
+Every attempt records the git commit and the exact command it ran. If the runs for one combination came from different commits, labnotes warns you in the TUI and frontend.
 
-## Changes between runs
+It never throws runs away because something changed. If the old runs shouldn't count, exclude them or start a new launch.
 
-Each attempt records the commit and command it ran. Labnotes warns when the runs counting toward one combination, or the attempts of one run, used different ones. It never discards runs because something changed; exclude them, or start a new launch.
+## You stop a run
+
+Stopping a run from the TUI, pressing Ctrl-C, or closing the terminal marks the attempt `stopped`. A stopped run never counts as a success, so the next `run` picks it up again.
 
 ## Open questions
 
 - Whether the locks hold on network filesystems.
-- How existing runs map in: matrix runs into one launch, each adhoc group folder into a launch of its own.
+- How runs from before this design map in.

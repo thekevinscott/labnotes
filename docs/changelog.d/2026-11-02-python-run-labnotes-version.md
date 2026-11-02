@@ -1,0 +1,1 @@
+**Added:** each run's `run.json` records `labnotes_version`, the labnotes version that ran it, and `labnotes_command`, the labnotes command line that started it. With `continues = true`, each entry in `invocations` records its own.

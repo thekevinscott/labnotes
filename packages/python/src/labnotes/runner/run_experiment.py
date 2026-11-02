@@ -53,6 +53,7 @@ async def run_experiment(
     args: list[str] | None = None,
     environment: dict[str, str] | None = None,
     snapshot: ProjectSnapshot | None = None,
+    command_line: str | None = None,
 ) -> list[dict[str, object]]:
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
@@ -323,6 +324,7 @@ async def run_experiment(
                 else None
             ),
             continues=experiment.continues,
+            command_line=command_line,
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})

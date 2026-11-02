@@ -40,6 +40,7 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
             ["--verbose"],
             "setup",
             "teardown",
+            "labnotes experiments exp run",
         )
         assert asyncio.run(start(report, listen)) == results
 
@@ -66,4 +67,5 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         only={"model": ["small"]},
         args=["--verbose"],
         snapshot=snapshot,
+        command_line="labnotes experiments exp run",
     )

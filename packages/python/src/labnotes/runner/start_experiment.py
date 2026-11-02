@@ -17,6 +17,7 @@ def start_experiment(
     args: list[str] | None,
     setup: str | None,
     teardown: str | None,
+    command_line: str | None = None,
 ) -> Start:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         experiment, limit = await prepare_experiment(
@@ -35,6 +36,7 @@ def start_experiment(
                 only=only,
                 args=args,
                 snapshot=snapshot,
+                command_line=command_line,
             )
 
     return start

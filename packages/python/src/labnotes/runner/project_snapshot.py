@@ -89,6 +89,33 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
                     target.symlink_to(
                         os.readlink(source), target_is_directory=source.is_dir()
                     )
+                elif source.is_dir() and (source / ".git").is_file():
+                    subprocess.run(
+                        [
+                            "git",
+                            "clone",
+                            "--quiet",
+                            "--shared",
+                            "--no-checkout",
+                            str(source),
+                            str(target),
+                        ],
+                        check=True,
+                    )
+                    shutil.copytree(
+                        source,
+                        target,
+                        symlinks=True,
+                        dirs_exist_ok=True,
+                        ignore=shutil.ignore_patterns(".git"),
+                    )
+                    submodule_sha = (
+                        git(source, "rev-parse", "HEAD").decode("ascii").strip()
+                    )
+                    subprocess.run(
+                        ["git", "-C", str(target), "reset", "--quiet", submodule_sha],
+                        check=True,
+                    )
                 elif source.is_dir():
                     shutil.copytree(source, target, symlinks=True)
                 else:

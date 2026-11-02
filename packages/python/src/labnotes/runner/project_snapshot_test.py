@@ -197,6 +197,32 @@ def test_copies_tracked_directory_without_following_its_symlinks(
             assert (snapshot.root / "folder/link").readlink() == Path("missing-target")
 
 
+def test_submodule_gets_its_own_git_directory(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    dependency = root / "dependency"
+    dependency.mkdir(parents=True)
+    (dependency / ".git").write_text("gitdir: ../.git/modules/dependency\n")
+    (dependency / "code.py").write_text("dirty")
+    commands = [b"true\n", b"abc\n", b"", b"dependency\0", b"", b"def\n"]
+
+    def clone(args: list[str], **_kwargs: object) -> None:
+        if args[:2] == ["git", "clone"]:
+            target = Path(args[-1])
+            target.mkdir(exist_ok=True)
+            (target / ".git").mkdir(exist_ok=True)
+
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands),
+        mock.patch(
+            "labnotes.runner.project_snapshot.subprocess.run", side_effect=clone
+        ) as run,
+    ):
+        with project_snapshot(root) as snapshot:
+            assert (snapshot.root / "dependency/.git").is_dir()
+            assert (snapshot.root / "dependency/code.py").read_text() == "dirty"
+    assert run.call_args_list[2].args[0][-2:] == ["--quiet", "def"]
+
+
 def test_skips_virtualenv_and_its_ignored_entries(tmp_path: Path) -> None:
     root = tmp_path / "project"
     venv = root / ".venv"

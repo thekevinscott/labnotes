@@ -97,15 +97,14 @@ class ExperimentScreen(Screen[None]):
 
     async def add_views(self, specs: Mapping[str, str]) -> None:
         names = list(specs)[:MAX_VIEWS]
-        if not names:
-            return
-        panes = [
-            ViewPane(name, specs[name], self.config.root, id=f"view-{number}")
-            for number, name in enumerate(names, 2)
-        ]
-        for pane in panes:
-            pane.display = False
-        await self.query_one(ContentSwitcher).mount_all(panes)
+        if names:
+            panes = [
+                ViewPane(name, specs[name], self.config.root, id=f"view-{number}")
+                for number, name in enumerate(names, 2)
+            ]
+            for pane in panes:
+                pane.display = False
+            await self.query_one(ContentSwitcher).mount_all(panes)
         # Screen bindings are fixed per class; each screen's view names differ.
         for number, name in enumerate(["runs", *names], 1):
             self._bindings.bind(str(number), f"show_view({number})", name)

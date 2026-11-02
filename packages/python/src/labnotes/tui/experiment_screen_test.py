@@ -197,14 +197,14 @@ def test_tells_each_view_the_experiment_was_removed(
         pane.deliver.assert_called_with(None, frozenset())
 
 
-def test_adds_no_views_or_keys_without_views(
+def test_shows_the_built_in_view_key_without_custom_views(
     screen: ExperimentScreen, switcher: mock.MagicMock
 ) -> None:
     asyncio.run(screen.load())
 
     switcher.mount_all.assert_not_awaited()
-    getattr(screen.refresh_bindings, "assert_not_called")()
-    assert "1" not in screen._bindings.key_to_bindings
+    getattr(screen.refresh_bindings, "assert_called_once_with")()
+    assert screen._bindings.key_to_bindings["1"][0].description == "runs"
 
 
 def test_adds_hidden_views_and_a_key_for_each_once(

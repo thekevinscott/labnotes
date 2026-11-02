@@ -26,3 +26,7 @@ uvx labnotes experiments foo
 The first lists experiments. The second starts on `foo`, and Escape goes back to the list. On an experiment, runs that older versions of labnotes nested in one invocation folder sit under a single row, marked ▸; Enter expands it (▾). Enter on a run opens its output, which follows the run while it's still writing.
 
 The browser updates as runs start and finish. It only reads; to run an experiment, use `run`.
+
+### Custom views
+
+An experiment can add Textual views to the browser with `[views]` in `experiment.toml`. Press `1` for the built-in runs table and `2`–`9` for custom views in config order. The footer names each view. Press `0` or Escape to return to the runs table; Escape first goes to the current view if it handles that key. Switching views preserves each view's state. See [Views](../api/views) for the config and Python contract.

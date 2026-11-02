@@ -1,8 +1,8 @@
 # Views
 
-A runs view adds columns to the [TUI's](tui#browsing) runs table. It is a script you write. labnotes starts it, sends it the table's rows, and draws the columns and rows it sends back.
+A custom view replaces the body of the [browse TUI](tui#browsing). It is a Python class that subclasses any Textual widget. labnotes imports and mounts it; the TUI header and footer stay visible. The built-in `runs` view shows the runs table and run output.
 
-Views work in the TUI's experiment screen only. The frontend and the CLI ignore them.
+`[views] runs` is the existing column script for the built-in table. Custom views work in `labnotes experiments NAME` only. The run TUI and frontend do not show them yet.
 
 ## Config
 
@@ -10,9 +10,40 @@ Views work in the TUI's experiment screen only. The frontend and the CLI ignore 
 # experiment.toml
 [views]
 runs = "uv run views/runs.py"
+progress = "views/progress.py:Progress"
 ```
 
-`runs` is a shell command, run from the project root. It can live in `.labnotes.toml` under [`[experiment]`](config#experiment) like any other key, so one script can serve every experiment.
+Every key except `runs` names a custom view. Its value is `path/to/file.py:ClassName`, relative to the project root. Views appear in config order: the built-in view is `1`, and custom views use `2` through `9`. Press `0` or Escape to return to the built-in view; a view's own Escape binding gets the key first. The footer shows the view names and keys. A view keeps its widget and state while you switch away. A view that raises during import or mounting shows its error in that view's body, and the other views keep working.
+
+Views run in labnotes' own process and Python environment: they can import `textual`, `rich`, `labnotes` and the standard library; other dependencies need `uvx --with ...`.
+
+The config can also live in `.labnotes.toml` under [`[experiment]`](config#experiment).
+
+## Custom view contract
+
+Views construct their own Textual widgets. labnotes provides only `labnotes.view.Experiment` and `labnotes.view.Changed` for data and notifications:
+
+```python
+# views/progress.py
+from textual.widgets import Static
+from labnotes.view import Changed
+
+
+class Progress(Static):
+    def on_labnotes_changed(self, message: Changed) -> None:
+        experiment = message.experiment
+        if experiment is None:
+            self.update("Experiment removed")
+            return
+        passed = sum(row["status"] == "passed" for row in experiment.runs.values())
+        self.update(f"{passed} of {len(experiment.runs)} passed")
+```
+
+The class must be constructible without arguments. `Changed.experiment` contains `root` (the project path), `name`, and `runs` (run rows keyed by folder relative to the root). `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
+
+## Runs table columns
+
+`runs` is a shell command, run from the project root. It adds columns to the built-in runs table. labnotes starts it, sends it the table's rows, and draws the columns and rows it sends back.
 
 ## Writing one
 

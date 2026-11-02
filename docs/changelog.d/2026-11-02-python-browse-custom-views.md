@@ -1,0 +1,1 @@
+Added: The browse TUI loads custom Textual views from `[views]` in experiment config. Number keys switch views while preserving their state, and `labnotes.view.Experiment` and `Changed` provide run data and change notifications. The existing `[views] runs` column script continues to extend the built-in runs view.

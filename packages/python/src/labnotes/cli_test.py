@@ -104,3 +104,14 @@ def test_rejects_a_folder_named_by_the_flag(
 
     assert "'folder' is a directory" in capsys.readouterr().err
     collaborators["load_config"].assert_not_called()
+
+
+def test_keeps_the_labnotes_command_line_for_subcommands(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    (tmp_path / "a b.toml").touch()
+
+    assert run(["-c", "a b.toml", "context"]) == 0
+
+    ctx = collaborators["load_config"].call_args.args[0]
+    assert ctx.meta["labnotes.command_line"] == "labnotes -c 'a b.toml' context"

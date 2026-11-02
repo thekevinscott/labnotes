@@ -28,6 +28,27 @@ uvx labnotes experiments foo runs --format table
 
 Piped output and scripts always get a table, but agents may run under a terminal, so they should always pass `--format`.
 
+## Creating Experiments
+
+Create an experiment from the command line:
+
+```bash
+uvx labnotes experiments new sanity-3 \
+  --command "uv run python run.py --out {run_dir}" \
+  --param model=opus --param model=sonnet \
+  --repeats 3
+```
+
+This makes the `sanity-3` folder and writes its `experiment.toml`. Only the name is required; anything you leave out keeps the starter's value. The command line never holds config of its own: everything ends up in the file, where you can read and diff it. Hooks, `[env]` and `counts` are set by editing the file.
+
+To start from another experiment, pass `--from`:
+
+```bash
+uvx labnotes experiments new sanity-4 --from sanity-3 --param model=haiku
+```
+
+This copies `sanity-3`'s `experiment.toml` and files, never its runs, and records `from = "sanity-3"`. Flags given with it replace the copied values; `--param model=...` replaces only `model`'s values. `new` refuses a folder that already exists. labnotes works on the folder on disk and makes no assumption about how you keep it (git, DVC, Hugging Face). See the [CLI reference](../api/cli#experiments) for every flag.
+
 ## Running Experiments
 
 You can run an experiment with:

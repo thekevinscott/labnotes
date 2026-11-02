@@ -1,33 +1,43 @@
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
-from labnotes.models import LabnotesConfig
 from labnotes.runner.hold_experiment import hold_experiment
 
 
-def config(root: Path) -> LabnotesConfig:
-    return LabnotesConfig(
-        root / ".labnotes.toml", root, "{experiment}", "", "{experiment}/runs/{run}"
-    )
+@pytest.fixture
+def config(tmp_path: Path) -> Iterator[mock.Mock]:
+    config = mock.Mock(root=tmp_path, runs="{experiment}/runs/{run}")
+    with mock.patch(
+        "labnotes.runner.hold_experiment.runs_parent",
+        side_effect=lambda root, runs, name: root / name / "runs",
+    ) as parent:
+        yield config
+    parent.assert_called_with(tmp_path, "{experiment}/runs/{run}", mock.ANY)
 
 
-def test_refuses_a_second_hold_until_the_first_ends(tmp_path: Path) -> None:
-    with hold_experiment(config(tmp_path), "exp"):
+def test_refuses_a_second_hold_until_the_first_ends(
+    config: mock.Mock, tmp_path: Path
+) -> None:
+    with hold_experiment(config, "exp"):
         with pytest.raises(ValueError, match="exp is already running"):
-            with hold_experiment(config(tmp_path), "exp"):
+            with hold_experiment(config, "exp"):
                 pass
-        with hold_experiment(config(tmp_path), "other"):
+        with hold_experiment(config, "other"):
             pass
 
-    with hold_experiment(config(tmp_path), "exp"):
+    with hold_experiment(config, "exp"):
         (tmp_path / "exp" / "runs" / "r1").mkdir()
 
     assert [*(tmp_path / "exp" / "runs").iterdir()] == [tmp_path / "exp/runs/r1"]
 
 
-def test_leaves_no_runs_folder_it_made_and_left_empty(tmp_path: Path) -> None:
-    with hold_experiment(config(tmp_path), "exp"):
+def test_leaves_no_runs_folder_it_made_and_left_empty(
+    config: mock.Mock, tmp_path: Path
+) -> None:
+    with hold_experiment(config, "exp"):
         assert (tmp_path / "exp" / "runs").is_dir()
 
     assert not (tmp_path / "exp" / "runs").exists()

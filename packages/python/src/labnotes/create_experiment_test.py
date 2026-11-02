@@ -28,6 +28,10 @@ def test_creates_the_folder_with_a_starter_config(tmp_path: Path) -> None:
     assert (path / "experiment.toml").read_text(encoding="utf-8") == STARTER
 
 
+def test_the_starter_says_whether_failed_runs_continue() -> None:
+    assert tomllib.loads(STARTER)["continues"] is False
+
+
 def test_names_it_when_no_name_is_given(tmp_path: Path) -> None:
     (tmp_path / "notes" / "taken").mkdir(parents=True)
     with mock.patch(

@@ -35,19 +35,21 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
 
     try:
         sha = git(root, "rev-parse", "HEAD").decode("ascii").strip()
-        diff = git(root, "diff", "HEAD")
+        repo_root = Path(git(root, "rev-parse", "--show-toplevel").decode().strip())
+        project_prefix = root.resolve().relative_to(repo_root.resolve())
+        diff = git(repo_root, "diff", "HEAD")
     except (OSError, subprocess.SubprocessError):
         logging.warning("Project has no readable Git HEAD; running from the live tree")
         yield ProjectSnapshot(root)
         return
     files = filter(
-        None, git(root, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0")
+        None, git(repo_root, "ls-files", "-co", "--exclude-standard", "-z").split(b"\0")
     )
     ignored = filter(
         None,
-        git(root, "ls-files", "-oi", "--exclude-standard", "--directory", "-z").split(
-            b"\0"
-        ),
+        git(
+            repo_root, "ls-files", "-oi", "--exclude-standard", "--directory", "-z"
+        ).split(b"\0"),
     )
     with TemporaryDirectory(prefix="labnotes-") as directory:
         snapshot = Path(directory)
@@ -73,14 +75,14 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
                     "--quiet",
                     "--shared",
                     "--no-checkout",
-                    str(root),
+                    str(repo_root),
                     str(snapshot),
                 ],
                 check=True,
             )
             for raw in files:
                 relative = Path(raw.decode())
-                source = root / relative
+                source = repo_root / relative
                 if not source.exists() and not source.is_symlink():
                     continue
                 target = snapshot / relative
@@ -127,7 +129,7 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
                     continue
                 if any((snapshot / parent).is_symlink() for parent in relative.parents):
                     continue
-                source = root / relative
+                source = repo_root / relative
                 if source.is_dir() and (source / "pyvenv.cfg").exists():
                     skipped.add(relative)
                     continue
@@ -142,4 +144,4 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
         finally:
             for number, handler in previous.items():
                 signal.signal(number, handler)
-        yield ProjectSnapshot(snapshot, sha, diff)
+        yield ProjectSnapshot(snapshot / project_prefix, sha, diff)

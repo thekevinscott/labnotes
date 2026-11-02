@@ -219,3 +219,16 @@ def test_drops_every_row_of_the_unfinished_line() -> None:
     assert output.lines == ["first", "kept", "kept"]
     output._line_cache.clear.assert_called_once_with()
     refresh.assert_called_once_with()
+
+
+def test_moves_to_the_newest_invocation_log_from_its_start(
+    tmp_path: Path, log: dict[str, mock.MagicMock]
+) -> None:
+    output = RunOutput()
+    (tmp_path / "stdout-20261102-090000-000000.txt").write_text("first\n")
+    output.follow(tmp_path)
+    (tmp_path / "stdout-20261102-100000-000000.txt").write_text("next\n")
+    output.follow(tmp_path)
+    output.follow(tmp_path)
+    assert written(log) == ["first", "next"]
+    assert output.offsets == {"stdout": 5, "stderr": 0}

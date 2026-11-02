@@ -231,7 +231,16 @@ def test_submodule_gets_its_own_git_directory(tmp_path: Path) -> None:
     dependency.mkdir(parents=True)
     (dependency / ".git").write_text("gitdir: ../.git/modules/dependency\n")
     (dependency / "code.py").write_text("dirty")
-    commands = [b"true\n", b"abc\n", b"", b"dependency\0", b"", b"def\n"]
+    (dependency / "code-link.py").symlink_to("code.py")
+    commands = [
+        b"true\n",
+        b"abc\n",
+        str(root).encode(),
+        b"",
+        b"dependency\0",
+        b"",
+        b"def\n",
+    ]
 
     def clone(args: list[str], **_kwargs: object) -> None:
         if args[:2] == ["git", "clone"]:
@@ -248,6 +257,8 @@ def test_submodule_gets_its_own_git_directory(tmp_path: Path) -> None:
         with project_snapshot(root) as snapshot:
             assert (snapshot.root / "dependency/.git").is_dir()
             assert (snapshot.root / "dependency/code.py").read_text() == "dirty"
+            assert (snapshot.root / "dependency/code-link.py").is_symlink()
+    assert [call.kwargs["check"] for call in run.call_args_list] == [True] * 4
     assert run.call_args_list[2].args[0][-2:] == ["--quiet", "def"]
 
 

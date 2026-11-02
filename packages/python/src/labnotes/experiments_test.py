@@ -4,7 +4,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.command_line_group import CommandLineGroup
 from labnotes.experiments import experiments
 
 
@@ -267,15 +266,14 @@ def test_passes_the_labnotes_command_line(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
-    group = CommandLineGroup()
-    group.add_command(experiments)
+    ctx = experiments.make_context("experiments", ["a", "run"])
+    ctx.meta["labnotes.command_line"] = "labnotes experiments a run"
 
-    with pytest.raises(SystemExit) as exit_info:
-        group.main(["experiments", "a", "run", "--", "x"], prog_name="labnotes")
+    with ctx:
+        experiments.invoke(ctx)
 
-    assert exit_info.value.code == 0
     assert drivers["start_experiment"].call_args.args[9] == (
-        "labnotes experiments a run -- x"
+        "labnotes experiments a run"
     )
 
 

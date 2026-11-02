@@ -1,0 +1,1 @@
+Changed: A run's `dirty` flag and `git-diff.patch` now cover untracked, non-ignored files, since the snapshot runs with them. Each one appears in the patch as a new file; binary files and files over 1 MiB appear by name only.

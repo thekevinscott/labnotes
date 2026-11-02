@@ -47,7 +47,7 @@ def test_records_the_repositories_commit_and_tracked_changes(
         if state != "unborn":
             tracked = tmp_path / "tracked"
             tracked.write_text("original")
-            git(tmp_path, "add", "tracked")
+            git(tmp_path, "add", ".")
             git(tmp_path, "commit", "-m", "initial")
             if state != "clean":
                 tracked.write_text("changed")
@@ -73,7 +73,8 @@ def test_queued_runs_keep_the_invocations_starting_commit(
         '-c commit.gpgsign=false commit --allow-empty -m next"\nrepeats = 2\n'
     )
     git(tmp_path, "init")
-    git(tmp_path, "commit", "--allow-empty", "-m", "initial")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "initial")
 
     recorded = run(tmp_path)
 
@@ -82,3 +83,27 @@ def test_queued_runs_keep_the_invocations_starting_commit(
         git(tmp_path, "rev-parse", "HEAD~2")
     }
     assert all(record["git"]["dirty"] is False for record in recorded)
+
+
+def test_untracked_files_make_the_run_dirty_and_land_in_its_patch(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / ".gitignore").write_text("ignored.txt\n")
+    (tmp_path / ".labnotes.toml").write_text("")
+    (tmp_path / "exp").mkdir()
+    (tmp_path / "exp/experiment.toml").write_text('command = "true"\n')
+    git(tmp_path, "init")
+    git(tmp_path, "add", ".")
+    git(tmp_path, "commit", "-m", "initial")
+    (tmp_path / "helper.py").write_text("print('new')\n")
+    (tmp_path / "weights.bin").write_bytes(b"\0\1\2")
+    (tmp_path / "ignored.txt").write_text("secret\n")
+
+    [record] = run(tmp_path)
+
+    assert record["git"]["dirty"] is True
+    [patch] = tmp_path.glob("exp/runs/**/git-diff.patch")
+    text = patch.read_text()
+    assert "+++ b/helper.py\n@@ -0,0 +1 @@\n+print('new')\n" in text
+    assert "Binary files /dev/null and b/weights.bin differ" in text
+    assert "ignored.txt" not in text

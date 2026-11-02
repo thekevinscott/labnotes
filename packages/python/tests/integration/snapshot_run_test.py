@@ -338,7 +338,11 @@ def test_subfolder_snapshot_keeps_repo_layout_and_git_status(tmp_path: Path) -> 
     with project_snapshot(project) as snapshot:
         assert snapshot.root.name == "sub"
         assert (snapshot.root.parent / "sibling.txt").read_text() == "changed sibling\n"
-        assert snapshot.diff == expected_diff
+        assert snapshot.diff is not None
+        assert snapshot.diff.startswith(expected_diff)
+        assert snapshot.diff[len(expected_diff) :].endswith(
+            b"+++ b/sub/untracked.txt\n@@ -0,0 +1 @@\n+untracked\n"
+        )
         assert (snapshot.root / "tracked.txt").read_text() == "changed\n"
         assert (snapshot.root / "untracked.txt").read_text() == "untracked\n"
         assert (

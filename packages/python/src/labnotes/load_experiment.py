@@ -22,6 +22,7 @@ from labnotes.render_markdown import render_markdown
 from labnotes.runs_view_command import runs_view_command
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
+from labnotes.view_specs import view_specs
 from labnotes.summarize_config import summarize_config
 from labnotes.utils.process_alive import process_alive
 
@@ -115,6 +116,7 @@ async def load_experiment(
         "run_view": view,
         "run_choices": choices,
         "runs_view": runs_view_command(config),
+        "views": view_specs(config),
         "sort_hrefs": {
             column: sort_href(view, column) for column in ["status", *shown]
         },

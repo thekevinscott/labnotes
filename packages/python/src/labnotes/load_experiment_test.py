@@ -246,6 +246,19 @@ def test_names_the_runs_view_command(
     assert loaded["runs_view"] == "uv run view.py"
 
 
+def test_names_the_views(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    config = {**CONFIG, "views": {"runs": "uv run v.py", "plot": "v.py:Plot"}}
+
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(config)), ROOT, "a", query())
+    )
+
+    assert loaded is not None
+    assert loaded["views"] == {"plot": "v.py:Plot"}
+
+
 def test_has_no_counts_rule_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:

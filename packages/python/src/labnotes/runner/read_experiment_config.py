@@ -30,7 +30,7 @@ SETTINGS = {
     "from",
 }
 HOOKS = ("setup", "teardown")
-VIEWS = {"runs"}
+MAX_VIEWS = 8
 
 
 def read_experiment_config(
@@ -107,12 +107,18 @@ def read_experiment_config(
     views = values.get("views", {})
     if not isinstance(views, dict):
         raise ValueError(f"{path}: views must be a table, like [views]")
-    unknown = sorted(views.keys() - VIEWS)
-    if unknown:
-        raise ValueError(f"{path}: unknown keys in views: {', '.join(unknown)}")
     runs = views.get("runs")
     if runs is not None and (not isinstance(runs, str) or not runs.strip()):
         raise ValueError(f"{path}: views.runs must be a command")
+    shown = {name: spec for name, spec in views.items() if name != "runs"}
+    if len(shown) > MAX_VIEWS:
+        raise ValueError(f"{path}: views holds at most {MAX_VIEWS} views besides runs")
+    for name, spec in shown.items():
+        source, _, cls = spec.rpartition(":") if isinstance(spec, str) else ("", "", "")
+        if not source.strip() or not cls.strip():
+            raise ValueError(
+                f'{path}: views.{name} must be "path/to/file.py:ClassName"'
+            )
     return ExperimentConfig(
         command,
         repeats,

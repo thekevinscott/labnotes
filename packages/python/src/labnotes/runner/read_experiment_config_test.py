@@ -239,7 +239,24 @@ def test_layers_meta_from_the_defaults() -> None:
         ('command = "run"\ncontinues = false\nviews = 1\n', "views must be a table"),
         (
             'command = "run"\ncontinues = false\n[views]\nrun = "x"\n',
-            "unknown keys in views: run",
+            'views.run must be "path/to/file.py:ClassName"',
+        ),
+        (
+            'command = "run"\ncontinues = false\n[views]\nrun = 1\n',
+            'views.run must be "path/to/file.py:ClassName"',
+        ),
+        (
+            'command = "run"\ncontinues = false\n[views]\nrun = ":Run"\n',
+            'views.run must be "path/to/file.py:ClassName"',
+        ),
+        (
+            'command = "run"\ncontinues = false\n[views]\nrun = "run.py: "\n',
+            'views.run must be "path/to/file.py:ClassName"',
+        ),
+        (
+            'command = "run"\ncontinues = false\n[views]\n'
+            + "".join(f'v{n} = "v.py:V"\n' for n in range(9)),
+            "views holds at most 8 views besides runs",
         ),
         (
             'command = "run"\ncontinues = false\n[views]\nruns = 1\n',
@@ -264,6 +281,9 @@ def test_rejects_a_bad_config(text: str, message: str) -> None:
     [
         'command = "run"\ncontinues = false\n[views]\nruns = "view"\n',
         'command = "run"\ncontinues = false\n[views]\n',
+        'command = "run"\ncontinues = false\n[views]\nruns = "view"\n'
+        + "".join(f'v{n} = "views/v.py:V{n}"\n' for n in range(8)),
+        'command = "run"\ncontinues = false\n[views]\nplot = "a:b.py:Plot"\n',
     ],
 )
 def test_accepts_views(source: str) -> None:

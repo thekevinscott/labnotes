@@ -14,7 +14,7 @@ def make_project(root: Path) -> Path:
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     (root / "exp" / "experiment.toml").write_text(
-        f'command = "{sys.executable} -c pass"\n[params]\nm = ["a", "b"]\n'
+        f'command = "{sys.executable} -c pass"\ncontinues = false\n[params]\nm = ["a", "b"]\n'
     )
     return root
 

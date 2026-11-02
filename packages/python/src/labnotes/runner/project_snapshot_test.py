@@ -1,3 +1,4 @@
+from collections.abc import Iterator
 from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 import tempfile
@@ -8,7 +9,18 @@ import pytest
 from labnotes.runner.project_snapshot import project_snapshot
 
 
-def test_copies_code_links_ignored_paths_and_removes_snapshot(tmp_path: Path) -> None:
+@pytest.fixture(autouse=True)
+def no_untracked_diff() -> Iterator[mock.Mock]:
+    with mock.patch(
+        "labnotes.runner.project_snapshot.untracked_diff", return_value=b""
+    ) as untracked:
+        yield untracked
+
+
+def test_copies_code_links_ignored_paths_and_removes_snapshot(
+    tmp_path: Path, no_untracked_diff: mock.Mock
+) -> None:
+    no_untracked_diff.return_value = b"+untracked"
     root = tmp_path / "project"
     (root / "src").mkdir(parents=True)
     (root / "src/code.py").write_text("original")
@@ -31,10 +43,11 @@ def test_copies_code_links_ignored_paths_and_removes_snapshot(tmp_path: Path) ->
             assert (snapshot.root / "src/code.py").read_text() == "original"
             assert (snapshot.root / "data").is_symlink()
             assert (snapshot.root / "data/input").read_text() == "live"
-            assert (snapshot.sha, snapshot.diff) == ("abc", b"diff")
+            assert (snapshot.sha, snapshot.diff) == ("abc", b"diff+untracked")
             location = snapshot.root
         assert not location.exists()
     assert git.call_count == 6
+    no_untracked_diff.assert_called_once_with(root)
 
 
 def test_uses_live_tree_when_git_is_unavailable(tmp_path: Path) -> None:

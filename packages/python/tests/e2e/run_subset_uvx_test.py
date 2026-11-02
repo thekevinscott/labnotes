@@ -12,7 +12,7 @@ def test_uvx_run_takes_several_values_of_one_param(
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     (root / "exp/experiment.toml").write_text(
-        f"command = \"{sys.executable} -c 'pass'\"\n"
+        f"continues = false\ncommand = \"{sys.executable} -c 'pass'\"\n"
         '[params]\nmodel = ["opus", "sonnet", "haiku"]\neffort = ["low", "xhigh"]\n'
     )
 

@@ -11,7 +11,9 @@ def test_uvx_run_records_untracked_files_it_ran_with(
     (root / "exp").mkdir(parents=True)
     (root / ".gitignore").write_text("runs/\nsecret.txt\n")
     (root / ".labnotes.toml").write_text('[runs]\npath = "runs/{experiment}/{run}"\n')
-    (root / "exp/experiment.toml").write_text('command = "python helper.py"\n')
+    (root / "exp/experiment.toml").write_text(
+        'continues = false\ncommand = "python helper.py"\n'
+    )
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
     subprocess.run(

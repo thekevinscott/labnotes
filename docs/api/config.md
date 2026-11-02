@@ -9,7 +9,6 @@ Must be at the project root; the folder holding it is the root. labnotes reads i
 ```toml
 [experiments]
 path = "{experiment}"
-mode = "adhoc"
 concurrency = 1
 retries = 2
 
@@ -24,7 +23,7 @@ Paths are relative to the root. Absolute paths and `~` are rejected.
 
 ### One experiment
 
-When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `mode`, `concurrency`, and `retries` still apply. The defaults become:
+When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `concurrency` and `retries` still apply. The defaults become:
 
 ```toml
 [files]
@@ -45,13 +44,6 @@ path = "runs/{run}"
 - Placeholders: `{experiment}`, required
 
 Where experiment folders live. An experiment is a matching folder that holds an `experiment.toml`, files or runs.
-
-#### `mode`
-
-- Type: `"adhoc"` | `"matrix"`
-- Default: `"adhoc"`
-
-Mode for every experiment whose `experiment.toml` doesn't set one. See [`mode`](#mode-1).
 
 #### `concurrency`
 
@@ -101,6 +93,7 @@ Experiment config kept in `.labnotes.toml`. It takes the same keys as [`experime
 # .labnotes.toml
 [experiment]
 command = "uv run study.py --output {run_dir}"
+continues = false
 
 [experiment.params]
 problem = ["2286"]
@@ -114,7 +107,7 @@ name = "Surprisals"
 max-chars = [70, 80]
 ```
 
-With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `mode`, `concurrency`, and `retries` stay in `[experiments]`.
+With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `concurrency` and `retries` stay in `[experiments]`.
 
 ## `experiment.toml`
 
@@ -127,7 +120,6 @@ meta = "uv run scripts/meta.py"
 setup = "docker compose up -d db"
 teardown = "docker compose down"
 repeats = 5
-mode = "matrix"
 concurrency = 2
 retries = 3
 memory_interval = 10
@@ -153,7 +145,7 @@ Shell command for one run, run from the project root. Params are appended as fla
 These placeholders are filled in, each shell-quoted:
 
 - `{run_dir}`: the run folder's absolute path.
-- `{invocation_dir}`: the absolute path of the invocation folder shared by an [adhoc](../cli/adhoc) command that plans several runs. When one run is planned, it is the first attempt's `{run_dir}` and stays fixed across retries. With several matrix runs, each run uses its own `{run_dir}`. Every retry gets a new `{run_dir}`.
+- `{invocation_dir}`: the same path as `{run_dir}`. Every retry gets a new `{run_dir}`, unless [`continues`](#continues) is on.
 
 `run.json` records the command with every placeholder filled. [`setup`](#setup), [`teardown`](#teardown), and [`meta`](#meta) get neither placeholder.
 
@@ -164,7 +156,7 @@ These placeholders are filled in, each shell-quoted:
 
 Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
 
-Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. `setup`, `teardown`, and `meta` get neither placeholder, so a variable whose value uses one is left out of their environment; runs still get it. To pass a value from setup to runs and teardown, use [`set_state`](sdk#set-state-and-get-state). For retries, run commands keep the first planned run's `{invocation_dir}`, while `{run_dir}` changes per attempt.
+Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. `setup`, `teardown`, and `meta` get neither placeholder, so a variable whose value uses one is left out of their environment; runs still get it. To pass a value from setup to runs and teardown, use [`set_state`](sdk#set-state-and-get-state).
 
 Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.
 
@@ -229,7 +221,7 @@ Display name, shown in the TUI and as `display_name` in `labnotes experiments`. 
 - Type: positive integer
 - Default: `1`
 
-Runs per combination of params.
+Runs per combination of params. `run` plans only the combinations with fewer than `repeats` runs that [count](#counts), so a finished experiment plans nothing. See [Planning Runs](../cli/experiments#planning-runs).
 
 ### `[params]`
 
@@ -239,13 +231,6 @@ Runs per combination of params.
 Every combination of values runs. Each value is passed as `--name value`, with the name as written. Booleans pass as 0 or 1, lists and tables as JSON. Dates and times are rejected.
 
 Where runs are listed, each param gets a column of its own. A param named like a `runs` column, such as `id` or `command`, or like `started` or `duration`, doesn't: the run's own column keeps the name, labnotes warns once, and the value stays in `params`.
-
-### `mode`
-
-- Type: `"adhoc"` | `"matrix"`
-- Default: `[experiments] mode` in `.labnotes.toml`, else `"adhoc"`
-
-`"adhoc"`: every `run` plans the full grid. A single run writes one flat folder; several nest inside one new folder. `"matrix"`: `run` plans only the combinations with fewer than `repeats` counted runs, in flat run folders.
 
 ### `concurrency`
 
@@ -307,9 +292,9 @@ The experiment this one was copied from. `labnotes experiments new NAME --from O
 ### `continues`
 
 - Type: boolean
-- Default: `false`
+- Required
 
-Whether `run` invokes a failed run again in its own folder instead of starting a new one. Only for `mode = "matrix"`; on an adhoc experiment it is a config error.
+Whether `run` invokes a failed run again in its own folder instead of starting a new one. Set it in `experiment.toml` or in [`[experiment]`](#experiment); with neither, `run` fails with a config error. `false` gives a failed run's combination a new folder.
 
 For each combination short of `repeats`, `run` first takes that combination's runs that ended badly (a nonzero exit, stopped, or lost), aren't excluded, don't count, and aren't locked by another `run`. It invokes each of them again in its own folder, with the same params and `{run_dir}`. Any repeats still missing get new folders. labnotes never moves, copies, or deletes the files your command left there, so it can pick up from its own checkpoints.
 

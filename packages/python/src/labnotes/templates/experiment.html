@@ -10,7 +10,6 @@
   {% if e.config_source is not none %}
   <div class="config-line">
     <p class="config-summary">
-      <span class="chip quiet">{{ e.mode }}</span>
       {% for key, value in e.other.items() %}<span class="setting">{{ key }} <code>{{ value | value }}</code></span>{% endfor %}
       {% if e.runs_per_cell %}<span class="setting">repeats <b class="num">{{ e.runs_per_cell }}</b></span>{% endif %}
       {% for key, values in e.varies.items() %}<span class="setting">{{ key }}{% for value in values %} <span class="chip">{{ value | value }}</span>{% endfor %}</span>{% endfor %}
@@ -52,7 +51,7 @@
   {% set width = e.run_columns | length + (2 if nested else 1) %}
   {% set narrowed = view.status or view.filters or view.picked %}
   {% set grid = e.run_grid %}
-  {% if e.mode == 'matrix' and e.runs %}
+  {% if e.runs %}
   <nav class="view-toggle" aria-label="Runs view">
     <a href="?#runs" title="Table" aria-label="Table"{% if not grid %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M2 3.5h12M2 8h12M2 12.5h12"/></svg></a>
     <a href="?view=grid#runs" title="Grid" aria-label="Grid"{% if grid %} aria-current="page"{% endif %}><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5" rx="1"/><rect x="9" y="2" width="5" height="5" rx="1"/><rect x="2" y="9" width="5" height="5" rx="1"/><rect x="9" y="9" width="5" height="5" rx="1"/></svg></a>

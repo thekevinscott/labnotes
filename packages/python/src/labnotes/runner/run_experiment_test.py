@@ -20,15 +20,12 @@ def settle[T](work: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(asyncio.wait_for(work, 5))
 
 
-def experiment(
-    mode: str = "matrix", retries: int = 2, continues: bool = False
-) -> mock.Mock:
+def experiment(retries: int = 2, continues: bool = False) -> mock.Mock:
     config = mock.Mock(
         command="run",
         params={"m": ["a", "b"]},
         repeats=2,
         counts="c",
-        mode=mode,
         retries=retries,
         meta=None,
         memory_interval=0.5,
@@ -43,7 +40,6 @@ def experiment(
 
 @pytest.fixture
 def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
-    names = iter(["n1", "n2", "n3"])
     ids = iter(["r1", "r2", "r3", "r4"])
     with (
         mock.patch("labnotes.runner.run_experiment.open_tables") as open_tables,
@@ -95,10 +91,6 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         ),
         mock.patch("labnotes.runner.run_experiment.signal_tree") as signal_tree,
         mock.patch(
-            "labnotes.runner.run_experiment.new_param_run_id",
-            side_effect=lambda params, choices, taken: next(names),
-        ) as new_param_run_id,
-        mock.patch(
             "labnotes.runner.run_experiment.in_subset",
             side_effect=lambda cell, only: cell != B or not only,
         ) as in_subset,
@@ -127,7 +119,6 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "param_grid": param_grid,
             "plan_runs": plan_runs,
             "new_stamped_run_id": new_stamped_run_id,
-            "new_param_run_id": new_param_run_id,
             "execute_run": execute_run,
             "signal_tree": signal_tree,
             "invocation_meta": invocation_meta,
@@ -143,7 +134,6 @@ def run(
     report: mock.Mock,
     concurrency: int = 1,
     listen: mock.Mock | None = None,
-    mode: str = "matrix",
     retries: int = 2,
     retry_seconds: float = 0.0,
     only: dict[str, list[str]] | None = None,
@@ -153,7 +143,7 @@ def run(
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
-    configured = experiment(mode, retries, continues)
+    configured = experiment(retries, continues)
     configured.env = env or {}
 
     def listening(controls: object) -> None:
@@ -251,18 +241,6 @@ def test_plans_only_the_cells_in_the_subset(
     ]
 
 
-def test_adhoc_plans_every_run_again(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    run(tmp_path, mock.Mock(), mode="adhoc")
-
-    collaborators["run_ids"].assert_awaited_once_with(
-        collaborators["open_tables"].return_value, "exp"
-    )
-    collaborators["list_runs"].assert_not_awaited()
-    collaborators["plan_runs"].assert_called_once_with([A, B], 2, [])
-
-
 def test_runs_each_planned_run_in_a_new_folder(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -284,7 +262,6 @@ def test_runs_each_planned_run_in_a_new_folder(
             "title": "exp",
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
-            "mode": "matrix",
         },
         {
             "event": "started",
@@ -405,20 +382,6 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
     assert events[-1] == "tearing down"
 
 
-def test_setup_uses_an_existing_invocation_folder(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = [A]
-    folder = tmp_path / "exp" / "r1"
-    folder.mkdir(parents=True)
-    (folder / "machine.txt").write_text("remote")
-
-    start_with_hooks(tmp_path, mock.Mock())
-
-    assert (folder / "machine.txt").read_text() == "remote"
-    assert collaborators["invocation_hook"].await_count == 2
-
-
 def test_checks_the_hooks_and_runs_them_unfilled(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -435,24 +398,7 @@ def test_checks_the_hooks_and_runs_them_unfilled(
     ]
 
 
-def test_gives_both_hooks_the_state_file_in_the_invocation_folder(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = [A]
-
-    start_with_hooks(tmp_path, mock.Mock())
-
-    paths = [
-        c.args[3]["LABNOTES_STATE"]
-        for c in collaborators["invocation_hook"].await_args_list
-    ]
-    assert paths == [str(tmp_path / "exp" / "r1" / "state.json")] * 2
-    assert collaborators["execute_run"].await_args.kwargs["state_file"] == Path(
-        paths[0]
-    )
-
-
-def test_keeps_a_temp_state_file_through_teardown_without_a_shared_folder(
+def test_keeps_a_temp_state_file_through_teardown(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     seen: list[tuple[str, bool]] = []
@@ -614,33 +560,6 @@ def test_checks_new_stamped_run_ids_against_existing_runs(
     assert (taken("taken"), taken("free")) == (True, False)
 
 
-def test_nests_adhoc_runs_in_one_folder_per_command(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["run_ids"].return_value = {"r1", "r1/taken"}
-    report = mock.Mock()
-
-    async def execute(
-        root: Path, folder: Path, *args: object, **_: object
-    ) -> dict[str, object]:
-        return {"exit_code": 75 if folder.name == "n1" else 0, "error": None}
-
-    collaborators["execute_run"].side_effect = execute
-
-    run(tmp_path, report, mode="adhoc")
-
-    assert started_runs(report) == ["r1/n1", "r1/n2", "r1/n3"]
-    assert (tmp_path / "exp" / "r1" / "n1").is_dir()
-    assert collaborators["new_stamped_run_id"].call_count == 1
-    group_taken = collaborators["new_stamped_run_id"].call_args.args[0]
-    assert (group_taken("r1"), group_taken("free")) == (True, False)
-    taken = collaborators["new_param_run_id"].call_args.args[2]
-    assert (taken("taken"), taken("n1"), taken("free")) == (True, True, False)
-    named = [c.args[:2] for c in collaborators["new_param_run_id"].call_args_list]
-    choices = {"m": ["a", "b"]}
-    assert named == [(A, choices), (B, choices), (A, choices)]
-
-
 def test_passes_the_args_to_every_run_and_retry(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -653,31 +572,7 @@ def test_passes_the_args_to_every_run_and_retry(
     assert [c.kwargs["args"] for c in calls] == [["--auth", "api"]] * 2
 
 
-def test_gives_a_lone_adhoc_run_its_own_stamped_folder(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = [A]
-    collaborators["execute_run"].side_effect = exiting(75, 0)
-    report = mock.Mock()
-
-    run(tmp_path, report, mode="adhoc")
-
-    assert started_runs(report) == ["r1", "r2"]
-    assert (tmp_path / "exp" / "r1").is_dir()
-    collaborators["new_param_run_id"].assert_not_called()
-
-
-def test_stamps_no_folder_when_an_adhoc_command_plans_nothing(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["plan_runs"].return_value = []
-
-    run(tmp_path, mock.Mock(), mode="adhoc")
-
-    assert not (tmp_path / "exp").exists()
-
-
-def test_fills_each_matrix_runs_directories_into_its_command(
+def test_fills_each_runs_directories_into_its_command(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["fill_dirs"].side_effect = lambda command, dirs: f"{command} {dirs}"
@@ -693,15 +588,7 @@ def test_fills_each_matrix_runs_directories_into_its_command(
     ]
 
 
-def test_matrix_does_not_stamp_an_unused_invocation_id(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    run(tmp_path, mock.Mock())
-
-    assert collaborators["new_stamped_run_id"].call_count == 2
-
-
-def test_has_no_invocation_directory_when_a_matrix_plans_nothing(
+def test_makes_no_folder_when_nothing_is_planned(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = []
@@ -713,32 +600,8 @@ def test_has_no_invocation_directory_when_a_matrix_plans_nothing(
     assert not (tmp_path / "exp").exists()
 
 
-def test_uses_the_adhoc_group_folder_for_the_invocation(
+def test_fills_both_folder_placeholders_with_each_runs_own_folder(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    run(tmp_path, mock.Mock(), mode="adhoc")
-
-    assert collaborators["fill_dirs"].call_args_list[:2] == [
-        mock.call(
-            "run",
-            {
-                "run_dir": str(tmp_path / "exp" / "r1" / "n1"),
-                "invocation_dir": str(tmp_path / "exp" / "r1"),
-            },
-        ),
-        mock.call(
-            "run",
-            {
-                "run_dir": str(tmp_path / "exp" / "r1" / "n2"),
-                "invocation_dir": str(tmp_path / "exp" / "r1"),
-            },
-        ),
-    ]
-
-
-@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
-def test_keeps_a_lone_runs_invocation_dir_across_retries(
-    tmp_path: Path, collaborators: dict[str, mock.MagicMock], mode: str
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
     collaborators["execute_run"].side_effect = exiting(75, 0)
@@ -746,38 +609,20 @@ def test_keeps_a_lone_runs_invocation_dir_across_retries(
     run(
         tmp_path,
         mock.Mock(),
-        mode=mode,
         env={"INVOCATION_DIR": "{invocation_dir}", "RUN_DIR": "{run_dir}"},
     )
 
+    folders = [str(tmp_path / "exp" / "r1"), str(tmp_path / "exp" / "r2")]
     assert collaborators["fill_dirs"].call_args_list == [
-        mock.call(
-            "run",
-            {
-                "run_dir": str(tmp_path / "exp" / "r1"),
-                "invocation_dir": str(tmp_path / "exp" / "r1"),
-            },
-        ),
-        mock.call(
-            "run",
-            {
-                "run_dir": str(tmp_path / "exp" / "r2"),
-                "invocation_dir": str(tmp_path / "exp" / "r1"),
-            },
-        ),
+        mock.call("run", {"run_dir": folder, "invocation_dir": folder})
+        for folder in folders
     ]
     environments = [
         call.kwargs["environment"]
         for call in collaborators["execute_run"].await_args_list
     ]
-    assert [env["RUN_DIR"] for env in environments] == [
-        str(tmp_path / "exp" / "r1"),
-        str(tmp_path / "exp" / "r2"),
-    ]
-    assert [env["INVOCATION_DIR"] for env in environments] == [
-        str(tmp_path / "exp" / "r1"),
-        str(tmp_path / "exp" / "r1"),
-    ]
+    assert [env["RUN_DIR"] for env in environments] == folders
+    assert [env["INVOCATION_DIR"] for env in environments] == folders
 
 
 def test_names_every_run_before_the_first_starts(
@@ -1271,9 +1116,12 @@ def test_retries_a_tempfail_with_the_same_params(
     assert started_runs(report) == ["r1", "r2"]
     assert [c.args[3] for c in collaborators["execute_run"].await_args_list] == [A, A]
     assert retry_parents(collaborators) == [None, "r1"]
-    assert [
+    [first, second] = [
         c.kwargs["state_file"] for c in collaborators["execute_run"].await_args_list
-    ] == [tmp_path / "exp" / "r1" / "state.json"] * 2
+    ]
+    assert first == second
+    assert first.name == "state.json"
+    assert tmp_path not in first.parents
     assert events(report) == [
         "planned",
         "started",

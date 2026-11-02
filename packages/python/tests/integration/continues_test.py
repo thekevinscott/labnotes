@@ -48,7 +48,7 @@ def make_project(
     write(root / "codes.txt", codes)
     write(
         root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} script.py"\nmode = "matrix"\n'
+        f'command = "{sys.executable} script.py"\n'
         f"{settings}[params]\nm = [{cells}]\n",
     )
     return root
@@ -286,7 +286,7 @@ def test_runs_that_did_not_end_badly_get_a_new_folder(
 def test_without_continues_a_failed_run_is_redone_in_a_new_folder(
     tmp_path: Path,
 ) -> None:
-    root = make_project(tmp_path, "1", settings="")
+    root = make_project(tmp_path, "1", settings="continues = false\n")
 
     run(root)
     run(root)
@@ -298,18 +298,3 @@ def test_without_continues_a_failed_run_is_redone_in_a_new_folder(
         assert (folder / "state.txt").read_text() == "x"
         assert (folder / "stdout.log").read_text() == "launch 1\n"
         assert not (folder / "run.lock").exists()
-
-
-def test_continues_on_an_adhoc_experiment_is_a_config_error(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    root = make_project(tmp_path, "", settings="")
-    write(
-        root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} script.py"\nmode = "adhoc"\ncontinues = true\n',
-    )
-
-    assert labnotes(root, ["experiments", "exp", "run"]) == 1
-
-    assert "continues" in capsys.readouterr().err
-    assert not (root / "exp" / "runs").exists()

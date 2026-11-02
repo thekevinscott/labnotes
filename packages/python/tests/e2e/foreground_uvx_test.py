@@ -16,7 +16,7 @@ def test_uvx_sighup_stops_child_and_records_run(
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     (root / "exp/experiment.toml").write_text(
-        f"command = \"{sys.executable} -c 'import time; time.sleep(600)'\"\n"
+        f"continues = false\ncommand = \"{sys.executable} -c 'import time; time.sleep(600)'\"\n"
     )
     process = subprocess.Popen(
         [

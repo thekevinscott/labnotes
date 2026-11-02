@@ -50,7 +50,7 @@ def test_shows_a_broken_counts_rule(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(
         tmp_path / "alpha/experiment.toml",
-        'command = "go"\ncounts = "nope ="\n[params]\nm = ["a"]\n',
+        'continues = false\ncommand = "go"\ncounts = "nope ="\n[params]\nm = ["a"]\n',
     )
     run(tmp_path, "run1", {"m": "a"}, exit_code=0)
 

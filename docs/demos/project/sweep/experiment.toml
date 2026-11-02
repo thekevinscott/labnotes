@@ -2,6 +2,7 @@ name = "Model sweep"
 command = "python3 sweep/train.py --output {run_dir}"
 repeats = 2
 concurrency = 2
+continues = false
 
 [params]
 model = ["opus", "sonnet"]

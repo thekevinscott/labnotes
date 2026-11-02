@@ -29,7 +29,7 @@ def make_project(root: Path) -> Path:
     (root / "script.py").write_text(SCRIPT)
     (root / "exp").mkdir()
     (root / "exp" / "experiment.toml").write_text(
-        f"command = '{sys.executable} script.py {{run_dir}}'\n"
+        f"continues = false\ncommand = '{sys.executable} script.py {{run_dir}}'\n"
     )
     return root
 

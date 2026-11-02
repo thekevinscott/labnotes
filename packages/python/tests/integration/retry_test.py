@@ -38,7 +38,7 @@ def make_project(root: Path, codes: str, settings: str = "") -> Path:
     write(root / "codes.txt", codes)
     write(
         root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} script.py"\n{settings}[params]\nm = ["a"]\n',
+        f'continues = false\ncommand = "{sys.executable} script.py"\n{settings}[params]\nm = ["a"]\n',
     )
     return root
 
@@ -113,7 +113,7 @@ def test_retries_a_tempfail_into_a_new_folder_that_links_back(
 def test_retries_fill_a_matrix_without_extra_replicates(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
-    root = make_project(tmp_path, "75", 'mode = "matrix"\nrepeats = 2\n')
+    root = make_project(tmp_path, "75", "repeats = 2\n")
 
     run_now(root)
     events = run_now(root)
@@ -134,11 +134,10 @@ def botbox_labels() -> Iterator[str]:
         yield labels
 
 
-@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
 def test_labels_each_retry_with_its_own_folder(
-    tmp_path: Path, mode: str, botbox_labels: str
+    tmp_path: Path, botbox_labels: str
 ) -> None:
-    root = make_project(tmp_path, "75", f'mode = "{mode}"\n')
+    root = make_project(tmp_path, "75")
     write(
         root / "script.py",
         "import os\nfrom pathlib import Path\n"

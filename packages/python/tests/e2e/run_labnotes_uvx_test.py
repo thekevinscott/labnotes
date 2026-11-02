@@ -14,7 +14,7 @@ def test_uvx_run_records_the_labnotes_version_and_command_line(
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} -c pass"\n[params]\nm = ["a", "b"]\n'
+        f'command = "{sys.executable} -c pass"\ncontinues = false\n[params]\nm = ["a", "b"]\n'
     )
     argv = ["-c", str(root / ".labnotes.toml"), "experiments", "exp", "run"]
     argv += ["--m=b", "--", "--auth", "api key"]

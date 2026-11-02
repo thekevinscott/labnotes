@@ -19,8 +19,6 @@ Enter
 Sleep 3s
 Enter
 Sleep 3s
-Enter
-Sleep 2s
 Type "j"
 Sleep 600ms
 Enter

@@ -14,7 +14,7 @@ def write(path: Path, text: str) -> None:
 
 def project(root: Path) -> Path:
     write(root / ".labnotes.toml", "")
-    write(root / "alpha/experiment.toml", 'command = "go"\nmode = "adhoc"\n')
+    write(root / "alpha/experiment.toml", 'continues = false\ncommand = "go"\n')
     for run in ("20261017-000000/first", "20261017-000000/second"):
         write(
             root / f"alpha/runs/{run}/run.json",
@@ -158,7 +158,7 @@ def viewed(root: Path, script: str) -> Path:
     write(root / "alpha/view.py", script)
     write(
         root / "alpha/experiment.toml",
-        'command = "go"\nmode = "adhoc"\n'
+        'continues = false\ncommand = "go"\n'
         f"[views]\nruns = {json.dumps(f'{sys.executable} alpha/view.py')}\n",
     )
     for run in ("first", "second"):

@@ -4,7 +4,7 @@
 
 ## Viewing Experiments
 
-![Browsing experiments: an experiment, an invocation, and a run's output](/demos/experiments.gif)
+![Browsing experiments: an experiment and a run's output](/demos/experiments.gif)
 
 View experiments with:
 
@@ -66,17 +66,18 @@ The TOML file defines the dynamic parameters along with the script to run:
 ```toml
 command = "uv run python run.py --output {run_dir}"
 repeats = 5
+continues = false
 
 [params]
 model = ["opus", "sonnet"]
 effort = ["low", "high"]
 ```
 
-The script can be any command. Each combination of parameters runs `repeats` times. Dynamic parameters will be passed as arguments to the script (`--model opus --effort low`). In a Git project, labnotes copies tracked and untracked, non-ignored files into a fresh `labnotes-` folder in the system temporary directory when the invocation starts. Setup, meta, every run, and teardown use that snapshot as their working directory, so later edits to the project do not change code seen by the invocation. Uncommitted changes are included. Ignored paths such as `data/` and `.env` are linked to the project; reads and writes through them remain live. The snapshot is removed when the invocation ends. Outside a Git repository, labnotes warns and runs from the live project directory.
+The script can be any command. Each combination of parameters runs `repeats` times; see [Planning Runs](#planning-runs) for how `run` works toward that. `continues` is required; see [Failed runs](#failed-runs). Dynamic parameters will be passed as arguments to the script (`--model opus --effort low`). In a Git project, labnotes copies tracked and untracked, non-ignored files into a fresh `labnotes-` folder in the system temporary directory when the invocation starts. Setup, meta, every run, and teardown use that snapshot as their working directory, so later edits to the project do not change code seen by the invocation. Uncommitted changes are included. Ignored paths such as `data/` and `.env` are linked to the project; reads and writes through them remain live. The snapshot is removed when the invocation ends. Outside a Git repository, labnotes warns and runs from the live project directory.
 
 Labnotes does not build an environment in the snapshot. If your command needs one derived from the source, create it in `setup` (for example, `setup = "uv sync"`), before concurrent runs start. Ignored virtual environments are excluded so `uv sync` or `uv run` can create an isolated environment in the snapshot. The snapshot includes Git metadata at the invocation commit, including tags and the copied working-tree changes.
 
-Each run gets its own run folder in the project; `{run_dir}` in the command becomes that folder's absolute path, so the script knows where to write its output. `LABNOTES_RUN` is also an absolute project path. `{invocation_dir}` is the shared group folder for an adhoc command that plans several runs. With one planned run, it is the first attempt's folder and stays fixed across retries; with several matrix runs, it equals each run's `{run_dir}`. Both placeholders are shell-quoted.
+Each run gets its own run folder in the project; `{run_dir}` in the command becomes that folder's absolute path, so the script knows where to write its output. `LABNOTES_RUN` is also an absolute project path. `{invocation_dir}` is the same folder as `{run_dir}`. Both placeholders are shell-quoted.
 
 Dynamic parameters get recorded for a particular run in a run.json file in the run folder, along with when it started, when it ended, and its exit code. `command` in run.json holds the exact shell command the run executed, with `{run_dir}`, `{invocation_dir}` and the params filled in. It is written before the run starts, so a run that was killed still has it, and editing `experiment.toml` later doesn't hide what an earlier run did. The script's stdout and stderr are saved alongside. For output too noisy to read raw, such as a model's thinking, the script can write structured blocks with [`log`](../api/sdk#log); they go to `log.jsonl` in the same folder. While the run goes, labnotes samples its memory every 5 seconds into `memory.jsonl`, one JSON line per sample; see [`memory_interval`](../api/config#memory-interval).
 
@@ -88,7 +89,9 @@ For botbox sandboxes, labnotes sets `BOTBOX_LABELS` with `labnotes.run=<absolute
 
 Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI lets you filter runs by a parameter, raise or lower concurrency as runs go, and kill specific runs. Failed runs show in red.
 
-A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (2 by default). Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone. See [`retries`](../api/config#retries-1).
+A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (2 by default). Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more. See [`retries`](../api/config#retries-1).
+
+One experiment runs from one `run` at a time. A second `run` of the same experiment, filtered or not, refuses before any run starts and says the experiment is already running. Different experiments can run side by side.
 
 ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) stops them, `s` also stops them, and esc goes back.
 
@@ -99,3 +102,62 @@ ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) stops
 `run.json` also records the labnotes version that ran the run, in `labnotes_version`, and the labnotes command line that started it, in `labnotes_command`, so you can tell which release ran an old run and launch it again the same way.
 
 The next `run` invocation marks lost runs when it starts: an unfinished run whose `pid` is gone, or now belongs to another process, gets `"ended_by": "lost"` and the time it was noticed as `ended`. Its `exit_code` stays `null`, since nobody saw it exit. A run whose process is still alive stays unfinished until a later run start finds it gone.
+
+## Planning Runs
+
+An experiment is a list of runs you want: every combination of `[params]`, `repeats` times. `run` works toward that list. Each combination is done once it has `repeats` runs that count, and `run` plans only what's missing, so running again picks up whatever failed or never ran. When nothing is missing, `run` says so and plans nothing.
+
+By default a run counts when it exited 0 and its `run.json` doesn't hold `"excluded": true`. Set `counts` in `experiment.toml` to replace that rule with a SQL condition over `runs`, like `exit_code = 0 AND created > '2026-10-01'`.
+
+To start over with the same design, copy it with `labnotes experiments new NAME --from OLD`. An experiment holds one design and the runs toward it.
+
+### Running part of the grid
+
+To run some of the combinations, name params on the command line:
+
+```sh
+labnotes experiments my-experiment run --model=opus --effort=low
+```
+
+That plans only the combinations where `model` is `opus` and `effort` is `low`. Each flag must name a param in `[params]` and one of its values; anything else is an error.
+
+Repeat a param to run several of its values in one launch:
+
+```sh
+labnotes experiments my-experiment run --effort=high --model=opus --model=haiku
+```
+
+That plans the combinations where `effort` is `high` and `model` is `opus` or `haiku`. Values are taken whole, so a value with a comma in it is still one value. The rest of the grid still counts toward progress, so a plain `run` later picks up the combinations this one skipped.
+
+### Failed runs
+
+Every `experiment.toml` sets `continues`, which says what happens to a failed run.
+
+With `continues = false`, a failed run stays as it is, and the next `run` gives its combination a new folder.
+
+With `continues = true`, the next `run` invokes the failed run again in its own folder:
+
+```toml
+continues = true
+```
+
+`run` takes each failed run in a combination that is short of `repeats` and invokes it again, with the same params and the same `{run_dir}`. A run that fails, is stopped, or was lost when labnotes died all count as failed. Excluded runs and runs that count are left alone and get new folders. A run that exits 75 retries in its folder too.
+
+The folder then holds every invocation. `run.json` lists them under `"invocations"`, each with its own times, exit code, commit, args, labnotes version, and labnotes command line, and each writes its own `stdout-<time>.txt` and `stderr-<time>.txt`. See [`continues`](../api/config#continues) for the fields.
+
+Your command finds what its last invocation left in `{run_dir}` and decides what to do with it. labnotes does nothing to those files. In return, your command must never delete `run.json`, `stdout-*`, `stderr-*`, or `run.lock`. labnotes holds a lock on `run.lock` while an invocation runs, and a second `run` skips any run that is locked.
+
+### Run folders
+
+Runs appear on disk as flat folders, each named for the UTC time it was planned:
+
+<Tree>
+my-experiment
+    runs
+        20261020-000429-brave-fox/
+        20261020-000431-quiet-river/
+</Tree>
+
+Older versions of labnotes nested the runs of one launch inside a shared folder (`runs/20261020-000429-brave-fox/opus-low-1a2b/`). Those runs still list, count toward `repeats`, and show grouped by that folder in the [TUI](tui) and the [frontend](../frontend).
+
+You can use the [TUI](tui) to prioritize and manage which runs are in flight, and concurrency. The [frontend](../frontend) shows progress toward `repeats` for each combination.

@@ -22,7 +22,7 @@ def test_running_cell_keeps_original_code_and_repo_outputs(tmp_path: Path) -> No
     (root / ".labnotes.toml").write_text('[runs]\npath = "runs/{experiment}/{run}"\n')
     (root / "exp").mkdir()
     (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} cell.py {{run_dir}}"\n'
+        f'continues = false\ncommand = "{sys.executable} cell.py {{run_dir}}"\n'
         f'setup = "{sys.executable} hook.py setup"\n'
         f'teardown = "{sys.executable} hook.py teardown"\n'
     )
@@ -116,7 +116,9 @@ def test_signal_removes_snapshot(tmp_path: Path, signum: signal.Signals) -> None
     (root / "data").mkdir()
     (root / ".labnotes.toml").write_text("")
     (root / "exp").mkdir()
-    (root / "exp/experiment.toml").write_text(f'command = "{sys.executable} cell.py"\n')
+    (root / "exp/experiment.toml").write_text(
+        f'continues = false\ncommand = "{sys.executable} cell.py"\n'
+    )
     (root / "cell.py").write_text(
         "import os, pathlib, time\n"
         'pathlib.Path("data/cwd").write_text(os.getcwd())\n'
@@ -178,7 +180,7 @@ def test_non_git_project_uses_live_root_and_warns(tmp_path: Path) -> None:
     (root / ".labnotes.toml").write_text("")
     (root / "exp").mkdir()
     (root / "exp/experiment.toml").write_text(
-        f"command = \"{sys.executable} -c 'import os; print(os.getcwd())'\"\n"
+        f"continues = false\ncommand = \"{sys.executable} -c 'import os; print(os.getcwd())'\"\n"
     )
     result = subprocess.run(
         [
@@ -208,7 +210,7 @@ def _fixture_repo(tmp_path: Path, cell: str) -> Path:
     (root / ".labnotes.toml").write_text('[runs]\npath = "runs/{experiment}/{run}"\n')
     (root / "exp").mkdir()
     (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} cell.py {{run_dir}}"\n'
+        f'continues = false\ncommand = "{sys.executable} cell.py {{run_dir}}"\n'
     )
     (root / "cell.py").write_text(cell)
     return root

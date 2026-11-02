@@ -67,3 +67,11 @@ def test_experiments_do_not_share_environment_defaults() -> None:
 
 def test_experiments_start_new_folders_for_failed_runs_by_default() -> None:
     assert ExperimentConfig("run", 1, {}).continues is False
+
+
+def test_configs_have_no_mode() -> None:
+    project = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
+    experiment = ExperimentConfig("run", 1, {})
+
+    assert not hasattr(project, "mode")
+    assert not hasattr(experiment, "mode")

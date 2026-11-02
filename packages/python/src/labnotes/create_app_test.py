@@ -10,7 +10,7 @@ import pytest
 
 from labnotes.create_app import create_app
 
-CONFIG = mock.Mock(root=Path("/p/project"), mode="matrix")
+CONFIG = mock.Mock(root=Path("/p/project"))
 
 
 EXPERIMENT: dict[str, object] = {"name": "models-effort"}
@@ -113,9 +113,7 @@ def test_index_lists_experiments(
     status, _ = call(app, "/")
 
     assert status == 200
-    collaborators["list_experiments"].assert_awaited_once_with(
-        app.state.tables, "matrix"
-    )
+    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables)
     collaborators["templates"].TemplateResponse.assert_called_once_with(
         mock.ANY, "index.html", {"experiments": [EXPERIMENT], "folder": "project"}
     )
@@ -127,10 +125,9 @@ def test_experiment_page_loads_the_named_experiment(
     status, _ = call(app, "/experiments/{name}", name="models-effort")
 
     assert status == 200
-    assert collaborators["load_experiment"].await_args.args[:5] == (
+    assert collaborators["load_experiment"].await_args.args[:4] == (
         app.state.tables,
         Path("/p/project"),
-        "matrix",
         "models-effort",
         {"sort": "model"},
     )
@@ -274,7 +271,7 @@ def test_experiment_page_shows_outputs_of_blocks_already_run(
     post_run(app, {"block": 0})
     call(app, "/experiments/{name}", name="models-effort")
 
-    outputs_for = collaborators["load_experiment"].await_args.args[5]
+    outputs_for = collaborators["load_experiment"].await_args.args[4]
     with mock.patch(
         "labnotes.create_app.saved_outputs", return_value=["<pre>1</pre>"]
     ) as saved:

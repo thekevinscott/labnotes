@@ -40,7 +40,9 @@ def test_records_the_repositories_commit_and_tracked_changes(
 ) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
-    (tmp_path / "exp/experiment.toml").write_text('command = "true"\n')
+    (tmp_path / "exp/experiment.toml").write_text(
+        'continues = false\ncommand = "true"\n'
+    )
     expected = None
     if state != "outside":
         git(tmp_path, "init")
@@ -69,7 +71,7 @@ def test_queued_runs_keep_the_invocations_starting_commit(
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
-        f'command = "git -C {tmp_path} -c user.name=Test -c user.email=test@example.com '
+        f'continues = false\ncommand = "git -C {tmp_path} -c user.name=Test -c user.email=test@example.com '
         '-c commit.gpgsign=false commit --allow-empty -m next"\nrepeats = 2\n'
     )
     git(tmp_path, "init")
@@ -91,7 +93,9 @@ def test_untracked_files_make_the_run_dirty_and_land_in_its_patch(
     (tmp_path / ".gitignore").write_text("ignored.txt\n")
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
-    (tmp_path / "exp/experiment.toml").write_text('command = "true"\n')
+    (tmp_path / "exp/experiment.toml").write_text(
+        'continues = false\ncommand = "true"\n'
+    )
     git(tmp_path, "init")
     git(tmp_path, "add", ".")
     git(tmp_path, "commit", "-m", "initial")

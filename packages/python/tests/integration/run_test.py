@@ -37,8 +37,8 @@ def make_project(root: Path) -> Path:
     write(root / "script.py", SCRIPT)
     write(
         root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
-        'repeats = 2\nmode = "matrix"\n[params]\nm = ["a", "b"]\n',
+        f'continues = false\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n'
+        'repeats = 2\n[params]\nm = ["a", "b"]\n',
     )
     return root
 
@@ -88,29 +88,6 @@ def test_reruns_only_the_runs_that_failed(
     assert sorted(run["params"]["m"] for run in recorded) == ["a", "a"] + ["b"] * 4
 
 
-def test_reruns_every_combination_without_a_mode(project: Path) -> None:
-    toml = project / "exp" / "experiment.toml"
-    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
-    labnotes(project, ["experiments", "exp", "run"])
-    labnotes(project, ["experiments", "exp", "run"])
-
-    recorded = runs(project)
-    assert sorted(run["params"]["m"] for run in recorded) == ["a"] * 4 + ["b"] * 4
-    groups = [run["folder"].parent for run in recorded]
-    assert sorted(groups.count(group) for group in set(groups)) == [4, 4]
-
-
-def test_runs_the_matrix_by_the_project_mode(project: Path) -> None:
-    toml = project / "exp" / "experiment.toml"
-    toml.write_text(toml.read_text(encoding="utf-8").replace('mode = "matrix"\n', ""))
-    (project / ".labnotes.toml").write_text('[experiments]\nmode = "matrix"\n')
-    labnotes(project, ["experiments", "exp", "run"])
-    labnotes(project, ["experiments", "exp", "run"])
-
-    recorded = runs(project)
-    assert sorted(run["params"]["m"] for run in recorded) == ["a", "a"] + ["b"] * 4
-
-
 def test_reruns_an_excluded_run(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -143,50 +120,29 @@ def test_counts_runs_by_the_experiments_rule(
     assert capsys.readouterr().out.endswith("0 passed, 0 failed.\n")
 
 
-HASH = r"-[0-9a-f]{4}"
 STAMP = r"\d{8}-\d{6}-[a-z]+-[a-z]+(-\d+)?"
-HAIKU = r"[a-z]+-[a-z]+(-\d+)?"
 
 
-def run_adhoc(project: Path, params: str, repeats: int = 1) -> list[dict[str, Any]]:
+def run_params(project: Path, params: str) -> list[dict[str, Any]]:
     write(
         project / "exp" / "experiment.toml",
-        f'command = "{sys.executable} script.py --out {{run_dir}}"\n'
-        f'mode = "adhoc"\nrepeats = {repeats}\n[params]\n{params}',
+        f'continues = false\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n'
+        f"[params]\n{params}",
     )
     labnotes(project, ["experiments", "exp", "run"])
     return runs(project)
 
 
-def labels(recorded: list[dict[str, Any]]) -> list[str]:
-    for run in recorded:
-        assert re.fullmatch(rf".+{HASH}", run["folder"].name)
-    return sorted(run["folder"].name[:-5] for run in recorded)
-
-
-def test_names_adhoc_runs_by_a_path_param_without_its_shared_prefix(
-    project: Path,
-) -> None:
-    recorded = run_adhoc(
-        project,
-        'problem-dir = ["../data/APPS/test/0580", "../data/APPS/test/2002", '
-        '"../data/APPS/test/3876"]\n',
-    )
-
-    assert labels(recorded) == ["0580", "2002", "3876"]
-
-
 def test_keeps_the_real_param_values_in_run_json(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["data/x 1", "data/y"]\n')
+    recorded = run_params(project, 'm = ["data/x 1", "data/y"]\n')
 
-    by_label = {run["folder"].name[:-5]: run["params"]["m"] for run in recorded}
-    assert by_label == {"x-1": "data/x 1", "y": "data/y"}
+    assert sorted(run["params"]["m"] for run in recorded) == ["data/x 1", "data/y"]
     for run in recorded:
         assert (run["folder"] / "out.txt").read_text() == f"--m {run['params']['m']}"
 
 
 def test_records_the_command_each_run_executed(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["data/x 1", "data/y"]\n')
+    recorded = run_params(project, 'm = ["data/x 1", "data/y"]\n')
 
     for run in recorded:
         folder = shlex.quote(str(run["folder"]))
@@ -194,71 +150,12 @@ def test_records_the_command_each_run_executed(project: Path) -> None:
         assert run["command"] == f"{sys.executable} script.py --out {folder} --m {m}"
 
 
-def test_leaves_params_that_never_change_out_of_the_name(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["p", "q"]\nk = ["same"]\n')
-
-    assert labels(recorded) == ["p", "q"]
-
-
-def test_joins_every_varying_param_in_config_order(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["p", "q"]\nseed = [1, 2]\n')
-
-    assert labels(recorded) == ["p-1", "p-2", "q-1", "q-2"]
-
-
-def test_keeps_numbers_whole(project: Path) -> None:
-    recorded = run_adhoc(project, "n = [10, 11, 0.5]\n")
-
-    assert labels(recorded) == ["0-5", "10", "11"]
-
-
-def test_turns_unsafe_characters_into_dashes(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["(a  b).c", "café", "Big"]\n')
-
-    assert labels(recorded) == ["Big", "a-b-c", "caf"]
-
-
-def test_cuts_a_long_name_at_sixty_characters(project: Path) -> None:
-    recorded = run_adhoc(project, f'm = ["{"x" * 80}", "y"]\n')
-
-    assert labels(recorded) == ["x" * 60, "y"]
-
-
-def test_tells_runs_with_the_same_name_apart_by_their_hash(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["a b", "a/b"]\n', repeats=2)
-
-    assert labels(recorded) == ["a-b"] * 4
-    assert len({run["folder"] for run in recorded}) == 4
-
-
-def test_names_adhoc_runs_with_a_haiku_when_nothing_varies(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["a"]\n', repeats=2)
-
-    names = [run["folder"].name for run in recorded]
-    assert all(re.fullmatch(HAIKU, name) for name in names)
-    assert len(set(names)) == 2
-
-
-def test_keeps_one_stamped_folder_per_invocation(project: Path) -> None:
-    recorded = run_adhoc(project, 'm = ["p", "q"]\n')
-
-    [group] = {run["folder"].parent for run in recorded}
-    assert re.fullmatch(STAMP, group.name)
-
-
-def test_writes_a_lone_adhoc_run_to_one_stamped_folder(project: Path) -> None:
-    [recorded] = run_adhoc(project, 'm = ["a"]\n')
-
-    assert recorded["folder"].parent == project / "exp" / "runs"
-    assert re.fullmatch(STAMP, recorded["folder"].name)
-    assert (recorded["folder"] / "out.txt").read_text() == "--m a"
-
-
-def test_keeps_stamped_haiku_names_for_matrix_runs(project: Path) -> None:
+def test_names_every_run_with_a_stamp_directly_under_runs(project: Path) -> None:
     labnotes(project, ["experiments", "exp", "run"])
 
-    names = [run["folder"].name for run in runs(project)]
-    assert all(re.fullmatch(STAMP, name) for name in names)
+    for run in runs(project):
+        assert run["folder"].parent == project / "exp" / "runs"
+        assert re.fullmatch(STAMP, run["folder"].name)
 
 
 def test_runs_in_a_project_whose_path_is_too_long_for_a_socket(project: Path) -> None:
@@ -295,8 +192,8 @@ def sleeper(
     flag = (" --stubborn" if stubborn else "") + (" --die" if die else "")
     write(
         root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} sleep.py{flag}"\n'
-        f'mode = "matrix"\n[params]\ns = {json.dumps(seconds)}\n',
+        f'continues = false\ncommand = "{sys.executable} sleep.py{flag}"\n'
+        f"[params]\ns = {json.dumps(seconds)}\n",
     )
     return root
 

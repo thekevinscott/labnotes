@@ -15,7 +15,7 @@ def test_uvx_run_from_repo_subfolder_uses_subfolder_snapshot(
         '[runs]\npath = "runs/{experiment}/{run}"\n'
     )
     (project / "exp/experiment.toml").write_text(
-        'command = "python cell.py {run_dir}"\n'
+        'continues = false\ncommand = "python cell.py {run_dir}"\n'
     )
     (project / "cell.py").write_text(
         "import os, pathlib, subprocess, sys\n"

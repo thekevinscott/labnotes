@@ -49,7 +49,9 @@ def test_uvx_run_can_read_git_inside_snapshot_submodule(
     )
     (root / ".gitignore").write_text("runs/\n")
     (root / ".labnotes.toml").write_text('[runs]\npath = "runs/{experiment}/{run}"\n')
-    (root / "exp/experiment.toml").write_text('command = "python cell.py {run_dir}"\n')
+    (root / "exp/experiment.toml").write_text(
+        'continues = false\ncommand = "python cell.py {run_dir}"\n'
+    )
     (root / "cell.py").write_text(
         "import pathlib, subprocess, sys\n"
         "run = pathlib.Path(sys.argv[1])\n"

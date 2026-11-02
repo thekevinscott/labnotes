@@ -14,7 +14,7 @@ def make_project(root: Path, command: str = "--out x", config: str = "") -> Path
     (root / ".labnotes.toml").write_text(config)
     (root / "script.py").write_text(SCRIPT)
     (root / "exp" / "experiment.toml").write_text(
-        f'command = "{sys.executable} script.py {command}"\n[params]\nm = ["a", "b"]\n'
+        f'continues = false\ncommand = "{sys.executable} script.py {command}"\n[params]\nm = ["a", "b"]\n'
     )
     return root
 
@@ -68,7 +68,8 @@ def test_args_override_a_flag_in_the_command(
 def test_args_override_a_command_from_the_labnotes_toml(tmp_path: Path) -> None:
     (tmp_path / "script.py").write_text(SCRIPT)
     (tmp_path / ".labnotes.toml").write_text(
-        "[experiment]\n" f'command = "{sys.executable} script.py --memory 8g --out x"\n'
+        "[experiment]\n"
+        f'continues = false\ncommand = "{sys.executable} script.py --memory 8g --out x"\n'
     )
 
     with pytest.raises(SystemExit) as exit_info:

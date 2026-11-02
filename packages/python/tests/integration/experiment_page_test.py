@@ -12,7 +12,6 @@ def test_shows_the_experiment_toml_on_one_line(site: str) -> None:
     async def check(page: Page) -> None:
         await expect(page.get_by_role("heading", name="Alpha study")).to_be_visible()
         summary = page.locator(".config-summary")
-        await expect(summary).to_contain_text("matrix")
         await expect(summary).to_contain_text("command go")
         await expect(summary).to_contain_text("repeats 2")
         await expect(summary).to_contain_text("source-language en fr")
@@ -48,7 +47,7 @@ def test_lists_runs_in_a_table(site: str) -> None:
 
 def test_shows_when_each_run_started_and_how_long_it_took(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     run(tmp_path, "run1", {}, exit_code=0, ended="2026-10-17T00:08:21Z")
     run(tmp_path, "run2", {})
 
@@ -164,7 +163,7 @@ def test_offers_no_filter_for_a_param_with_one_value(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(
         tmp_path / "alpha/experiment.toml",
-        'command = "go"\n[params]\nm = ["a", "b"]\nk = "same"\nj = ["one"]\n',
+        'continues = false\ncommand = "go"\n[params]\nm = ["a", "b"]\nk = "same"\nj = ["one"]\n',
     )
     run(tmp_path, "run1", {"m": "a", "k": "same", "j": "one"}, exit_code=0)
 
@@ -179,14 +178,14 @@ def test_offers_no_filter_for_a_param_with_one_value(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check)
 
 
-ADHOC = 'command = "go"\nmode = "adhoc"\n[params]\nm = ["a", "b"]\n'
+TWO_CELLS = 'continues = false\ncommand = "go"\n[params]\nm = ["a", "b"]\n'
 LAKE = "20261020-105052-lake"
 POND = "20261019-090000-pond"
 
 
 def unfinished(tmp_path: Path, **fields: object) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     started = datetime.now(UTC) - timedelta(seconds=5)
     run(tmp_path, "run1", {}, created=started.strftime("%Y-%m-%dT%H:%M:%SZ"), **fields)
 
@@ -221,9 +220,9 @@ def test_shows_an_unfinished_run_as_interrupted_without_a_daemon(
         browse(f"{site}/experiments/alpha", check)
 
 
-def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
+def test_groups_old_nested_runs_by_invocation(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    write(tmp_path / "alpha/experiment.toml", TWO_CELLS)
     run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
     run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=1)
     run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
@@ -267,7 +266,7 @@ def test_groups_adhoc_runs_by_invocation(tmp_path: Path) -> None:
 
 def test_opens_groups_to_show_what_a_filter_matched(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    write(tmp_path / "alpha/experiment.toml", TWO_CELLS)
     run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
     run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=0)
     run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
@@ -300,9 +299,11 @@ def test_opens_groups_to_show_what_a_filter_matched(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check)
 
 
-def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> None:
+def test_lists_old_nested_runs_flat_when_each_invocation_ran_once(
+    tmp_path: Path,
+) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    write(tmp_path / "alpha/experiment.toml", TWO_CELLS)
     run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
     run(tmp_path, f"{POND}/three3", {"m": "b"}, exit_code=0)
 
@@ -322,9 +323,9 @@ def test_lists_adhoc_runs_flat_when_each_invocation_ran_once(tmp_path: Path) -> 
 HERON = "20261021-080000-heron"
 
 
-def test_lists_a_lone_flat_adhoc_run_as_a_plain_row(tmp_path: Path) -> None:
+def test_lists_a_lone_flat_run_as_a_plain_row(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    write(tmp_path / "alpha/experiment.toml", TWO_CELLS)
     run(tmp_path, f"{LAKE}/one1", {"m": "a"}, exit_code=0)
     run(tmp_path, f"{LAKE}/two2", {"m": "b"}, exit_code=0)
     run(tmp_path, f"{POND}/three3", {"m": "a"}, exit_code=0)
@@ -351,9 +352,9 @@ def test_lists_a_lone_flat_adhoc_run_as_a_plain_row(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check)
 
 
-def test_lists_flat_adhoc_runs_without_groups(tmp_path: Path) -> None:
+def test_lists_flat_runs_without_groups(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", ADHOC)
+    write(tmp_path / "alpha/experiment.toml", TWO_CELLS)
     run(tmp_path, HERON, {"m": "a"}, exit_code=0, created="2026-10-21T08:00:00Z")
     run(tmp_path, f"{POND}/three3", {"m": "b"}, exit_code=0)
 
@@ -399,7 +400,7 @@ def test_shows_a_broken_counts_rule(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(
         tmp_path / "alpha/experiment.toml",
-        'command = "go"\ncounts = "nope ="\n[params]\nm = ["a"]\n',
+        'continues = false\ncommand = "go"\ncounts = "nope ="\n[params]\nm = ["a"]\n',
     )
     run(tmp_path, "run1", {"m": "a"}, exit_code=0)
 
@@ -452,7 +453,7 @@ def test_restart_clears_the_notebook_state(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check)
 
 
-def test_switches_matrix_runs_to_a_grid_and_back(site: str) -> None:
+def test_switches_runs_to_a_grid_and_back(site: str) -> None:
     async def check(page: Page) -> None:
         toggle = page.get_by_role("navigation", name="Runs view")
         await expect(toggle.get_by_role("link", name="Table")).to_have_attribute(
@@ -477,17 +478,17 @@ def test_switches_matrix_runs_to_a_grid_and_back(site: str) -> None:
     browse(f"{site}/experiments/alpha", check)
 
 
-def test_offers_no_grid_for_adhoc_runs(tmp_path: Path) -> None:
+def test_offers_a_grid_for_any_experiment(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(
         tmp_path / "alpha/experiment.toml",
-        'command = "go"\nmode = "adhoc"\n[params]\nx = [1, 2]\n',
+        'continues = false\ncommand = "go"\n[params]\nx = [1, 2]\n',
     )
     run(tmp_path, "run1", {"x": 1}, exit_code=0)
 
     async def check(page: Page) -> None:
-        await expect(page.locator(".runs-table")).to_be_visible()
-        await expect(page.get_by_role("navigation", name="Runs view")).to_have_count(0)
+        await expect(page.get_by_role("navigation", name="Runs view")).to_be_visible()
+        await expect(page.locator(".runs-grid .grid-cell")).to_have_text(["1/1", "0/1"])
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha?view=grid", check)

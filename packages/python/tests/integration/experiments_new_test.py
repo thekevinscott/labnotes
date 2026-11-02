@@ -45,6 +45,7 @@ def test_creates_an_experiment_from_flags(
     assert definition(project / "sanity-3") == {
         "command": "uv run python run.py --out {run_dir}",
         "repeats": 3,
+        "continues": False,
         "params": {"model": ["opus", "sonnet"], "size": [3], "langs": ["en,fr"]},
     }
     assert labnotes(project, ["sanity-3", "--format", "json"]) == 0
@@ -57,7 +58,7 @@ def test_copies_another_experiment_without_its_runs(
 ) -> None:
     write(
         project / "sanity-3/experiment.toml",
-        '# The sanity check.\ncommand = "go {run_dir}"\nrepeats = 3\n'
+        '# The sanity check.\ncommand = "go {run_dir}"\nrepeats = 3\nmode = "adhoc"\n'
         '[params]\nmodel = ["opus", "sonnet"]\neffort = ["low"]\n',
     )
     write(project / "sanity-3/files/plan.md", "# Plan\n")
@@ -75,6 +76,7 @@ def test_copies_another_experiment_without_its_runs(
         "from": "sanity-3",
         "command": "go {run_dir}",
         "repeats": 3,
+        "continues": False,
         "params": {"model": ["haiku"], "effort": ["low"]},
     }
     assert "# The sanity check." in (copy / "experiment.toml").read_text()

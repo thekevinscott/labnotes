@@ -47,7 +47,7 @@ def make_project(root: Path, script: str) -> Path:
     )
     write(
         root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} -c pass"\n[params]\nm = ["a", "b"]\n',
+        f'continues = false\ncommand = "{sys.executable} -c pass"\n[params]\nm = ["a", "b"]\n',
     )
     return root
 

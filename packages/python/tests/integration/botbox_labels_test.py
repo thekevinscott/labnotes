@@ -42,7 +42,7 @@ def labeled_project(
     command = shlex.join([sys.executable, "capture.py"])
     write(
         tmp_path / "exp" / "experiment.toml",
-        f'command = "{command} run"\n'
+        f'continues = false\ncommand = "{command} run"\n'
         f'meta = "{command} meta"\n'
         f'setup = "{command} setup"\n'
         f'teardown = "{command} teardown"\n' + configured,

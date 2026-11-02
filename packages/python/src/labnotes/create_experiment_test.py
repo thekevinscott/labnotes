@@ -18,6 +18,7 @@ def make_config(root: Path) -> mock.Mock:
         root=root,
         experiments="notes/{experiment}",
         runs="data/{experiment}/{run}",
+        defaults={},
     )
 
 
@@ -26,6 +27,10 @@ def test_creates_the_folder_with_a_starter_config(tmp_path: Path) -> None:
 
     assert path == tmp_path / "notes" / "study"
     assert (path / "experiment.toml").read_text(encoding="utf-8") == STARTER
+
+
+def test_the_starter_says_whether_failed_runs_continue() -> None:
+    assert tomllib.loads(STARTER)["continues"] is False
 
 
 def test_names_it_when_no_name_is_given(tmp_path: Path) -> None:
@@ -80,6 +85,7 @@ def test_writes_the_flags_into_the_starter(tmp_path: Path) -> None:
     assert tomllib.loads((path / "experiment.toml").read_text()) == {
         "command": "go {run_dir}",
         "repeats": 3,
+        "continues": False,
         "params": {"m": ["a"]},
     }
 
@@ -94,8 +100,24 @@ def test_copies_another_experiment(tmp_path: Path) -> None:
 
     copy.assert_called_once_with(tmp_path / "notes/base", path, tmp_path / "data/base")
     assert (path / "experiment.toml").read_text() == (
-        'from = "base"\ncommand = "go"\nrepeats = 4\n'
+        'from = "base"\ncommand = "go"\nrepeats = 4\ncontinues = false\n'
     )
+
+
+def test_takes_continues_from_the_project_defaults(tmp_path: Path) -> None:
+    config = make_config(tmp_path)
+    config.defaults = {"continues": True}
+    write(tmp_path / "notes/base/experiment.toml", 'command = "go"\n')
+
+    fresh = create_experiment(config, "fresh")
+    with mock.patch(
+        "labnotes.create_experiment.copy_experiment",
+        side_effect=lambda source, target, runs: target.mkdir(),
+    ):
+        copied = create_experiment(config, "study", "base")
+
+    assert tomllib.loads((fresh / "experiment.toml").read_text())["continues"] is True
+    assert "continues = true" in (copied / "experiment.toml").read_text()
 
 
 @pytest.mark.parametrize("made", [False, True])

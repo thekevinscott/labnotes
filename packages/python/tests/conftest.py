@@ -58,7 +58,7 @@ def botbox_memory_project(tmp_path: Path) -> Iterator[Path]:
     (root / "hook.py").write_text(HOOK)
     python = shlex.quote(sys.executable)
     (root / "exp" / "experiment.toml").write_text(
-        f'command = "{python} script.py"\n'
+        f'continues = false\ncommand = "{python} script.py"\n'
         f'setup = "{python} hook.py setup"\n'
         f'teardown = "{python} hook.py teardown"\n'
         "memory_interval = 0.2\n"

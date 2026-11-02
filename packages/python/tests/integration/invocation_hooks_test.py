@@ -11,7 +11,8 @@ from conftest import write
 from labnotes.cli import main
 
 MANY = '[params]\nm = ["a", "b"]\n'
-COMMAND = """command = "sh -c 'echo run $2 >> journal.txt' sh"
+COMMAND = """continues = false
+command = "sh -c 'echo run $2 >> journal.txt' sh"
 [params]
 m = ["a", "b"]
 """
@@ -53,7 +54,7 @@ def test_prefers_the_experiments_setup_and_then_the_flags(tmp_path: Path) -> Non
         tmp_path,
         shared='setup = "echo shared >> journal.txt"\n'
         'teardown = "echo shared down >> journal.txt"\n',
-        own='setup = "echo own >> journal.txt"\n',
+        own='counts = "false"\nsetup = "echo own >> journal.txt"\n',
     )
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
@@ -109,7 +110,7 @@ def make_dir_project(root: Path, hooks: str, params: str = "") -> Path:
     write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
     write(
         root / "exp" / "experiment.toml",
-        "command = \"sh -c 'echo run $1 $2 >> journal.txt' sh "
+        "continues = false\ncommand = \"sh -c 'echo run $1 $2 >> journal.txt' sh "
         '{run_dir} {invocation_dir}"\n' + hooks + params,
     )
     return root
@@ -120,42 +121,27 @@ def run_ids(root: Path) -> list[str]:
     return sorted(str(p.parent.relative_to(runs)) for p in runs.rglob("run.json"))
 
 
-@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
-def test_gives_a_lone_run_its_own_folder_as_both_quoted_dirs(
-    tmp_path: Path, mode: str
+@pytest.mark.parametrize("params", ["", MANY])
+def test_gives_each_run_its_own_folder_as_both_quoted_dirs(
+    tmp_path: Path, params: str
 ) -> None:
-    root = make_dir_project(tmp_path / "with spaces", f'mode = "{mode}"\n')
-
-    assert labnotes(root, ["experiments", "exp", "run"]) == 0
-
-    [run] = run_ids(root)
-    folder = str((root / "exp" / "runs" / run).resolve())
-    assert journal(root) == [f"run {folder} {folder}"]
-
-
-def test_uses_the_invocation_folder_shared_by_adhoc_runs(tmp_path: Path) -> None:
-    root = make_dir_project(tmp_path, "", '[params]\nm = ["a", "b"]\n')
+    root = make_dir_project(tmp_path / "with spaces", "", params)
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
     runs = run_ids(root)
-    group = runs[0].split("/")[0]
-    assert [run.split("/")[0] for run in runs] == [group, group]
-    group_dir = str((root / "exp" / "runs" / group).resolve())
-    assert sorted(journal(root)) == [
-        f"run {(root / 'exp' / 'runs' / run).resolve()} {group_dir}" for run in runs
-    ]
+    assert len(runs) == (2 if params else 1)
+    folders = [str((root / "exp" / "runs" / run).resolve()) for run in runs]
+    assert sorted(journal(root)) == sorted(f"run {f} {f}" for f in folders)
 
 
 @pytest.mark.parametrize("params", ["", '[params]\nm = ["a", "b"]\n'])
-@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
 @pytest.mark.parametrize("hook", ["setup", "teardown", "meta"])
 @pytest.mark.parametrize("placeholder", ["{run_dir}", "{invocation_dir}"])
 def test_refuses_a_folder_placeholder_in_any_hook_before_setup(
     tmp_path: Path,
     capsys: pytest.CaptureFixture[str],
     params: str,
-    mode: str,
     hook: str,
     placeholder: str,
 ) -> None:
@@ -167,8 +153,7 @@ def test_refuses_a_folder_placeholder_in_any_hook_before_setup(
     hooks[hook] = f"echo {hook} {placeholder} >> journal.txt"
     root = make_dir_project(
         tmp_path,
-        f'mode = "{mode}"\n'
-        + "".join(f"{name} = '{command}'\n" for name, command in hooks.items()),
+        "".join(f"{name} = '{command}'\n" for name, command in hooks.items()),
         params,
     )
 
@@ -219,7 +204,7 @@ print('{}')
 """
 
 
-def make_state_project(root: Path, mode: str, params: str, setup_exit: int = 0) -> Path:
+def make_state_project(root: Path, params: str, setup_exit: int = 0) -> Path:
     write(root / "setup.py", SET_STATE + f"raise SystemExit({setup_exit})\n")
     write(root / "teardown.py", GET_STATE)
     write(root / "run.py", READ_ONLY_STATE)
@@ -227,9 +212,8 @@ def make_state_project(root: Path, mode: str, params: str, setup_exit: int = 0) 
     write(root / ".labnotes.toml", '[experiments]\npath = "{experiment}"\n')
     write(
         root / "exp" / "experiment.toml",
-        f'command = "{sys.executable} run.py {{run_dir}}"\n'
+        f'continues = false\ncommand = "{sys.executable} run.py {{run_dir}}"\n'
         f'meta = "{sys.executable} meta.py"\n'
-        f'mode = "{mode}"\n'
         f'setup = "{sys.executable} setup.py"\n'
         f'teardown = "{sys.executable} teardown.py"\n' + params,
     )
@@ -244,14 +228,11 @@ def outer_state(tmp_path: Path, request: pytest.FixtureRequest) -> Iterator[Path
         yield outer
 
 
-@pytest.mark.parametrize(
-    ("mode", "params"),
-    [("adhoc", ""), ("adhoc", MANY), ("matrix", ""), ("matrix", MANY)],
-)
+@pytest.mark.parametrize("params", ["", MANY])
 def test_runs_read_setup_state_without_changing_teardown_or_outer_state(
-    tmp_path: Path, outer_state: Path, mode: str, params: str
+    tmp_path: Path, outer_state: Path, params: str
 ) -> None:
-    root = make_state_project(tmp_path / "project", mode, params)
+    root = make_state_project(tmp_path / "project", params)
 
     assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
@@ -267,7 +248,7 @@ def test_runs_read_setup_state_without_changing_teardown_or_outer_state(
 
 
 def test_gives_teardown_the_state_set_before_setup_failed(tmp_path: Path) -> None:
-    root = make_state_project(tmp_path, "matrix", MANY, setup_exit=3)
+    root = make_state_project(tmp_path, MANY, setup_exit=3)
 
     assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
 

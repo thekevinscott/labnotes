@@ -13,7 +13,7 @@ def test_sighup_stops_child_and_records_run(tmp_path: Path) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
-        f"command = \"{sys.executable} -c 'import time; time.sleep(600)'\"\n"
+        f"continues = false\ncommand = \"{sys.executable} -c 'import time; time.sleep(600)'\"\n"
     )
     command = [
         str(Path(sys.executable).parent / "labnotes"),
@@ -71,7 +71,7 @@ def test_run_leaves_no_daemon_socket_or_lock(tmp_path: Path) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} -c pass"\n'
+        f'continues = false\ncommand = "{sys.executable} -c pass"\n'
     )
     command = [
         str(Path(sys.executable).parent / "labnotes"),

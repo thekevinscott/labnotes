@@ -4,7 +4,7 @@ from pathlib import Path
 from labnotes.models import LabnotesConfig
 from labnotes.is_non_negative_int import is_non_negative_int
 from labnotes.is_positive_int import is_positive_int
-from labnotes.modes import DEFAULT_MODE, MODES
+from labnotes.config_migration import REMOVED_MODE
 from labnotes.runner.read_experiment_config import SETTINGS
 from labnotes.read_path import DEFAULT_PATHS, read_path
 from labnotes.retries import DEFAULT_RETRIES
@@ -25,6 +25,8 @@ def read_config(path: Path) -> LabnotesConfig:
     defaults = values.get("experiment", {})
     if not isinstance(defaults, dict):
         raise ValueError(f"{path}: experiment must be a table, like [experiment]")
+    if "mode" in defaults:
+        raise ValueError(f"{path}: [experiment] {REMOVED_MODE}")
     unknown = sorted(defaults.keys() - SETTINGS)
     if unknown:
         raise ValueError(f"{path}: unknown keys in [experiment]: {', '.join(unknown)}")
@@ -39,9 +41,8 @@ def read_config(path: Path) -> LabnotesConfig:
         table: read_path(path, table, values.get(table, {}), single=single)
         for table in DEFAULT_PATHS
     }
-    mode = experiments.get("mode", DEFAULT_MODE)
-    if mode not in MODES:
-        raise ValueError(f"{path}: [experiments] mode must be matrix or adhoc")
+    if "mode" in experiments:
+        raise ValueError(f"{path}: [experiments] {REMOVED_MODE}")
     concurrency = experiments.get("concurrency", 1)
     if not is_positive_int(concurrency):
         raise ValueError(
@@ -54,7 +55,6 @@ def read_config(path: Path) -> LabnotesConfig:
         path.resolve(),
         root,
         **paths,
-        mode=mode,
         concurrency=concurrency,
         retries=retries,
         experiment=root.name if single else None,

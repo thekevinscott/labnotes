@@ -282,13 +282,12 @@ def styles(app: RunApp) -> list[list[object]]:
     ]
 
 
-def planned(*runs: str, mode: str = "matrix") -> dict[str, object]:
+def planned(*runs: str) -> dict[str, object]:
     return {
         "event": "planned",
         "title": "Exp",
         "runs": [{"run": run, "params": {"m": run}} for run in runs],
         "concurrency": 2,
-        "mode": mode,
     }
 
 
@@ -367,28 +366,6 @@ def test_shows_each_run_and_the_outcome(
     asyncio.run(drive())
 
 
-def test_names_a_started_adhoc_run_without_its_invocation() -> None:
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("inv/r1", "inv/r2"))
-        report(
-            {
-                "event": "started",
-                "run": "inv/r1",
-                "params": {"m": "a"},
-                "folder": "/runs/inv/r1",
-            }
-        )
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert [row[0] for row in rows(app)] == ["r1", "r2"]
-
-    asyncio.run(drive())
-
-
 def test_shows_planned_runs_as_dim_pending_rows() -> None:
     rendered = asyncio.Event()
 
@@ -456,7 +433,7 @@ def test_plus_and_minus_change_the_concurrency() -> None:
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         listen(mock.Mock(set_concurrency=set_concurrency))
-        report(planned("r1"))
+        report(planned("r1", "r2"))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -895,7 +872,7 @@ def test_numbers_shown_rows_from_one() -> None:
 
 def test_an_empty_filter_hides_the_field() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1"))
+        report(planned("r1", "r2"))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -908,14 +885,14 @@ def test_an_empty_filter_hides_the_field() -> None:
             assert app.query_one("#filter").has_focus
             await pilot.press("enter")
             assert not app.query_one("#filter").display
-            assert [row[0] for row in rows(app)] == ["r1"]
+            assert [row[0] for row in rows(app)] == ["r1", "r2"]
 
     asyncio.run(drive())
 
 
 def test_escape_shows_on_the_table_only_with_the_filter_open() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1"))
+        report(planned("r1", "r2"))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -1114,22 +1091,15 @@ def test_escape_brings_back_the_summary_once_idle() -> None:
     asyncio.run(drive())
 
 
-@pytest.mark.parametrize(
-    ("runs", "mode", "viewing"),
-    [
-        (("r1",), "adhoc", "r1"),
-        (("r1", "r2"), "adhoc", None),
-        (("r1",), "matrix", None),
-    ],
-)
-def test_opens_a_lone_adhoc_run_in_its_output(
-    tmp_path: Path, runs: tuple[str, ...], mode: str, viewing: str | None
+@pytest.mark.parametrize(("runs", "viewing"), [(("r1",), "r1"), (("r1", "r2"), None)])
+def test_opens_a_lone_run_in_its_output(
+    tmp_path: Path, runs: tuple[str, ...], viewing: str | None
 ) -> None:
     reports: list[Report] = []
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         reports.append(report)
-        report(planned(*runs, mode=mode))
+        report(planned(*runs))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
@@ -1154,34 +1124,6 @@ def test_opens_a_lone_adhoc_run_in_its_output(
                 assert output(app)[0] == "hi"
                 await pilot.press("escape")
                 assert [row[0] for row in rows(app)] == ["r1"]
-
-    asyncio.run(drive())
-
-
-def test_shows_nested_runs_by_their_own_name() -> None:
-    reports: list[Report] = []
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        reports.append(report)
-        report(planned("g/r1", "g/r2"))
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
-
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            reports[0](
-                {
-                    "event": "retried",
-                    "run": "g/r1",
-                    "retry": "g/r3",
-                    "params": {"m": "a"},
-                }
-            )
-            await pilot.pause()
-            assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
-            table: Any = app.query_one("#runs")
-            assert [key.value for key in table.rows] == ["g/r1", "g/r2", "g/r3"]
 
     asyncio.run(drive())
 

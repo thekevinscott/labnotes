@@ -38,7 +38,6 @@ def make_config(root: Path) -> mock.Mock:
         root=root,
         experiments="notes/{experiment}",
         runs="data/{experiment}/{run}",
-        mode="matrix",
         concurrency=3,
         retries=4,
     )
@@ -61,7 +60,7 @@ def test_reads_the_experiment(
 
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "matrix", 3, 4, {}
+        path, "source", 3, 4, {}
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
@@ -109,7 +108,7 @@ def test_reads_the_named_experiment_config(
     prepare(tmp_path, path)
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", "matrix", 3, 4, {}
+        path, "source", 3, 4, {}
     )
 
 
@@ -133,9 +132,7 @@ def test_falls_back_to_the_experiment_concurrency(
 def test_reads_the_root_experiment_toml_for_the_one_experiment(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    config = mock.Mock(
-        experiment="exp", root=tmp_path, experiments="", mode="adhoc", concurrency=1
-    )
+    config = mock.Mock(experiment="exp", root=tmp_path, experiments="", concurrency=1)
 
     asyncio.run(prepare_experiment(config, "exp", None, None))
 
@@ -163,7 +160,7 @@ def test_runs_from_the_defaults_alone(
     asyncio.run(prepare_experiment(config, "exp", None, None))
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        tmp_path / ".labnotes.toml", "", "matrix", 3, 4, {"command": "go"}
+        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}
     )
 
 

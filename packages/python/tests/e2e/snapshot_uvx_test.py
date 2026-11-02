@@ -13,7 +13,9 @@ def test_uvx_run_reads_code_captured_before_live_edit(
     (root / "data").mkdir()
     (root / ".labnotes.toml").write_text('[runs]\npath = "runs/{experiment}/{run}"\n')
     (root / "exp").mkdir()
-    (root / "exp/experiment.toml").write_text('command = "python cell.py {run_dir}"\n')
+    (root / "exp/experiment.toml").write_text(
+        'continues = false\ncommand = "python cell.py {run_dir}"\n'
+    )
     (root / "value.py").write_text('VALUE = "before"\n')
     (root / "cell.py").write_text(
         "import pathlib, sys, time\n"

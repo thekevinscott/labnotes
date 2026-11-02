@@ -24,9 +24,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
                 return_value={
                     "display_name": "Alpha",
                     "config": None,
-                    "runs_live": False,
                     "runs_list": [],
-                    "run_groups": None,
                     "views": {},
                 }
             ),

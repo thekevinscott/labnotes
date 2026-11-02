@@ -65,13 +65,13 @@ Closing the terminal leaves the runs going. Sending SIGTERM stops them like `s`.
 
 `labnotes experiments`, `labnotes experiments NAME` and `labnotes experiments NAME runs` open the browser when `--format` is unset and stdout and stderr are both a terminal. Naming an experiment starts on its screen, with the list underneath.
 
-The experiments screen has the same columns as `--format table`. The experiment screen mirrors the runs tab of the [frontend](../frontend): runs that older versions of labnotes nested in one invocation folder collapse into one row with pass, fail and running counts; other runs get a row each. Both screens update live and keep the cursor and expanded rows. An experiment removed while open empties its screen with a note in the header. A [runs view](views) adds columns to the experiment screen, and a line under the table reports when it fails or answers slowly.
+The experiments screen has the same columns as `--format table`. The experiment screen lists every run as its own row. Unlike the [frontend](../frontend), it doesn't group runs that older versions of labnotes nested in one invocation folder; their id shows that folder. Both screens update live and keep the cursor. An experiment removed while open empties its screen with a note in the header. A [runs view](views) adds columns to the experiment screen, and a line under the table reports when it fails or answers slowly.
 
 | Key | Action |
 | --- | --- |
 | `j` / `k` | Move the cursor down / up. |
 | `g` / `G` | Jump to the first / last row. |
-| Enter | Open the experiment. On an experiment, expand or collapse an invocation, or open a run's output. |
+| Enter | Open the experiment. On an experiment, open a run's output. |
 | Escape | Back. |
 | Ctrl-C | Quit. |
 

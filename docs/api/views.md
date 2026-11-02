@@ -35,7 +35,7 @@ class Progress(Static):
         if experiment is None:
             self.update("Experiment removed")
             return
-        passed = sum(row["status"] == "passed" for row in experiment.runs.values())
+        passed = sum(row["status"] == "passed" for row in experiment.runs)
         self.update(f"{passed} of {len(experiment.runs)} passed")
 ```
 
@@ -43,10 +43,8 @@ The class must be constructible without arguments. `Changed.experiment` holds da
 
 - `root`: the project path.
 - `name`: the experiment name.
-- `runs`: one row per run, keyed by run folder relative to the root, in run order.
+- `runs`: a tuple of rows, one per run, in display order. Each is the row the [runs table](#rows) gets, so `row["folder"]` locates the run and `row["status"]` says whether it is still going.
 - `config`: the experiment's config as labnotes resolved it, read-only.
-- `live`: whether a run is still going.
-- `groups`: a tuple of `labnotes.view.Group`, or `None` when runs aren't nested. Each `Group` has a `name`, the `folders` of its runs (keys into `runs`), and `flat`, true for a run that ran on its own.
 
 `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
 
@@ -116,7 +114,6 @@ A column is an object with a `key` and an optional `label`, or a bare string, wh
 | --- | --- | --- |
 | `status` | (none) | ✓ passed, ✕ failed, ◐ running, – unfinished. |
 | `id` | `id` | The run id. |
-| `runs` | `runs` | Only when runs are grouped by invocation. Each run's own value is blank. |
 | each param that varies | its name | The value. |
 | `started` | `started` | `created` in UTC, to the second. |
 | `duration` | `duration` | Seconds, as `1m 05s`. |
@@ -141,7 +138,7 @@ A row is one run, keyed by column. labnotes sends:
 | `meta` | The run's [`meta`](config#meta), as written to `run.json`, or `null`. |
 | `run` | All of `run.json`, as an object. |
 | each param that varies | Its value, as in the columns. A param named like another field here keeps that field; read it from `params`. |
-| `status` | `"passed"`, `"failed"` or `"unfinished"`. |
+| `status` | `"passed"`, `"failed"`, `"running"` while its process is alive, or `"unfinished"` when it stopped without finishing. |
 | `started` | `created`. |
 | `duration` | Seconds from `created` to `ended`, or `null`. |
 

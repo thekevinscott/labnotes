@@ -5,9 +5,8 @@ from labnotes.view.serve import serve
 if TYPE_CHECKING:
     from labnotes.view.changed import Changed
     from labnotes.view.experiment import Experiment
-    from labnotes.view.group import Group
 
-__all__ = ["Changed", "Experiment", "Group", "serve"]
+__all__ = ["Changed", "Experiment", "serve"]
 
 
 # Runs-view scripts import this package, so Textual loads only when asked for.
@@ -20,8 +19,4 @@ def __getattr__(name: str) -> object:
         from labnotes.view.experiment import Experiment
 
         return Experiment
-    if name == "Group":
-        from labnotes.view.group import Group
-
-        return Group
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")

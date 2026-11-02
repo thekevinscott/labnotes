@@ -72,7 +72,9 @@ async def load_experiment(
             pid, created if isinstance(created, int | float) else None
         )
 
-    runs_live = any(is_running(run) for run in runs)
+    for run in runs:
+        run["labnotes_running"] = is_running(run)
+    runs_live = any(run["labnotes_running"] for run in runs)
     nested = await nests_runs(tables, source)
     groups = (
         group_runs(runs, list(choices), await count_groups(tables, source))

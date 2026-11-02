@@ -7,13 +7,15 @@ from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
 
 
-def format_cell(key: str, value: object, live: bool) -> object:
+def format_cell(key: str, value: object) -> object:
     if key == "status" and value == "passed":
         return Text("✓", style="green")
     if key == "status" and value == "failed":
         return Text("✕", style="red")
+    if key == "status" and value == "running":
+        return Text("◐", style="yellow")
     if key == "status" and value == "unfinished":
-        return Text("◐", style="yellow") if live else dim("–")
+        return dim("–")
     if key == "duration" and isinstance(value, int) and not isinstance(value, bool):
         return format_elapsed(value)
     if key == "started" and isinstance(value, str):

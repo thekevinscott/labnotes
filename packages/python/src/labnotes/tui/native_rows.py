@@ -11,7 +11,7 @@ def native_row(run: Mapping[str, Any]) -> dict[str, Any]:
         if isinstance(row.get(key), str):
             row[key] = json.loads(row[key])
     if run["labnotes_unfinished"]:
-        row["status"] = "unfinished"
+        row["status"] = "running" if run["labnotes_running"] else "unfinished"
     elif run["labnotes_completed"]:
         row["status"] = "passed"
     else:
@@ -20,5 +20,5 @@ def native_row(run: Mapping[str, Any]) -> dict[str, Any]:
     return row
 
 
-def native_rows(experiment: Mapping[str, Any]) -> dict[str, dict[str, Any]]:
-    return {str(run["folder"]): native_row(run) for run in experiment["runs_list"]}
+def native_rows(experiment: Mapping[str, Any]) -> tuple[dict[str, Any], ...]:
+    return tuple(native_row(run) for run in experiment["runs_list"])

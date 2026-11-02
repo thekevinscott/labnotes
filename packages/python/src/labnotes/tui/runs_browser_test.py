@@ -7,23 +7,14 @@ from unittest import mock
 import pytest
 
 from labnotes.tui.runs_browser import Changed, Experiment, RunOutput, RunsBrowser
-from labnotes.view.group import Group
 
 ROOT = Path("/p/project")
-RUNS = {
-    "alpha/runs/inv/first": {"id": "inv/first", "status": "passed"},
-    "alpha/runs/lone": {"id": "lone", "status": "failed"},
-}
-EXPERIMENT = Experiment(
-    ROOT,
-    "alpha",
-    RUNS,
-    {"command": "go"},
-    groups=(
-        Group("inv", ("alpha/runs/inv/first",), False),
-        Group("lone", ("alpha/runs/lone",), True),
-    ),
+RUNS = (
+    {"id": "inv/first", "folder": "alpha/runs/inv/first", "status": "passed"},
+    {"id": "lone", "folder": "alpha/runs/lone", "status": "failed"},
 )
+BY_FOLDER = {str(run["folder"]): run for run in RUNS}
+EXPERIMENT = Experiment(ROOT, "alpha", RUNS, {"command": "go"})
 COLUMNS = [{"key": "status", "label": ""}, {"key": "id", "label": "id"}]
 CHANGED = Changed(EXPERIMENT)
 
@@ -32,14 +23,14 @@ CHANGED = Changed(EXPERIMENT)
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch(
-            "labnotes.tui.runs_browser.invocation_columns", return_value=COLUMNS
-        ) as invocation_columns,
+            "labnotes.tui.runs_browser.table_columns", return_value=COLUMNS
+        ) as table_columns,
         mock.patch(
-            "labnotes.tui.runs_browser.invocation_rows",
-            side_effect=lambda experiment, opened, columns, rows: [
-                (key, [key]) for key in ["inv", *sorted(opened), "lone"]
+            "labnotes.tui.runs_browser.table_rows",
+            side_effect=lambda runs, columns, rows: [
+                (str(run["folder"]), [run["id"]]) for run in runs
             ],
-        ) as invocation_rows,
+        ) as table_rows,
         mock.patch("labnotes.tui.runs_browser.Static", return_value="status") as static,
         mock.patch(
             "labnotes.tui.runs_browser.RunsTable", return_value="runs table"
@@ -52,8 +43,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as runs_view_command,
     ):
         yield {
-            "invocation_columns": invocation_columns,
-            "invocation_rows": invocation_rows,
+            "table_columns": table_columns,
+            "table_rows": table_rows,
             "static": static,
             "runs_table": runs_table,
             "fill_table": fill_table,
@@ -65,7 +56,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
 @pytest.fixture
 def table() -> mock.MagicMock:
     found = mock.MagicMock(cursor_row=1, row_count=2, display=True)
-    found.coordinate_to_cell_key.return_value.row_key.value = "inv"
+    found.coordinate_to_cell_key.return_value.row_key.value = "alpha/runs/lone"
     return found
 
 
@@ -97,11 +88,6 @@ def browser(
         yield shown
 
 
-def filled(fill_table: mock.MagicMock) -> list[str]:
-    [table, columns, rows] = fill_table.call_args.args
-    return [key for key, _ in rows]
-
-
 def test_shows_a_table_and_a_status_line(
     browser: RunsBrowser, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -120,19 +106,19 @@ def test_binds_enter_and_escape() -> None:
     ]
 
 
-def test_lists_the_runs_by_invocation(
+def test_lists_every_run_flat(
     browser: RunsBrowser,
     table: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     browser.on_labnotes_changed(CHANGED)
 
-    collaborators["invocation_columns"].assert_called_once_with(EXPERIMENT)
-    collaborators["invocation_rows"].assert_called_once_with(
-        EXPERIMENT, set(), COLUMNS, RUNS
-    )
+    collaborators["table_columns"].assert_called_once_with({"command": "go"})
+    collaborators["table_rows"].assert_called_once_with(RUNS, COLUMNS, BY_FOLDER)
     collaborators["fill_table"].assert_called_once_with(
-        table, ["", "id"], [("inv", ["inv"]), ("lone", ["lone"])]
+        table,
+        ["", "id"],
+        [("alpha/runs/inv/first", ["inv/first"]), ("alpha/runs/lone", ["lone"])],
     )
     assert browser.experiment == EXPERIMENT
     getattr(browser.run_worker, "assert_not_called")()
@@ -184,7 +170,8 @@ def test_starts_the_runs_view_once(
     process.assert_called_once_with("uv run view.py", ROOT)
     runs_view.assert_called_once_with(process.return_value.request)
     assert (
-        runs_view.return_value.update.call_args_list == [mock.call(COLUMNS, RUNS)] * 2
+        runs_view.return_value.update.call_args_list
+        == [mock.call(COLUMNS, BY_FOLDER)] * 2
     )
 
 
@@ -215,8 +202,8 @@ def test_draws_what_the_runs_view_shows(
 ) -> None:
     browser.on_labnotes_changed(VIEWED)
 
-    collaborators["invocation_rows"].assert_called_once_with(
-        VIEWED.experiment, set(), [{"key": "m", "label": "M"}], {}
+    collaborators["table_rows"].assert_called_once_with(
+        RUNS, [{"key": "m", "label": "M"}], {}
     )
     assert collaborators["fill_table"].call_args.args[1] == ["M"]
 
@@ -311,7 +298,7 @@ def test_ignores_touched_files_without_a_runs_view(
 
     ask.assert_not_called()
     collaborators["fill_table"].assert_not_called()
-    collaborators["invocation_columns"].assert_not_called()
+    collaborators["table_columns"].assert_not_called()
 
 
 def test_empties_when_the_experiment_is_removed(
@@ -324,34 +311,8 @@ def test_empties_when_the_experiment_is_removed(
     browser.on_labnotes_changed(Changed(None))
 
     collaborators["fill_table"].assert_called_with(table, [], [])
-    assert collaborators["invocation_columns"].call_count == 1
+    assert collaborators["table_columns"].call_count == 1
     assert browser.experiment == EXPERIMENT
-
-
-def test_keeps_opened_invocations_across_reloads(
-    browser: RunsBrowser, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    browser.on_labnotes_changed(CHANGED)
-    asyncio.run(browser.action_open_row())
-
-    browser.on_labnotes_changed(CHANGED)
-
-    assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
-
-
-def test_enter_opens_and_closes_an_invocation(
-    browser: RunsBrowser, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    browser.on_labnotes_changed(CHANGED)
-
-    asyncio.run(browser.action_open_row())
-
-    assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
-
-    asyncio.run(browser.action_open_row())
-
-    assert filled(collaborators["fill_table"]) == ["inv", "lone"]
-    collaborators["run_panel"].assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -369,7 +330,7 @@ def test_enter_opens_a_run_in_place_of_the_table(
     collaborators["fill_table"].reset_mock()
     status.reset_mock()
     status.display = True
-    table.coordinate_to_cell_key.return_value.row_key.value = key
+    table.coordinate_to_cell_key.return_value.row_key.value = folder
 
     asyncio.run(browser.action_open_row())
 
@@ -378,28 +339,10 @@ def test_enter_opens_a_run_in_place_of_the_table(
     getattr(browser.mount, "assert_awaited_once_with")(panel.return_value)
     panel.return_value.query_one.assert_called_once_with(RunOutput)
     panel.return_value.query_one.return_value.focus.assert_called_once_with()
-    assert browser.viewing == key
+    assert browser.viewing == folder
     assert table.display is False
     assert status.display is False
     collaborators["fill_table"].assert_not_called()
-    assert browser.opened == set()
-
-
-def test_enter_opens_runs_that_are_not_grouped(
-    browser: RunsBrowser,
-    table: mock.MagicMock,
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    browser.on_labnotes_changed(Changed(dataclasses.replace(EXPERIMENT, groups=None)))
-    collaborators["fill_table"].reset_mock()
-    table.coordinate_to_cell_key.return_value.row_key.value = "lone"
-
-    asyncio.run(browser.action_open_row())
-
-    collaborators["fill_table"].assert_not_called()
-    collaborators["run_panel"].assert_called_once_with(
-        "lone", Path("/p/project/alpha/runs/lone")
-    )
 
 
 def test_enter_does_nothing_without_rows(

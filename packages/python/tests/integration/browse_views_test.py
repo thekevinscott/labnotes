@@ -88,13 +88,13 @@ def test_switches_between_the_runs_table_and_a_view_that_updates_live(
 ) -> None:
     root = project(tmp_path, {"progress": "views/progress.py:Progress"})
     term = labnotes(terminal, root, "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
     expect(term.get_by_text("progress")).to_be_visible()
     expect(term.get_by_text("1 runs")).to_be_visible()
 
     term.write("2")
     expect(term.get_by_text("progress: 2 runs in alpha")).to_be_visible()
-    expect(term.get_by_text("2✓ 0✕")).not_to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).not_to_be_visible()
 
     write(
         root / "alpha/runs/20261018-000000/first/run.json",
@@ -103,12 +103,12 @@ def test_switches_between_the_runs_table_and_a_view_that_updates_live(
     expect(term.get_by_text("progress: 3 runs in alpha")).to_be_visible()
 
     term.write("1")
-    expect(term.get_by_text("0✓ 1✕")).to_be_visible()
+    expect(term.get_by_text("20261018-000000/first")).to_be_visible()
 
     term.write("2")
     expect(term.get_by_text("progress: 3 runs")).to_be_visible()
     term.write("0")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     term.wait()
@@ -118,12 +118,12 @@ def test_shows_no_view_keys_with_only_the_built_in_view(
     terminal, tmp_path: Path
 ) -> None:
     term = labnotes(terminal, project(tmp_path, {}), "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
     expect(term.get_by_text("Back")).to_be_visible()
     expect(term.get_by_text("1 runs")).not_to_be_visible()
 
     term.write("0")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     term.wait()
@@ -133,10 +133,8 @@ def test_each_view_keeps_its_state(terminal, tmp_path: Path) -> None:
     root = project(tmp_path, {"progress": "views/progress.py:Progress"})
     write(root / "alpha/runs/20261017-000000/second/stdout.log", "hello from second\n")
     term = labnotes(terminal, root, "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
-    term.key_enter()
-    term.key_down()
     term.key_enter()
     expect(term.get_by_text("hello from second")).to_be_visible()
 
@@ -148,7 +146,7 @@ def test_each_view_keeps_its_state(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("hello from second")).to_be_visible()
 
     term.key_escape()
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     term.wait()
@@ -157,7 +155,7 @@ def test_each_view_keeps_its_state(terminal, tmp_path: Path) -> None:
 def test_escape_goes_to_the_view_first(terminal, tmp_path: Path) -> None:
     root = project(tmp_path, {"stages": "views/stages.py:Stages"})
     term = labnotes(terminal, root, "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.write("2")
     expect(term.get_by_text("stage 2")).to_be_visible()
@@ -167,7 +165,7 @@ def test_escape_goes_to_the_view_first(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("stage 0")).to_be_visible()
 
     term.key_escape()
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_escape()
     expect(term.get_by_text("display_name")).to_be_visible()
@@ -188,7 +186,7 @@ def test_a_view_that_fails_shows_why_and_the_rest_keep_working(
         },
     )
     term = labnotes(terminal, root, "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.write("2")
     expect(term.get_by_text("views/progress.py has no Missing")).to_be_visible()
@@ -200,7 +198,7 @@ def test_a_view_that_fails_shows_why_and_the_rest_keep_working(
     expect(term.get_by_text("progress: 2 runs in alpha")).to_be_visible()
 
     term.write("1")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     assert term.wait() == 0

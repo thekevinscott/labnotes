@@ -14,7 +14,7 @@ from labnotes.view import Changed
 class Progress(Static):
     def on_labnotes_changed(self, message: Changed) -> None:
         runs = message.experiment.runs
-        passed = sum(row["status"] == "passed" for row in runs.values())
+        passed = sum(row["status"] == "passed" for row in runs)
         self.update(Text(f"{passed} of {len(runs)} passed"))
 """
 

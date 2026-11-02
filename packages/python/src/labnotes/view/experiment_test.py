@@ -3,34 +3,30 @@ from pathlib import Path
 
 import pytest
 
-from labnotes.view.experiment import Experiment, Group
+from labnotes.view.experiment import Experiment
 
 
 def test_holds_the_root_name_and_runs() -> None:
-    experiment = Experiment(Path("/p"), "alpha", {"alpha/runs/a": {"id": "a"}})
+    runs = ({"folder": "alpha/runs/a", "id": "a"},)
+    experiment = Experiment(Path("/p"), "alpha", runs)
 
     assert experiment.root == Path("/p")
     assert experiment.name == "alpha"
-    assert experiment.runs == {"alpha/runs/a": {"id": "a"}}
+    assert experiment.runs == runs
 
 
-def test_defaults_to_an_empty_read_only_config_not_live_and_ungrouped() -> None:
-    experiment = Experiment(Path("/p"), "alpha", {})
+def test_defaults_to_an_empty_read_only_config() -> None:
+    experiment = Experiment(Path("/p"), "alpha", ())
 
     assert experiment.config == {}
     with pytest.raises(TypeError):
         experiment.config["x"] = 1  # type: ignore[index]
-    assert experiment.live is False
-    assert experiment.groups is None
 
 
-def test_holds_the_config_liveness_and_groups() -> None:
-    groups = (Group("inv", ("alpha/runs/inv/a",), False),)
-    experiment = Experiment(Path("/p"), "alpha", {}, {"command": "go"}, True, groups)
+def test_holds_the_config() -> None:
+    experiment = Experiment(Path("/p"), "alpha", (), {"command": "go"})
 
     assert experiment.config == {"command": "go"}
-    assert experiment.live is True
-    assert experiment.groups == groups
 
 
 def test_holds_data_only() -> None:
@@ -39,13 +35,11 @@ def test_holds_data_only() -> None:
         "name",
         "runs",
         "config",
-        "live",
-        "groups",
     ]
 
 
 def test_is_frozen() -> None:
-    experiment = Experiment(Path("/p"), "alpha", {})
+    experiment = Experiment(Path("/p"), "alpha", ())
 
     with pytest.raises(dataclasses.FrozenInstanceError):
         experiment.name = "beta"  # type: ignore[misc]

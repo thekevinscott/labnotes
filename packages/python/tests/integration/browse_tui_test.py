@@ -41,11 +41,7 @@ def test_browses_from_the_list_into_an_experiment_and_back(
     expect(term.get_by_text("beta")).to_be_visible()
 
     term.key_enter()
-    expect(term.get_by_text("20261017-000000")).to_be_visible()
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
-
-    term.key_enter()
-    expect(term.get_by_text("second")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/second")).to_be_visible()
 
     term.key_escape()
     expect(term.get_by_text("display_name")).to_be_visible()
@@ -59,7 +55,7 @@ def test_opens_straight_on_a_named_experiment(
     terminal, tmp_path: Path, argv: str
 ) -> None:
     term = labnotes(terminal, project(tmp_path), argv)
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     term.wait()
@@ -70,14 +66,13 @@ def test_shows_a_run_that_lands_while_the_experiment_is_open(
 ) -> None:
     root = project(tmp_path)
     term = labnotes(terminal, root, "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     write(
         root / "alpha/runs/20261018-000000/first/run.json",
         json.dumps({"created": "2026-10-18T00:00:00Z", "exit_code": 1}),
     )
-    expect(term.get_by_text("20261018-000000")).to_be_visible()
-    expect(term.get_by_text("0✓ 1✕")).to_be_visible()
+    expect(term.get_by_text("20261018-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     term.wait()
@@ -101,11 +96,8 @@ def test_opens_a_run_and_follows_its_output(terminal, tmp_path: Path) -> None:
     write(run / "stdout.log", "hello from second\n")
     write(run / "stderr.log", "warned on stderr\n")
     term = labnotes(terminal, root, "alpha")
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/second")).to_be_visible()
 
-    term.key_enter()
-    expect(term.get_by_text("second")).to_be_visible()
-    term.key_down()
     term.key_enter()
     expect(term.get_by_text("20261017-000000/second")).to_be_visible()
     expect(term.get_by_text("hello from second")).to_be_visible()
@@ -172,8 +164,6 @@ def test_adds_columns_from_a_runs_view_and_follows_run_files(
     root = viewed(project(tmp_path), LAST_LINE)
     term = labnotes(terminal, root, "alpha")
     expect(term.get_by_text("last stderr")).to_be_visible()
-
-    term.key_enter()
     expect(term.get_by_text("second warmup")).to_be_visible()
 
     stderr = root / "alpha/runs/20261017-000000/second/stderr.log"
@@ -192,7 +182,6 @@ def test_keeps_redrawing_while_a_run_writes_continuously(
     root = viewed(project(tmp_path), LAST_LINE)
     term = labnotes(terminal, root, "alpha")
     expect(term.get_by_text("last stderr")).to_be_visible()
-    term.key_enter()
     expect(term.get_by_text("second warmup")).to_be_visible()
 
     stderr = root / "alpha/runs/20261017-000000/second/stderr.log"
@@ -216,7 +205,7 @@ def test_reports_a_bad_answer_and_a_slow_one(terminal, tmp_path: Path) -> None:
     term = labnotes(terminal, viewed(project(tmp_path), script), "alpha")
     expect(term.get_by_text("unknown columns extra")).to_be_visible()
     expect(term.get_by_text("runs view took")).to_be_visible()
-    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
 
     term.key_ctrl_c()
     term.wait()

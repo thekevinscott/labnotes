@@ -2,7 +2,7 @@ from pathlib import Path
 
 from labnotes.view.changed import Changed, Experiment
 
-EXPERIMENT = Experiment(Path("/p"), "alpha", {})
+EXPERIMENT = Experiment(Path("/p"), "alpha", ())
 
 
 def test_carries_the_experiment_and_the_changed_paths() -> None:

@@ -18,7 +18,6 @@ from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.stopped_title import stopped_title
 from labnotes.tui.view_pane import ViewPane
 from labnotes.view.experiment import Experiment
-from labnotes.view.group import Group
 from labnotes.watch_rows import watch_rows
 
 WATCHED = {"runs", "experiment_configs"}
@@ -86,23 +85,11 @@ class ExperimentScreen(Screen[None]):
             await self.add_views(loaded["views"])
         self.found = True
         self.sub_title = str(loaded["display_name"])
-        groups = loaded["run_groups"]
         self.shown = Experiment(
             self.config.root,
             self.experiment_name,
             native_rows(loaded),
             MappingProxyType(loaded["config"] or {}),
-            bool(loaded["runs_live"]),
-            None
-            if groups is None
-            else tuple(
-                Group(
-                    group["name"],
-                    tuple(str(run["folder"]) for run in group["runs"]),
-                    group["flat"],
-                )
-                for group in groups
-            ),
         )
         self.deliver(self.shown)
 

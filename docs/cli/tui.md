@@ -23,7 +23,7 @@ uvx labnotes experiments
 uvx labnotes experiments foo
 ```
 
-The first lists experiments. The second starts on `foo`, and Escape goes back to the list. On an experiment, runs that older versions of labnotes nested in one invocation folder sit under a single row, marked ▸; Enter expands it (▾). Enter on a run opens its output, which follows the run while it's still writing.
+The first lists experiments. The second starts on `foo`, and Escape goes back to the list. On an experiment, each run gets a row, including runs that older versions of labnotes nested in one invocation folder. Enter on a run opens its output, which follows the run while it's still writing.
 
 The browser updates as runs start and finish. It only reads; to run an experiment, use `run`.
 

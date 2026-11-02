@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.experiment_screen import Experiment, ExperimentScreen, Group
+from labnotes.tui.experiment_screen import Experiment, ExperimentScreen
 
 ROOT = Path("/p/project")
 CONFIG = mock.Mock(root=ROOT)
@@ -19,14 +19,12 @@ LOADED: dict[str, Any] = {
     "display_name": "Alpha study",
     "views": {},
     "config": {"command": "go"},
-    "run_groups": None,
-    "runs_live": False,
     "runs_list": RUNS,
 }
-NATIVE = {
-    "alpha/runs/inv/first": {"id": "inv/first", "status": "passed"},
-    "alpha/runs/lone": {"id": "lone", "status": "failed"},
-}
+NATIVE = (
+    {"id": "inv/first", "folder": "alpha/runs/inv/first", "status": "passed"},
+    {"id": "lone", "folder": "alpha/runs/lone", "status": "failed"},
+)
 SHOWN = Experiment(ROOT, "alpha", NATIVE, {"command": "go"})
 
 
@@ -190,33 +188,6 @@ def test_hands_views_an_empty_config_without_one(
 
     assert screen.shown is not None
     assert screen.shown.config == {}
-
-
-def test_hands_views_each_invocation_as_its_run_folders(
-    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["load_experiment"].return_value = {
-        **LOADED,
-        "run_groups": [
-            {"name": "inv", "flat": False, "passed": 1, "runs": [RUNS[0]]},
-            {"name": "lone", "flat": True, "passed": 0, "runs": [RUNS[1]]},
-        ],
-        "runs_live": True,
-    }
-
-    asyncio.run(screen.load())
-
-    assert screen.shown == Experiment(
-        ROOT,
-        "alpha",
-        NATIVE,
-        {"command": "go"},
-        True,
-        (
-            Group("inv", ("alpha/runs/inv/first",), False),
-            Group("lone", ("alpha/runs/lone",), True),
-        ),
-    )
 
 
 def test_rejects_an_unknown_experiment(

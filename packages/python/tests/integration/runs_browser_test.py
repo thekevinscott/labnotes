@@ -8,12 +8,12 @@ from textual.widgets import DataTable
 
 from labnotes.tui.run_panel import RunPanel
 from labnotes.tui.runs_browser import RunsBrowser
-from labnotes.view import Changed, Experiment, Group
+from labnotes.view import Changed, Experiment
 
-RUNS = {
-    "alpha/runs/a": {"id": "a", "folder": "alpha/runs/a", "status": "passed"},
-    "alpha/runs/b": {"id": "b", "folder": "alpha/runs/b", "status": "failed"},
-}
+RUNS = (
+    {"id": "a", "folder": "alpha/runs/a", "status": "passed"},
+    {"id": "b", "folder": "alpha/runs/b", "status": "failed"},
+)
 COLUMN = """\
 from labnotes import view
 
@@ -82,23 +82,20 @@ def test_starts_its_own_column_script(tmp_path: Path) -> None:
     asyncio.run(drive())
 
 
-INVOCATION = {
-    f"alpha/runs/20261017-000000/{name}": {
+NESTED = tuple(
+    {
         "id": f"20261017-000000/{name}",
+        "folder": f"alpha/runs/20261017-000000/{name}",
         "status": status,
         "m": 1,
     }
-    for name, status in [("x", "passed"), ("y", "failed"), ("z", "passed")]
-}
+    for name, status in [("x", "passed"), ("y", "running"), ("z", "unfinished")]
+)
 
 
-def test_counts_each_invocation_from_its_runs(tmp_path: Path) -> None:
+def test_lists_old_nested_runs_as_plain_rows(tmp_path: Path) -> None:
     experiment = Experiment(
-        tmp_path,
-        "alpha",
-        INVOCATION,
-        MappingProxyType({"params": {"m": [1, 2]}}),
-        groups=(Group("20261017-000000", tuple(INVOCATION), False),),
+        tmp_path, "alpha", NESTED, MappingProxyType({"params": {"m": [1, 2]}})
     )
     app = Bare()
 
@@ -108,7 +105,17 @@ def test_counts_each_invocation_from_its_runs(tmp_path: Path) -> None:
             await pilot.pause()
 
             assert rows(app) == [
-                ["2✓ 1✕", "▸ 20261017-000000", "3", "1", "2026-10-17 00:00:00", ""]
+                ["✓", "20261017-000000/x", "1", "", ""],
+                ["◐", "20261017-000000/y", "1", "", ""],
+                ["–", "20261017-000000/z", "1", "", ""],
             ]
+
+            app.query_one(DataTable).focus()
+            await pilot.press("down", "enter")
+            await pilot.pause()
+
+            panel = app.query_one(RunPanel)
+            assert panel.run_id == "20261017-000000/y"
+            assert panel.folder == tmp_path / "alpha/runs/20261017-000000/y"
 
     asyncio.run(drive())

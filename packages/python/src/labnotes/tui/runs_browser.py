@@ -1,3 +1,4 @@
+from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 
@@ -8,12 +9,12 @@ from textual.widgets import DataTable, Static
 
 from labnotes.runs_view_command import runs_view_command
 from labnotes.tui.fill_table import fill_table
-from labnotes.tui.invocation_columns import invocation_columns
-from labnotes.tui.invocation_rows import invocation_rows
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.run_panel import RunPanel
 from labnotes.tui.runs_table import RunsTable
 from labnotes.tui.runs_view import RunsView
+from labnotes.tui.table_columns import table_columns
+from labnotes.tui.table_rows import table_rows
 from labnotes.tui.view_process import ViewProcess
 from labnotes.view.changed import Changed
 from labnotes.view.experiment import Experiment
@@ -35,8 +36,7 @@ class RunsBrowser(Widget):
         super().__init__()
         self.process: ViewProcess | None = None
         self.view: RunsView | None = None
-        self.experiment = Experiment(Path(), "", {})
-        self.opened: set[str] = set()
+        self.experiment = Experiment(Path(), "", ())
         self.viewing: str | None = None
 
     def compose(self) -> ComposeResult:
@@ -67,8 +67,8 @@ class RunsBrowser(Widget):
             self.process = ViewProcess(command, experiment.root)
             self.view = RunsView(self.process.request)
         if self.view is not None:
-            rows = {folder: dict(row) for folder, row in experiment.runs.items()}
-            self.view.update(invocation_columns(experiment), rows)
+            rows = {str(row["folder"]): dict(row) for row in experiment.runs}
+            self.view.update(table_columns(experiment.config), rows)
             self.ask(self.view)
         self.redraw()
 
@@ -89,15 +89,16 @@ class RunsBrowser(Widget):
         self.ask(view)
 
     def redraw(self) -> None:
+        rows: Mapping[str, Mapping[str, Any]]
         if self.view is None:
-            columns = invocation_columns(self.experiment)
-            rows = self.experiment.runs
+            columns = table_columns(self.experiment.config)
+            rows = {str(row["folder"]): row for row in self.experiment.runs}
         else:
             columns, rows = self.view.table()
         fill_table(
             self.query_one(DataTable),
             [column["label"] for column in columns],
-            invocation_rows(self.experiment, self.opened, columns, rows),
+            table_rows(self.experiment.runs, columns, rows),
         )
         self.show_status()
 
@@ -111,19 +112,12 @@ class RunsBrowser(Widget):
         table = self.query_one(DataTable)
         if not table.row_count:
             return
-        key = str(table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value)
-        groups = {
-            group.name for group in self.experiment.groups or () if not group.flat
-        }
-        if key in groups:
-            self.opened ^= {key}
-            self.redraw()
-            return
-        folders = {
-            str(row["id"]): folder for folder, row in self.experiment.runs.items()
-        }
-        panel = RunPanel(key, self.experiment.root / folders[key])
-        self.viewing = key
+        folder = str(
+            table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        )
+        ids = {str(row["folder"]): str(row["id"]) for row in self.experiment.runs}
+        panel = RunPanel(ids[folder], self.experiment.root / folder)
+        self.viewing = folder
         table.display = False
         self.show_status()
         await self.mount(panel)

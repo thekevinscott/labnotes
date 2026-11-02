@@ -46,7 +46,7 @@ def test_escape_backs_out_of_a_runs_output(terminal, tmp_path: Path) -> None:
     stop(term)
 
 
-def test_escape_backs_out_of_a_lone_adhoc_run(terminal, tmp_path: Path) -> None:
+def test_escape_backs_out_of_a_lone_run(terminal, tmp_path: Path) -> None:
     term = run_tui(terminal, tmp_path, 1)
     expect(term.get_by_text("line 3")).to_be_visible()
 

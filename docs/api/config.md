@@ -132,6 +132,7 @@ concurrency = 2
 retries = 3
 memory_interval = 10
 counts = "exit_code = 0 AND created > '2026-10-01'"
+continues = true
 
 [params]
 model = ["opus", "sonnet"]
@@ -262,6 +263,8 @@ How many times to retry a run whose command exits 75 (`EX_TEMPFAIL`). Exit 75 me
 
 Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the id of the run it replaces. The failed run keeps its folder and logs. The default [`counts`](#counts) rule skips it, so a retry doesn't add a repeat. When retries run out, the last run keeps exit 75. Stopping the runs cancels a waiting retry, and a stopped run never retries.
 
+With [`continues`](#continues), a retry runs again in the same folder instead, as another invocation of the same run, and there is no `"retry_of"`.
+
 ### `memory_interval`
 
 - Type: number of seconds, 0 or more
@@ -293,3 +296,16 @@ runs = "uv run views/runs.py"
 - Default: `exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)`
 
 Which runs count toward `repeats`. `labnotes experiments NAME runs --format table` shows the result as `counted`.
+
+### `continues`
+
+- Type: boolean
+- Default: `false`
+
+Whether `run` invokes a failed run again in its own folder instead of starting a new one. Only for `mode = "matrix"`; on an adhoc experiment it is a config error.
+
+For each combination short of `repeats`, `run` first takes that combination's runs that ended badly (a nonzero exit, stopped, or lost), aren't excluded, don't count, and aren't locked by another `run`. It invokes each of them again in its own folder, with the same params and `{run_dir}`. Any repeats still missing get new folders. labnotes never moves, copies, or deletes the files your command left there, so it can pick up from its own checkpoints.
+
+Each invocation adds an entry to `"invocations"` in `run.json`: `started`, `ended`, `exit_code`, `ended_by`, `error`, `git` (the commit), `args` (what followed `--`), and the names of its logs. The top-level fields mirror the latest invocation. Each invocation writes its own `stdout-<time>.txt` and `stderr-<time>.txt`, so earlier logs are kept.
+
+While an invocation runs, labnotes holds a lock on `run.lock` in the run folder. A run marked running whose lock nobody holds died with its `run`, for example in a reboot. The next look marks it `"ended_by": "lost"`, and the next `run` invokes it again.

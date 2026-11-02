@@ -51,6 +51,8 @@ Conventions, supervision rules, and per-language style live under
   ask first. Check for uncommitted work, `cd` to the repo root, then
   `git worktree remove <path>`. Stale worktrees under `.worktrees/` and
   `.claude/worktrees/` pin branches and block `gh pr merge --delete-branch`.
+- GitHub deletes a PR's remote branch on merge. Don't delete it by hand;
+  only the local branch needs removing.
 
 ## First-publish prerequisites
 

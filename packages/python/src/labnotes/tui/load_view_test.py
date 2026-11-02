@@ -4,7 +4,6 @@ from pathlib import Path
 import pytest
 
 from labnotes.tui.load_view import load_view
-from labnotes.tui.runs_table import RunsTable
 
 
 def write(path: Path, text: str) -> None:
@@ -26,7 +25,9 @@ def test_imports_a_class_from_a_file_under_the_root(tmp_path: Path) -> None:
 
 
 def test_imports_a_class_from_a_module() -> None:
-    assert load_view("labnotes.tui.runs_table:RunsTable", Path("/nowhere")) is RunsTable
+    loaded = load_view("labnotes.tui.runs_table:RunsTable", Path("/nowhere"))
+    assert loaded.__module__ == "labnotes.tui.runs_table"
+    assert loaded.__name__ == "RunsTable"
 
 
 def test_names_a_class_the_file_lacks(tmp_path: Path) -> None:

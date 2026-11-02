@@ -6,8 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.experiment_screen import ExperimentScreen
-from labnotes.view.experiment import Experiment
+from labnotes.tui.experiment_screen import Experiment, ExperimentScreen
 
 ROOT = Path("/p/project")
 CONFIG = mock.Mock(root=ROOT)

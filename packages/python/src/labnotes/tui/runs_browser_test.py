@@ -5,10 +5,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.run_output import RunOutput
-from labnotes.tui.runs_browser import RunsBrowser
-from labnotes.view.changed import Changed
-from labnotes.view.experiment import Experiment
+from labnotes.tui.runs_browser import Changed, RunOutput, RunsBrowser
 
 ROOT = Path("/p/project")
 LOADED = {
@@ -22,7 +19,7 @@ LOADED = {
 }
 COLUMNS = [{"key": "status", "label": ""}, {"key": "id", "label": "id"}]
 NATIVE = {"alpha/runs/lone": {"id": "lone"}}
-CHANGED = Changed(Experiment(ROOT, "alpha", {"alpha/runs/lone": {"id": "x"}}))
+CHANGED = Changed(mock.Mock(root=ROOT, runs={"alpha/runs/lone": {"id": "x"}}))
 
 
 @pytest.fixture

@@ -1,25 +1,20 @@
 import asyncio
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
 
 from labnotes.tui.experiment_screen import ExperimentScreen
+from labnotes.view.experiment import Experiment
 
-CONFIG = mock.Mock(root=Path("/p/project"))
+ROOT = Path("/p/project")
+CONFIG = mock.Mock(root=ROOT)
 TABLES = mock.Mock()
-LOADED = {
-    "display_name": "Alpha study",
-    "run_groups": [{"name": "inv", "flat": False}, {"name": "lone", "flat": True}],
-    "runs_list": [
-        {"id": "inv/first", "folder": "alpha/runs/inv/first"},
-        {"id": "lone", "folder": "alpha/runs/lone"},
-    ],
-    "runs_view": None,
-}
-COLUMNS = [{"key": "status", "label": ""}, {"key": "id", "label": "id"}]
+LOADED = {"display_name": "Alpha study", "views": {}}
 NATIVE = {"alpha/runs/lone": {"id": "lone"}}
+SHOWN = Experiment(ROOT, "alpha", NATIVE)
 
 
 @pytest.fixture(autouse=True)
@@ -33,28 +28,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.tui.experiment_screen.QueryParams", return_value="no params"
         ),
         mock.patch(
-            "labnotes.tui.experiment_screen.invocation_columns",
-            return_value=COLUMNS,
-        ) as invocation_columns,
-        mock.patch(
             "labnotes.tui.experiment_screen.native_rows", return_value=NATIVE
         ) as native_rows,
-        mock.patch(
-            "labnotes.tui.experiment_screen.invocation_rows",
-            side_effect=lambda experiment, opened, columns, rows: [
-                (key, [key]) for key in ["inv", *sorted(opened), "lone"]
-            ],
-        ) as invocation_rows,
-        mock.patch(
-            "labnotes.tui.experiment_screen.Static", return_value="status"
-        ) as static,
-        mock.patch(
-            "labnotes.tui.experiment_screen.RunsTable", return_value="runs table"
-        ) as runs_table,
-        mock.patch("labnotes.tui.experiment_screen.fill_table") as fill_table,
-        mock.patch(
-            "labnotes.tui.experiment_screen.RunScreen", return_value="run screen"
-        ) as run_screen,
         mock.patch(
             "labnotes.tui.experiment_screen.watch_rows", return_value="changes"
         ) as watch_rows,
@@ -64,35 +39,40 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as reload_on_change,
         mock.patch("labnotes.tui.experiment_screen.Header", return_value="header"),
         mock.patch("labnotes.tui.experiment_screen.Footer", return_value="footer"),
+        mock.patch(
+            "labnotes.tui.experiment_screen.ViewPane",
+            side_effect=lambda name, spec, root, id: mock.Mock(
+                view_name=name, source=spec, root=root, id=id
+            ),
+        ) as view_pane,
+        mock.patch(
+            "labnotes.tui.experiment_screen.ContentSwitcher"
+        ) as content_switcher,
         mock.patch.object(
             ExperimentScreen, "app", new_callable=mock.PropertyMock
         ) as app,
     ):
         yield {
             "load_experiment": load_experiment,
-            "invocation_columns": invocation_columns,
-            "invocation_rows": invocation_rows,
             "native_rows": native_rows,
-            "static": static,
-            "runs_table": runs_table,
-            "fill_table": fill_table,
-            "run_screen": run_screen,
             "watch_rows": watch_rows,
             "reload_on_change": reload_on_change,
+            "view_pane": view_pane,
+            "content_switcher": content_switcher,
             "app": app,
         }
 
 
 @pytest.fixture
-def table() -> mock.MagicMock:
-    found = mock.MagicMock(cursor_row=1, row_count=2)
-    found.coordinate_to_cell_key.return_value.row_key.value = "inv"
+def switcher() -> mock.MagicMock:
+    found = mock.MagicMock(current="".join(["view-", "1"]))
+    found.mount_all = mock.AsyncMock()
     return found
 
 
 @pytest.fixture
-def status() -> mock.MagicMock:
-    return mock.MagicMock(display=False)
+def panes() -> list[mock.MagicMock]:
+    return [mock.Mock(), mock.Mock()]
 
 
 @pytest.fixture
@@ -102,42 +82,57 @@ def views() -> mock.MagicMock:
 
 @pytest.fixture
 def screen(
-    table: mock.MagicMock, status: mock.MagicMock, views: mock.MagicMock
+    switcher: mock.MagicMock, panes: list[mock.MagicMock], views: mock.MagicMock
 ) -> Iterator[ExperimentScreen]:
     shown = ExperimentScreen(TABLES, CONFIG, "alpha", views)
     with (
-        mock.patch.object(
-            shown,
-            "query_one",
-            side_effect=lambda *query: status if query[0] == "#view-status" else table,
-        ),
+        mock.patch.object(shown, "query_one", return_value=switcher),
+        mock.patch.object(shown, "query", return_value=panes),
         mock.patch.object(shown, "run_worker"),
-        mock.patch.object(shown, "watch_files", new=mock.Mock()),
+        mock.patch.object(shown, "refresh_bindings"),
+        mock.patch.object(shown, "call_after_refresh"),
+        mock.patch.object(shown, "watch_files", new=mock.Mock(return_value="files")),
     ):
         yield shown
 
 
-def filled(fill_table: mock.MagicMock) -> list[str]:
-    [table, columns, rows] = fill_table.call_args.args
-    return [key for key, _ in rows]
-
-
-def test_shows_a_table_between_the_header_and_footer(
+def test_shows_the_built_in_view_between_the_header_and_footer(
     screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    assert list(screen.compose()) == ["header", "runs table", "status", "footer"]
-    collaborators["runs_table"].assert_called_once_with(id="runs", cursor_type="row")
-    collaborators["static"].assert_called_once_with(id="view-status")
+    shown = list(screen.compose())
+
+    assert shown[0] == "header"
+    assert shown[2] == "footer"
+    pane: Any = shown[1]
+    assert (pane.view_name, pane.source, pane.root, pane.id) == (
+        "runs",
+        "labnotes.tui.runs_browser:RunsBrowser",
+        ROOT,
+        "view-1",
+    )
+    collaborators["content_switcher"].assert_called_once_with(initial="view-1")
 
 
-def test_binds_enter_and_escape() -> None:
+def test_binds_escape_and_zero() -> None:
     assert [
-        (binding.key, binding.action, binding.description, binding.priority)  # type: ignore[union-attr]
+        (binding.key, binding.action, binding.description, binding.show)  # type: ignore[union-attr]
         for binding in ExperimentScreen.BINDINGS
     ] == [
-        ("enter", "open_row", "Open", True),
-        ("escape", "app.pop_screen", "Back", False),
+        ("escape", "back", "Back", True),
+        ("0", "show_view(1)", "", False),
     ]
+
+
+def test_keeps_what_the_app_passes(
+    screen: ExperimentScreen, views: mock.MagicMock
+) -> None:
+    assert screen.tables is TABLES
+    assert screen.config is CONFIG
+    assert screen.experiment_name == "alpha"
+    assert screen.views is views
+    assert screen.experiment == {}
+    assert screen.shown is None
+    assert screen.left == {}
 
 
 def test_names_the_experiment_and_reloads_it_on_each_change(
@@ -152,160 +147,28 @@ def test_names_the_experiment_and_reloads_it_on_each_change(
     collaborators["reload_on_change"].assert_called_once_with(
         "changes", screen.load, screen.stopped
     )
-    getattr(screen.run_worker, "assert_called_once_with")(
-        "reloading", exit_on_error=False
-    )
+    assert getattr(screen.run_worker, "call_args_list") == [
+        mock.call("reloading", exit_on_error=False),
+        mock.call("files", exit_on_error=False),
+    ]
 
 
-def test_lists_the_runs_by_invocation(
+def test_hands_each_view_the_experiment(
     screen: ExperimentScreen,
-    table: mock.MagicMock,
+    panes: list[mock.MagicMock],
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     asyncio.run(screen.load())
 
     collaborators["load_experiment"].assert_awaited_once_with(
-        TABLES, CONFIG.root, "alpha", "no params"
+        TABLES, ROOT, "alpha", "no params"
     )
-    assert screen.sub_title == "Alpha study"
-    collaborators["invocation_columns"].assert_called_once_with(LOADED)
     collaborators["native_rows"].assert_called_once_with(LOADED)
-    collaborators["invocation_rows"].assert_called_once_with(
-        LOADED, set(), COLUMNS, NATIVE
-    )
-    collaborators["fill_table"].assert_called_once_with(
-        table, ["", "id"], [("inv", ["inv"]), ("lone", ["lone"])]
-    )
-    getattr(screen.run_worker, "assert_not_called")()
-
-
-def test_hides_the_status_line_without_a_runs_view(
-    screen: ExperimentScreen, status: mock.MagicMock
-) -> None:
-    asyncio.run(screen.load())
-
-    status.update.assert_called_once_with("")
-    assert status.display is False
-
-
-VIEWED = {**LOADED, "runs_view": "uv run view.py"}
-
-
-@pytest.fixture
-def runs_view() -> Iterator[mock.MagicMock]:
-    with mock.patch("labnotes.tui.experiment_screen.RunsView") as made:
-        made.return_value.table.return_value = ([{"key": "m", "label": "M"}], {})
-        made.return_value.status.return_value = ""
-        made.return_value.next_request.return_value = None
-        made.return_value.exchange = mock.AsyncMock(return_value=True)
-        yield made
-
-
-def test_starts_the_runs_view_once(
-    screen: ExperimentScreen,
-    collaborators: dict[str, mock.MagicMock],
-    views: mock.MagicMock,
-    runs_view: mock.MagicMock,
-) -> None:
-    collaborators["load_experiment"].return_value = VIEWED
-
-    asyncio.run(screen.load())
-    asyncio.run(screen.load())
-
-    views.assert_called_once_with("uv run view.py")
-    runs_view.assert_called_once_with("request")
-    getattr(screen.run_worker, "assert_called_once_with")(
-        getattr(screen.watch_files, "return_value"), exit_on_error=False
-    )
-    assert (
-        runs_view.return_value.update.call_args_list == [mock.call(COLUMNS, NATIVE)] * 2
-    )
-
-
-def test_draws_what_the_runs_view_shows(
-    screen: ExperimentScreen,
-    table: mock.MagicMock,
-    collaborators: dict[str, mock.MagicMock],
-    runs_view: mock.MagicMock,
-) -> None:
-    collaborators["load_experiment"].return_value = VIEWED
-
-    asyncio.run(screen.load())
-
-    collaborators["invocation_rows"].assert_called_once_with(
-        VIEWED, set(), [{"key": "m", "label": "M"}], {}
-    )
-    assert collaborators["fill_table"].call_args.args[1] == ["M"]
-
-
-def test_shows_what_the_runs_view_reports(
-    screen: ExperimentScreen,
-    status: mock.MagicMock,
-    collaborators: dict[str, mock.MagicMock],
-    runs_view: mock.MagicMock,
-) -> None:
-    collaborators["load_experiment"].return_value = VIEWED
-    runs_view.return_value.status.return_value = "runs view took 120 ms"
-
-    asyncio.run(screen.load())
-
-    status.update.assert_called_once_with("runs view took 120 ms")
-    assert status.display is True
-
-
-def test_asks_the_runs_view_when_it_has_a_request(
-    screen: ExperimentScreen,
-    collaborators: dict[str, mock.MagicMock],
-    runs_view: mock.MagicMock,
-) -> None:
-    collaborators["load_experiment"].return_value = VIEWED
-    runs_view.return_value.next_request.side_effect = [{"rows": {}}, None]
-    with mock.patch.object(
-        screen, "answer", new=mock.Mock(return_value="answering")
-    ) as answer:
-        asyncio.run(screen.load())
-
-    answer.assert_called_once_with(runs_view.return_value, {"rows": {}})
-    getattr(screen.run_worker, "assert_called_with")("answering", exit_on_error=False)
-
-
-@pytest.mark.parametrize("changed", [True, False])
-def test_redraws_only_when_the_answer_changed_and_asks_again(
-    screen: ExperimentScreen,
-    status: mock.MagicMock,
-    collaborators: dict[str, mock.MagicMock],
-    runs_view: mock.MagicMock,
-    changed: bool,
-) -> None:
-    view = runs_view.return_value
-    view.exchange.return_value = changed
-    view.status.return_value = "runs view: broken"
-    screen.view = view
-
-    with mock.patch.object(screen, "ask") as ask:
-        asyncio.run(screen.answer(view, {"rows": {}}))
-
-    view.exchange.assert_awaited_once_with({"rows": {}})
-    assert collaborators["fill_table"].called is changed
-    status.update.assert_called_once_with("runs view: broken")
-    ask.assert_called_once_with(view)
-
-
-def test_marks_touched_files_and_asks(
-    screen: ExperimentScreen,
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    async def changes() -> AsyncIterator[dict[str, object]]:
-        yield {"path": "alpha/runs/lone/stderr.log"}
-
-    collaborators["watch_rows"].return_value = changes()
-    view = mock.Mock()
-    with mock.patch.object(screen, "ask") as ask:
-        asyncio.run(ExperimentScreen.watch_files(screen, view))
-
-    collaborators["watch_rows"].assert_called_once_with(TABLES, {"run_files"}, "alpha")
-    view.touch.assert_called_once_with("alpha/runs/lone/stderr.log")
-    ask.assert_called_once_with(view)
+    assert screen.sub_title == "Alpha study"
+    assert screen.experiment == LOADED
+    assert screen.shown == SHOWN
+    for pane in panes:
+        pane.deliver.assert_called_once_with(SHOWN, frozenset())
 
 
 def test_rejects_an_unknown_experiment(
@@ -317,9 +180,9 @@ def test_rejects_an_unknown_experiment(
         asyncio.run(screen.load())
 
 
-def test_empties_when_the_experiment_is_removed(
+def test_tells_each_view_the_experiment_was_removed(
     screen: ExperimentScreen,
-    table: mock.MagicMock,
+    panes: list[mock.MagicMock],
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     asyncio.run(screen.load())
@@ -328,95 +191,153 @@ def test_empties_when_the_experiment_is_removed(
     asyncio.run(screen.load())
 
     assert screen.sub_title == "alpha was removed."
-    collaborators["fill_table"].assert_called_with(table, [], [])
+    assert screen.shown is None
     assert screen.experiment == LOADED
+    for pane in panes:
+        pane.deliver.assert_called_with(None, frozenset())
 
 
-def test_keeps_opened_invocations_across_reloads(
-    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    asyncio.run(screen.load())
-    screen.action_open_row()
-
-    asyncio.run(screen.load())
-
-    assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
-
-
-def test_enter_opens_and_closes_an_invocation(
-    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+def test_adds_no_views_or_keys_without_views(
+    screen: ExperimentScreen, switcher: mock.MagicMock
 ) -> None:
     asyncio.run(screen.load())
 
-    screen.action_open_row()
-
-    assert filled(collaborators["fill_table"]) == ["inv", "inv", "lone"]
-
-    screen.action_open_row()
-
-    assert filled(collaborators["fill_table"]) == ["inv", "lone"]
+    switcher.mount_all.assert_not_awaited()
+    getattr(screen.refresh_bindings, "assert_not_called")()
+    assert "1" not in screen._bindings.key_to_bindings
 
 
-@pytest.mark.parametrize(
-    "key,folder", [("lone", "alpha/runs/lone"), ("inv/first", "alpha/runs/inv/first")]
-)
-def test_enter_opens_a_run_without_touching_the_rows(
+def test_adds_hidden_views_and_a_key_for_each_once(
     screen: ExperimentScreen,
-    table: mock.MagicMock,
-    collaborators: dict[str, mock.MagicMock],
-    key: str,
-    folder: str,
-) -> None:
-    asyncio.run(screen.load())
-    collaborators["fill_table"].reset_mock()
-    table.coordinate_to_cell_key.return_value.row_key.value = key
-
-    screen.action_open_row()
-
-    collaborators["run_screen"].assert_called_once_with(
-        key, Path("/p/project") / folder
-    )
-    collaborators["app"].return_value.push_screen.assert_called_once_with("run screen")
-    collaborators["fill_table"].assert_not_called()
-    assert screen.opened == set()
-
-
-def test_enter_on_an_invocation_opens_no_run(
-    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
-) -> None:
-    asyncio.run(screen.load())
-
-    screen.action_open_row()
-
-    collaborators["app"].return_value.push_screen.assert_not_called()
-
-
-def test_enter_opens_runs_that_are_not_grouped(
-    screen: ExperimentScreen,
-    table: mock.MagicMock,
+    switcher: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    collaborators["load_experiment"].return_value = {**LOADED, "run_groups": None}
+    specs = {f"v{number}": f"views/v{number}.py:V" for number in range(9)}
+    collaborators["load_experiment"].return_value = {**LOADED, "views": specs}
+
     asyncio.run(screen.load())
-    collaborators["fill_table"].reset_mock()
-    table.coordinate_to_cell_key.return_value.row_key.value = "lone"
+    asyncio.run(screen.load())
 
-    screen.action_open_row()
+    [panes] = switcher.mount_all.await_args.args
+    switcher.mount_all.assert_awaited_once()
+    assert [(pane.view_name, pane.source, pane.root, pane.id) for pane in panes] == [
+        (f"v{number}", f"views/v{number}.py:V", ROOT, f"view-{number + 2}")
+        for number in range(8)
+    ]
+    assert all(pane.display is False for pane in panes)
+    keys = {
+        key: [(binding.action, binding.description, binding.show) for binding in found]
+        for key, found in screen._bindings.key_to_bindings.items()
+    }
+    assert keys["1"] == [("show_view(1)", "runs", True)]
+    assert keys["2"] == [("show_view(2)", "v0", True)]
+    assert keys["9"] == [("show_view(9)", "v7", True)]
+    assert keys["0"] == [("show_view(1)", "", False)]
+    getattr(screen.refresh_bindings, "assert_called_once_with")()
 
-    collaborators["fill_table"].assert_not_called()
-    collaborators["run_screen"].assert_called_once_with(
-        "lone", Path("/p/project/alpha/runs/lone")
+
+def test_hands_each_view_the_files_that_changed(
+    screen: ExperimentScreen,
+    panes: list[mock.MagicMock],
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    async def changes() -> AsyncIterator[dict[str, object]]:
+        yield {"path": "alpha/runs/lone/stderr.log"}
+        screen.shown = SHOWN
+        yield {"path": "alpha/runs/lone/stdout.log"}
+
+    collaborators["watch_rows"].return_value = changes()
+
+    asyncio.run(ExperimentScreen.watch_files(screen))
+
+    collaborators["watch_rows"].assert_called_once_with(TABLES, {"run_files"}, "alpha")
+    for pane in panes:
+        pane.deliver.assert_called_once_with(
+            SHOWN, frozenset({"alpha/runs/lone/stdout.log"})
+        )
+
+
+def test_switches_views_and_restores_focus_after(
+    screen: ExperimentScreen, switcher: mock.MagicMock
+) -> None:
+    focused = mock.Mock()
+    with mock.patch.object(
+        ExperimentScreen, "focused", new_callable=mock.PropertyMock
+    ) as current:
+        current.return_value = focused
+        screen.action_show_view(3)
+
+    assert switcher.current == "view-3"
+    assert screen.left == {"view-1": focused}
+    getattr(screen.call_after_refresh, "assert_called_once_with")(
+        screen.refocus, "view-3"
     )
 
 
-def test_enter_does_nothing_without_rows(
-    screen: ExperimentScreen, table: mock.MagicMock
+def test_switching_without_focus_remembers_nothing(
+    screen: ExperimentScreen, switcher: mock.MagicMock
 ) -> None:
-    table.row_count = 0
+    with mock.patch.object(
+        ExperimentScreen, "focused", new_callable=mock.PropertyMock, return_value=None
+    ):
+        screen.action_show_view(2)
 
-    screen.action_open_row()
+    assert switcher.current == "view-2"
+    assert screen.left == {}
 
-    table.coordinate_to_cell_key.assert_not_called()
+
+def test_refocuses_what_had_focus(screen: ExperimentScreen) -> None:
+    widget = mock.Mock(focusable=True)
+    screen.left = {"view-2": widget}
+    with (
+        mock.patch.object(screen, "set_focus") as set_focus,
+        mock.patch.object(screen, "focus_next") as focus_next,
+    ):
+        screen.refocus("view-2")
+
+    widget.focus.assert_called_once_with()
+    set_focus.assert_not_called()
+    focus_next.assert_not_called()
+
+
+@pytest.mark.parametrize("left", [{}, {"view-2": mock.Mock(focusable=False)}])
+def test_focuses_the_first_widget_otherwise(
+    screen: ExperimentScreen, left: dict[str, Any]
+) -> None:
+    screen.left = left
+    with (
+        mock.patch.object(screen, "set_focus") as set_focus,
+        mock.patch.object(screen, "focus_next") as focus_next,
+    ):
+        screen.refocus("view-2")
+
+    set_focus.assert_called_once_with(None)
+    focus_next.assert_called_once_with()
+    for widget in left.values():
+        widget.focus.assert_not_called()
+
+
+def test_escape_leaves_from_the_built_in_view(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch.object(screen, "action_show_view") as show_view:
+        screen.action_back()
+
+    collaborators["app"].return_value.pop_screen.assert_called_once_with()
+    show_view.assert_not_called()
+
+
+def test_escape_goes_back_to_the_built_in_view(
+    screen: ExperimentScreen,
+    switcher: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    switcher.current = "view-2"
+    with mock.patch.object(screen, "action_show_view") as show_view:
+        screen.action_back()
+
+    show_view.assert_called_once_with(1)
+    collaborators["app"].return_value.pop_screen.assert_not_called()
 
 
 def test_exits_with_what_stopped_the_load(

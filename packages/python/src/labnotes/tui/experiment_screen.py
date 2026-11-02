@@ -1,5 +1,5 @@
 from collections.abc import Callable, Mapping
-from typing import Any
+from typing import Any, cast
 
 from dirsql import DirSQL
 from starlette.datastructures import QueryParams
@@ -87,7 +87,7 @@ class ExperimentScreen(Screen[None]):
             self.deliver(None)
             return
         if not self.experiment:
-            await self.add_views(loaded["views"])
+            await self.add_views(cast(Mapping[str, str], loaded["views"]))
         self.experiment = loaded
         self.sub_title = str(loaded["display_name"])
         self.shown = Experiment(

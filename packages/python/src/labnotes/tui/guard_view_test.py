@@ -1,4 +1,5 @@
 import asyncio
+from typing import cast
 from unittest import mock
 
 from textual.app import App, ComposeResult
@@ -56,7 +57,7 @@ def test_composes_and_mounts_a_view_that_works() -> None:
             await pilot.pause()
 
             assert view.query_one("#inside", Static).content == "inside"
-            assert view.content == "mounted"
+            assert cast(Static, view).content == "mounted"
             assert view.styles.color == Color.parse("red")
 
     asyncio.run(drive())

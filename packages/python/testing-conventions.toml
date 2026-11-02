@@ -19,7 +19,7 @@ reason = "run columns come from string literals in load_experiment, which CPytho
 [[python.exempt]]
 path = "src/labnotes/tui/experiment_screen.py"
 rules = ["mutation"]
-lines = [53]
+lines = [69]
 reason = "WorkerState members are singletons, so is equals =="
 
 [[python.exempt]]

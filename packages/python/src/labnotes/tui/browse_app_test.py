@@ -28,6 +28,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
                     "runs_list": [],
                     "run_groups": None,
                     "runs_view": None,
+                    "views": {},
                 }
             ),
         ),

@@ -1388,3 +1388,30 @@ def test_a_retried_run_that_passed_counts_as_retried_not_failed() -> None:
             await pilot.press("ctrl+c")
 
     asyncio.run(drive())
+
+
+def test_a_run_retried_in_its_own_folder_counts_once() -> None:
+    A = {"m": "a"}
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock())
+        report(planned("r1"))
+        for code in (75, 0):
+            report(
+                {"event": "started", "run": "r1", "params": {"m": "a"}, "folder": "/"}
+            )
+            report({"event": "ended", "run": "r1", "exit_code": code, "error": None})
+            if code:
+                report({"event": "retried", "run": "r1", "retry": "r1", "params": A})
+        report({"event": "idle"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert [row[2] for row in rows(app)] == ["✓"]
+            assert status(app) == "1 passed, 0 failed. Ctrl-C to quit."
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())

@@ -50,6 +50,15 @@ def test_defaults_to_one_repeat_and_no_params() -> None:
     ) == (None, 1, {}, "default", "adhoc", 1, 2, None, 5.0)
 
 
+@pytest.mark.parametrize(
+    ("source", "continues"), [("", False), ("continues = true\n", True)]
+)
+def test_reads_continues_for_a_matrix(source: str, continues: bool) -> None:
+    config = read_experiment_config(PATH, f'command = "run"\n{source}', "matrix", 1, 2)
+
+    assert config.continues is continues
+
+
 def test_falls_back_to_the_project_mode_concurrency_and_retries() -> None:
     config = read_experiment_config(PATH, 'command = "run"\n', "matrix", 3, 5)
 
@@ -156,6 +165,8 @@ def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
         ('command = "run"\n[views]\nrun = "x"\n', "unknown keys in views: run"),
         ('command = "run"\n[views]\nruns = 1\n', "views.runs must be a command"),
         ('command = "run"\n[views]\nruns = " "\n', "views.runs must be a command"),
+        ('command = "run"\ncontinues = 1\n', "continues must be true or false"),
+        ('command = "run"\ncontinues = true\n', "continues needs mode"),
     ],
 )
 def test_rejects_a_bad_config(text: str, message: str) -> None:

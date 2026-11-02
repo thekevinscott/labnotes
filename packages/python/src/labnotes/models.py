@@ -67,3 +67,4 @@ class ExperimentConfig:
     setup: str | None = None
     teardown: str | None = None
     env: dict[str, str] = field(default_factory=dict)
+    continues: bool = False

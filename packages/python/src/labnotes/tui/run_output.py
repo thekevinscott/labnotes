@@ -6,6 +6,8 @@ from rich.text import Text
 from textual.geometry import Size
 from textual.widgets import RichLog
 
+from labnotes.latest_log import latest_log
+
 STREAMS = ("stdout", "stderr")
 
 
@@ -16,6 +18,7 @@ class RunOutput(RichLog):
 
     def reset(self) -> None:
         self.offsets = dict.fromkeys(STREAMS, 0)
+        self.paths: dict[str, Path] = {}
         self.decoders = {
             stream: codecs.getincrementaldecoder("utf-8")(errors="replace")
             for stream in STREAMS
@@ -34,9 +37,12 @@ class RunOutput(RichLog):
 
     def follow(self, folder: Path) -> None:
         for stream in STREAMS:
-            path = folder / f"{stream}.log"
+            path = latest_log(folder, stream)
             if not path.exists():
                 continue
+            if self.paths.setdefault(stream, path) != path:
+                self.paths[stream] = path
+                self.offsets[stream] = 0
             with path.open("rb") as log:
                 log.seek(self.offsets[stream])
                 data = log.read()

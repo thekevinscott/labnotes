@@ -27,6 +27,7 @@ SETTINGS = {
     "setup",
     "teardown",
     "env",
+    "continues",
 }
 HOOKS = ("setup", "teardown")
 VIEWS = {"runs"}
@@ -97,6 +98,11 @@ def read_experiment_config(
             raise ValueError(f"{path}: env.{key} is reserved for labnotes")
         if not isinstance(value, str):
             raise ValueError(f"{path}: env.{key} must be a string")
+    continues = values.get("continues", False)
+    if not isinstance(continues, bool):
+        raise ValueError(f"{path}: continues must be true or false")
+    if continues and mode != "matrix":
+        raise ValueError(f'{path}: continues needs mode = "matrix"')
     views = values.get("views", {})
     if not isinstance(views, dict):
         raise ValueError(f"{path}: views must be a table, like [views]")
@@ -120,4 +126,5 @@ def read_experiment_config(
         values.get("setup"),
         values.get("teardown"),
         env,
+        continues,
     )

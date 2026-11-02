@@ -1,7 +1,9 @@
 import asyncio
+import json
+import re
 from collections.abc import Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
 import pytest
@@ -614,3 +616,45 @@ def test_stops_recording_memory_when_the_run_ends(
 
     assert sampling == ["started", "stopped"]
     assert result["exit_code"] == 0
+
+
+def test_a_run_that_continues_logs_each_invocation_apart(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    result = run(tmp_path, args=("--memory", "8g"), continues=True)
+
+    kwargs = collaborators["spawn"].await_args.kwargs
+    stdout, stderr = Path(kwargs["stdout"].name), Path(kwargs["stderr"].name)
+    assert stdout.parent == stderr.parent == tmp_path
+    assert re.fullmatch(r"stdout-\d{8}-\d{6}-\d{6}\.txt", stdout.name)
+    assert stderr.name == stdout.name.replace("stdout", "stderr")
+    assert result["invocations"] == [
+        {
+            "started": "start",
+            "ended": "end",
+            "exit_code": 3,
+            "ended_by": None,
+            "error": None,
+            "git": "abc",
+            "args": ["--memory", "8g"],
+            "stdout": stdout.name,
+            "stderr": stderr.name,
+        }
+    ]
+
+
+def test_a_run_that_continues_adds_to_its_run_json(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    first = {"started": "before", "exit_code": 1}
+    previous = {"created": "before", "exit_code": 1, "invocations": [first]}
+    (tmp_path / "run.json").write_text(json.dumps(previous))
+    collaborators["run_git"].return_value = None
+
+    result = run(tmp_path, continues=True)
+
+    assert result["created"] == "before"
+    assert result["exit_code"] == 3
+    kept, latest = cast(list[dict[str, object]], result["invocations"])
+    assert kept == first
+    assert (latest["started"], latest["git"], latest["args"]) == ("start", None, [])

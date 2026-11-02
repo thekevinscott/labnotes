@@ -45,7 +45,7 @@ def test_globs_each_table_from_its_path(dirsql: dict[str, mock.MagicMock]) -> No
     assert {name: t["glob"] for name, t in tables(dirsql).items()} == {
         "files": "notes/*/*.md",
         "runs": "data/*/**/run.json",
-        "logs": "data/*/**/std*.log",
+        "logs": "data/*/**/std*",
         "blocks": "data/*/**/log.jsonl",
         "memory": "data/*/**/memory.jsonl",
         "experiment_configs": "notes/*/experiment.toml",
@@ -137,12 +137,14 @@ def test_files_hold_note_text(dirsql: dict[str, mock.MagicMock]) -> None:
     assert "content TEXT" in str(tables(dirsql)["files"]["ddl"])
 
 
-def test_logs_carry_only_their_size(dirsql: dict[str, mock.MagicMock]) -> None:
+def test_logs_carry_only_their_file_and_size(
+    dirsql: dict[str, mock.MagicMock],
+) -> None:
     open_tables(CONFIG)
 
     ddl = str(tables(dirsql)["logs"]["ddl"])
-    assert "stream TEXT, size INTEGER" in ddl
-    assert "PRIMARY KEY (experiment, run, stream)" in ddl
+    assert "stream TEXT, file TEXT, size INTEGER" in ddl
+    assert "PRIMARY KEY (experiment, run, file)" in ddl
 
 
 def test_block_logs_carry_only_their_size(dirsql: dict[str, mock.MagicMock]) -> None:

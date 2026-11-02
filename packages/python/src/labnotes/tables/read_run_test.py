@@ -70,3 +70,21 @@ def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> 
     [row] = read_run(tmp_path, "runs/{run}", path, experiment="study")
 
     assert (row["experiment"], row["id"]) == ("study", "brave-fox")
+
+
+def test_points_at_the_logs_of_the_last_invocation(tmp_path: Path) -> None:
+    run = {
+        "params": {},
+        "invocations": [
+            {"stdout": "stdout-1.txt", "stderr": "stderr-1.txt"},
+            {"stdout": "stdout-2.txt", "stderr": "stderr-2.txt"},
+        ],
+    }
+    path = write_run(tmp_path / "exp" / "runs" / "r1", run)
+
+    [row] = read_run(tmp_path, "{experiment}/runs/{run}", path)
+
+    assert (row["stdout"], row["stderr"]) == (
+        "exp/runs/r1/stdout-2.txt",
+        "exp/runs/r1/stderr-2.txt",
+    )

@@ -17,6 +17,7 @@ from labnotes.models import (
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.check_hook_placeholders import check_hook_placeholders
+from labnotes.runner.claim_run import claim_run
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.fill_experiment_env import fill_experiment_env
 from labnotes.runner.fill_dirs import fill_dirs
@@ -33,6 +34,7 @@ from labnotes.runner.signal_tree import signal_tree
 from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
+from labnotes.tables.list_resumable_runs import list_resumable_runs
 from labnotes.tables.open_tables import open_tables
 
 Entry = tuple[str, dict[str, object]]
@@ -82,9 +84,37 @@ async def run_experiment(
             params, experiment.params, lambda run: taken(f"{group}/{run}")
         )
 
+    locks: dict[str, int] = {}
+
+    def claim(run: str) -> bool:
+        if run not in locks:
+            lock = claim_run(run_folder(config.root, config.runs, name, run))
+            if lock is None:
+                return False
+            locks[run] = lock
+        return True
+
+    def release(run: str) -> None:
+        if run in locks:
+            os.close(locks.pop(run))
+
+    resumable: list[Entry] = []
+    if experiment.continues:
+        resumable = [
+            (str(row["id"]), json.loads(str(row["params"])))
+            for row in await list_resumable_runs(tables, name, experiment.counts)
+        ]
     plan: list[Entry] = []
     for params in cells:
-        run = new_id(params)
+        resumed = next(
+            (
+                entry
+                for entry in resumable
+                if entry[1] == params and entry[0] not in planned and claim(entry[0])
+            ),
+            None,
+        )
+        run = new_id(params) if resumed is None else resumed[0]
         planned.add(run)
         plan.append((run, params))
     run_dirs = [
@@ -129,7 +159,7 @@ async def run_experiment(
     running: dict[str, set[asyncio.subprocess.Process]] = {}
     trees: dict[str, set[psutil.Process]] = {}
     stopped: set[str] = set()
-    results: list[dict[str, object]] = []
+    results: dict[str, dict[str, object]] = {}
     stopping = asyncio.Event()
 
     def signal_run(run: str, signal_number: int) -> None:
@@ -175,9 +205,11 @@ async def run_experiment(
     waiting: dict[str, asyncio.TimerHandle] = {}
 
     def requeue(run: str, attempt: int) -> None:
-        again = new_id(ended[run])
-        planned.add(again)
-        parents[again] = run
+        again = run
+        if not experiment.continues:
+            again = new_id(ended[run])
+            planned.add(again)
+            parents[again] = run
         attempts[again] = attempt
         plan.append((again, ended[run]))
         report({"event": "retried", "run": run, "retry": again, "params": ended[run]})
@@ -207,6 +239,7 @@ async def run_experiment(
 
     def cancel_retry(run: str) -> None:
         waiting.pop(run).cancel()
+        release(run)
         report({"event": "retry cancelled", "run": run})
 
     limit = concurrency
@@ -245,6 +278,8 @@ async def run_experiment(
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
+        if experiment.continues:
+            claim(run)
         if snapshot is not None and snapshot.sha is not None:
             (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
             (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")
@@ -287,15 +322,18 @@ async def run_experiment(
                 if snapshot is not None and snapshot.sha is not None
                 else None
             ),
+            continues=experiment.continues,
         )
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})
         ended[run] = params
-        results.append(result)
+        results[run] = result
         if result["exit_code"] == RETRY_EXIT_CODE and not (
             stopping.is_set() or run in stopped
         ):
             retry_later(run)
+        if run not in waiting:
+            release(run)
 
     async def teardown() -> None:
         if experiment.teardown is not None:
@@ -336,5 +374,8 @@ async def run_experiment(
             except Exception as failure:  # noqa: BLE001
                 report({"event": "teardown failed", "error": str(failure)})
             raise
+        finally:
+            for run in list(locks):
+                release(run)
         await teardown()
-    return results
+    return list(results.values())

@@ -446,3 +446,26 @@ def test_reads_the_block_log_only_on_its_own_runs_events(
         log("y\n"),
         end(0),
     ]
+
+
+def test_moves_to_the_newest_invocation_log_from_its_start(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    (folder / "stdout-20261102-090000-000000.txt").write_text("first\n")
+    later = folder / "stdout-20261102-100000-000000.txt"
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: later.write_text("second\n"),
+                event("logs", experiment="alpha", run="r1", stream="stdout"),
+            ),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [log("first\n"), log("second\n"), end(0)]

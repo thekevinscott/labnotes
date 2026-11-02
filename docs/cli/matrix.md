@@ -36,6 +36,21 @@ That plans the combinations where `effort` is `high` and `model` is `opus` or `h
 
 A run that exits 75 is [retried](../api/config#retries-1) in the same `run`. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more.
 
+## Failed runs
+
+By default a failed run stays as it is, and the next `run` gives its combination a new folder. Set `continues = true` to invoke the failed run again in its own folder instead:
+
+```toml
+mode = "matrix"
+continues = true
+```
+
+The next `run` takes each failed run in a combination that is short of `repeats` and invokes it again, with the same params and the same `{run_dir}`. A run that fails, is stopped, or was lost when labnotes died all count as failed. Excluded runs and runs that count are left alone and get new folders. A run that exits 75 retries in its folder too.
+
+The folder then holds every invocation. `run.json` lists them under `"invocations"`, each with its own times, exit code, commit, and args, and each writes its own `stdout-<time>.txt` and `stderr-<time>.txt`. See [`continues`](../api/config#continues) for the fields.
+
+Your command finds what its last invocation left in `{run_dir}` and decides what to do with it. labnotes does nothing to those files. In return, your command must never delete `run.json`, `stdout-*`, `stderr-*`, or `run.lock`. labnotes holds a lock on `run.lock` while an invocation runs, and a second `run` skips any run that is locked.
+
 Runs will appear on disk as flat folders, each named for the UTC time it was planned:
 
 <Tree>

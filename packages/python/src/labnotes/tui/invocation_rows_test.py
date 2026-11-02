@@ -1,10 +1,11 @@
 from collections.abc import Iterator
+from pathlib import Path
 from typing import Any
 from unittest import mock
 
 import pytest
 
-from labnotes.tui.invocation_rows import invocation_rows
+from labnotes.tui.invocation_rows import Experiment, invocation_rows
 
 COLUMNS = [{"key": "id", "label": "Run"}]
 
@@ -45,11 +46,8 @@ def rows(*ids: str) -> dict[str, Any]:
 
 
 def test_lists_runs_when_they_are_not_grouped() -> None:
-    experiment = {
-        "runs_live": True,
-        "run_groups": None,
-        "runs_list": [run("r2"), run("r1")],
-    }
+    runs = {f"runs/{id}": run(id) for id in ["r2", "r1"]}
+    experiment = Experiment(Path("/p"), "alpha", runs, live=True)
 
     assert invocation_rows(experiment, set(), COLUMNS, rows("r1", "r2")) == [
         ("r2", ["run", "row r2", COLUMNS, False, True]),
@@ -57,14 +55,16 @@ def test_lists_runs_when_they_are_not_grouped() -> None:
     ]
 
 
-GROUPED = {
-    "runs_live": False,
-    "run_groups": [
+GROUPED = Experiment(
+    Path("/p"),
+    "alpha",
+    {},
+    groups=(
         {"name": "b", "flat": False, "runs": [run("b/1"), run("b/2")]},
         {"name": "lone", "flat": True, "runs": [run("lone")]},
         {"name": "a", "flat": False, "runs": [run("a/1")]},
-    ],
-}
+    ),
+)
 ALL = rows("b/1", "b/2", "lone", "a/1")
 
 

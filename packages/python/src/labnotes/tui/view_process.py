@@ -13,7 +13,7 @@ GRACE_SECONDS = 1.0
 
 
 class ViewProcess:
-    """Hold one view worker for the life of labnotes, one request at a time."""
+    """Hold one view worker for the life of its view, one request at a time."""
 
     def __init__(self, command: str, root: Path) -> None:
         self.command = command

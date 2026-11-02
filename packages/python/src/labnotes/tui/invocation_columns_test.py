@@ -1,8 +1,10 @@
-from labnotes.tui.invocation_columns import invocation_columns
+from pathlib import Path
+
+from labnotes.tui.invocation_columns import Experiment, invocation_columns
 
 
 def test_lists_a_status_column_then_the_run_columns() -> None:
-    experiment = {"run_columns": ["id", "m", "started"], "run_groups": None}
+    experiment = Experiment(Path("/p"), "alpha", {}, ("id", "m", "started"))
 
     assert invocation_columns(experiment) == [
         {"key": "status", "label": ""},
@@ -13,7 +15,7 @@ def test_lists_a_status_column_then_the_run_columns() -> None:
 
 
 def test_counts_runs_after_the_id_when_runs_are_grouped() -> None:
-    experiment = {"run_columns": ["id", "m"], "run_groups": []}
+    experiment = Experiment(Path("/p"), "alpha", {}, ("id", "m"), ())
 
     assert [column["key"] for column in invocation_columns(experiment)] == [
         "status",

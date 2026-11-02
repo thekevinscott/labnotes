@@ -39,7 +39,17 @@ class Progress(Static):
         self.update(f"{passed} of {len(experiment.runs)} passed")
 ```
 
-The class must be constructible without arguments. `Changed.experiment` contains `root` (the project path), `name`, and `runs` (run rows keyed by folder relative to the root). `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
+The class must be constructible without arguments. `Changed.experiment` contains:
+
+- `root`: the project path.
+- `name`: the experiment name.
+- `runs`: run rows keyed by folder relative to the root, in table order.
+- `columns`: the run columns the config shows.
+- `groups`: the invocations, each with its `runs` as the same rows, or `None` when runs aren't nested.
+- `live`: whether a run is still going.
+- `runs_view`: the `[views] runs` command, or `None`.
+
+`Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
 
 ## Runs table columns
 
@@ -165,7 +175,7 @@ An answer is rejected when:
 
 ## In the TUI
 
-labnotes starts the command the first time an experiment screen needs it and keeps it for the rest of the session. Experiments with the same command share one process. On quit, labnotes closes the script's stdin, waits a second, then kills it and anything it started.
+The built-in view starts the command when an experiment opens and stops it when you leave the experiment. Each open experiment has its own process. On stop, labnotes closes the script's stdin, waits a second, then kills it and anything it started.
 
 The line under the table reports problems:
 
@@ -176,6 +186,6 @@ The line under the table reports problems:
 ## Limits
 
 - labnotes asks again only when a file in the run's folder changes. A value that depends on anything else, such as another run or a file outside the folder, goes stale until the run changes.
-- A crashed script isn't restarted. Quit and reopen the TUI.
+- A crashed script isn't restarted. Leave and reopen the experiment.
 - A script that never answers stops the column from updating. Nothing times it out.
-- A change to `[views] runs` takes effect when you reopen the experiment. The old script keeps running until you quit.
+- A change to `[views] runs` takes effect when you reopen the experiment.

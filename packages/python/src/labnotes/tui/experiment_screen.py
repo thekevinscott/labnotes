@@ -1,5 +1,5 @@
-from collections.abc import Callable, Mapping
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import Any
 
 from dirsql import DirSQL
 from starlette.datastructures import QueryParams
@@ -14,7 +14,6 @@ from labnotes.load_experiment import load_experiment
 from labnotes.models import LabnotesConfig
 from labnotes.tui.native_rows import native_rows
 from labnotes.tui.reload_on_change import reload_on_change
-from labnotes.tui.runs_view import Request
 from labnotes.tui.stopped_title import stopped_title
 from labnotes.tui.view_pane import ViewPane
 from labnotes.view.experiment import Experiment
@@ -36,14 +35,12 @@ class ExperimentScreen(Screen[None]):
         tables: DirSQL,
         config: LabnotesConfig,
         name: str,
-        views: Callable[[str], Request],
     ) -> None:
         super().__init__()
         self.tables = tables
         self.config = config
         self.experiment_name = name
-        self.views = views
-        self.experiment: dict[str, Any] = {}
+        self.found = False
         self.shown: Experiment | None = None
         self.left: dict[str, Widget] = {}
 
@@ -73,25 +70,38 @@ class ExperimentScreen(Screen[None]):
         self.sub_title = stopped_title(self.sub_title, error)
 
     async def load(self) -> None:
-        loaded = await load_experiment(
+        loaded: dict[str, Any] | None = await load_experiment(
             self.tables,
             self.config.root,
             self.experiment_name,
             QueryParams(),
         )
-        if loaded is None and not self.experiment:
+        if loaded is None and not self.found:
             raise ValueError(f"No experiment named {self.experiment_name}.")
         if loaded is None:
             self.sub_title = f"{self.experiment_name} was removed."
             self.shown = None
             self.deliver(None)
             return
-        if not self.experiment:
-            await self.add_views(cast(Mapping[str, str], loaded["views"]))
-        self.experiment = loaded
+        if not self.found:
+            await self.add_views(loaded["views"])
+        self.found = True
         self.sub_title = str(loaded["display_name"])
+        runs = native_rows(loaded)
+        groups = loaded["run_groups"]
         self.shown = Experiment(
-            self.config.root, self.experiment_name, native_rows(loaded)
+            self.config.root,
+            self.experiment_name,
+            runs,
+            tuple(loaded["run_columns"]),
+            None
+            if groups is None
+            else tuple(
+                {**group, "runs": [runs[str(run["folder"])] for run in group["runs"]]}
+                for group in groups
+            ),
+            bool(loaded["runs_live"]),
+            loaded["runs_view"],
         )
         self.deliver(self.shown)
 

@@ -11,9 +11,24 @@ from labnotes.tui.experiment_screen import Experiment, ExperimentScreen
 ROOT = Path("/p/project")
 CONFIG = mock.Mock(root=ROOT)
 TABLES = mock.Mock()
-LOADED = {"display_name": "Alpha study", "views": {}}
-NATIVE = {"alpha/runs/lone": {"id": "lone"}}
-SHOWN = Experiment(ROOT, "alpha", NATIVE)
+RUNS = [
+    {"id": "inv/first", "folder": "alpha/runs/inv/first", "labnotes_completed": 1},
+    {"id": "lone", "folder": "alpha/runs/lone", "labnotes_completed": 0},
+]
+LOADED: dict[str, Any] = {
+    "display_name": "Alpha study",
+    "views": {},
+    "run_columns": ["id", "m"],
+    "run_groups": None,
+    "runs_live": False,
+    "runs_view": None,
+    "runs_list": RUNS,
+}
+NATIVE = {
+    "alpha/runs/inv/first": {"id": "inv/first", "status": "passed"},
+    "alpha/runs/lone": {"id": "lone", "status": "failed"},
+}
+SHOWN = Experiment(ROOT, "alpha", NATIVE, ("id", "m"))
 
 
 @pytest.fixture(autouse=True)
@@ -75,15 +90,10 @@ def panes() -> list[mock.MagicMock]:
 
 
 @pytest.fixture
-def views() -> mock.MagicMock:
-    return mock.MagicMock(return_value="request")
-
-
-@pytest.fixture
 def screen(
-    switcher: mock.MagicMock, panes: list[mock.MagicMock], views: mock.MagicMock
+    switcher: mock.MagicMock, panes: list[mock.MagicMock]
 ) -> Iterator[ExperimentScreen]:
-    shown = ExperimentScreen(TABLES, CONFIG, "alpha", views)
+    shown = ExperimentScreen(TABLES, CONFIG, "alpha")
     with (
         mock.patch.object(shown, "query_one", return_value=switcher),
         mock.patch.object(shown, "query", return_value=panes),
@@ -122,14 +132,11 @@ def test_binds_escape_and_zero() -> None:
     ]
 
 
-def test_keeps_what_the_app_passes(
-    screen: ExperimentScreen, views: mock.MagicMock
-) -> None:
+def test_keeps_what_the_app_passes(screen: ExperimentScreen) -> None:
     assert screen.tables is TABLES
     assert screen.config is CONFIG
     assert screen.experiment_name == "alpha"
-    assert screen.views is views
-    assert screen.experiment == {}
+    assert screen.found is False
     assert screen.shown is None
     assert screen.left == {}
 
@@ -164,10 +171,57 @@ def test_hands_each_view_the_experiment(
     )
     collaborators["native_rows"].assert_called_once_with(LOADED)
     assert screen.sub_title == "Alpha study"
-    assert screen.experiment == LOADED
+    assert screen.found is True
     assert screen.shown == SHOWN
     for pane in panes:
         pane.deliver.assert_called_once_with(SHOWN, frozenset())
+
+
+def test_hands_views_the_invocations_with_rows_in_place_of_raw_runs(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["load_experiment"].return_value = {
+        **LOADED,
+        "run_groups": [
+            {"name": "inv", "flat": False, "passed": 1, "runs": [RUNS[0]]},
+            {"name": "lone", "flat": True, "passed": 0, "runs": [RUNS[1]]},
+        ],
+        "runs_live": True,
+        "runs_view": "uv run view.py",
+    }
+
+    asyncio.run(screen.load())
+
+    assert screen.shown == Experiment(
+        ROOT,
+        "alpha",
+        NATIVE,
+        ("id", "m"),
+        (
+            {
+                "name": "inv",
+                "flat": False,
+                "passed": 1,
+                "runs": [NATIVE["alpha/runs/inv/first"]],
+            },
+            {
+                "name": "lone",
+                "flat": True,
+                "passed": 0,
+                "runs": [NATIVE["alpha/runs/lone"]],
+            },
+        ),
+        True,
+        "uv run view.py",
+    )
+    assert screen.shown.groups is not None
+    assert not [
+        key
+        for group in screen.shown.groups
+        for run in group["runs"]
+        for key in run
+        if key.startswith("labnotes_")
+    ]
 
 
 def test_rejects_an_unknown_experiment(
@@ -191,7 +245,7 @@ def test_tells_each_view_the_experiment_was_removed(
 
     assert screen.sub_title == "alpha was removed."
     assert screen.shown is None
-    assert screen.experiment == LOADED
+    assert screen.found is True
     for pane in panes:
         pane.deliver.assert_called_with(None, frozenset())
 

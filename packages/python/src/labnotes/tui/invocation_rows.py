@@ -1,24 +1,24 @@
 from collections.abc import Collection, Mapping, Sequence
-from typing import Any
 
 from labnotes.tui.group_cells import group_cells
 from labnotes.tui.run_cells import run_cells
+from labnotes.view.experiment import Experiment
 
 
 def invocation_rows(
-    experiment: Mapping[str, Any],
+    experiment: Experiment,
     opened: Collection[str],
     columns: Sequence[Mapping[str, str]],
     rows: Mapping[str, Mapping[str, object]],
 ) -> list[tuple[str, list[object]]]:
-    live = experiment["runs_live"]
-    groups = experiment["run_groups"]
+    live = experiment.live
+    groups = experiment.groups
 
     def cells(run: Mapping[str, object], nested: bool) -> list[object]:
         return run_cells(rows[str(run["folder"])], columns, nested, live)
 
     if groups is None:
-        return [(str(run["id"]), cells(run, False)) for run in experiment["runs_list"]]
+        return [(str(run["id"]), cells(run, False)) for run in experiment.runs.values()]
     shown = []
     for group in groups:
         if group["flat"]:

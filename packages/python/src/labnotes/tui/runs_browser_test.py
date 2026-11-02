@@ -1,41 +1,35 @@
 import asyncio
+import dataclasses
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
 import pytest
 
-from labnotes.tui.runs_browser import Changed, RunOutput, RunsBrowser
+from labnotes.tui.runs_browser import Changed, Experiment, RunOutput, RunsBrowser
 
 ROOT = Path("/p/project")
-LOADED = {
-    "display_name": "Alpha study",
-    "run_groups": [{"name": "inv", "flat": False}, {"name": "lone", "flat": True}],
-    "runs_list": [
-        {"id": "inv/first", "folder": "alpha/runs/inv/first"},
-        {"id": "lone", "folder": "alpha/runs/lone"},
-    ],
-    "runs_view": None,
+RUNS = {
+    "alpha/runs/inv/first": {"id": "inv/first", "status": "passed"},
+    "alpha/runs/lone": {"id": "lone", "status": "failed"},
 }
+EXPERIMENT = Experiment(
+    ROOT,
+    "alpha",
+    RUNS,
+    ("id",),
+    ({"name": "inv", "flat": False}, {"name": "lone", "flat": True}),
+)
 COLUMNS = [{"key": "status", "label": ""}, {"key": "id", "label": "id"}]
-NATIVE = {"alpha/runs/lone": {"id": "lone"}}
-CHANGED = Changed(mock.Mock(root=ROOT, runs={"alpha/runs/lone": {"id": "x"}}))
-
-
-@pytest.fixture
-def host() -> mock.MagicMock:
-    return mock.MagicMock(experiment=LOADED, views=mock.Mock(return_value="request"))
+CHANGED = Changed(EXPERIMENT)
 
 
 @pytest.fixture(autouse=True)
-def collaborators(host: mock.MagicMock) -> Iterator[dict[str, mock.MagicMock]]:
+def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
         mock.patch(
             "labnotes.tui.runs_browser.invocation_columns", return_value=COLUMNS
         ) as invocation_columns,
-        mock.patch(
-            "labnotes.tui.runs_browser.native_rows", return_value=NATIVE
-        ) as native_rows,
         mock.patch(
             "labnotes.tui.runs_browser.invocation_rows",
             side_effect=lambda experiment, opened, columns, rows: [
@@ -48,14 +42,10 @@ def collaborators(host: mock.MagicMock) -> Iterator[dict[str, mock.MagicMock]]:
         ) as runs_table,
         mock.patch("labnotes.tui.runs_browser.fill_table") as fill_table,
         mock.patch("labnotes.tui.runs_browser.RunPanel") as run_panel,
-        mock.patch.object(
-            RunsBrowser, "screen", new_callable=mock.PropertyMock, return_value=host
-        ),
     ):
         yield {
             "invocation_columns": invocation_columns,
             "invocation_rows": invocation_rows,
-            "native_rows": native_rows,
             "static": static,
             "runs_table": runs_table,
             "fill_table": fill_table,
@@ -121,12 +111,6 @@ def test_binds_enter_and_escape() -> None:
     ]
 
 
-def test_reads_labnotes_data_from_its_screen(
-    browser: RunsBrowser, host: mock.MagicMock
-) -> None:
-    assert browser.host is host
-
-
 def test_lists_the_runs_by_invocation(
     browser: RunsBrowser,
     table: mock.MagicMock,
@@ -134,16 +118,14 @@ def test_lists_the_runs_by_invocation(
 ) -> None:
     browser.on_labnotes_changed(CHANGED)
 
-    collaborators["invocation_columns"].assert_called_once_with(LOADED)
-    collaborators["native_rows"].assert_called_once_with(LOADED)
+    collaborators["invocation_columns"].assert_called_once_with(EXPERIMENT)
     collaborators["invocation_rows"].assert_called_once_with(
-        LOADED, set(), COLUMNS, NATIVE
+        EXPERIMENT, set(), COLUMNS, RUNS
     )
     collaborators["fill_table"].assert_called_once_with(
         table, ["", "id"], [("inv", ["inv"]), ("lone", ["lone"])]
     )
-    assert browser.experiment == LOADED
-    assert browser.root == ROOT
+    assert browser.experiment == EXPERIMENT
     getattr(browser.run_worker, "assert_not_called")()
 
 
@@ -156,11 +138,18 @@ def test_hides_the_status_line_without_a_runs_view(
     assert status.display is False
 
 
-VIEWED = {**LOADED, "runs_view": "uv run view.py"}
+VIEWED = Changed(dataclasses.replace(EXPERIMENT, runs_view="uv run view.py"))
 
 
 @pytest.fixture
-def runs_view() -> Iterator[mock.MagicMock]:
+def process() -> Iterator[mock.MagicMock]:
+    with mock.patch("labnotes.tui.runs_browser.ViewProcess") as made:
+        made.return_value.close = mock.AsyncMock()
+        yield made
+
+
+@pytest.fixture
+def runs_view(process: mock.MagicMock) -> Iterator[mock.MagicMock]:
     with mock.patch("labnotes.tui.runs_browser.RunsView") as made:
         made.return_value.table.return_value = ([{"key": "m", "label": "M"}], {})
         made.return_value.status.return_value = ""
@@ -170,46 +159,59 @@ def runs_view() -> Iterator[mock.MagicMock]:
 
 
 def test_starts_the_runs_view_once(
-    browser: RunsBrowser, host: mock.MagicMock, runs_view: mock.MagicMock
+    browser: RunsBrowser, process: mock.MagicMock, runs_view: mock.MagicMock
 ) -> None:
-    host.experiment = VIEWED
+    browser.on_labnotes_changed(VIEWED)
+    browser.on_labnotes_changed(VIEWED)
 
-    browser.on_labnotes_changed(CHANGED)
-    browser.on_labnotes_changed(CHANGED)
-
-    host.views.assert_called_once_with("uv run view.py")
-    runs_view.assert_called_once_with("request")
+    process.assert_called_once_with("uv run view.py", ROOT)
+    runs_view.assert_called_once_with(process.return_value.request)
     assert (
-        runs_view.return_value.update.call_args_list == [mock.call(COLUMNS, NATIVE)] * 2
+        runs_view.return_value.update.call_args_list == [mock.call(COLUMNS, RUNS)] * 2
     )
+
+
+def test_closes_the_runs_view_when_unmounted(
+    browser: RunsBrowser, process: mock.MagicMock, runs_view: mock.MagicMock
+) -> None:
+    browser.on_labnotes_changed(VIEWED)
+
+    asyncio.run(browser.on_unmount())
+
+    process.return_value.close.assert_awaited_once_with()
+
+
+def test_unmounts_without_a_runs_view(
+    browser: RunsBrowser, process: mock.MagicMock
+) -> None:
+    browser.on_labnotes_changed(CHANGED)
+
+    asyncio.run(browser.on_unmount())
+
+    process.assert_not_called()
 
 
 def test_draws_what_the_runs_view_shows(
     browser: RunsBrowser,
-    host: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
     runs_view: mock.MagicMock,
 ) -> None:
-    host.experiment = VIEWED
-
-    browser.on_labnotes_changed(CHANGED)
+    browser.on_labnotes_changed(VIEWED)
 
     collaborators["invocation_rows"].assert_called_once_with(
-        VIEWED, set(), [{"key": "m", "label": "M"}], {}
+        VIEWED.experiment, set(), [{"key": "m", "label": "M"}], {}
     )
     assert collaborators["fill_table"].call_args.args[1] == ["M"]
 
 
 def test_shows_what_the_runs_view_reports(
     browser: RunsBrowser,
-    host: mock.MagicMock,
     status: mock.MagicMock,
     runs_view: mock.MagicMock,
 ) -> None:
-    host.experiment = VIEWED
     runs_view.return_value.status.return_value = "runs view took 120 ms"
 
-    browser.on_labnotes_changed(CHANGED)
+    browser.on_labnotes_changed(VIEWED)
 
     status.update.assert_called_once_with("runs view took 120 ms")
     assert status.display is True
@@ -229,14 +231,13 @@ def test_hides_the_status_line_while_a_run_is_open(
 
 
 def test_asks_the_runs_view_when_it_has_a_request(
-    browser: RunsBrowser, host: mock.MagicMock, runs_view: mock.MagicMock
+    browser: RunsBrowser, runs_view: mock.MagicMock
 ) -> None:
-    host.experiment = VIEWED
     runs_view.return_value.next_request.side_effect = [{"rows": {}}, None]
     with mock.patch.object(
         browser, "answer", new=mock.Mock(return_value="answering")
     ) as answer:
-        browser.on_labnotes_changed(CHANGED)
+        browser.on_labnotes_changed(VIEWED)
 
     answer.assert_called_once_with(runs_view.return_value, {"rows": {}})
     getattr(browser.run_worker, "assert_called_once_with")(
@@ -293,7 +294,7 @@ def test_ignores_touched_files_without_a_runs_view(
 
     ask.assert_not_called()
     collaborators["fill_table"].assert_not_called()
-    collaborators["native_rows"].assert_not_called()
+    collaborators["invocation_columns"].assert_not_called()
 
 
 def test_empties_when_the_experiment_is_removed(
@@ -306,8 +307,8 @@ def test_empties_when_the_experiment_is_removed(
     browser.on_labnotes_changed(Changed(None))
 
     collaborators["fill_table"].assert_called_with(table, [], [])
-    assert collaborators["native_rows"].call_count == 1
-    assert browser.experiment == LOADED
+    assert collaborators["invocation_columns"].call_count == 1
+    assert browser.experiment == EXPERIMENT
 
 
 def test_keeps_opened_invocations_across_reloads(
@@ -369,12 +370,10 @@ def test_enter_opens_a_run_in_place_of_the_table(
 
 def test_enter_opens_runs_that_are_not_grouped(
     browser: RunsBrowser,
-    host: mock.MagicMock,
     table: mock.MagicMock,
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    host.experiment = {**LOADED, "run_groups": None}
-    browser.on_labnotes_changed(CHANGED)
+    browser.on_labnotes_changed(Changed(dataclasses.replace(EXPERIMENT, groups=None)))
     collaborators["fill_table"].reset_mock()
     table.coordinate_to_cell_key.return_value.row_key.value = "lone"
 

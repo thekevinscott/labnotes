@@ -8,7 +8,6 @@ from labnotes.tui.experiments_screen import ExperimentsScreen
 
 CONFIG = mock.Mock()
 TABLES = mock.Mock()
-VIEWS = mock.Mock()
 EXPERIMENTS = [
     {"name": "alpha", "last_run": "2026-10-17", "files": 2},
     {"name": "beta", "last_run": None, "files": 0},
@@ -60,7 +59,7 @@ def table() -> mock.MagicMock:
 
 @pytest.fixture
 def screen(table: mock.MagicMock) -> Iterator[ExperimentsScreen]:
-    shown = ExperimentsScreen(TABLES, CONFIG, VIEWS)
+    shown = ExperimentsScreen(TABLES, CONFIG)
     with (
         mock.patch.object(shown, "query_one", return_value=table),
         mock.patch.object(shown, "run_worker"),
@@ -132,9 +131,7 @@ def test_enter_opens_the_selected_experiment(
 
     screen.on_data_table_row_selected(event)
 
-    collaborators["experiment_screen"].assert_called_once_with(
-        TABLES, CONFIG, "beta", VIEWS
-    )
+    collaborators["experiment_screen"].assert_called_once_with(TABLES, CONFIG, "beta")
     collaborators["app"].return_value.push_screen.assert_called_once_with(
         collaborators["experiment_screen"].return_value
     )

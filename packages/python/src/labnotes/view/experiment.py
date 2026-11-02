@@ -8,10 +8,15 @@ from typing import Any
 class Experiment:
     """Describe the experiment a view shows.
 
-    `runs` holds one row per run, keyed by run folder relative to `root`: the
-    same rows a runs view gets.
+    `runs` holds one row per run in table order, keyed by run folder relative
+    to `root`: the same rows a runs view gets. `groups` holds the invocations,
+    their `runs` as those rows, or None when runs aren't nested.
     """
 
     root: Path
     name: str
     runs: Mapping[str, Mapping[str, Any]]
+    columns: tuple[str, ...] = ()
+    groups: tuple[Mapping[str, Any], ...] | None = None
+    live: bool = False
+    runs_view: str | None = None

@@ -1,4 +1,5 @@
 from collections.abc import Mapping
+from types import MappingProxyType
 from typing import Any
 
 from dirsql import DirSQL
@@ -17,6 +18,7 @@ from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.stopped_title import stopped_title
 from labnotes.tui.view_pane import ViewPane
 from labnotes.view.experiment import Experiment
+from labnotes.view.group import Group
 from labnotes.watch_rows import watch_rows
 
 WATCHED = {"runs", "experiment_configs"}
@@ -25,10 +27,7 @@ MAX_VIEWS = 8
 
 
 class ExperimentScreen(Screen[None]):
-    BINDINGS = [
-        Binding("escape", "back", "Back"),
-        Binding("0", "show_view(1)", show=False),
-    ]
+    BINDINGS = [Binding("escape", "back", "Back")]
 
     def __init__(
         self,
@@ -87,37 +86,41 @@ class ExperimentScreen(Screen[None]):
             await self.add_views(loaded["views"])
         self.found = True
         self.sub_title = str(loaded["display_name"])
-        runs = native_rows(loaded)
         groups = loaded["run_groups"]
         self.shown = Experiment(
             self.config.root,
             self.experiment_name,
-            runs,
-            tuple(loaded["run_columns"]),
+            native_rows(loaded),
+            MappingProxyType(loaded["config"] or {}),
+            bool(loaded["runs_live"]),
             None
             if groups is None
             else tuple(
-                {**group, "runs": [runs[str(run["folder"])] for run in group["runs"]]}
+                Group(
+                    group["name"],
+                    tuple(str(run["folder"]) for run in group["runs"]),
+                    group["flat"],
+                )
                 for group in groups
             ),
-            bool(loaded["runs_live"]),
-            loaded["runs_view"],
         )
         self.deliver(self.shown)
 
     async def add_views(self, specs: Mapping[str, str]) -> None:
         names = list(specs)[:MAX_VIEWS]
-        if names:
-            panes = [
-                ViewPane(name, specs[name], self.config.root, id=f"view-{number}")
-                for number, name in enumerate(names, 2)
-            ]
-            for pane in panes:
-                pane.display = False
-            await self.query_one(ContentSwitcher).mount_all(panes)
+        if not names:
+            return
+        panes = [
+            ViewPane(name, specs[name], self.config.root, id=f"view-{number}")
+            for number, name in enumerate(names, 2)
+        ]
+        for pane in panes:
+            pane.display = False
+        await self.query_one(ContentSwitcher).mount_all(panes)
         # Screen bindings are fixed per class; each screen's view names differ.
         for number, name in enumerate(["runs", *names], 1):
             self._bindings.bind(str(number), f"show_view({number})", name)
+        self._bindings.bind("0", "show_view(1)", show=False)
         self.refresh_bindings()
 
     def deliver(

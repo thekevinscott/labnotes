@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.experiment_screen import Experiment, ExperimentScreen
+from labnotes.tui.experiment_screen import Experiment, ExperimentScreen, Group
 
 ROOT = Path("/p/project")
 CONFIG = mock.Mock(root=ROOT)
@@ -18,17 +18,16 @@ RUNS = [
 LOADED: dict[str, Any] = {
     "display_name": "Alpha study",
     "views": {},
-    "run_columns": ["id", "m"],
+    "config": {"command": "go"},
     "run_groups": None,
     "runs_live": False,
-    "runs_view": None,
     "runs_list": RUNS,
 }
 NATIVE = {
     "alpha/runs/inv/first": {"id": "inv/first", "status": "passed"},
     "alpha/runs/lone": {"id": "lone", "status": "failed"},
 }
-SHOWN = Experiment(ROOT, "alpha", NATIVE, ("id", "m"))
+SHOWN = Experiment(ROOT, "alpha", NATIVE, {"command": "go"})
 
 
 @pytest.fixture(autouse=True)
@@ -122,14 +121,11 @@ def test_shows_the_built_in_view_between_the_header_and_footer(
     collaborators["content_switcher"].assert_called_once_with(initial="view-1")
 
 
-def test_binds_escape_and_zero() -> None:
+def test_binds_escape() -> None:
     assert [
         (binding.key, binding.action, binding.description, binding.show)  # type: ignore[union-attr]
         for binding in ExperimentScreen.BINDINGS
-    ] == [
-        ("escape", "back", "Back", True),
-        ("0", "show_view(1)", "", False),
-    ]
+    ] == [("escape", "back", "Back", True)]
 
 
 def test_keeps_what_the_app_passes(screen: ExperimentScreen) -> None:
@@ -177,7 +173,26 @@ def test_hands_each_view_the_experiment(
         pane.deliver.assert_called_once_with(SHOWN, frozenset())
 
 
-def test_hands_views_the_invocations_with_rows_in_place_of_raw_runs(
+def test_hands_views_a_read_only_config(screen: ExperimentScreen) -> None:
+    asyncio.run(screen.load())
+
+    assert screen.shown is not None
+    with pytest.raises(TypeError):
+        screen.shown.config["command"] = "other"  # type: ignore[index]
+
+
+def test_hands_views_an_empty_config_without_one(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["load_experiment"].return_value = {**LOADED, "config": None}
+
+    asyncio.run(screen.load())
+
+    assert screen.shown is not None
+    assert screen.shown.config == {}
+
+
+def test_hands_views_each_invocation_as_its_run_folders(
     screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["load_experiment"].return_value = {
@@ -187,7 +202,6 @@ def test_hands_views_the_invocations_with_rows_in_place_of_raw_runs(
             {"name": "lone", "flat": True, "passed": 0, "runs": [RUNS[1]]},
         ],
         "runs_live": True,
-        "runs_view": "uv run view.py",
     }
 
     asyncio.run(screen.load())
@@ -196,32 +210,13 @@ def test_hands_views_the_invocations_with_rows_in_place_of_raw_runs(
         ROOT,
         "alpha",
         NATIVE,
-        ("id", "m"),
-        (
-            {
-                "name": "inv",
-                "flat": False,
-                "passed": 1,
-                "runs": [NATIVE["alpha/runs/inv/first"]],
-            },
-            {
-                "name": "lone",
-                "flat": True,
-                "passed": 0,
-                "runs": [NATIVE["alpha/runs/lone"]],
-            },
-        ),
+        {"command": "go"},
         True,
-        "uv run view.py",
+        (
+            Group("inv", ("alpha/runs/inv/first",), False),
+            Group("lone", ("alpha/runs/lone",), True),
+        ),
     )
-    assert screen.shown.groups is not None
-    assert not [
-        key
-        for group in screen.shown.groups
-        for run in group["runs"]
-        for key in run
-        if key.startswith("labnotes_")
-    ]
 
 
 def test_rejects_an_unknown_experiment(
@@ -250,14 +245,36 @@ def test_tells_each_view_the_experiment_was_removed(
         pane.deliver.assert_called_with(None, frozenset())
 
 
-def test_shows_the_built_in_view_key_without_custom_views(
+def test_binds_no_digits_with_only_the_built_in_view(
     screen: ExperimentScreen, switcher: mock.MagicMock
 ) -> None:
     asyncio.run(screen.load())
 
     switcher.mount_all.assert_not_awaited()
-    getattr(screen.refresh_bindings, "assert_called_once_with")()
-    assert screen._bindings.key_to_bindings["1"][0].description == "runs"
+    getattr(screen.refresh_bindings, "assert_not_called")()
+    assert not set(screen._bindings.key_to_bindings) & set("0123456789")
+
+
+def test_binds_digits_with_two_views(
+    screen: ExperimentScreen, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["load_experiment"].return_value = {
+        **LOADED,
+        "views": {"plot": "v.py:Plot"},
+    }
+
+    asyncio.run(screen.load())
+
+    keys = {
+        key: [(binding.action, binding.description, binding.show) for binding in found]
+        for key, found in screen._bindings.key_to_bindings.items()
+        if key.isdigit()
+    }
+    assert keys == {
+        "1": [("show_view(1)", "runs", True)],
+        "2": [("show_view(2)", "plot", True)],
+        "0": [("show_view(1)", "", False)],
+    }
 
 
 def test_adds_hidden_views_and_a_key_for_each_once(

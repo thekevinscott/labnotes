@@ -3,7 +3,7 @@ from pathlib import Path
 
 import pytest
 
-from labnotes.view.experiment import Experiment
+from labnotes.view.experiment import Experiment, Group
 
 
 def test_holds_the_root_name_and_runs() -> None:
@@ -14,25 +14,34 @@ def test_holds_the_root_name_and_runs() -> None:
     assert experiment.runs == {"alpha/runs/a": {"id": "a"}}
 
 
-def test_defaults_to_no_columns_groups_live_runs_or_runs_view() -> None:
+def test_defaults_to_an_empty_read_only_config_not_live_and_ungrouped() -> None:
     experiment = Experiment(Path("/p"), "alpha", {})
 
-    assert experiment.columns == ()
-    assert experiment.groups is None
+    assert experiment.config == {}
+    with pytest.raises(TypeError):
+        experiment.config["x"] = 1  # type: ignore[index]
     assert experiment.live is False
-    assert experiment.runs_view is None
+    assert experiment.groups is None
 
 
-def test_holds_the_columns_groups_liveness_and_runs_view() -> None:
-    groups = ({"name": "inv", "runs": [{"id": "inv/a"}]},)
-    experiment = Experiment(
-        Path("/p"), "alpha", {}, ("id", "m"), groups, True, "uv run view.py"
-    )
+def test_holds_the_config_liveness_and_groups() -> None:
+    groups = (Group("inv", ("alpha/runs/inv/a",), False),)
+    experiment = Experiment(Path("/p"), "alpha", {}, {"command": "go"}, True, groups)
 
-    assert experiment.columns == ("id", "m")
-    assert experiment.groups == groups
+    assert experiment.config == {"command": "go"}
     assert experiment.live is True
-    assert experiment.runs_view == "uv run view.py"
+    assert experiment.groups == groups
+
+
+def test_holds_data_only() -> None:
+    assert [field.name for field in dataclasses.fields(Experiment)] == [
+        "root",
+        "name",
+        "runs",
+        "config",
+        "live",
+        "groups",
+    ]
 
 
 def test_is_frozen() -> None:

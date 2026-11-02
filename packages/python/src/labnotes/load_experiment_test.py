@@ -109,6 +109,7 @@ def test_loads_config_notes_progress_and_runs(
     assert loaded is not None
     assert (loaded["name"], loaded["display_name"]) == ("a", "Alpha")
     assert (loaded["runs"], loaded["completed"]) == (3, 2)
+    assert loaded["config"] == CONFIG
     assert (loaded["config_source"], loaded["counts_set"]) == ("toml", False)
     assert loaded["notes"] == [
         {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}

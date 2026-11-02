@@ -23,11 +23,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new=mock.AsyncMock(
                 return_value={
                     "display_name": "Alpha",
-                    "run_columns": ["id"],
+                    "config": None,
                     "runs_live": False,
                     "runs_list": [],
                     "run_groups": None,
-                    "runs_view": None,
                     "views": {},
                 }
             ),

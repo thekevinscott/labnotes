@@ -6,6 +6,7 @@ from textual.binding import Binding
 from textual.widget import Widget
 from textual.widgets import DataTable, Static
 
+from labnotes.runs_view_command import runs_view_command
 from labnotes.tui.fill_table import fill_table
 from labnotes.tui.invocation_columns import invocation_columns
 from labnotes.tui.invocation_rows import invocation_rows
@@ -61,8 +62,9 @@ class RunsBrowser(Widget):
             fill_table(self.query_one(DataTable), [], [])
             return
         self.experiment = experiment
-        if experiment.runs_view is not None and self.view is None:
-            self.process = ViewProcess(experiment.runs_view, experiment.root)
+        command = runs_view_command(dict(experiment.config))
+        if command is not None and self.view is None:
+            self.process = ViewProcess(command, experiment.root)
             self.view = RunsView(self.process.request)
         if self.view is not None:
             rows = {folder: dict(row) for folder, row in experiment.runs.items()}
@@ -111,7 +113,7 @@ class RunsBrowser(Widget):
             return
         key = str(table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value)
         groups = {
-            group["name"] for group in self.experiment.groups or () if not group["flat"]
+            group.name for group in self.experiment.groups or () if not group.flat
         }
         if key in groups:
             self.opened ^= {key}

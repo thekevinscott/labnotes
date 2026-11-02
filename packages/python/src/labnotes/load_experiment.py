@@ -19,6 +19,7 @@ from labnotes.parse_run_view import parse_run_view
 from labnotes.pivot_runs import pivot_runs
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
+from labnotes.run_columns import run_columns
 from labnotes.runs_view_command import runs_view_command
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
@@ -50,7 +51,7 @@ async def load_experiment(
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)
-    shown = ["id", *(key for key in varies if key != "id"), "started", "duration"]
+    shown = run_columns(config)
     choices = {
         key: {format_value(value): json.dumps(value) for value in values}
         for key, values in varies.items()
@@ -93,6 +94,7 @@ async def load_experiment(
     return {
         "name": row["name"],
         "display_name": row["display_name"],
+        "config": config,
         "config_source": row["source"],
         "counts_set": "counts" in (config or {}),
         **summary,

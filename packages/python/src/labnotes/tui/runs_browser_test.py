@@ -7,6 +7,7 @@ from unittest import mock
 import pytest
 
 from labnotes.tui.runs_browser import Changed, Experiment, RunOutput, RunsBrowser
+from labnotes.view.group import Group
 
 ROOT = Path("/p/project")
 RUNS = {
@@ -17,8 +18,11 @@ EXPERIMENT = Experiment(
     ROOT,
     "alpha",
     RUNS,
-    ("id",),
-    ({"name": "inv", "flat": False}, {"name": "lone", "flat": True}),
+    {"command": "go"},
+    groups=(
+        Group("inv", ("alpha/runs/inv/first",), False),
+        Group("lone", ("alpha/runs/lone",), True),
+    ),
 )
 COLUMNS = [{"key": "status", "label": ""}, {"key": "id", "label": "id"}]
 CHANGED = Changed(EXPERIMENT)
@@ -42,6 +46,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as runs_table,
         mock.patch("labnotes.tui.runs_browser.fill_table") as fill_table,
         mock.patch("labnotes.tui.runs_browser.RunPanel") as run_panel,
+        mock.patch(
+            "labnotes.tui.runs_browser.runs_view_command",
+            side_effect=lambda config: config.get("views", {}).get("runs"),
+        ) as runs_view_command,
     ):
         yield {
             "invocation_columns": invocation_columns,
@@ -50,6 +58,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "runs_table": runs_table,
             "fill_table": fill_table,
             "run_panel": run_panel,
+            "runs_view_command": runs_view_command,
         }
 
 
@@ -138,7 +147,9 @@ def test_hides_the_status_line_without_a_runs_view(
     assert status.display is False
 
 
-VIEWED = Changed(dataclasses.replace(EXPERIMENT, runs_view="uv run view.py"))
+VIEWED = Changed(
+    dataclasses.replace(EXPERIMENT, config={"views": {"runs": "uv run view.py"}})
+)
 
 
 @pytest.fixture
@@ -159,11 +170,17 @@ def runs_view(process: mock.MagicMock) -> Iterator[mock.MagicMock]:
 
 
 def test_starts_the_runs_view_once(
-    browser: RunsBrowser, process: mock.MagicMock, runs_view: mock.MagicMock
+    browser: RunsBrowser,
+    process: mock.MagicMock,
+    runs_view: mock.MagicMock,
+    collaborators: dict[str, mock.MagicMock],
 ) -> None:
     browser.on_labnotes_changed(VIEWED)
     browser.on_labnotes_changed(VIEWED)
 
+    collaborators["runs_view_command"].assert_called_with(
+        {"views": {"runs": "uv run view.py"}}
+    )
     process.assert_called_once_with("uv run view.py", ROOT)
     runs_view.assert_called_once_with(process.return_value.request)
     assert (

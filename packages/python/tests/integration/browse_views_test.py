@@ -90,6 +90,7 @@ def test_switches_between_the_runs_table_and_a_view_that_updates_live(
     term = labnotes(terminal, root, "alpha")
     expect(term.get_by_text("2✓ 0✕")).to_be_visible()
     expect(term.get_by_text("progress")).to_be_visible()
+    expect(term.get_by_text("1 runs")).to_be_visible()
 
     term.write("2")
     expect(term.get_by_text("progress: 2 runs in alpha")).to_be_visible()
@@ -106,6 +107,21 @@ def test_switches_between_the_runs_table_and_a_view_that_updates_live(
 
     term.write("2")
     expect(term.get_by_text("progress: 3 runs")).to_be_visible()
+    term.write("0")
+    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+
+    term.key_ctrl_c()
+    term.wait()
+
+
+def test_shows_no_view_keys_with_only_the_built_in_view(
+    terminal, tmp_path: Path
+) -> None:
+    term = labnotes(terminal, project(tmp_path, {}), "alpha")
+    expect(term.get_by_text("2✓ 0✕")).to_be_visible()
+    expect(term.get_by_text("Back")).to_be_visible()
+    expect(term.get_by_text("1 runs")).not_to_be_visible()
+
     term.write("0")
     expect(term.get_by_text("2✓ 0✕")).to_be_visible()
 

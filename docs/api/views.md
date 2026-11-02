@@ -13,7 +13,7 @@ runs = "uv run views/runs.py"
 progress = "views/progress.py:Progress"
 ```
 
-Every key except `runs` names a custom view. Its value is `path/to/file.py:ClassName`, relative to the project root. Views appear in config order: the built-in view is `1`, and custom views use `2` through `9`. Press `0` or Escape to return to the built-in view; a view's own Escape binding gets the key first. The footer shows the view names and keys. A view keeps its widget and state while you switch away. A view that raises during import or mounting shows its error in that view's body, and the other views keep working.
+Every key except `runs` names a custom view. Its value is `path/to/file.py:ClassName`, relative to the project root. Views appear in config order: the built-in view is `1`, and custom views use `2` through `9`. Press `0` or Escape to return to the built-in view; a view's own Escape binding gets the key first. The footer shows the view names and keys, only when there is more than one view. A view keeps its widget and state while you switch away. A view that raises during import or mounting shows its error in that view's body, and the other views keep working.
 
 Views run in labnotes' own process and Python environment: they can import `textual`, `rich`, `labnotes` and the standard library; other dependencies need `uvx --with ...`.
 
@@ -39,15 +39,14 @@ class Progress(Static):
         self.update(f"{passed} of {len(experiment.runs)} passed")
 ```
 
-The class must be constructible without arguments. `Changed.experiment` contains:
+The class must be constructible without arguments. `Changed.experiment` holds data only; the view decides how to show it:
 
 - `root`: the project path.
 - `name`: the experiment name.
-- `runs`: run rows keyed by folder relative to the root, in table order.
-- `columns`: the run columns the config shows.
-- `groups`: the invocations, each with its `runs` as the same rows, or `None` when runs aren't nested.
+- `runs`: one row per run, keyed by run folder relative to the root, in run order.
+- `config`: the experiment's config as labnotes resolved it, read-only.
 - `live`: whether a run is still going.
-- `runs_view`: the `[views] runs` command, or `None`.
+- `groups`: a tuple of `labnotes.view.Group`, or `None` when runs aren't nested. Each `Group` has a `name`, the `folders` of its runs (keys into `runs`), and `flat`, true for a run that ran on its own.
 
 `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
 

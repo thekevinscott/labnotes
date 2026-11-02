@@ -22,6 +22,7 @@ def test_failure_shows_a_plain_traceback() -> None:
     shown = failure("progress", ValueError("bad [bold]view"))
 
     assert "ValueError: bad [bold]view" in str(shown.content)
+    assert "ValueError: bad [bold]view" in str(shown.visual)
     assert shown.has_class("failure")
 
 

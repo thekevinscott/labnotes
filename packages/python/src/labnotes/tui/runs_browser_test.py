@@ -386,6 +386,7 @@ def test_escape_closes_the_run_and_shows_the_table(
         ("lone", "open_row", False),
         ("lone", "close_run", True),
         (None, "other", True),
+        (None, "a", True),
         ("lone", "other", True),
     ],
 )

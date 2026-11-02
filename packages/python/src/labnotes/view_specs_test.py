@@ -7,8 +7,15 @@ from labnotes.view_specs import view_specs
     ("config", "specs"),
     [
         (
-            {"views": {"b": "b.py:B", "runs": "uv run v.py", "a": "a.py:A"}},
-            {"b": "b.py:B", "a": "a.py:A"},
+            {
+                "views": {
+                    "b": "b.py:B",
+                    "runs": "uv run v.py",
+                    "stages": "s.py:S",
+                    "a": "a.py:A",
+                }
+            },
+            {"b": "b.py:B", "stages": "s.py:S", "a": "a.py:A"},
         ),
         ({"views": {"a": 1}}, {}),
         ({"views": "x"}, {}),

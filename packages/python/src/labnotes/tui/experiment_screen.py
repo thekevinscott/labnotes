@@ -107,7 +107,7 @@ class ExperimentScreen(Screen[None]):
         # Screen bindings are fixed per class; each screen's view names differ.
         for number, name in enumerate(["runs", *names], 1):
             self._bindings.bind(str(number), f"show_view({number})", name)
-        self._bindings.bind("0", "show_view(1)", show=False)
+        self._bindings.bind("0", "show_view(1)")
         self.refresh_bindings()
 
     def deliver(

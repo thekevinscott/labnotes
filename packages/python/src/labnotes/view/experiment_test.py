@@ -38,6 +38,10 @@ def test_holds_data_only() -> None:
     ]
 
 
+def test_keeps_no_instance_dict() -> None:
+    assert not hasattr(Experiment(Path("/p"), "alpha", ()), "__dict__")
+
+
 def test_is_frozen() -> None:
     experiment = Experiment(Path("/p"), "alpha", ())
 

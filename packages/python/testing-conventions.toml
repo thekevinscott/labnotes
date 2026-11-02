@@ -7,8 +7,8 @@ reason = "last_stream is always the same str object taken from STREAMS, so is eq
 [[python.exempt]]
 path = "src/labnotes/tui/experiment_screen.py"
 rules = ["mutation"]
-lines = [64]
-reason = "WorkerState members are singletons, so is equals =="
+lines = [64, 140]
+reason = "WorkerState members are singletons, so is equals ==; view pane ids run view-1 through view-9 and none sorts below view-1, so <= equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/experiments_screen.py"

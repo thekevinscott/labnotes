@@ -26,9 +26,9 @@ An experiment's Runs tab shows a table of its runs, with each param as a column,
 - Click a run to see its `stdout.log` and `stderr.log`. For a run that [continues](api/config#continues), you see its latest invocation's logs. If the run is still going, its output streams in as it's written.
 - If the run's script logs blocks with [`labnotes.log`](api/sdk#log), they show above the output. Each block is one line, cut off at the edge; click it to read the whole block, and click again to fold it. A streaming block grows in place as its pieces arrive. ANSI color and styles show as styled text.
 
-In [`adhoc`](cli/adhoc) mode, runs are grouped by the invocation that made them. Each group row shows its counts and the param values its runs share. Groups start collapsed; while a filter is on, the groups with matches open and show how many of their runs matched.
+Runs that older versions of labnotes nested in one invocation folder are grouped by that folder. Each group row shows its counts and the param values its runs share. Groups start collapsed; while a filter is on, the groups with matches open and show how many of their runs matched.
 
-In [`matrix`](cli/matrix) mode, the icons above the table switch between the table and a grid. The grid has one cell per combination of the params that vary: the last param runs across, the rest run down. Each cell shows how many runs count toward `repeats`, and clicking it opens the table filtered to that combination. Ad-hoc experiments have no grid.
+The icons above the table switch between the table and a grid. The grid has one cell per combination of the params that vary: the last param runs across, the rest run down. Each cell shows how many runs count toward `repeats`, and clicking it opens the table filtered to that combination.
 
 The `experiment.toml` button opens the experiment's config.
 

@@ -55,6 +55,7 @@ experiments folder:
 name = "Model and effort"
 command = "uv run scripts/study.py --output {run_dir}"
 repeats = 5
+continues = false
 
 [params]
 model = ["opus", "sonnet"]
@@ -64,22 +65,26 @@ effort = ["low", "high"]
 `name` is optional: a display name for the experiment, shown in the live view
 and as `display_name` in `experiments`. The folder name stays the key, so
 renaming the experiment means editing `name`.
-Each combination of `[params]` runs `repeats` times (1 if omitted), round-robin, on every
-`run`, whatever is already on disk. That is `mode = "adhoc"`, the default.
-`mode = "matrix"` counts what is there: only runs that count fill a combination,
-so running again fills in what failed or never ran. `mode` under
-`[experiments]` in `.labnotes.toml` sets it for every experiment that doesn't
-set its own.
-Each run gets a new run folder. In `matrix` mode it is named for the UTC time it was planned
-(`runs/20261020-000429-brave-fox`). In `adhoc` mode a `run` command that plans one run names
-its folder the same way. One that plans more gets one folder named that way, and its runs nest
-inside it (`runs/20261020-000429-brave-fox/quiet-river`); the run id is that path under `runs/`. Either way, folder listings sort by start. `command` runs in a shell from the root, with
+Each combination of `[params]` needs `repeats` runs that count (1 if omitted).
+`run` plans only the combinations short of that, round-robin, so running again
+fills in what failed or never ran, and a finished experiment plans nothing
+(`Nothing to run: every combination has its repeats.`). To start over, make a
+new experiment folder with the same `experiment.toml`. `mode` is gone; setting
+it is a config error.
+`continues` is required, in `experiment.toml` or `[experiment]` in
+`.labnotes.toml`. `continues = true` invokes a failed, stopped or lost run again
+in its own folder, with the same params and `{run_dir}`; `run.json` then lists
+each attempt under `"invocations"`. `continues = false` gives the combination a
+new folder. Never delete `run.json`, `stdout-*`, `stderr-*` or `run.lock` from a
+run folder.
+Each new run gets a run folder named for the UTC time it was planned
+(`runs/20261020-000429-brave-fox`), so folder listings sort by start. Older
+versions nested several runs in one invocation folder
+(`runs/20261020-000429-brave-fox/quiet-river`, run id is that path); those still
+list and count. Only one `run` of an experiment goes at a time; a second refuses. `command` runs in a shell from the root, with
 `{run_dir}` replaced by the run folder's absolute path. Pass it to the
-script so it writes its outputs there. `{invocation_dir}` is the shared adhoc
-group folder's absolute path when several runs are planned. With one planned
-run it stays at the first attempt's folder across retries, while `{run_dir}`
-changes per attempt. With several matrix runs, it equals each run's `{run_dir}`.
-Both placeholders are shell-quoted.
+script so it writes its outputs there. `{invocation_dir}` is the same
+folder as `{run_dir}`. Both placeholders are shell-quoted.
 Each param is appended as `--name value`, with the name as written (use
 `source-language` for a `--source-language` flag), booleans as 0 or 1, and lists
 and tables as JSON. labnotes writes `run.json` (params, `command`, created,
@@ -114,9 +119,7 @@ existing value without dropping other keys. Values must be JSON serializable;
 reading before any write returns `{}`. Runs can only read: `set_state` raises
 `RuntimeError` there. Both functions raise outside an invocation and in `meta`.
 Labnotes gives setup/teardown `LABNOTES_STATE` and runs `LABNOTES_RUN_STATE`,
-pointing to `state.json` in the multi-run adhoc group folder or the lone run's
-folder, or, without a shared folder, a temp
-file kept through all runs and teardown and then removed. Queued runs and retries
+pointing to a temp file kept through all runs and teardown and then removed. Queued runs and retries
 read the same file after setup finishes. `meta` receives neither state variable;
 state is never copied into `run.json`.
 Nested labnotes invocations clear inherited `LABNOTES_*` context for their
@@ -182,7 +185,7 @@ Escape clears it. `x` stops the
 running run under the cursor; `x` again kills it. `+` and
 `-` change how many run at once; lowering it lets running runs
 finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
-they're written, and Escape returns to the table. An `adhoc` experiment that
+they're written, and Escape returns to the table. A `run` that
 plans a single run opens straight on its output. `q` quits and leaves the runs
 going. Elsewhere, it prints a line per event instead.
 
@@ -218,4 +221,4 @@ going. Elsewhere, it prints a line per event instead.
   was retried counts as retried, not failed. If it can't
   start a run, it prints the cause on one line and exits 1.
 
-`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. For a matrix experiment, the Runs tab also has a grid (`?view=grid`): one cell per combination of the params that vary, with how many runs count toward `repeats`. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.
+`uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. The Runs tab also has a grid (`?view=grid`): one cell per combination of the params that vary, with how many runs count toward `repeats`. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

@@ -230,6 +230,7 @@ def test_runs_an_experiment_in_process(
         None,
         None,
         None,
+        None,
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["start_experiment"].return_value
@@ -258,7 +259,22 @@ def test_passes_the_setup_and_teardown_flags(
 ) -> None:
     assert run(["a", "run", "--setup", "up", "--teardown", "down"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[7:] == ("up", "down")
+    assert drivers["start_experiment"].call_args.args[7:9] == ("up", "down")
+
+
+def test_passes_the_labnotes_command_line(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    ctx = experiments.make_context("experiments", ["a", "run"])
+    ctx.meta["labnotes.command_line"] = "labnotes experiments a run"
+
+    with ctx:
+        experiments.invoke(ctx)
+
+    assert drivers["start_experiment"].call_args.args[9] == (
+        "labnotes experiments a run"
+    )
 
 
 def test_runs_the_subset_given_as_params(
@@ -275,6 +291,7 @@ def test_runs_the_subset_given_as_params(
         None,
         5,
         drivers["parse_subset"].return_value,
+        None,
         None,
         None,
         None,
@@ -449,6 +466,7 @@ def test_shows_the_live_view_in_a_terminal(
         3,
         None,
         {},
+        None,
         None,
         None,
         None,

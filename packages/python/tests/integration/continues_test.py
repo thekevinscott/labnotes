@@ -2,8 +2,10 @@ import asyncio
 import fcntl
 import json
 import os
+import shlex
 import sys
 from collections.abc import Iterator
+from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
@@ -148,6 +150,29 @@ def test_args_and_commit_are_recorded_per_invocation(tmp_path: Path) -> None:
     assert second["args"] == ["--memory", "24g"]
     assert record["args"] == ["--memory", "24g"]
     assert {"git", "ended_by"} <= first.keys()
+
+
+def test_each_invocation_records_its_labnotes_version_and_command_line(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path, "1")
+    config = ["-c", str(root / ".labnotes.toml")]
+    later = ["experiments", "exp", "run", "--m=a", "--", "--memory", "24g"]
+
+    run(root)
+    assert labnotes(root, later) == 0
+
+    [record] = folders(root).values()
+    first, second = record["invocations"]
+    command = shlex.join(["labnotes", *config, *later])
+    assert first["labnotes_command"] == shlex.join(
+        ["labnotes", *config, "experiments", "exp", "run"]
+    )
+    assert second["labnotes_command"] == command
+    assert record["labnotes_command"] == command
+    assert first["labnotes_version"] == version("labnotes")
+    assert second["labnotes_version"] == version("labnotes")
+    assert record["labnotes_version"] == version("labnotes")
 
 
 def run_now(root: Path) -> list[dict[str, object]]:

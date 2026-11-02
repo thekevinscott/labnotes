@@ -74,6 +74,8 @@ In the runs listing, `memory` is the resident memory of a running run's command 
 
 Each run's `run.json` also records `git`: `{"commit": "<full HEAD SHA>", "dirty": false}`, captured from the command's working directory before it starts. `dirty` counts staged and unstaged changes to tracked files, plus untracked files that are not ignored. Every run, including a retry, gets a fresh lookup. `git` is `null` outside a Git repository, when Git is unavailable, or if the lookup fails (including a repository with no commits). Older records lack this key.
 
+Each run's `run.json` also records `labnotes_version`, the installed labnotes version that ran it, and `labnotes_command`, the labnotes command line that started it, like `"labnotes -c .labnotes.toml experiments exp run --model=small -- --auth api"`. The command line holds the `-- ARGS` too, so the same rule applies: never pass secrets. Older records lack these keys.
+
 A run stopped by `--timeout 600` records `"error": "timed out after 10m 00s"` in its `run.json`, next to the exit code it ended with, and `"ended_by": "timeout"`. The live TUI and the run's web page show that error in place of the exit code, and it counts as failed.
 
 ## `server`

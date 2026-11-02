@@ -96,4 +96,6 @@ ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) stops
 
 `run.json` also records why a run ended, in `ended_by`: `"timeout"` for `--timeout`, `"stop"` when labnotes stopped it (Ctrl-C, SIGHUP, or killing the run in the TUI), `"signal"` when a signal labnotes didn't send ended it, like the kernel's out-of-memory killer, `"lost"` when the process running it died without labnotes noticing (labnotes was killed, the machine rebooted), and `null` when the script exited on its own. `signal` holds the signal number, read from the exit code: a negative code, or 128 plus the number when the shell reports it (137 is SIGKILL, 9). A script that catches a signal and exits with its own code leaves `signal` null, and one that exits 137 on purpose reads as SIGKILL.
 
+`run.json` also records the labnotes version that ran the run, in `labnotes_version`, and the labnotes command line that started it, in `labnotes_command`, so you can tell which release ran an old run and launch it again the same way.
+
 The next `run` invocation marks lost runs when it starts: an unfinished run whose `pid` is gone, or now belongs to another process, gets `"ended_by": "lost"` and the time it was noticed as `ended`. Its `exit_code` stays `null`, since nobody saw it exit. A run whose process is still alive stays unfinished until a later run start finds it gone.

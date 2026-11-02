@@ -2,6 +2,7 @@ from pathlib import Path
 
 import click
 
+from labnotes.command_line_group import CommandLineGroup
 from labnotes.context_guide import context_guide
 from labnotes.experiments import experiments
 from labnotes.init import init
@@ -11,6 +12,7 @@ from labnotes.server import server
 
 
 @click.group(
+    cls=CommandLineGroup,
     invoke_without_command=True,
     help="Manage experiments in a folder. `labnotes context` prints a guide for"
     " coding agents.",

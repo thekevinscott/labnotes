@@ -5,6 +5,7 @@ import os
 import time
 from collections.abc import Callable, Sequence
 from datetime import UTC, datetime
+from importlib.metadata import version
 from pathlib import Path
 
 import psutil
@@ -43,6 +44,7 @@ async def execute_run(
     environment: dict[str, str] | None = None,
     git_info: dict[str, str | bool] | None = None,
     continues: bool = False,
+    command_line: str | None = None,
 ) -> dict[str, object]:
     resolved = shell_command(command, folder, params, args)
     git = git_info if git_info is not None else await asyncio.to_thread(run_git, root)
@@ -56,6 +58,8 @@ async def execute_run(
         "ended_by": None,
         "signal": None,
         "git": git,
+        "labnotes_version": version("labnotes"),
+        "labnotes_command": command_line,
     }
     if args:
         run["args"] = list(args)
@@ -76,6 +80,8 @@ async def execute_run(
             "error": None,
             "git": None if git is None else git["commit"],
             "args": list(args),
+            "labnotes_version": run["labnotes_version"],
+            "labnotes_command": command_line,
             **logs,
         }
         record = folder / "run.json"

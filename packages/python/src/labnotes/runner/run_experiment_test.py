@@ -214,6 +214,31 @@ def test_passes_snapshot_root_and_starting_git_info_to_cells(
         assert (folder / "git-diff.patch").read_bytes() == b"patch"
 
 
+def test_passes_the_labnotes_command_line_to_each_run(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+
+    def listening(controls: object) -> None:
+        controls.finish()  # type: ignore[attr-defined]
+
+    settle(
+        run_experiment(
+            config,
+            "exp",
+            experiment(),
+            1,
+            mock.Mock(),
+            listening,
+            command_line="labnotes experiments exp run",
+        )
+    )
+
+    calls = collaborators["execute_run"].await_args_list
+    assert calls
+    assert {c.kwargs["command_line"] for c in calls} == {"labnotes experiments exp run"}
+
+
 def test_plans_only_the_cells_in_the_subset(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

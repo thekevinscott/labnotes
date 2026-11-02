@@ -38,6 +38,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as wait_for_tree,
         mock.patch("labnotes.runner.execute_run.psutil") as psutil,
         mock.patch(
+            "labnotes.runner.execute_run.version", return_value="9.9.9"
+        ) as version,
+        mock.patch(
             "labnotes.runner.execute_run.record_memory", new=mock.AsyncMock()
         ) as record_memory,
     ):
@@ -52,6 +55,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "process": process,
             "psutil": psutil,
             "record_memory": record_memory,
+            "version": version,
         }
 
 
@@ -156,6 +160,8 @@ def test_records_the_run_before_and_after(
         "ended_by": None,
         "signal": None,
         "git": {"commit": "abc", "dirty": False},
+        "labnotes_version": "9.9.9",
+        "labnotes_command": None,
     }
     spawned = {**started, "pid": 42, "pid_created": 1234.5}
     assert snapshots == [started, spawned, {**spawned, "ended": "end", "exit_code": 3}]
@@ -163,6 +169,15 @@ def test_records_the_run_before_and_after(
     collaborators["run_git"].assert_called_once_with(tmp_path / "root")
     assert collaborators["write_run_json"].call_args.args[0] == tmp_path
     collaborators["psutil"].Process.assert_called_once_with(42)
+    collaborators["version"].assert_called_once_with("labnotes")
+
+
+def test_records_the_labnotes_command_line(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    result = run(tmp_path, command_line="labnotes experiments exp run")
+
+    assert result["labnotes_command"] == "labnotes experiments exp run"
 
 
 def test_runs_without_git_metadata(
@@ -621,7 +636,12 @@ def test_stops_recording_memory_when_the_run_ends(
 def test_a_run_that_continues_logs_each_invocation_apart(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    result = run(tmp_path, args=("--memory", "8g"), continues=True)
+    result = run(
+        tmp_path,
+        args=("--memory", "8g"),
+        continues=True,
+        command_line="labnotes experiments exp run",
+    )
 
     kwargs = collaborators["spawn"].await_args.kwargs
     stdout, stderr = Path(kwargs["stdout"].name), Path(kwargs["stderr"].name)
@@ -637,6 +657,8 @@ def test_a_run_that_continues_logs_each_invocation_apart(
             "error": None,
             "git": "abc",
             "args": ["--memory", "8g"],
+            "labnotes_version": "9.9.9",
+            "labnotes_command": "labnotes experiments exp run",
             "stdout": stdout.name,
             "stderr": stderr.name,
         }

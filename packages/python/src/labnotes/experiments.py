@@ -4,6 +4,7 @@ from pathlib import Path
 
 import click
 
+from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
 from labnotes.runner.start_experiment import start_experiment
 from labnotes.utils.format_bytes import format_bytes
@@ -163,6 +164,7 @@ def experiments(
                 passthrough or None,
                 setup,
                 teardown,
+                ctx.meta.get(COMMAND_LINE),
             )
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():

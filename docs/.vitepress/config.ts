@@ -57,7 +57,7 @@ export default defineConfig({
       },
       {
         text: 'Proposals',
-        items: [{ text: 'Batches', link: '/proposals/batches' }],
+        items: [{ text: 'Planning and Runs', link: '/proposals/planning' }],
       },
     ],
     socialLinks: [{ icon: 'github', link: repository }],

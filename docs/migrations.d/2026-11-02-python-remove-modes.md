@@ -13,7 +13,7 @@ The `adhoc` / `matrix` split is gone, and `continues` is now required. Every exp
 
 `continues` can also go under `[experiment]` in `.labnotes.toml`, which every `experiment.toml` builds on.
 
-To repeat a finished ad hoc experiment from scratch, make a new experiment folder with the same `experiment.toml`.
+To repeat a finished ad hoc experiment from scratch, make a new experiment with `labnotes experiments new NAME --from OLD`. The copy drops `mode` and gets `continues = false` if it had none.
 
 ## Deprecations removed
 

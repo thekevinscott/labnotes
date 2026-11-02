@@ -68,9 +68,9 @@ renaming the experiment means editing `name`.
 Each combination of `[params]` needs `repeats` runs that count (1 if omitted).
 `run` plans only the combinations short of that, round-robin, so running again
 fills in what failed or never ran, and a finished experiment plans nothing
-(`Nothing to run: every combination has its repeats.`). To start over, make a
-new experiment folder with the same `experiment.toml`. `mode` is gone; setting
-it is a config error.
+(`Nothing to run: every combination has its repeats.`). To start over, copy it
+with `experiments new NAME --from OLD`, which drops `mode` and fills in
+`continues`. `mode` is gone; setting it is a config error.
 `continues` is required, in `experiment.toml` or `[experiment]` in
 `.labnotes.toml`. `continues = true` invokes a failed, stopped or lost run again
 in its own folder, with the same params and `{run_dir}`; `run.json` then lists

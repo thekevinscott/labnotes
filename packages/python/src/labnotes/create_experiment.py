@@ -43,7 +43,8 @@ def create_experiment(
     path = folder(name)
     if path.exists():
         raise ValueError(f"{name} already exists at {path}.")
-    text = STARTER
+    inherited = config.defaults.get("continues") is True
+    text = STARTER.replace("continues = false", f"continues = {str(inherited).lower()}")
     if source is not None:
         origin = folder(source) / "experiment.toml"
         if not origin.is_file():
@@ -55,7 +56,7 @@ def create_experiment(
     else:
         path.mkdir(parents=True)
     (path / "experiment.toml").write_text(
-        experiment_definition(text, source, command, repeats, params or {}),
+        experiment_definition(text, source, command, repeats, params or {}, inherited),
         encoding="utf-8",
     )
     return path

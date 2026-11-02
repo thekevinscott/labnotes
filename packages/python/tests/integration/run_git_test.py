@@ -93,7 +93,9 @@ def test_untracked_files_make_the_run_dirty_and_land_in_its_patch(
     (tmp_path / ".gitignore").write_text("ignored.txt\n")
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
-    (tmp_path / "exp/experiment.toml").write_text('command = "true"\n')
+    (tmp_path / "exp/experiment.toml").write_text(
+        'continues = false\ncommand = "true"\n'
+    )
     git(tmp_path, "init")
     git(tmp_path, "add", ".")
     git(tmp_path, "commit", "-m", "initial")

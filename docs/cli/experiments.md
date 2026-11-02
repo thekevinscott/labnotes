@@ -109,7 +109,7 @@ An experiment is a list of runs you want: every combination of `[params]`, `repe
 
 By default a run counts when it exited 0 and its `run.json` doesn't hold `"excluded": true`. Set `counts` in `experiment.toml` to replace that rule with a SQL condition over `runs`, like `exit_code = 0 AND created > '2026-10-01'`.
 
-To start over with the same design, make a new experiment folder with the same `experiment.toml`. An experiment holds one design and the runs toward it.
+To start over with the same design, copy it with `labnotes experiments new NAME --from OLD`. An experiment holds one design and the runs toward it.
 
 ### Running part of the grid
 

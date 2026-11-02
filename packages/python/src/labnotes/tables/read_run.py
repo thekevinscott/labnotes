@@ -13,6 +13,10 @@ def read_run(
         return []
     run = json.loads(Path(path).read_text(encoding="utf-8"))
     folder = relative.removesuffix("/run.json")
+    logs = {"stdout": "stdout.log", "stderr": "stderr.log"}
+    match run.get("invocations"):
+        case [*_, {"stdout": str() as stdout, "stderr": str() as stderr}]:
+            logs = {"stdout": stdout, "stderr": stderr}
     return [
         {
             "experiment": experiment or found["experiment"],
@@ -22,8 +26,8 @@ def read_run(
             "ended": run.get("ended"),
             "exit_code": run.get("exit_code"),
             "error": run.get("error"),
-            "stdout": f"{folder}/stdout.log",
-            "stderr": f"{folder}/stderr.log",
+            "stdout": f"{folder}/{logs['stdout']}",
+            "stderr": f"{folder}/{logs['stderr']}",
             "params": json.dumps(run.get("params", {})),
             "meta": None if (meta := run.get("meta")) is None else json.dumps(meta),
             "command": run.get("command"),

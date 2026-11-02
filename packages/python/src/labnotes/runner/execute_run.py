@@ -1,13 +1,16 @@
 import asyncio
 import contextlib
+import json
 import os
 import time
 from collections.abc import Callable, Sequence
+from datetime import UTC, datetime
 from pathlib import Path
 
 import psutil
 
 from labnotes.log_path import LOG_ENV, RUN_ENV
+from labnotes.runner.continue_run import continue_run
 from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.record_memory import record_memory
 from labnotes.runner.run_git import run_git
@@ -39,8 +42,10 @@ async def execute_run(
     memory_interval: float,
     environment: dict[str, str] | None = None,
     git_info: dict[str, str | bool] | None = None,
+    continues: bool = False,
 ) -> dict[str, object]:
     resolved = shell_command(command, folder, params, args)
+    git = git_info if git_info is not None else await asyncio.to_thread(run_git, root)
     run: dict[str, object] = {
         "params": params,
         "command": resolved,
@@ -50,9 +55,7 @@ async def execute_run(
         "error": None,
         "ended_by": None,
         "signal": None,
-        "git": git_info
-        if git_info is not None
-        else await asyncio.to_thread(run_git, root),
+        "git": git,
     }
     if args:
         run["args"] = list(args)
@@ -60,14 +63,32 @@ async def execute_run(
         run["retry_of"] = retry_of
     if meta is not None:
         run["meta"] = meta
+    logs = {stream: f"{stream}.log" for stream in ("stdout", "stderr")}
+    invocation: dict[str, object] | None = None
+    if continues:
+        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+        logs = {stream: f"{stream}-{stamp}.txt" for stream in logs}
+        invocation = {
+            "started": run["created"],
+            "ended": None,
+            "exit_code": None,
+            "ended_by": None,
+            "error": None,
+            "git": None if git is None else git["commit"],
+            "args": list(args),
+            **logs,
+        }
+        record = folder / "run.json"
+        previous = json.loads(record.read_text()) if record.exists() else {}
+        run = continue_run(previous, run, invocation)
     write_run_json(folder, run)
     run_environment = os.environ if environment is None else environment
     botbox_labels = f"labnotes.run={folder.resolve()}"
     if existing_labels := run_environment.get("BOTBOX_LABELS"):
         botbox_labels = f"{existing_labels}\n{botbox_labels}"
     with (
-        (folder / "stdout.log").open("wb") as stdout,
-        (folder / "stderr.log").open("wb") as stderr,
+        (folder / logs["stdout"]).open("wb") as stdout,
+        (folder / logs["stderr"]).open("wb") as stderr,
     ):
         try:
             process = await asyncio.create_subprocess_shell(
@@ -138,5 +159,9 @@ async def execute_run(
                     await asyncio.wait({sampler})
                 running.discard(process)
     run["ended"] = iso_time(time.time())
+    if invocation is not None:
+        invocation |= {
+            key: run[key] for key in ("ended", "exit_code", "ended_by", "error")
+        }
     write_run_json(folder, run)
     return run

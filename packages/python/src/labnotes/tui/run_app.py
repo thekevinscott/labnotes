@@ -164,8 +164,12 @@ class RunApp(App[None]):
                 if self.waiting.pop(run, None) is not None:
                     outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retried"
                     self.set_cell(run, "status", Text(outcome, style="red"))
-                self.retried.add(run)
                 again = str(event["retry"])
+                if again == run:
+                    self.failed.discard(run)
+                    self.ended.discard(run)
+                else:
+                    self.retried.add(run)
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 self.cells[again] = self.waiting_cells(again, args)
                 self.pending.add(again)

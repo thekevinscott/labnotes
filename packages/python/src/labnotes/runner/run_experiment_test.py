@@ -1,5 +1,6 @@
 import asyncio
 import inspect
+import os
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
 from typing import Any
@@ -19,7 +20,9 @@ def settle[T](work: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(asyncio.wait_for(work, 5))
 
 
-def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
+def experiment(
+    mode: str = "matrix", retries: int = 2, continues: bool = False
+) -> mock.Mock:
     config = mock.Mock(
         command="run",
         params={"m": ["a", "b"]},
@@ -32,6 +35,7 @@ def experiment(mode: str = "matrix", retries: int = 2) -> mock.Mock:
         setup=None,
         teardown=None,
         env={},
+        continues=continues,
     )
     config.name = None
     return config
@@ -52,6 +56,17 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
                 ]
             ),
         ) as list_runs,
+        mock.patch(
+            "labnotes.runner.run_experiment.list_resumable_runs",
+            new=mock.AsyncMock(return_value=[]),
+        ) as resumable,
+        mock.patch(
+            "labnotes.runner.run_experiment.claim_run",
+            side_effect=lambda folder: 100 + len(folder.name),
+        ) as claim_run,
+        mock.patch(
+            "labnotes.runner.run_experiment.os", mock.Mock(environ=os.environ)
+        ) as patched_os,
         mock.patch(
             "labnotes.runner.run_experiment.experiment_run_ids",
             new=mock.AsyncMock(return_value=set()),
@@ -105,6 +120,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         yield {
             "open_tables": open_tables,
             "list_runs": list_runs,
+            "resumable": resumable,
+            "claim_run": claim_run,
+            "close": patched_os.close,
             "run_ids": run_ids,
             "param_grid": param_grid,
             "plan_runs": plan_runs,
@@ -131,10 +149,11 @@ def run(
     only: dict[str, list[str]] | None = None,
     args: list[str] | None = None,
     env: dict[str, str] | None = None,
+    continues: bool = False,
 ) -> list[dict[str, object]]:
     config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
     hear = mock.Mock() if listen is None else listen
-    configured = experiment(mode, retries)
+    configured = experiment(mode, retries, continues)
     configured.env = env or {}
 
     def listening(controls: object) -> None:
@@ -1430,3 +1449,133 @@ def test_killing_a_waiting_retry_cancels_it(
         {"event": "retry cancelled", "run": "r1"},
         {"event": "idle"},
     ]
+
+
+def test_continues_a_failed_run_of_the_same_cell(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "old-b", "params": '{"m": "b"}'},
+        {"id": "old-a", "params": '{"m": "a"}'},
+    ]
+    collaborators["plan_runs"].return_value = [A, A]
+    report = mock.Mock()
+
+    results = run(tmp_path, report, continues=True)
+
+    collaborators["resumable"].assert_awaited_once_with(
+        collaborators["open_tables"].return_value, "exp", "c"
+    )
+    assert reported(report)[0]["runs"] == [
+        {"run": "old-a", "params": A},
+        {"run": "r1", "params": A},
+    ]
+    assert started_runs(report) == ["old-a", "r1"]
+    assert [
+        c.kwargs["continues"] for c in collaborators["execute_run"].await_args_list
+    ] == [
+        True,
+        True,
+    ]
+    assert len(results) == 2
+
+
+def test_skips_a_failed_run_someone_else_holds(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "held", "params": '{"m": "a"}'},
+        {"id": "free", "params": '{"m": "a"}'},
+    ]
+    collaborators["claim_run"].side_effect = lambda folder: (
+        None if folder.name == "held" else 7
+    )
+    collaborators["plan_runs"].return_value = [A]
+    report = mock.Mock()
+
+    run(tmp_path, report, continues=True)
+
+    assert started_runs(report) == ["free"]
+    collaborators["close"].assert_called_once_with(7)
+
+
+def test_holds_each_run_lock_until_the_run_is_done(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A, B]
+    claimed: list[Path] = []
+
+    def claim(folder: Path) -> int:
+        claimed.append(folder)
+        return len(claimed)
+
+    collaborators["claim_run"].side_effect = claim
+
+    run(tmp_path, mock.Mock(), continues=True)
+
+    assert claimed == [tmp_path / "exp" / "r1", tmp_path / "exp" / "r2"]
+    assert collaborators["close"].call_args_list == [mock.call(1), mock.call(2)]
+
+
+def test_never_looks_for_failed_runs_without_continues(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, mock.Mock())
+
+    collaborators["resumable"].assert_not_awaited()
+    collaborators["claim_run"].assert_not_called()
+    assert [
+        c.kwargs["continues"] for c in collaborators["execute_run"].await_args_list
+    ] == [
+        False,
+        False,
+    ]
+
+
+def test_retries_a_tempfail_in_the_same_run_when_it_continues(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 0)
+    report = mock.Mock()
+
+    results = run(tmp_path, report, retry_seconds=0.01, continues=True)
+
+    assert started_runs(report) == ["r1", "r1"]
+    assert retry_parents(collaborators) == [None, None]
+    assert {"event": "retried", "run": "r1", "retry": "r1", "params": A} in reported(
+        report
+    )
+    assert [r["exit_code"] for r in results] == [0]
+    collaborators["claim_run"].assert_called_once()
+    collaborators["close"].assert_called_once()
+
+
+def test_releases_a_continuing_run_whose_retry_is_cancelled(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen = mock.Mock()
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75)
+
+    async def go() -> None:
+        config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+
+        def listening(controls: object) -> None:
+            listen(controls)
+            asyncio.get_running_loop().call_later(0.05, controls.interrupt)  # type: ignore[attr-defined]
+            controls.finish()  # type: ignore[attr-defined]
+
+        await run_experiment(
+            config,
+            "exp",
+            experiment(continues=True),
+            1,
+            mock.Mock(),
+            listening,
+            retry_seconds=60,
+        )
+
+    settle(go())
+
+    collaborators["close"].assert_called_once()

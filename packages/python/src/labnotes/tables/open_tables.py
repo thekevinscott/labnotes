@@ -31,8 +31,8 @@ CREATE TABLE runs (
 # Sizes only: the server reads log text from disk, the row change is the signal.
 LOGS = """
 CREATE TABLE logs (
-  experiment TEXT, run TEXT, stream TEXT, size INTEGER,
-  PRIMARY KEY (experiment, run, stream)
+  experiment TEXT, run TEXT, stream TEXT, file TEXT, size INTEGER,
+  PRIMARY KEY (experiment, run, file)
 )
 """
 BLOCKS = """
@@ -90,7 +90,7 @@ def open_tables(config: LabnotesConfig, run_files: bool = False) -> DirSQL:
             Table(
                 name="logs",
                 ddl=LOGS,
-                glob=path_glob(f"{config.runs}/std*.log"),
+                glob=path_glob(f"{config.runs}/std*"),
                 on_file=partial(
                     read_log, root, config.runs, experiment=config.experiment
                 ),

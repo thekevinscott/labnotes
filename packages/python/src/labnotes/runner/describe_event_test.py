@@ -22,6 +22,7 @@ def param_args() -> Iterator[mock.MagicMock]:
             "4 runs to go, 2 at a time.",
         ),
         ({"event": "retried", "run": "r1", "retry": "r2"}, "r1 retried as r2."),
+        ({"event": "retried", "run": "r1", "retry": "r1"}, "r1 retried in its folder."),
         (
             {
                 "event": "retrying",

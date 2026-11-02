@@ -105,3 +105,36 @@ def test_checks_every_unfinished_run(
 
     [(folder, _)] = [c.args for c in collaborators["write"].call_args_list]
     assert folder == Path("/lab/a/runs/r1")
+
+
+@pytest.mark.parametrize("locked", [True, False])
+def test_reads_a_run_with_a_lock_file_by_its_lock(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path, locked: bool
+) -> None:
+    folder = tmp_path / "a/runs/r0"
+    folder.mkdir(parents=True)
+    (folder / "run.lock").write_text("")
+    invocations = [{"exit_code": 1}, {"started": "s", "ended": None}]
+    run = {**GOING, "pid": 7, "invocations": invocations}
+    collaborators["open_tables"].return_value.query.return_value = [
+        {"folder": "a/runs/r0", "run": json.dumps(run)}
+    ]
+
+    with mock.patch(
+        "labnotes.runner.finalize_lost_runs.run_locked", return_value=locked
+    ) as run_locked:
+        asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
+
+    run_locked.assert_called_once_with(folder)
+    collaborators["alive"].assert_not_called()
+    if locked:
+        collaborators["write"].assert_not_called()
+    else:
+        collaborators["write"].assert_called_once_with(
+            folder,
+            {
+                **run,
+                **LOST,
+                "invocations": [{"exit_code": 1}, {"started": "s", **LOST}],
+            },
+        )

@@ -487,12 +487,23 @@ def test_creates_an_experiment_from_flags(
     with mock.patch(
         "labnotes.experiments.create_experiment", return_value=Path("notes/b")
     ) as create_experiment:
-        argv = ["new", "b", "--from", "a", "--command", "go", "--repeats", "3"]
+        # Built at runtime like argv, so an identity check can't pass.
+        new = "".join(["ne", "w"])
+        argv = [new, "b", "--from", "a", "--command", "go", "--repeats", "3"]
         assert run([*argv, "--param", "m=x", "--param", "m=2"]) == 0
 
     create_experiment.assert_called_once_with(
         collaborators["load_config"].return_value, "b", "a", "go", 3, {"m": ["x", 2]}
     )
+
+
+def test_takes_one_repeat(collaborators: dict[str, mock.MagicMock]) -> None:
+    with mock.patch(
+        "labnotes.experiments.create_experiment", return_value=Path("notes/b")
+    ) as create_experiment:
+        assert run(["new", "b", "--repeats", "1"]) == 0
+
+    assert create_experiment.call_args.args[4] == 1
 
 
 def test_reports_a_bad_param(

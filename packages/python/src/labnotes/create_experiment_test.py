@@ -86,7 +86,10 @@ def test_writes_the_flags_into_the_starter(tmp_path: Path) -> None:
 
 def test_copies_another_experiment(tmp_path: Path) -> None:
     write(tmp_path / "notes/base/experiment.toml", 'command = "go"\nrepeats = 2\n')
-    with mock.patch("labnotes.create_experiment.copy_experiment") as copy:
+    with mock.patch(
+        "labnotes.create_experiment.copy_experiment",
+        side_effect=lambda source, target, runs: target.mkdir(),
+    ) as copy:
         path = create_experiment(make_config(tmp_path), "study", "base", None, 4)
 
     copy.assert_called_once_with(tmp_path / "notes/base", path, tmp_path / "data/base")

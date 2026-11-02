@@ -50,7 +50,8 @@ def create_experiment(
         copy_experiment(
             origin.parent, path, runs_parent(config.root, config.runs, source)
         )
-    path.mkdir(parents=True, exist_ok=True)
+    else:
+        path.mkdir(parents=True)
     (path / "experiment.toml").write_text(
         experiment_definition(text, source, command, repeats, params or {}),
         encoding="utf-8",

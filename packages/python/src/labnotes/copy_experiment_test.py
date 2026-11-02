@@ -17,7 +17,9 @@ def test_copies_everything_but_the_runs_folder(tmp_path: Path) -> None:
     write(source / "experiment.toml", "x")
     write(source / "files/plan.md", "plan")
     write(source / "runs/one/run.json")
+    write(source / "runs/index.md")
     write(source / "deep/runs/kept.md")
+    write(source / "loose/run.json")
 
     copy_experiment(source, tmp_path / "b", source / "runs")
 
@@ -25,7 +27,9 @@ def test_copies_everything_but_the_runs_folder(tmp_path: Path) -> None:
         "deep/runs/kept.md",
         "experiment.toml",
         "files/plan.md",
+        "loose/run.json",
     ]
+    assert not (tmp_path / "b/runs").exists()
     assert (tmp_path / "b/files/plan.md").read_text() == "plan"
 
 

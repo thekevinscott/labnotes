@@ -1,7 +1,10 @@
 from pathlib import Path
 
+from labnotes.copy_experiment import copy_experiment
+from labnotes.experiment_definition import experiment_definition
 from labnotes.models import LabnotesConfig
 from labnotes.runner.new_run_id import new_run_id
+from labnotes.runner.runs_parent import runs_parent
 
 STARTER = """\
 # Runs from the project root. {run_dir} becomes the run's folder.
@@ -14,7 +17,14 @@ repeats = 1
 """
 
 
-def create_experiment(config: LabnotesConfig, name: str | None) -> Path:
+def create_experiment(
+    config: LabnotesConfig,
+    name: str | None,
+    source: str | None = None,
+    command: str | None = None,
+    repeats: int | None = None,
+    params: dict[str, list[object]] | None = None,
+) -> Path:
     def folder(candidate: str) -> Path:
         return config.root / config.experiments.replace("{experiment}", candidate)
 
@@ -31,6 +41,19 @@ def create_experiment(config: LabnotesConfig, name: str | None) -> Path:
     path = folder(name)
     if path.exists():
         raise ValueError(f"{name} already exists at {path}.")
-    path.mkdir(parents=True)
-    (path / "experiment.toml").write_text(STARTER, encoding="utf-8")
+    text = STARTER
+    if source is not None:
+        origin = folder(source) / "experiment.toml"
+        if not origin.is_file():
+            raise ValueError(f"No experiment.toml for {source} at {origin}.")
+        text = origin.read_text(encoding="utf-8")
+        copy_experiment(
+            origin.parent, path, runs_parent(config.root, config.runs, source)
+        )
+    else:
+        path.mkdir(parents=True)
+    (path / "experiment.toml").write_text(
+        experiment_definition(text, source, command, repeats, params or {}),
+        encoding="utf-8",
+    )
     return path

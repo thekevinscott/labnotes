@@ -58,7 +58,10 @@ one. Piped, they print a table.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't
-be an experiment name.
+be an experiment name. `--command`, `--param NAME=VALUE` (repeat it for several
+values) and `--repeats` write those settings into the file. `--from OTHER`
+copies another experiment's `experiment.toml` and files, never its runs, and
+records `from = "OTHER"`; the other flags replace the copied values.
 
 `labnotes experiments foo run` runs `foo` from its `experiment.toml`, in the
 experiments folder:

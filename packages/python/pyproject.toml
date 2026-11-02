@@ -25,6 +25,7 @@ dependencies = [
     "rich>=14",
     "starlette>=1.8.0",
     "textual>=8.2.8",
+    "tomlkit>=0.15.2",
     "uvicorn>=0.54.0",
 ]
 

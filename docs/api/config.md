@@ -118,7 +118,7 @@ With no `[experiments] path`, `[experiment]` makes the root [one experiment](#on
 
 ## `experiment.toml`
 
-One per experiment folder. `labnotes experiments new [NAME]` creates one. `run -e PATH` reads another file in its place.
+One per experiment folder. `labnotes experiments new [NAME]` creates one, optionally from another experiment's with `--from OTHER`; see the [CLI](cli#experiments). `run -e PATH` reads another file in its place.
 
 ```toml
 name = "Model and effort"
@@ -296,6 +296,13 @@ runs = "uv run views/runs.py"
 - Default: `exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)`
 
 Which runs count toward `repeats`. `labnotes experiments NAME runs --format table` shows the result as `counted`.
+
+### `from`
+
+- Type: string
+- Default: none
+
+The experiment this one was copied from. `labnotes experiments new NAME --from OTHER` writes it. labnotes only records it; the copy doesn't follow later changes to OTHER.
 
 ### `continues`
 

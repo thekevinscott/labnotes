@@ -8,6 +8,7 @@ from labnotes.create_experiment import create_experiment
 from labnotes.runner.start_experiment import start_experiment
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
+from labnotes.parse_params import parse_params
 from labnotes.parse_subset import parse_subset
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
@@ -32,7 +33,8 @@ class PassthroughCommand(click.Command):
 @click.command(
     cls=PassthroughCommand,
     help="List experiments, show one, list its runs, or run it."
-    " `new [NAME]` creates one. With run, --PARAM=VALUE runs only the"
+    " `new [NAME]` creates one, from --command, --param, --repeats and"
+    " --from OTHER if given. With run, --PARAM=VALUE runs only the"
     " matrix cells where that param has that value (repeat it for several"
     " values), and anything after --"
     " is appended to every run's command and recorded in run.json, so never"
@@ -79,6 +81,31 @@ class PassthroughCommand(click.Command):
     help="With run: shell command to run once after every run ends."
     " Overrides experiment.toml and .labnotes.toml.",
 )
+@click.option(
+    "--command",
+    metavar="COMMAND",
+    help="With new: the experiment's command.",
+)
+@click.option(
+    "--param",
+    "params",
+    multiple=True,
+    metavar="NAME=VALUE",
+    help="With new: a value for a param, parsed as TOML or else taken as a"
+    " string. Repeat it for several values.",
+)
+@click.option(
+    "--repeats",
+    type=click.IntRange(min=1),
+    help="With new: how many times each combination runs.",
+)
+@click.option(
+    "--from",
+    "source",
+    metavar="OTHER",
+    help="With new: start from OTHER's experiment.toml and files, never its"
+    " runs. Other flags replace the copied values.",
+)
 @click.pass_context
 def experiments(
     ctx: click.Context,
@@ -90,6 +117,10 @@ def experiments(
     timeout: int | None,
     setup: str | None,
     teardown: str | None,
+    command: str | None,
+    params: tuple[str, ...],
+    repeats: int | None,
+    source: str | None,
 ) -> None:
     passthrough: list[str] | None = ctx.meta.get(PASSTHROUGH)
     config = load_config(ctx)
@@ -97,10 +128,22 @@ def experiments(
         raise click.ClickException(
             f"No {CONFIG_FILE} here. Run labnotes init, or pass -c PATH."
         )
+    if name != "new":
+        given = {
+            "--command": command,
+            "--param": params or None,
+            "--repeats": repeats,
+            "--from": source,
+        }
+        for flag, value in given.items():
+            if value is not None:
+                raise click.UsageError(f"{flag} needs new.")
     match name, action:
         case "new", _:
             try:
-                path = create_experiment(config, action)
+                path = create_experiment(
+                    config, action, source, command, repeats, parse_params(list(params))
+                )
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
             click.echo(f"Created {path / 'experiment.toml'}")

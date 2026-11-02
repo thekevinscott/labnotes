@@ -1,0 +1,1 @@
+Fixed: Runs launched from a Git repository subfolder now execute from the matching subfolder in the snapshot. The snapshot preserves the repository layout, Git status, and changes to files elsewhere in the repository.

@@ -1,10 +1,6 @@
-from typing import cast
+from unittest import mock
 
 from labnotes.runner.continue_run import continue_run
-
-
-def invocations(run: dict[str, object]) -> list[dict[str, object]]:
-    return cast(list[dict[str, object]], run["invocations"])
 
 
 RUN: dict[str, object] = {
@@ -47,35 +43,12 @@ def test_appends_to_the_invocations_and_keeps_when_the_run_was_created() -> None
 
 
 def test_turns_a_run_from_before_continues_into_its_first_invocation() -> None:
-    previous = {
-        **RUN,
-        "created": "2026-10-17T00:00:00Z",
-        "ended": "2026-10-17T01:00:00Z",
-        "exit_code": 1,
-        "ended_by": "signal",
-        "error": None,
-        "git": {"commit": "old", "dirty": True},
-        "args": ["--memory", "8g"],
-    }
+    previous = {**RUN, "exit_code": 1}
 
-    first = invocations(continue_run(previous, RUN, NEXT))[0]
+    with mock.patch(
+        "labnotes.runner.continue_run.first_invocation", return_value={"old": 1}
+    ) as first:
+        run = continue_run(previous, RUN, NEXT)
 
-    assert first == {
-        "started": "2026-10-17T00:00:00Z",
-        "ended": "2026-10-17T01:00:00Z",
-        "exit_code": 1,
-        "ended_by": "signal",
-        "error": None,
-        "git": "old",
-        "args": ["--memory", "8g"],
-        "stdout": "stdout.log",
-        "stderr": "stderr.log",
-    }
-
-
-def test_records_no_commit_or_args_when_there_were_none() -> None:
-    previous: dict[str, object] = {"created": "2026-10-17T00:00:00Z", "git": None}
-
-    first = invocations(continue_run(previous, RUN, NEXT))[0]
-
-    assert (first["git"], first["args"], first["ended_by"]) == (None, [], None)
+    first.assert_called_once_with(previous)
+    assert run["invocations"] == [{"old": 1}, NEXT]

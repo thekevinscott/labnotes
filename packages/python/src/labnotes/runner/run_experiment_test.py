@@ -1579,3 +1579,29 @@ def test_releases_a_continuing_run_whose_retry_is_cancelled(
     settle(go())
 
     collaborators["close"].assert_called_once()
+
+
+def test_lets_go_of_claimed_runs_when_setup_fails(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [{"id": "old", "params": '{"m": "a"}'}]
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["claim_run"].side_effect = lambda folder: 7
+    collaborators["invocation_hook"].side_effect = [ValueError("setup failed"), None]
+    configured = experiment(continues=True)
+    configured.setup = "up"
+
+    with pytest.raises(ValueError, match="setup failed"):
+        settle(
+            run_experiment(
+                mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+                "exp",
+                configured,
+                1,
+                mock.Mock(),
+                lambda controls: controls.finish(),
+            )
+        )
+
+    collaborators["execute_run"].assert_not_awaited()
+    collaborators["close"].assert_called_once_with(7)

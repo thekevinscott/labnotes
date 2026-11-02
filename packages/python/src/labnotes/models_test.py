@@ -63,3 +63,7 @@ def test_experiments_do_not_share_environment_defaults() -> None:
     first = ExperimentConfig("run", 1, {})
     first.env["FOO"] = "one"
     assert ExperimentConfig("run", 1, {}).env == {}
+
+
+def test_experiments_start_new_folders_for_failed_runs_by_default() -> None:
+    assert ExperimentConfig("run", 1, {}).continues is False

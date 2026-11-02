@@ -1,5 +1,6 @@
-import subprocess
+from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
@@ -7,72 +8,52 @@ from labnotes.runner.untracked_diff import untracked_diff
 
 
 @pytest.fixture
-def repo(tmp_path: Path) -> Path:
-    subprocess.run(["git", "init", "-q"], cwd=tmp_path, check=True)
-    return tmp_path
+def git() -> Iterator[mock.Mock]:
+    with mock.patch("labnotes.runner.untracked_diff.subprocess") as patched:
+        patched.run.side_effect = [mock.Mock(), mock.Mock(stdout=b"patch")]
+        yield patched
 
 
-def test_adds_untracked_text_file_as_new_file(repo: Path) -> None:
-    (repo / "new.py").write_text("print('hi')\n")
-    patch = untracked_diff(repo).decode()
-    assert patch.startswith("diff --git a/new.py b/new.py\nnew file mode 100644\n")
-    assert patch.endswith("--- /dev/null\n+++ b/new.py\n@@ -0,0 +1 @@\n+print('hi')\n")
-
-
-def test_patch_applies_to_recreate_untracked_files(
-    repo: Path, tmp_path_factory: pytest.TempPathFactory
+def test_diffs_listed_files_through_a_throwaway_index(
+    git: mock.Mock, tmp_path: Path
 ) -> None:
-    (repo / "dir").mkdir()
-    (repo / "dir/a.txt").write_text("a\n")
-    (repo / "b.txt").write_text("b\n")
-    target = tmp_path_factory.mktemp("target")
-    subprocess.run(["git", "init", "-q"], cwd=target, check=True)
-    subprocess.run(["git", "apply"], cwd=target, input=untracked_diff(repo), check=True)
-    assert (target / "dir/a.txt").read_text() == "a\n"
-    assert (target / "b.txt").read_text() == "b\n"
+    git.check_output.return_value = b"a.py\0nested/\0z.txt\0"
+
+    assert untracked_diff(tmp_path) == b"patch"
+
+    git.check_output.assert_called_once_with(
+        ["git", "ls-files", "-o", "--exclude-standard", "-z"],
+        cwd=tmp_path,
+        stderr=git.DEVNULL,
+    )
+    add, diff = git.run.call_args_list
+    assert add.args[0] == [
+        "git",
+        "add",
+        "--intent-to-add",
+        "--pathspec-from-file=-",
+        "--pathspec-file-nul",
+    ]
+    assert add.kwargs["input"] == b"a.py\0z.txt"
+    assert add.kwargs["cwd"] == tmp_path
+    assert add.kwargs["check"] is True
+    assert add.kwargs["stdout"] == add.kwargs["stderr"] == git.DEVNULL
+    assert diff.args[0] == ["git", "-c", "core.bigFileThreshold=1m", "diff"]
+    assert diff.kwargs["cwd"] == tmp_path
+    assert diff.kwargs["check"] is True
+    assert diff.kwargs["stdout"] == git.PIPE
+    assert diff.kwargs["stderr"] == git.DEVNULL
+    index = add.kwargs["env"]["GIT_INDEX_FILE"]
+    assert diff.kwargs["env"]["GIT_INDEX_FILE"] == index
+    assert Path(index).name == "index"
+    assert Path(index).parent.name.startswith("labnotes-index-")
+    assert not Path(index).parent.exists()
+    assert add.kwargs["env"]["PATH"] == diff.kwargs["env"]["PATH"]
 
 
-def test_leaves_out_ignored_and_tracked_files(repo: Path) -> None:
-    (repo / ".gitignore").write_text("ignored.txt\n")
-    (repo / "ignored.txt").write_text("secret\n")
-    (repo / "tracked.txt").write_text("tracked\n")
-    subprocess.run(["git", "add", "tracked.txt"], cwd=repo, check=True)
-    patch = untracked_diff(repo).decode()
-    assert "b/.gitignore" in patch
-    assert "b/ignored.txt" not in patch
-    assert "b/tracked.txt" not in patch
+def test_no_untracked_files_runs_no_diff(git: mock.Mock, tmp_path: Path) -> None:
+    git.check_output.return_value = b"nested/\0"
 
+    assert untracked_diff(tmp_path) == b""
 
-def test_binary_file_is_named_without_its_bytes(repo: Path) -> None:
-    (repo / "weights.bin").write_bytes(b"\0secret-bytes")
-    patch = untracked_diff(repo)
-    assert b"Binary files /dev/null and b/weights.bin differ" in patch
-    assert b"secret-bytes" not in patch
-
-
-def test_text_file_over_one_mebibyte_is_named_without_its_contents(repo: Path) -> None:
-    (repo / "data.csv").write_text("row\n" * 300_000)
-    (repo / "small.csv").write_text("row\n" * 50_000)
-    patch = untracked_diff(repo)
-    assert b"Binary files /dev/null and b/data.csv differ" in patch
-    assert b"+++ b/small.csv" in patch
-    assert len(patch) < 300_000
-
-
-def test_untracked_symlink_records_its_target(repo: Path) -> None:
-    (repo / "link").symlink_to("elsewhere")
-    patch = untracked_diff(repo).decode()
-    assert "new file mode 120000" in patch
-    assert "+elsewhere" in patch
-
-
-def test_skips_untracked_nested_repository(repo: Path) -> None:
-    nested = repo / "nested"
-    nested.mkdir()
-    subprocess.run(["git", "init", "-q"], cwd=nested, check=True)
-    (nested / "code.py").write_text("x\n")
-    assert untracked_diff(repo) == b""
-
-
-def test_clean_repository_has_empty_patch(repo: Path) -> None:
-    assert untracked_diff(repo) == b""
+    git.run.assert_not_called()

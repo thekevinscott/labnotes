@@ -10,7 +10,7 @@ from labnotes.is_non_negative_int import is_non_negative_int
 from labnotes.is_non_negative_number import is_non_negative_number
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
 from labnotes.is_positive_int import is_positive_int
-from labnotes.modes import MODES
+from labnotes.config_migration import MISSING_CONTINUES, REMOVED_MODE
 
 SETTINGS = {
     "name",
@@ -18,7 +18,6 @@ SETTINGS = {
     "repeats",
     "params",
     "counts",
-    "mode",
     "concurrency",
     "retries",
     "meta",
@@ -37,7 +36,6 @@ VIEWS = {"runs"}
 def read_experiment_config(
     path: Path,
     source: str,
-    mode: str,
     concurrency: int,
     retries: int,
     defaults: dict[str, object] | None = None,
@@ -47,6 +45,8 @@ def read_experiment_config(
     except tomllib.TOMLDecodeError as error:
         raise ValueError(f"{path}: {error}") from error
     values: dict[str, Any] = compose_experiment(defaults or {}, layer)
+    if "mode" in values:
+        raise ValueError(f"{path}: {REMOVED_MODE}")
     unknown = sorted(values.keys() - SETTINGS)
     if unknown:
         raise ValueError(f"{path}: unknown keys {', '.join(unknown)}")
@@ -72,9 +72,6 @@ def read_experiment_config(
     counts = values.get("counts", DEFAULT_COUNTS)
     if not isinstance(counts, str) or not counts.strip():
         raise ValueError(f"{path}: counts must be a SQL condition")
-    mode = values.get("mode", mode)
-    if mode not in MODES:
-        raise ValueError(f"{path}: mode must be matrix or adhoc")
     concurrency = values.get("concurrency", concurrency)
     if not is_positive_int(concurrency):
         raise ValueError(f"{path}: concurrency must be a positive integer")
@@ -102,11 +99,11 @@ def read_experiment_config(
             raise ValueError(f"{path}: env.{key} is reserved for labnotes")
         if not isinstance(value, str):
             raise ValueError(f"{path}: env.{key} must be a string")
-    continues = values.get("continues", False)
+    if "continues" not in values:
+        raise ValueError(f"{path}: {MISSING_CONTINUES}")
+    continues = values["continues"]
     if not isinstance(continues, bool):
         raise ValueError(f"{path}: continues must be true or false")
-    if continues and mode != "matrix":
-        raise ValueError(f'{path}: continues needs mode = "matrix"')
     views = values.get("views", {})
     if not isinstance(views, dict):
         raise ValueError(f"{path}: views must be a table, like [views]")
@@ -122,7 +119,6 @@ def read_experiment_config(
         params,
         name,
         counts,
-        mode,
         concurrency,
         retries,
         meta,

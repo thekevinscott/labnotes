@@ -10,6 +10,8 @@ STARTER = """\
 # Runs from the project root. {run_dir} becomes the run's folder.
 command = "uv run script.py --output {run_dir}"
 repeats = 1
+# true: a failed run starts again in its own folder instead of a new one.
+continues = false
 
 # Each combination runs `repeats` times, passed as --name value.
 [params]

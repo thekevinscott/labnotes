@@ -52,7 +52,7 @@ def test_uvx_run_refuses_invocation_dir_in_setup_before_setup_runs(
 ) -> None:
     root = project(
         tmp_path / "project",
-        'command = "echo run >> journal.txt"\n'
+        'continues = false\ncommand = "echo run >> journal.txt"\n'
         'setup = "echo up {invocation_dir} >> journal.txt"\n',
     )
 
@@ -72,7 +72,7 @@ def test_uvx_matrix_run_gives_invocation_dir_env_to_runs_but_not_setup(
 ) -> None:
     root = project(
         tmp_path / "project",
-        f'mode = "matrix"\ncommand = "{sys.executable} capture.py run"\n'
+        f'continues = false\ncommand = "{sys.executable} capture.py run"\n'
         f'setup = "{sys.executable} capture.py setup"\n' + MANY,
         '[experiment.env]\nLABEL = "{invocation_dir}"\n',
     )
@@ -93,7 +93,7 @@ def test_uvx_setup_state_reaches_runs_and_teardown(
 ) -> None:
     root = project(
         tmp_path / "project",
-        f'mode = "matrix"\ncommand = "{sys.executable} get.py run"\n'
+        f'continues = false\ncommand = "{sys.executable} get.py run"\n'
         f'setup = "{sys.executable} set.py"\n'
         f'teardown = "{sys.executable} get.py teardown"\n' + params,
     )

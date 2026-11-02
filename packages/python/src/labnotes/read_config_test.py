@@ -50,26 +50,22 @@ def test_the_root_is_the_config_folder(
 
 
 @pytest.mark.parametrize(
-    ("text", "mode"),
+    ("text", "table"),
     [
-        ("", "adhoc"),
-        ("[experiments]\n", "adhoc"),
-        ('[experiments]\nmode = "matrix"\n', "matrix"),
+        ('[experiments]\nmode = "matrix"\n', "[experiments]"),
+        ('[experiment]\nmode = "adhoc"\n', "[experiment]"),
     ],
 )
-def test_reads_the_project_mode(
-    tmp_path: Path, read_path: mock.MagicMock, text: str, mode: str
+def test_rejects_mode(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, table: str
 ) -> None:
-    assert read_config(write(tmp_path, text)).mode == mode
-
-
-def test_rejects_an_unknown_mode(tmp_path: Path, read_path: mock.MagicMock) -> None:
-    path = write(tmp_path, '[experiments]\nmode = "once"\n')
+    path = write(tmp_path, text)
 
     with pytest.raises(ValueError) as error:
         read_config(path)
 
-    assert str(error.value) == f"{path}: [experiments] mode must be matrix or adhoc"
+    assert str(error.value).startswith(f"{path}: {table} mode was removed")
+    assert "migrations.d" in str(error.value)
 
 
 @pytest.mark.parametrize(

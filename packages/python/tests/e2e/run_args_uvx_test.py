@@ -12,7 +12,7 @@ def test_uvx_args_override_a_flag_in_the_command(
     (root / ".labnotes.toml").write_text("")
     (root / "script.py").write_text("import sys\nprint(*sys.argv[1:])\n")
     (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} script.py --memory 8g --output {{run_dir}}"\n'
+        f'continues = false\ncommand = "{sys.executable} script.py --memory 8g --output {{run_dir}}"\n'
     )
 
     result = subprocess.run(

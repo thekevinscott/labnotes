@@ -16,7 +16,10 @@ from labnotes.read_config import read_config
 def project(tmp_path: Path) -> Path:
     root = tmp_path / "surprisals"
     write(root / ".labnotes.toml", '[files]\npath = "notes/"\n')
-    write(root / "experiment.toml", 'name = "Surprisals"\ncommand = "go"\n')
+    write(
+        root / "experiment.toml",
+        'name = "Surprisals"\ncontinues = false\ncommand = "go"\n',
+    )
     write(root / "notes/plan.md", "# The plan\n")
     write(root / "data/inner/experiment.toml", 'name = "Not an experiment"\n')
     write(

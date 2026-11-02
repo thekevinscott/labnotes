@@ -12,7 +12,7 @@ from playwright.async_api import Page, async_playwright
 
 
 CONFIG = (
-    'name = "Alpha study"\ncommand = "go"\nrepeats = 2\nmode = "matrix"\n'
+    'name = "Alpha study"\ncontinues = false\ncommand = "go"\nrepeats = 2\n'
     '[params]\nsource-language = ["en", "fr"]\n'
 )
 

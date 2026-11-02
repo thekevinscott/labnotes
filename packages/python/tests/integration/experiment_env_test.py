@@ -47,7 +47,8 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     command = shlex.join([sys.executable, "capture.py"])
     write(
         tmp_path / "exp" / "experiment.toml",
-        f'command = "{command} run"\n'
+        f'continues = false\ncommand = "{command} run"\n'
+        'counts = "false"\n'
         f'meta = "{command} meta"\n'
         f'setup = "{command} setup"\n'
         f'teardown = "{command} teardown"\n'
@@ -99,10 +100,9 @@ MANY = '[params]\nm = ["a", "b"]\n'
 
 @pytest.mark.usefixtures("without_label")
 @pytest.mark.parametrize("params", ["", MANY])
-@pytest.mark.parametrize("mode", ["adhoc", "matrix"])
 @pytest.mark.parametrize("placeholder", ["{run_dir}", "{invocation_dir}"])
 def test_folder_env_values_are_left_out_of_hooks_and_given_to_the_runs(
-    tmp_path: Path, params: str, mode: str, placeholder: str
+    tmp_path: Path, params: str, placeholder: str
 ) -> None:
     write(tmp_path / "capture.py", LABEL_CAPTURE)
     write(
@@ -113,8 +113,7 @@ def test_folder_env_values_are_left_out_of_hooks_and_given_to_the_runs(
     command = shlex.join([sys.executable, "capture.py"])
     write(
         tmp_path / "exp" / "experiment.toml",
-        f'mode = "{mode}"\n'
-        f'command = "{command} run"\n'
+        f'continues = false\ncommand = "{command} run"\n'
         f'meta = "{command} meta && echo {{}}"\n'
         f'setup = "{command} setup"\n'
         f'teardown = "{command} teardown"\n' + params,
@@ -126,13 +125,9 @@ def test_folder_env_values_are_left_out_of_hooks_and_given_to_the_runs(
     assert exit_info.value.code == 0
     runs = tmp_path / "exp" / "runs"
     folders = sorted(path.parent.resolve() for path in runs.rglob("run.json"))
-    shared = folders[0].parent if (mode, params) == ("adhoc", MANY) else None
     rows = [
         json.loads(line)
         for line in (tmp_path / "journal.jsonl").read_text().splitlines()
     ]
     assert rows[:2] + rows[-1:] == [["meta", None], ["setup", None], ["teardown", None]]
-    assert sorted(row[1] for row in rows[2:-1]) == sorted(
-        str(shared or folder) if placeholder == "{invocation_dir}" else str(folder)
-        for folder in folders
-    )
+    assert sorted(row[1] for row in rows[2:-1]) == [str(f) for f in folders]

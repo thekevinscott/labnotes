@@ -31,7 +31,7 @@ def project(root: Path, first: str, settings: str) -> Path:
     (root / ".labnotes.toml").write_text("")
     (root / "script.py").write_text(SCRIPT)
     (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} script.py {first}"\nmode = "matrix"\n'
+        f'command = "{sys.executable} script.py {first}"\n'
         f'{settings}[params]\nm = ["a"]\n'
     )
     return root
@@ -116,7 +116,7 @@ def test_uvx_continues_a_run_killed_with_labnotes(
 def test_uvx_without_continues_redoes_a_failed_run_in_a_new_folder(
     tmp_path: Path, uvx: dict[str, str]
 ) -> None:
-    root = project(tmp_path / "project", "fail", "")
+    root = project(tmp_path / "project", "fail", "continues = false\n")
 
     run(root, uvx)
     run(root, uvx)

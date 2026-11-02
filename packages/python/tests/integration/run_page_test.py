@@ -7,7 +7,7 @@ from conftest import browse, run, serve, write
 
 def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     run(tmp_path, "run1", {"model": "opus"})
     folder = tmp_path / "alpha/runs/run1"
     write(folder / "stdout.log", "starting\n")
@@ -48,7 +48,7 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
 
 def test_shows_log_blocks_as_lines_that_open_on_click(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     run(tmp_path, "run1", {})
     folder = tmp_path / "alpha/runs/run1"
     write(folder / "stdout.log", "printed\n")
@@ -97,7 +97,7 @@ def test_shows_log_blocks_as_lines_that_open_on_click(tmp_path: Path) -> None:
 
 def test_opens_a_nested_runs_page(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\nmode = "adhoc"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     run(tmp_path, "g1/run1", {}, exit_code=1, ended="2026-10-17T00:00:09Z")
     run(tmp_path, "g1/run2", {}, exit_code=0, ended="2026-10-17T00:00:09Z")
     write(tmp_path / "alpha/runs/g1/run1/stderr.log", "boom\n")
@@ -115,7 +115,7 @@ def test_opens_a_nested_runs_page(tmp_path: Path) -> None:
 
 def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     run(tmp_path, "run1", {}, exit_code=0, ended="2026-10-17T00:00:09Z")
     folder = tmp_path / "alpha/runs/run1"
     write(folder / "stdout.log", "\x1b[31mred\x1b[0m <b>plain</b>\n")
@@ -137,7 +137,7 @@ def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
 
 def test_shows_why_a_run_failed(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "alpha/experiment.toml", 'command = "true"\n')
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
     run(
         tmp_path,
         "run1",

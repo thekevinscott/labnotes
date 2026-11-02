@@ -7,7 +7,7 @@ import pytest
 
 from labnotes.tui.experiment_screen import ExperimentScreen
 
-CONFIG = mock.Mock(root=Path("/p/project"), mode="matrix")
+CONFIG = mock.Mock(root=Path("/p/project"))
 TABLES = mock.Mock()
 LOADED = {
     "display_name": "Alpha study",
@@ -165,7 +165,7 @@ def test_lists_the_runs_by_invocation(
     asyncio.run(screen.load())
 
     collaborators["load_experiment"].assert_awaited_once_with(
-        TABLES, CONFIG.root, "matrix", "alpha", "no params"
+        TABLES, CONFIG.root, "alpha", "no params"
     )
     assert screen.sub_title == "Alpha study"
     collaborators["invocation_columns"].assert_called_once_with(LOADED)

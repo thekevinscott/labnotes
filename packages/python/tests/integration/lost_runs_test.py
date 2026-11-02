@@ -30,7 +30,10 @@ def read(path: Path) -> dict[str, object]:
 
 def test_run_start_ends_runs_whose_process_died(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
-    write(tmp_path / "exp/experiment.toml", f"command = '{sys.executable} -c pass'\n")
+    write(
+        tmp_path / "exp/experiment.toml",
+        f"continues = false\ncommand = '{sys.executable} -c pass'\n",
+    )
     exited = subprocess.Popen([sys.executable, "-c", ""])
     created = psutil.Process(exited.pid).create_time()
     exited.wait()

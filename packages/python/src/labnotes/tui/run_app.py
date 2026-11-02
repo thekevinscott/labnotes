@@ -115,8 +115,8 @@ class RunApp(App[None]):
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
-                match event["mode"], event["runs"]:
-                    case "adhoc", [only]:
+                match event["runs"]:
+                    case [only]:
                         self.view(only["run"])  # type: ignore[index]
             case "started":
                 self.idle = False
@@ -125,7 +125,7 @@ class RunApp(App[None]):
                 self.folders[run] = Path(str(event["folder"]))
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 shown = {
-                    "run": run.rpartition("/")[2],
+                    "run": run,
                     "params": args,
                     "status": SPINNER[self.frame],
                     "time": format_elapsed(0),
@@ -207,7 +207,7 @@ class RunApp(App[None]):
         table.move_cursor(row=row)
 
     def waiting_cells(self, run: str, args: str) -> dict[str, object]:
-        shown = {"run": run.rpartition("/")[2], "params": args, "status": PENDING}
+        shown = {"run": run, "params": args, "status": PENDING}
         return {
             column: dim(shown.get(column, "")) for column in {*self.columns, *shown}
         }

@@ -10,13 +10,13 @@ from labnotes.cli import main
 SCRIPT = "import sys\nprint(*sys.argv[1:])\n"
 
 
-def make_project(root: Path, mode: str = "matrix") -> Path:
+def make_project(root: Path) -> Path:
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     (root / "script.py").write_text(SCRIPT)
     (root / "exp" / "experiment.toml").write_text(
-        f'command = "{sys.executable} script.py"\n'
-        f'repeats = 2\nmode = "{mode}"\n[params]\nm = ["a", "b"]\nn = [1, 2]\n'
+        f'continues = false\ncommand = "{sys.executable} script.py"\n'
+        'repeats = 2\n[params]\nm = ["a", "b"]\nn = [1, 2]\n'
     )
     return root
 
@@ -62,16 +62,6 @@ def test_keeps_the_full_matrix_as_the_target(
     assert capsys.readouterr().out.endswith("4 passed, 0 failed.\n")
 
 
-def test_filters_adhoc_runs_the_same_way(tmp_path: Path) -> None:
-    project = make_project(tmp_path, "adhoc")
-
-    assert labnotes(project, ["run", "--n=1"]) == 0
-
-    assert params(project) == sorted(
-        [{"m": "a", "n": 1}, {"m": "b", "n": 1}] * 2, key=json.dumps
-    )
-
-
 @pytest.mark.parametrize(
     ("flag", "error"),
     [
@@ -95,7 +85,7 @@ def test_runs_every_value_given_for_one_param(
 ) -> None:
     project = make_project(tmp_path)
     (project / "exp" / "experiment.toml").write_text(
-        f'command = "{sys.executable} script.py"\n'
+        f'continues = false\ncommand = "{sys.executable} script.py"\n'
         '[params]\nm = ["a", "b", "c"]\nn = [1, 2]\n'
     )
 

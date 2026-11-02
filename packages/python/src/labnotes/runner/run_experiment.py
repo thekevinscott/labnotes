@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import signal
-from contextlib import nullcontext
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -24,9 +23,9 @@ from labnotes.runner.fill_dirs import fill_dirs
 from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
-from labnotes.runner.new_param_run_id import new_param_run_id
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
+from labnotes.runner.placeholders import PLACEHOLDERS
 from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.project_snapshot import ProjectSnapshot
 from labnotes.runner.run_folder import run_folder
@@ -59,11 +58,8 @@ async def run_experiment(
     inherited = dict(os.environ) if environment is None else environment
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
-    finished: list[dict[str, object]] = []
-    match experiment.mode:
-        case "matrix":
-            counted = await list_experiment_runs(tables, name, experiment.counts)
-            finished = [json.loads(str(r["params"])) for r in counted if r["counted"]]
+    counted = await list_experiment_runs(tables, name, experiment.counts)
+    finished = [json.loads(str(r["params"])) for r in counted if r["counted"]]
     planned: set[str] = set()
 
     def taken(run: str) -> bool:
@@ -73,17 +69,6 @@ async def run_experiment(
         cell for cell in param_grid(experiment.params) if in_subset(cell, only or {})
     ]
     cells = plan_runs(grid, experiment.repeats, finished)
-    group = None
-    match experiment.mode:
-        case "adhoc" if len(cells) > 1:
-            group = new_stamped_run_id(taken)
-
-    def new_id(params: dict[str, object]) -> str:
-        if group is None:
-            return new_stamped_run_id(taken)
-        return f"{group}/" + new_param_run_id(
-            params, experiment.params, lambda run: taken(f"{group}/{run}")
-        )
 
     locks: dict[str, int] = {}
 
@@ -115,18 +100,9 @@ async def run_experiment(
             ),
             None,
         )
-        run = new_id(params) if resumed is None else resumed[0]
+        run = new_stamped_run_id(taken) if resumed is None else resumed[0]
         planned.add(run)
         plan.append((run, params))
-    run_dirs = [
-        str(run_folder(config.root, config.runs, name, run).resolve())
-        for run, _ in plan
-    ]
-    group_dir = (
-        str(run_folder(config.root, config.runs, name, group).resolve())
-        if group is not None
-        else None
-    )
     hooks = {
         "setup": experiment.setup,
         "teardown": experiment.teardown,
@@ -141,12 +117,6 @@ async def run_experiment(
     meta = None
     if experiment.meta is not None:
         meta = await invocation_meta(command_root, experiment.meta, hook_env["meta"])
-    invocation_dir = group_dir
-    match run_dirs:
-        case [run_dir]:
-            invocation_dir = run_dir
-    if invocation_dir is not None:
-        Path(invocation_dir).mkdir(parents=True, exist_ok=True)
     runs = [{"run": run, "params": params} for run, params in plan]
     report(
         {
@@ -154,7 +124,6 @@ async def run_experiment(
             "title": experiment.name or name,
             "runs": runs,
             "concurrency": concurrency,
-            "mode": experiment.mode,
         }
     )
     running: dict[str, set[asyncio.subprocess.Process]] = {}
@@ -208,7 +177,7 @@ async def run_experiment(
     def requeue(run: str, attempt: int) -> None:
         again = run
         if not experiment.continues:
-            again = new_id(ended[run])
+            again = new_stamped_run_id(taken)
             planned.add(again)
             parents[again] = run
         attempts[again] = attempt
@@ -284,8 +253,9 @@ async def run_experiment(
         if snapshot is not None and snapshot.sha is not None:
             (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
             (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")
-        run_invocation_dir = invocation_dir or str(folder.resolve())
         report({"event": "started", "run": run, "params": params, "folder": folder})
+        # {invocation_dir} stays for configs written before runs were flat.
+        dirs = dict.fromkeys(PLACEHOLDERS, str(folder.resolve()))
         running[run] = set()
         trees[run] = set()
         result = await execute_run(
@@ -293,10 +263,7 @@ async def run_experiment(
             folder,
             fill_dirs(
                 experiment.command,
-                {
-                    "run_dir": str(folder.resolve()),
-                    "invocation_dir": run_invocation_dir,
-                },
+                dirs,
             ),
             params,
             running[run],
@@ -313,10 +280,7 @@ async def run_experiment(
             environment=fill_experiment_env(
                 experiment.env,
                 inherited,
-                {
-                    "run_dir": str(folder.resolve()),
-                    "invocation_dir": run_invocation_dir,
-                },
+                dirs,
             ),
             git_info=(
                 {"commit": snapshot.sha, "dirty": bool(snapshot.diff)}
@@ -348,11 +312,7 @@ async def run_experiment(
             )
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
-    with (
-        nullcontext(invocation_dir)
-        if invocation_dir is not None
-        else TemporaryDirectory(prefix="labnotes-state-")
-    ) as state_dir:
+    with TemporaryDirectory(prefix="labnotes-state-") as state_dir:
         state_file = Path(state_dir) / "state.json"
         for hook in ("setup", "teardown"):
             if hook in hook_env:

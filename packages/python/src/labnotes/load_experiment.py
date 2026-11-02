@@ -33,7 +33,6 @@ def _no_outputs(note: str, content: str) -> Sequence[str]:
 async def load_experiment(
     tables: DirSQL,
     root: Path,
-    mode: str,
     name: str,
     params: QueryParams,
     outputs_for: Callable[[str, str], Sequence[str]] = _no_outputs,
@@ -46,7 +45,7 @@ async def load_experiment(
         return None
     [row] = found
     config = None if row["config"] is None else json.loads(str(row["config"]))
-    summary = summarize_config(config, mode)
+    summary = summarize_config(config)
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)
@@ -72,14 +71,13 @@ async def load_experiment(
         )
 
     runs_live = any(is_running(run) for run in runs)
-    nested = summary["mode"] == "adhoc" and await nests_runs(tables, source)
+    nested = await nests_runs(tables, source)
     groups = (
         group_runs(runs, list(choices), await count_groups(tables, source))
         if nested
         else None
     )
-    matrix = summary["mode"] == "matrix"
-    gridded = matrix and params.getlist("view")[-1:] == ["grid"]
+    gridded = params.getlist("view")[-1:] == ["grid"]
     axes = {key: varies[key] for key in choices if len(varies[key]) > 1}
     grid = (
         pivot_runs(

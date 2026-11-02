@@ -19,7 +19,7 @@ def test_uvx_run_gives_run_dir_env_to_the_run_but_not_to_setup(
         '    journal.write(json.dumps([sys.argv[1], os.environ.get("LABEL")]) + "\\n")\n'
     )
     (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} capture.py run"\n'
+        f'continues = false\ncommand = "{sys.executable} capture.py run"\n'
         f'setup = "{sys.executable} capture.py setup"\n'
     )
     env = {key: value for key, value in os.environ.items() if key != "LABEL"}

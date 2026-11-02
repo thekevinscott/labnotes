@@ -41,7 +41,7 @@ def check_counts() -> Iterator[mock.AsyncMock]:
 def test_lists_each_experiment_with_its_config_summary_and_run_counts(
     count_runs: mock.AsyncMock,
 ) -> None:
-    config = {"command": "go", "repeats": 2, "mode": "matrix", "params": {"x": [1, 2]}}
+    config = {"command": "go", "repeats": 2, "params": {"x": [1, 2]}}
     tables = mock.Mock()
     tables.query = mock.AsyncMock(
         return_value=[
@@ -50,19 +50,18 @@ def test_lists_each_experiment_with_its_config_summary_and_run_counts(
         ]
     )
 
-    [a, b] = asyncio.run(list_experiments(tables, "adhoc"))
+    [a, b] = asyncio.run(list_experiments(tables))
 
     assert tables.query.await_args.args[0] == (
         "SELECT name, display_name, config FROM experiments ORDER BY name"
     )
-    assert (a["name"], a["display_name"], a["mode"], a["runs"], a["completed"]) == (
+    assert (a["name"], a["display_name"], a["runs"], a["completed"]) == (
         "a",
         "Alpha",
-        "matrix",
         5,
         4,
     )
-    assert (b["name"], b["mode"]) == ("b", "adhoc")
+    assert b["name"] == "b"
     first, second = count_runs.await_args_list
     assert first.args[0] is tables
     assert first.args[1] == (

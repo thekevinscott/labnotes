@@ -7,6 +7,8 @@ def describe_event(event: dict[str, object]) -> str:
     match event["event"]:
         case "planned":
             runs = len(event["runs"])  # type: ignore[arg-type]
+            if not runs:
+                return "Nothing to run: every combination has its repeats."
             return f"{runs} runs to go, {event['concurrency']} at a time."
         case "started":
             args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]

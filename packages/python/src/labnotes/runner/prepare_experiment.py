@@ -31,7 +31,6 @@ async def prepare_experiment(
     experiment = read_experiment_config(
         config.path if source is None else experiment_config,
         source or "",
-        config.mode,
         config.concurrency,
         config.retries,
         config.defaults,

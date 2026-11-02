@@ -61,7 +61,7 @@ def test_a_run_logs_to_its_own_folder(tmp_path: Path, outer_log: Path) -> None:
     (tmp_path / "script.py").write_text(SCRIPT)
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp" / "experiment.toml").write_text(
-        f'command = "{sys.executable} script.py"\n'
+        f'continues = false\ncommand = "{sys.executable} script.py"\n'
     )
 
     with pytest.raises(SystemExit):

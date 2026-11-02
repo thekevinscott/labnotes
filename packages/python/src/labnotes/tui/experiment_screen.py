@@ -79,7 +79,6 @@ class ExperimentScreen(Screen[None]):
         loaded = await load_experiment(
             self.tables,
             self.config.root,
-            self.config.mode,
             self.experiment_name,
             QueryParams(),
         )

@@ -46,7 +46,7 @@ def test_one_experiment_runs_from_the_labnotes_toml_alone(
     write(
         root / ".labnotes.toml",
         "[experiment]\n"
-        f'name = "Study"\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n'
+        f'name = "Study"\ncontinues = false\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n'
         '[experiment.params]\nm = ["a"]\n',
     )
 
@@ -64,7 +64,7 @@ def test_experiment_toml_layers_over_the_labnotes_toml(
     write(root / "script.py", SCRIPT)
     write(
         root / ".labnotes.toml",
-        f'[experiment]\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n'
+        f'[experiment]\ncontinues = false\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n'
         '[experiment.params]\nm = ["a"]\nn = ["x"]\n',
     )
     write(root / "experiment.toml", 'name = "Layered"\n[params]\nn = ["y", "z"]\n')
@@ -83,7 +83,7 @@ def test_many_experiments_share_the_defaults(
     write(
         tmp_path / ".labnotes.toml",
         '[experiments]\npath = "{experiment}"\n'
-        f'[experiment]\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n',
+        f'[experiment]\ncontinues = false\ncommand = "{sys.executable} script.py --out {{run_dir}}"\n',
     )
     write(tmp_path / "alpha/experiment.toml", '[params]\nm = ["a"]\n')
     write(tmp_path / "beta/files/notes.md", "notes")
@@ -91,8 +91,9 @@ def test_many_experiments_share_the_defaults(
     command = f"{sys.executable} script.py --out {{run_dir}}"
     [alpha] = listed(tmp_path, capsys, "alpha")
     [beta] = listed(tmp_path, capsys, "beta")
-    assert json.loads(alpha["config"]) == {"command": command, "params": {"m": ["a"]}}
-    assert json.loads(beta["config"]) == {"command": command}
+    shared = {"continues": False, "command": command}
+    assert json.loads(alpha["config"]) == {**shared, "params": {"m": ["a"]}}
+    assert json.loads(beta["config"]) == shared
 
     assert labnotes(tmp_path, ["experiments", "alpha", "run"]) == 0
     assert outputs(tmp_path / "alpha/runs") == ["--m a"]

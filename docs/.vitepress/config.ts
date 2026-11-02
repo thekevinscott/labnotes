@@ -55,6 +55,10 @@ export default defineConfig({
           { text: 'Views', link: '/api/views' },
         ],
       },
+      {
+        text: 'Proposals',
+        items: [{ text: 'Batches', link: '/proposals/batches' }],
+      },
     ],
     socialLinks: [{ icon: 'github', link: repository }],
     search: { provider: 'local' },

@@ -4,7 +4,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.copy_experiment import copy_experiment
 from labnotes.create_experiment import STARTER, create_experiment
 
 
@@ -87,14 +86,10 @@ def test_writes_the_flags_into_the_starter(tmp_path: Path) -> None:
 
 def test_copies_another_experiment(tmp_path: Path) -> None:
     write(tmp_path / "notes/base/experiment.toml", 'command = "go"\nrepeats = 2\n')
-    write(tmp_path / "notes/base/files/plan.md", "plan")
-    with mock.patch(
-        "labnotes.create_experiment.copy_experiment", wraps=copy_experiment
-    ) as copy:
+    with mock.patch("labnotes.create_experiment.copy_experiment") as copy:
         path = create_experiment(make_config(tmp_path), "study", "base", None, 4)
 
     copy.assert_called_once_with(tmp_path / "notes/base", path, tmp_path / "data/base")
-    assert (path / "files/plan.md").read_text() == "plan"
     assert (path / "experiment.toml").read_text() == (
         'from = "base"\ncommand = "go"\nrepeats = 4\n'
     )

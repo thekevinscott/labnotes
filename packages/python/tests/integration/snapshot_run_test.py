@@ -9,6 +9,8 @@ from pathlib import Path
 
 import pytest
 
+from labnotes.runner.project_snapshot import project_snapshot
+
 
 def test_running_cell_keeps_original_code_and_repo_outputs(tmp_path: Path) -> None:
     root = tmp_path / "project"
@@ -317,3 +319,31 @@ def test_snapshot_uses_default_temp_directory(tmp_path: Path) -> None:
     snapshot = Path((run / "snapshot-path").read_text())
     assert snapshot.parent == Path(tempfile.gettempdir())
     assert snapshot.name.startswith("labnotes-")
+
+
+def test_subfolder_snapshot_keeps_repo_layout_and_git_status(tmp_path: Path) -> None:
+    repo = tmp_path / "repo"
+    project = repo / "sub"
+    project.mkdir(parents=True)
+    (repo / "sibling.txt").write_text("sibling\n")
+    (project / ".labnotes.toml").write_text("")
+    (project / "tracked.txt").write_text("original\n")
+    _commit(repo)
+    (repo / "sibling.txt").write_text("changed sibling\n")
+    (project / "tracked.txt").write_text("changed\n")
+    (project / "untracked.txt").write_text("untracked\n")
+    expected = subprocess.check_output(["git", "status", "--porcelain"], cwd=repo)
+    expected_diff = subprocess.check_output(["git", "diff", "HEAD"], cwd=repo)
+
+    with project_snapshot(project) as snapshot:
+        assert snapshot.root.name == "sub"
+        assert (snapshot.root.parent / "sibling.txt").read_text() == "changed sibling\n"
+        assert snapshot.diff == expected_diff
+        assert (snapshot.root / "tracked.txt").read_text() == "changed\n"
+        assert (snapshot.root / "untracked.txt").read_text() == "untracked\n"
+        assert (
+            subprocess.check_output(
+                ["git", "status", "--porcelain"], cwd=snapshot.root.parent
+            )
+            == expected
+        )

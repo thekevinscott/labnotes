@@ -151,6 +151,8 @@ def test_reads_mode_over_the_project_mode(mode: str, project: str) -> None:
         ('command = "run"\n[params]\nd = [1979-05-27]\n', "dates or times"),
         ('command = "run"\nmeta = 1\n', "meta must be a string"),
         ('command = "run"\nmeta = " "\n', "meta must be a string"),
+        ('command = "run"\nfrom = 1\n', "from must be an experiment name"),
+        ('command = "run"\nfrom = " "\n', "from must be an experiment name"),
         ('command = "run"\ncounts = 1\n', "counts must be a SQL condition"),
         ('command = "run"\ncounts = " "\n', "counts must be a SQL condition"),
         ('command = "run"\nmode = "once"\n', "mode must be matrix or adhoc"),
@@ -181,6 +183,12 @@ def test_rejects_a_bad_config(text: str, message: str) -> None:
     ['command = "run"\n[views]\nruns = "view"\n', 'command = "run"\n[views]\n'],
 )
 def test_accepts_views(source: str) -> None:
+    read_experiment_config(PATH, source, "adhoc", 1, 2)
+
+
+def test_accepts_the_experiment_it_came_from() -> None:
+    source = 'from = "sanity-3"\ncommand = "run"\n'
+
     read_experiment_config(PATH, source, "adhoc", 1, 2)
 
 

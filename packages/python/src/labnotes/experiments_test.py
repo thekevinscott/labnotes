@@ -475,10 +475,69 @@ def test_creates_an_experiment(
         assert run(argv) == 0
 
     create_experiment.assert_called_once_with(
-        collaborators["load_config"].return_value, name
+        collaborators["load_config"].return_value, name, None, None, None, {}
     )
     assert capsys.readouterr().out == "Created notes/study/experiment.toml\n"
     collaborators["experiment_rows"].assert_not_called()
+
+
+def test_creates_an_experiment_from_flags(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    with mock.patch(
+        "labnotes.experiments.create_experiment", return_value=Path("notes/b")
+    ) as create_experiment:
+        argv = ["new", "b", "--from", "a", "--command", "go", "--repeats", "3"]
+        assert run([*argv, "--param", "m=x", "--param", "m=2"]) == 0
+
+    create_experiment.assert_called_once_with(
+        collaborators["load_config"].return_value, "b", "a", "go", 3, {"m": ["x", 2]}
+    )
+
+
+def test_reports_a_bad_param(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch("labnotes.experiments.create_experiment") as create_experiment:
+        assert run(["new", "b", "--param", "m"]) == 1
+
+    assert "--param m must look like NAME=VALUE" in capsys.readouterr().err
+    create_experiment.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("flags", "flag"),
+    [
+        (["--command", "go"], "--command"),
+        (["--param", "m=x"], "--param"),
+        (["--repeats", "2"], "--repeats"),
+        (["--from", "a"], "--from"),
+    ],
+)
+@pytest.mark.parametrize("argv", [["a"], ["a", "run"], []])
+def test_new_flags_need_new(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    argv: list[str],
+    flags: list[str],
+    flag: str,
+) -> None:
+    assert run([*argv, *flags]) == 2
+
+    assert f"{flag} needs new." in capsys.readouterr().err
+    drivers["start_experiment"].assert_not_called()
+    collaborators["experiment_rows"].assert_not_called()
+
+
+@pytest.mark.parametrize("given", ["0", "x"])
+def test_needs_repeats_over_zero(
+    given: str, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch("labnotes.experiments.create_experiment") as create_experiment:
+        assert run(["new", "b", "--repeats", given]) == 2
+
+    create_experiment.assert_not_called()
 
 
 def test_reports_an_experiment_that_cannot_be_created(

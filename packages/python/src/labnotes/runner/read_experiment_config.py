@@ -28,6 +28,7 @@ SETTINGS = {
     "teardown",
     "env",
     "continues",
+    "from",
 }
 HOOKS = ("setup", "teardown")
 VIEWS = {"runs"}
@@ -86,6 +87,9 @@ def read_experiment_config(
     memory_interval = values.get("memory_interval", DEFAULT_MEMORY_INTERVAL)
     if not is_non_negative_number(memory_interval):
         raise ValueError(f"{path}: memory_interval must be 0 or more seconds")
+    origin = values.get("from")
+    if origin is not None and (not isinstance(origin, str) or not origin.strip()):
+        raise ValueError(f"{path}: from must be an experiment name")
     for hook in HOOKS:
         run = values.get(hook)
         if run is not None and (not isinstance(run, str) or not run.strip()):

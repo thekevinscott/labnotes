@@ -43,6 +43,19 @@ def test_configured_views_handles_missing_invalid_and_override_files(
     assert app.configured_views() == {"custom": "custom.py:Custom"}
 
 
+def test_no_custom_views_mounts_builtin_without_opening_tables(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, 'command = "echo ok"\n[views]\nruns = "echo"\n')
+
+    async def drive() -> None:
+        with mock.patch("labnotes.tui.run_app.open_tables") as open_tables:
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert app.query_one(RunLiveView)
+                open_tables.assert_not_called()
+
+    asyncio.run(drive())
+
+
 def test_custom_views_mount_in_pane_and_open_tables(tmp_path: Path) -> None:
     app = configured_app(
         tmp_path,

@@ -8,6 +8,8 @@ from pathlib import Path
 
 import psutil
 
+from labnotes.runner.run_locked import run_locked
+
 
 def test_sighup_stops_child_and_records_run(tmp_path: Path) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
@@ -67,7 +69,7 @@ def test_sighup_stops_child_and_records_run(tmp_path: Path) -> None:
                     pass
 
 
-def test_run_leaves_no_daemon_socket_or_lock(tmp_path: Path) -> None:
+def test_run_leaves_no_daemon_socket_or_held_lock(tmp_path: Path) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
@@ -86,7 +88,9 @@ def test_run_leaves_no_daemon_socket_or_lock(tmp_path: Path) -> None:
     )
     assert result.returncode == 0, result.stdout + result.stderr
     assert not list(tmp_path.rglob("*.sock"))
-    assert not list(tmp_path.rglob("*.lock"))
+    locks = list(tmp_path.rglob("*.lock"))
+    assert len(locks) == 1
+    assert not run_locked(locks[0].parent)
     assert not any(
         "daemon" in " ".join(info.info["cmdline"]).lower()
         and str(tmp_path) in " ".join(info.info["cmdline"])

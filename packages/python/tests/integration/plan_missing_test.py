@@ -187,8 +187,7 @@ def test_lists_and_counts_old_runs_nested_in_group_folders(
     assert len(runs(root)) == 4
 
 
-# The first launch to claim the experiment waits for hold.txt to go; any other
-# launch exits at once.
+# The first launch waits for hold.txt to go; any duplicate exits at once.
 HOLD = """
 import os
 import time
@@ -203,11 +202,16 @@ while Path("hold.txt").exists():
 """
 
 
-def test_refuses_a_second_run_while_one_is_going(
+def test_second_run_sees_the_first_as_held(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     root = make_project(tmp_path)
     write(root / "script.py", HOLD)
+    write(
+        root / "exp/experiment.toml",
+        f'continues = false\ncommand = "{sys.executable} script.py"\n'
+        'repeats = 1\n[params]\nm = ["a"]\n',
+    )
     write(root / "hold.txt", "")
     labnotes_bin = Path(sys.executable).parent / "labnotes"
     first = subprocess.Popen(
@@ -222,11 +226,11 @@ def test_refuses_a_second_run_while_one_is_going(
             time.sleep(0.05)
         capsys.readouterr()
 
-        assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+        assert labnotes(root, ["experiments", "exp", "run"]) == 0
 
-        assert "exp is already running" in capsys.readouterr().err
+        assert "held by another run" in capsys.readouterr().out
     finally:
         (root / "hold.txt").unlink()
         first.wait(timeout=60)
     assert first.returncode == 0
-    assert len(runs(root)) == 4
+    assert len(runs(root)) == 1

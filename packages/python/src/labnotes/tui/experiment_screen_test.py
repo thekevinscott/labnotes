@@ -55,6 +55,12 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             side_effect=lambda name, spec, root, id: mock.Mock(
                 view_name=name, source=spec, root=root, id=id
             ),
+        ),
+        mock.patch(
+            "labnotes.tui.view_switcher.ViewPane",
+            side_effect=lambda name, spec, root, id: mock.Mock(
+                view_name=name, source=spec, root=root, id=id
+            ),
         ) as view_pane,
         mock.patch(
             "labnotes.tui.experiment_screen.ContentSwitcher"

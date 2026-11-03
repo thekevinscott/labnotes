@@ -1,8 +1,8 @@
 # Views
 
-A custom view replaces the body of the [browse TUI](tui#browsing). It is a Python class that subclasses any Textual widget. labnotes imports and mounts it; the TUI header and footer stay visible. The built-in `runs` view shows the runs table and run output.
+A custom view replaces the body of the [browse or run TUI](tui). It is a Python class that subclasses any Textual widget. labnotes imports and mounts it; the TUI header and footer stay visible. Each TUI has its own built-in `runs` view, with its existing table and run output.
 
-`[views] runs` is the existing column script for the built-in table. Custom views work in `labnotes experiments NAME` only. The run TUI and frontend do not show them yet.
+`[views] runs` is the existing column script for the browse table. Custom views work in both `labnotes experiments NAME` and `labnotes experiments NAME run`. The frontend does not show them.
 
 ## Config
 

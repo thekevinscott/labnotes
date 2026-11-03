@@ -1,0 +1,1 @@
+Added: The run TUI now loads custom Textual views from `[views]` in experiment config. Number keys switch between the existing live runs view and custom views while preserving each view's state. Custom views receive `Experiment` data and `Changed` notifications as they do in the browse TUI.

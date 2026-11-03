@@ -472,7 +472,9 @@ def test_shows_the_live_view_in_a_terminal(
         None,
     )
     drivers["run_tui"].assert_called_once_with(
-        drivers["start_experiment"].return_value, "a"
+        drivers["start_experiment"].return_value,
+        "a",
+        collaborators["load_config"].return_value,
     )
     drivers["run_headless"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"

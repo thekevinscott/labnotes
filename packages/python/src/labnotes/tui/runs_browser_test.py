@@ -103,7 +103,149 @@ def test_binds_enter_and_escape() -> None:
     ] == [
         ("enter", "open_row", "Open", True),
         ("escape", "close_run", "Back", False),
+        ("r", "restart_run", "Restart", True),
     ]
+
+
+@pytest.mark.parametrize(
+    "row,claim,expected,launched",
+    [
+        ({"ended": None, "exit_code": 1}, None, "has not failed", False),
+        ({"ended": "now", "exit_code": 0}, None, "has not failed", False),
+        ({"ended": "now", "exit_code": 0, "error": "broken"}, 42, "Restarting", True),
+        ({"ended": "now", "exit_code": 1}, None, "held by another run", False),
+        ({"ended": "now", "exit_code": 1}, 42, "Restarting", True),
+        ({"ended": "now", "exit_code": -9}, 42, "Restarting", True),
+    ],
+)
+def test_restart_key_checks_selected_run(
+    browser: RunsBrowser,
+    table: mock.MagicMock,
+    status: mock.MagicMock,
+    row: dict[str, object],
+    claim: int | None,
+    expected: str,
+    launched: bool,
+) -> None:
+    browser.experiment = Experiment(ROOT, "alpha", ({**RUNS[1], **row},))
+    with (
+        mock.patch(
+            "labnotes.tui.runs_browser.claim_run", return_value=claim
+        ) as claim_run,
+        mock.patch("labnotes.tui.runs_browser.os.close") as close,
+        mock.patch.object(
+            browser, "restart", new=mock.Mock(return_value=mock.sentinel.work)
+        ) as restart,
+    ):
+        browser.action_restart_run()
+
+    assert expected in browser.restart_status
+    status.update.assert_called_with(browser.restart_status)
+    if row.get("ended") is None or (row.get("exit_code") == 0 and not row.get("error")):
+        claim_run.assert_not_called()
+    else:
+        claim_run.assert_called_once_with(ROOT / "alpha/runs/lone")
+    assert close.called is launched
+    assert restart.called is launched
+    assert getattr(browser.run_worker, "called") is launched
+    if launched:
+        getattr(browser.run_worker, "assert_called_once_with")(
+            mock.sentinel.work, exit_on_error=False
+        )
+
+
+def test_restart_action_uses_value_equality_and_checks_view_state(
+    browser: RunsBrowser,
+) -> None:
+    equal = "".join(["restart", "_run"])
+    expected = "restart_run"
+    assert equal == expected and equal is not expected
+    assert browser.check_action(equal, ()) is True
+    browser.viewing = "lone"
+    assert browser.check_action(equal, ()) is False
+    assert browser.check_action("zzzz", ()) is True
+
+
+def test_restart_selects_exact_folder_among_neighbors(
+    browser: RunsBrowser, table: mock.MagicMock
+) -> None:
+    target = "".join(["alpha/runs/", "lone"])
+    expected = "alpha/runs/lone"
+    assert target == expected and target is not expected
+    table.coordinate_to_cell_key.return_value.row_key.value = target
+    browser.experiment = Experiment(
+        ROOT,
+        "alpha",
+        (
+            {
+                "id": "before",
+                "folder": "alpha/runs/aaaa",
+                "ended": "now",
+                "exit_code": 0,
+            },
+            {
+                "id": "after",
+                "folder": "alpha/runs/zzzz",
+                "ended": "now",
+                "exit_code": 0,
+            },
+            {"id": "lone", "folder": "alpha/runs/lone", "ended": "now", "exit_code": 1},
+        ),
+    )
+    with (
+        mock.patch("labnotes.tui.runs_browser.claim_run", return_value=42),
+        mock.patch("labnotes.tui.runs_browser.os.close"),
+        mock.patch.object(
+            browser, "restart", new=mock.Mock(return_value=mock.sentinel.work)
+        ) as restart,
+    ):
+        browser.action_restart_run()
+    restart.assert_called_once_with("lone")
+
+
+def test_restart_key_ignores_an_empty_table(
+    browser: RunsBrowser, table: mock.MagicMock
+) -> None:
+    table.row_count = 0
+    browser.action_restart_run()
+    getattr(browser.run_worker, "assert_not_called")()
+
+
+@pytest.mark.parametrize(
+    "returncode,stdout,stderr,expected",
+    [
+        (0, b"done", b"", "Restarted lone"),
+        (2, b"", b"locked", "Could not restart lone: locked"),
+        (2, b"fallback", b"", "Could not restart lone: fallback"),
+        (-9, b"", b"signal", "Could not restart lone: signal"),
+    ],
+)
+def test_restart_worker_reports_process_result(
+    browser: RunsBrowser,
+    status: mock.MagicMock,
+    returncode: int,
+    stdout: bytes,
+    stderr: bytes,
+    expected: str,
+) -> None:
+    process = mock.Mock(returncode=returncode)
+    process.communicate = mock.AsyncMock(return_value=(stdout, stderr))
+    app = mock.Mock(config=mock.Mock(path=Path("/p/project/.labnotes.toml")))
+    with (
+        mock.patch.object(
+            type(browser), "app", new_callable=mock.PropertyMock, return_value=app
+        ),
+        mock.patch(
+            "labnotes.tui.runs_browser.asyncio.create_subprocess_exec",
+            new=mock.AsyncMock(return_value=process),
+        ) as launch,
+    ):
+        asyncio.run(browser.restart("lone"))
+    assert expected in browser.restart_status
+    status.update.assert_called_with(browser.restart_status)
+    assert launch.await_args is not None
+    assert launch.await_args.args[0:3] == (mock.ANY, "-m", "labnotes")
+    assert launch.await_args.args[-2:] == ("--run-id", "lone")
 
 
 def test_lists_every_run_flat(

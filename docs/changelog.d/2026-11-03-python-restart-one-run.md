@@ -1,0 +1,1 @@
+Added a `--run-id` option to restart one failed experiment run with its recorded parameters and command arguments. In the runs browser, press `r` on a failed run to restart it; the browser reports when another invocation holds that run. A continuing experiment uses the existing run folder, while other experiments create a new run folder.

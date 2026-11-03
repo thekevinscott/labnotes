@@ -54,6 +54,7 @@ async def run_experiment(
     environment: dict[str, str] | None = None,
     snapshot: ProjectSnapshot | None = None,
     command_line: str | None = None,
+    run_id: str | None = None,
 ) -> list[dict[str, object]]:
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
@@ -79,10 +80,15 @@ async def run_experiment(
     def taken(run: str) -> bool:
         return run in planned or run in existing
 
-    grid = [
-        cell for cell in param_grid(experiment.params) if in_subset(cell, only or {})
-    ]
-    cells = plan_runs(grid, experiment.repeats, finished)
+    if run_id is None:
+        grid = [
+            cell
+            for cell in param_grid(experiment.params)
+            if in_subset(cell, only or {})
+        ]
+        cells = plan_runs(grid, experiment.repeats, finished)
+    else:
+        cells = []
 
     locks: dict[str, int] = {}
 
@@ -104,6 +110,30 @@ async def run_experiment(
             for row in await list_resumable_runs(tables, name, experiment.counts)
         ]
     plan: list[Entry] = []
+    target_folder: Path | None = None
+    if run_id is not None:
+        selected = next((row for row in counted if row["id"] == run_id), None)
+        if selected is None:
+            raise ValueError(f"No run {run_id} in {name}.")
+        if selected["ended"] is None or (
+            selected["exit_code"] == 0 and not selected["error"]
+        ):
+            raise ValueError(f"Run {run_id} has not failed.")
+        source = config.root / str(selected["folder"])
+        record = json.loads((source / "run.json").read_text())
+        args = record.get("args", [])
+        params = json.loads(str(selected["params"]))
+        lock = claim_run(source)
+        if lock is None:
+            raise ValueError(f"Run {run_id} is held by another run.")
+        locks[run_id] = lock
+        if experiment.continues:
+            target_folder = source
+            plan.append((run_id, params))
+        else:
+            new_id = new_stamped_run_id(taken)
+            planned.add(new_id)
+            plan.append((new_id, params))
     for params in cells:
         resumed = next(
             (
@@ -261,7 +291,7 @@ async def run_experiment(
         fill()
 
     async def start(run: str, params: dict[str, object]) -> None:
-        folder = run_folder(config.root, config.runs, name, run)
+        folder = target_folder or run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
         if not claim(run):
             report({"event": "held", "run": run})

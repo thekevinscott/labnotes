@@ -107,6 +107,30 @@ def test_needs_run_for_params(
     collaborators["experiment_rows"].assert_not_called()
 
 
+@pytest.mark.parametrize(
+    "argv,expected",
+    [
+        (["a", "runs", "--run-id", "r1"], "--run-id needs run"),
+        (
+            ["a", "run", "--run-id", "r1", "--model=small"],
+            "--run-id uses the run's recorded params",
+        ),
+        (
+            ["a", "run", "--run-id", "r1", "--", "--token"],
+            "--run-id uses the run's recorded params",
+        ),
+    ],
+)
+def test_run_id_rejects_conflicting_inputs(
+    argv: list[str],
+    expected: str,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    assert run(argv) == 2
+    assert expected in capsys.readouterr().err
+
+
 def test_help_says_format_prints_and_exits(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -231,6 +255,7 @@ def test_runs_an_experiment_in_process(
         None,
         None,
         None,
+        None,
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["start_experiment"].return_value
@@ -291,6 +316,7 @@ def test_runs_the_subset_given_as_params(
         None,
         5,
         drivers["parse_subset"].return_value,
+        None,
         None,
         None,
         None,
@@ -466,6 +492,7 @@ def test_shows_the_live_view_in_a_terminal(
         3,
         None,
         {},
+        None,
         None,
         None,
         None,

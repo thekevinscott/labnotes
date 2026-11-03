@@ -68,4 +68,5 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         args=["--verbose"],
         snapshot=snapshot,
         command_line="labnotes experiments exp run",
+        run_id=None,
     )

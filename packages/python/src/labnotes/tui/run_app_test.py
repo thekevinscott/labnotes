@@ -1622,5 +1622,9 @@ def test_live_app_delivers_only_events_read_from_its_invocation_journal() -> Non
         mock.patch.object(app.body, "show_event") as show,
     ):
         app.show_event({"event": "callback only"})
+        app.show_event({"event": "callback only again"})
         interval.assert_called_once()
-        show.assert_called_once_with(disk_event)
+        assert show.call_args_list == [mock.call(disk_event), mock.call(disk_event)]
+        app.body_ready = False
+        app.refresh_state()
+        assert show.call_count == 2

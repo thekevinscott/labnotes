@@ -43,3 +43,10 @@ def test_retry_deadline_and_new_invocation_are_replayable(tmp_path: Path) -> Non
     assert reader.read() == []
     assert [event["event"] for event in RunState(second.path).read()] == ["idle"]
     assert json.loads(writer.path.read_text().splitlines()[0])["event"] == "retrying"
+
+
+def test_reader_waits_for_its_invocation_journal_to_appear(tmp_path: Path) -> None:
+    reader = state(tmp_path)
+    assert reader.read() == []
+    reader.record({"event": "planned", "runs": []})
+    assert [event["event"] for event in reader.read()] == ["planned"]

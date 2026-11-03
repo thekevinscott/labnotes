@@ -29,7 +29,12 @@ def test_uvx_run_leaves_replayable_state(tmp_path: Path, uvx: dict[str, str]) ->
         timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    [state] = list((root / "exp/runs/run-state").glob("*.jsonl"))
+    [state] = list(
+        (Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state").glob("*/*.jsonl")
+    )
+    assert sorted(p.name for p in (root / "exp/runs").iterdir()) == sorted(
+        p.parent.name for p in (root / "exp/runs").glob("*/run.json")
+    )
     events = [json.loads(line) for line in state.read_text().splitlines()]
     assert len(events[0]["runs"]) == 2
     assert {event["event"] for event in events} >= {

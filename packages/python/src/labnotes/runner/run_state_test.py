@@ -1,8 +1,11 @@
 import json
+import os
 from pathlib import Path
 from unittest import mock
 
-from labnotes.runner.run_state import RunState
+import pytest
+
+from labnotes.runner.run_state import RunState, journal_folder
 
 
 def state(tmp_path: Path) -> RunState:
@@ -50,3 +53,39 @@ def test_reader_waits_for_its_invocation_journal_to_appear(tmp_path: Path) -> No
     assert reader.read() == []
     reader.record({"event": "planned", "runs": []})
     assert [event["event"] for event in reader.read()] == ["planned"]
+
+
+def test_journal_lives_in_state_home_not_runs_folder(tmp_path: Path) -> None:
+    journal = state(tmp_path).path
+    assert journal.is_relative_to(os.environ["XDG_STATE_HOME"])
+    assert not journal.is_relative_to(tmp_path)
+
+
+def test_journal_folder_is_stable_per_runs_folder(tmp_path: Path) -> None:
+    runs = tmp_path / "experiments/exp/runs"
+    assert journal_folder(runs) == journal_folder(
+        tmp_path / "experiments/exp/../exp/runs"
+    )
+    assert journal_folder(runs) != journal_folder(tmp_path / "other/runs")
+    assert (
+        journal_folder(runs).parent
+        == Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state"
+    )
+
+
+def test_journal_folder_defaults_to_local_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.delenv("XDG_STATE_HOME")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    folder = journal_folder(tmp_path / "runs")
+    assert folder.parent == tmp_path / ".local/state/labnotes/run-state"
+
+
+def test_empty_state_home_falls_back_to_local_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("XDG_STATE_HOME", "")
+    monkeypatch.setenv("HOME", str(tmp_path))
+    folder = journal_folder(tmp_path / "runs")
+    assert folder.parent == tmp_path / ".local/state/labnotes/run-state"

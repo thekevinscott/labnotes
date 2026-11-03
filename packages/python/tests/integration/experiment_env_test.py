@@ -70,9 +70,7 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
     assert [row["BOTH"] for row in rows] == ["first"] * 4 + ["second"] * 4
     assert {row["BASE"] for row in rows} == {"base"}
     assert {row["OWN"] for row in rows} == {"own"}
-    folders = sorted(
-        str(p.parent.resolve()) for p in (tmp_path / "exp" / "runs").glob("*/run.json")
-    )
+    folders = sorted(str(p.resolve()) for p in (tmp_path / "exp" / "runs").iterdir())
     hooks = [row["INV_DIR"] for row in rows if row["stage"] != "run"]
     assert hooks == [None] * 6
     assert sorted(row["INV_DIR"] for row in rows if row["stage"] == "run") == folders

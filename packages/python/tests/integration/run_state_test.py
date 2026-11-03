@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import subprocess
 import sys
 import time
@@ -33,12 +34,12 @@ def test_running_invocation_can_be_reconstructed_from_disk(tmp_path: Path) -> No
         stderr=subprocess.STDOUT,
         text=True,
     )
-    state_dir = tmp_path / "exp" / "runs" / "run-state"
+    state_dir = Path(os.environ["XDG_STATE_HOME"]) / "labnotes" / "run-state"
     state = None
     try:
         events = []
         for _ in range(80):
-            journals = list(state_dir.glob("*.jsonl"))
+            journals = list(state_dir.glob("*/*.jsonl"))
             if journals:
                 state = journals[0]
                 events = [json.loads(line) for line in state.read_text().splitlines()]
@@ -92,7 +93,11 @@ def test_concurrent_invocations_keep_separate_journals(tmp_path: Path) -> None:
     try:
         journals = []
         for _ in range(100):
-            journals = list((tmp_path / "exp/runs/run-state").glob("*.jsonl"))
+            journals = list(
+                (Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state").glob(
+                    "*/*.jsonl"
+                )
+            )
             if len(journals) == 2 and all(
                 "started" in path.read_text() for path in journals
             ):

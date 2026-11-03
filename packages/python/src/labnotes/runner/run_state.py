@@ -1,5 +1,6 @@
-"""Persist one invocation's run TUI events under its experiment's runs folder."""
+"""Persist one invocation's run TUI events in the user's state folder."""
 
+import hashlib
 import json
 import os
 import time
@@ -8,6 +9,13 @@ from uuid import uuid4
 
 from labnotes.models import LabnotesConfig
 from labnotes.runner.run_folder import run_folder
+
+
+def journal_folder(runs: Path) -> Path:
+    """Keep journals out of the runs folder, where scripts expect only runs."""
+    home = os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state"
+    key = hashlib.sha256(str(runs.resolve()).encode()).hexdigest()[:16]
+    return Path(home) / "labnotes" / "run-state" / key
 
 
 class RunState:
@@ -23,7 +31,7 @@ class RunState:
         runs = run_folder(config.root, config.runs, experiment, "_").parent
         stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
         return cls(
-            runs / "run-state" / f"{stamp}-{os.getpid()}-{uuid4().hex[:8]}.jsonl"
+            journal_folder(runs) / f"{stamp}-{os.getpid()}-{uuid4().hex[:8]}.jsonl"
         )
 
     def record(self, event: dict[str, object]) -> None:

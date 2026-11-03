@@ -20,6 +20,8 @@ def describe_event(event: dict[str, object]) -> str:
             return f"Stopping {event['run']}."
         case "killing run":
             return f"Killing {event['run']}."
+        case "held":
+            return f"{event['run']} held by another run."
         case "retried" if event["retry"] == event["run"]:
             return f"{event['run']} retried in its folder."
         case "retried":

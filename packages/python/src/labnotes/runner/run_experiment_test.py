@@ -61,6 +61,9 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             side_effect=lambda folder: 100 + len(folder.name),
         ) as claim_run,
         mock.patch(
+            "labnotes.runner.run_experiment.run_locked", return_value=True
+        ) as run_locked,
+        mock.patch(
             "labnotes.runner.run_experiment.os", mock.Mock(environ=os.environ)
         ) as patched_os,
         mock.patch(
@@ -114,6 +117,7 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
             "list_runs": list_runs,
             "resumable": resumable,
             "claim_run": claim_run,
+            "run_locked": run_locked,
             "close": patched_os.close,
             "run_ids": run_ids,
             "param_grid": param_grid,
@@ -1399,13 +1403,50 @@ def test_never_looks_for_failed_runs_without_continues(
     run(tmp_path, mock.Mock())
 
     collaborators["resumable"].assert_not_awaited()
-    collaborators["claim_run"].assert_not_called()
+    assert collaborators["claim_run"].call_count == 2
     assert [
         c.kwargs["continues"] for c in collaborators["execute_run"].await_args_list
     ] == [
         False,
         False,
     ]
+
+
+def test_held_unfinished_run_fills_a_slot_and_is_reported(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    folder = tmp_path / "exp" / "held"
+    folder.mkdir(parents=True)
+    (folder / "run.lock").write_text("")
+    collaborators["list_runs"].return_value = [
+        {
+            "id": "held",
+            "folder": "exp/held",
+            "params": '{"m": "a"}',
+            "ended": None,
+            "counted": 0,
+        },
+    ]
+    report = mock.Mock()
+
+    run(tmp_path, report)
+
+    collaborators["run_locked"].assert_called_once_with(folder)
+    collaborators["plan_runs"].assert_called_once_with([A, B], 2, [A])
+    assert {"event": "held", "run": "held"} in reported(report)
+
+
+def test_newly_planned_run_is_skipped_if_another_process_claims_it(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["claim_run"].side_effect = lambda folder: None
+    report = mock.Mock()
+
+    run(tmp_path, report)
+
+    assert {"event": "held", "run": "r1"} in reported(report)
+    collaborators["execute_run"].assert_not_awaited()
 
 
 def test_retries_a_tempfail_in_the_same_run_when_it_continues(

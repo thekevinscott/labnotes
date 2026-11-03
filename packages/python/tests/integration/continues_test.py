@@ -253,9 +253,54 @@ def test_a_locked_run_is_left_alone(tmp_path: Path, held_lock: Path) -> None:
     run(root)
 
     recorded = folders(root)
-    assert len(recorded) == 2
+    assert len(recorded) == 1
     assert "invocations" not in recorded[held_lock]
     assert (held_lock / "state.txt").read_text() == "x"
+
+
+@pytest.mark.parametrize("continues", [False, True])
+def test_a_held_run_fills_its_repeat_slot_and_appears_in_the_plan(
+    tmp_path: Path,
+    held_lock: Path,
+    capsys: pytest.CaptureFixture[str],
+    continues: bool,
+) -> None:
+    root = make_project(
+        tmp_path, "", settings=f"continues = {str(continues).lower()}\n"
+    )
+    add_run(root, held_lock.name, ended=None, exit_code=None)
+
+    run(root)
+
+    assert list(folders(root)) == [held_lock]
+    assert "held by another run" in capsys.readouterr().out
+
+
+def test_a_passed_and_a_held_run_fill_both_repeat_slots(
+    tmp_path: Path, held_lock: Path
+) -> None:
+    root = make_project(tmp_path, "", settings="continues = false\nrepeats = 2\n")
+    add_run(root, "passed", exit_code=0)
+    add_run(root, held_lock.name, ended=None, exit_code=None)
+
+    run(root)
+
+    assert set(folders(root)) == {held_lock, root / "exp/runs/passed"}
+
+
+def test_an_unheld_running_record_is_lost_and_planned_again_without_continues(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path, "", settings="continues = false\n")
+    stale = add_run(root, "stale", ended=None, exit_code=None, pid=os.getpid())
+    write(stale / "run.lock", "")
+
+    run(root)
+
+    recorded = folders(root)
+    assert len(recorded) == 2
+    assert recorded[stale]["ended_by"] == "lost"
+    assert [r["exit_code"] for folder, r in recorded.items() if folder != stale] == [0]
 
 
 @pytest.mark.parametrize(
@@ -297,4 +342,4 @@ def test_without_continues_a_failed_run_is_redone_in_a_new_folder(
         assert "invocations" not in record
         assert (folder / "state.txt").read_text() == "x"
         assert (folder / "stdout.log").read_text() == "launch 1\n"
-        assert not (folder / "run.lock").exists()
+        assert (folder / "run.lock").exists()

@@ -45,6 +45,7 @@ def param_args() -> Iterator[mock.MagicMock]:
         ({"event": "idle"}, "No runs left."),
         ({"event": "stopping run", "run": "r1"}, "Stopping r1."),
         ({"event": "killing run", "run": "r1"}, "Killing r1."),
+        ({"event": "held", "run": "r1"}, "r1 held by another run."),
         ({"event": "concurrency", "concurrency": 3}, "3 at a time."),
         (
             {"event": "ended", "run": "r1", "exit_code": 3, "error": None},

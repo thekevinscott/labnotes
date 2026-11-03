@@ -293,7 +293,7 @@ async def run_experiment(
         del running[run], trees[run]
         report({"event": "ended", "run": run, **result})
         ended[run] = params
-        results[run] = result
+        results[run] = {"run": run, **result}
         if result["exit_code"] == RETRY_EXIT_CODE and not (
             stopping.is_set() or run in stopped
         ):

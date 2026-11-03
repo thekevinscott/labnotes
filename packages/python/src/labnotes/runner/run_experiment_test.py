@@ -248,7 +248,10 @@ def test_runs_each_planned_run_in_a_new_folder(
 
     results = run(tmp_path, report)
 
-    assert results == [{"exit_code": 0, "error": None}] * 2
+    assert results == [
+        {"run": "r1", "exit_code": 0, "error": None},
+        {"run": "r2", "exit_code": 0, "error": None},
+    ]
     calls = collaborators["execute_run"].await_args_list
     assert [c.args[:4] for c in calls] == [
         (tmp_path, tmp_path / "exp" / "r1", "run", A),
@@ -698,7 +701,7 @@ def test_first_interrupt_stops_runs_and_starts_no_more(
 
     results = run(tmp_path, report, listen=listen)
 
-    assert results == [{"exit_code": -15, "error": None}]
+    assert results == [{"run": "r1", "exit_code": -15, "error": None}]
     collaborators["signal_tree"].assert_called_once_with(42, SIGTERM, set())
     assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 

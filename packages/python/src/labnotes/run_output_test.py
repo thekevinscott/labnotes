@@ -469,3 +469,28 @@ def test_moves_to_the_newest_invocation_log_from_its_start(
     )
 
     assert messages == [log("first\n"), log("second\n"), end(0)]
+
+
+def test_resets_offset_when_new_log_path_sorts_before_previous(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    previous = folder / "stdout.log"
+    previous.write_text("long previous output\n")
+    current = folder / "stdout-20261103-120000-000000.txt"
+    assert current < previous
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: current.write_text("new\n"),
+                event("logs", experiment="alpha", run="r1", stream="stdout"),
+            ),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [log("long previous output\n"), log("new\n"), end(0)]

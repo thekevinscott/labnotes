@@ -19,7 +19,7 @@ reason = "WorkerState members are singletons, so is equals =="
 [[python.exempt]]
 path = "src/labnotes/runner/run_experiment.py"
 rules = ["mutation"]
-lines = [190, 297]
+lines = [220, 331]
 reason = "a retry is only scheduled below the budget and each one adds one, so tried never passes retries: >= equals ==; both sides are small ints, which CPython caches, so is equals =="
 
 [[python.exempt]]
@@ -31,7 +31,7 @@ reason = "exit_code is non-negative here; when bit 7 is set, - 128 equals ^ 128,
 [[python.exempt]]
 path = "src/labnotes/experiments.py"
 rules = ["mutation"]
-lines = [120]
+lines = [213]
 reason = "click hands back the \"json\" choice literal itself, so is not equals !="
 
 [[python.exempt]]

@@ -1572,3 +1572,31 @@ def test_a_run_retried_in_its_own_folder_counts_once() -> None:
             await pilot.press("ctrl+c")
 
     asyncio.run(drive())
+
+
+@pytest.mark.parametrize(
+    ("run", "retry", "same_run"),
+    [
+        ("r2", "r1", False),
+        ("".join(["r", "2"]), "".join(["r2", ""]), True),
+    ],
+)
+def test_retried_run_ids_use_value_equality(
+    run: str, retry: str, same_run: bool
+) -> None:
+    if same_run:
+        assert run is not retry
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r2", "other"))
+        report({"event": "retried", "run": run, "retry": retry, "params": {}})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert ("r2" in app.body.retried) is not same_run
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())

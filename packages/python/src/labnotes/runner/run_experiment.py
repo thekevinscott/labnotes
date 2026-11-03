@@ -95,8 +95,7 @@ async def run_experiment(
         return True
 
     def release(run: str) -> None:
-        if run in locks:
-            os.close(locks.pop(run))
+        os.close(locks.pop(run))
 
     resumable: list[Entry] = []
     if experiment.continues:

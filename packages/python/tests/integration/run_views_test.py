@@ -49,6 +49,10 @@ def test_run_app_mounts_configured_view_and_digits_switch(tmp_path: Path) -> Non
             assert "alpha: alpha/runs/first passed" in str(
                 app.query_one("#view-2 Static", Static).content
             )
+            await pilot.press("escape")
+            await pilot.pause()
+            assert app.query_one("#view-1").display
+            await pilot.press("2")
             await pilot.press("1")
             await pilot.pause()
             assert app.query_one("#view-1").display

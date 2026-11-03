@@ -1,5 +1,6 @@
 import signal
 import time
+import tomllib
 from collections.abc import Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
@@ -10,9 +11,11 @@ from starlette.datastructures import QueryParams
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
+from textual.css.query import NoMatches
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
 
+from labnotes.compose_experiment import compose_experiment
 from labnotes.load_experiment import load_experiment
 from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
@@ -34,6 +37,7 @@ from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.utils.run_usage import run_usage
 from labnotes.view.experiment import Experiment
+from labnotes.view_specs import view_specs
 from labnotes.watch_rows import watch_rows
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
@@ -345,17 +349,21 @@ class RunApp(ViewSwitcher, App[None]):
         title: str,
         columns: Sequence[str],
         config: LabnotesConfig | None = None,
+        experiment_config: Path | None = None,
     ) -> None:
         super().__init__()
         self.start = start
         self.title = title
         self.config = config
+        self.experiment_config = experiment_config
         self.experiment_name = title
+        self.view_specs = self.configured_views()
         self.results: list[dict[str, object]] = []
         self.error: Exception | None = None
         self.columns = tuple(columns)
         self.body = RunLiveView(columns)
         self.body.id = "view-1"
+        self.body_ready = True
         self.loaded_views = False
         self.shown: Experiment | None = None
         self.left: dict[str, Widget] = {}
@@ -364,16 +372,23 @@ class RunApp(ViewSwitcher, App[None]):
     def compose(self) -> ComposeResult:
         yield Header()
         with ContentSwitcher(initial="view-1"):
-            if self.config is None:
-                yield self.body
-            else:
+            if self.view_specs:
+                assert self.config is not None
                 yield ViewPane("runs", BUILT_IN, self.config.root, id="view-1")
+            else:
+                yield self.body
         yield Footer()
 
     async def on_mount(self) -> None:
         await self.query_one(Header).mount(Static(id="concurrency"))
-        if self.config is not None:
-            self.body = self.query_one(RunLiveView)
+        if self.view_specs:
+            assert self.config is not None
+            self._bindings.bind("escape", "leave", "Back")
+            try:
+                self.body = self.query_one(RunLiveView)
+            except NoMatches:
+                # ViewPane already displays the built-in view's loading error.
+                self.body_ready = False
             tables = open_tables(self.config, run_files=True)
             self.run_worker(
                 reload_on_change(
@@ -387,6 +402,19 @@ class RunApp(ViewSwitcher, App[None]):
             )
             self.run_worker(self.watch_files(tables), exit_on_error=False)
         self.run_worker(self.drive())
+
+    def configured_views(self) -> dict[str, str]:
+        if self.config is None:
+            return {}
+        folder = self.config.experiments.replace("{experiment}", self.experiment_name)
+        path = self.experiment_config or self.config.root / folder / "experiment.toml"
+        try:
+            source = path.read_text()
+            layer = tomllib.loads(source)
+        except (OSError, tomllib.TOMLDecodeError):
+            # The runner reports missing or invalid config through its normal path.
+            layer = {}
+        return view_specs(compose_experiment(self.config.defaults, layer))
 
     async def load_data(self, tables: Any) -> None:
         assert self.config is not None
@@ -422,23 +450,25 @@ class RunApp(ViewSwitcher, App[None]):
 
     def listen(self, controls: Controls) -> None:
         self.controls = controls
-        self.body.controls = controls
+        if self.body_ready:
+            self.body.controls = controls
         stop_then_kill(self.stop_runs, signal.SIGTERM)
         stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
-        self.body.show_event(event)
+        if self.body_ready:
+            self.body.show_event(event)
 
     def stop_runs(self) -> None:
-        if self.body.idle:
+        if self.body_ready and self.body.idle:
             self.controls.finish()
         else:
             self.controls.interrupt()
 
     def action_interrupt(self) -> None:
-        if self.body.started:
+        if self.body_ready and self.body.started:
             self.push_screen(LeavePrompt(len(self.body.started)), self.answer)
-        elif self.body.idle:
+        elif self.body_ready and self.body.idle:
             self.controls.finish()
         else:
             self.exit()

@@ -168,7 +168,7 @@ def experiments(
             )
             try:
                 if sys.stdout.isatty() and sys.stderr.isatty():
-                    results = run_tui(start, name, config)
+                    results = run_tui(start, name, config, experiment_config)
                 else:
                     results = run_headless(start)
             except ValueError as error:

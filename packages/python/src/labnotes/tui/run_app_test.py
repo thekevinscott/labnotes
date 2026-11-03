@@ -86,6 +86,38 @@ def test_custom_views_mount_in_pane_and_open_tables(tmp_path: Path) -> None:
     reloading.close()
 
 
+def test_run_file_watcher_failure_keeps_shell_alive(tmp_path: Path) -> None:
+    app = configured_app(
+        tmp_path,
+        'command = "echo ok"\n[views]\nprogress = "progress.py:Progress"\n',
+    )
+
+    async def changes():
+        yield {"path": "alpha/runs/first/stdout.log"}
+        raise RuntimeError("watch failed")
+
+    async def reload():
+        await asyncio.Event().wait()
+
+    reloading = reload()
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.tui.run_app.open_tables"),
+            mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+            mock.patch("labnotes.tui.run_app.reload_on_change", return_value=reloading),
+            mock.patch.object(app, "_handle_exception") as fatal,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                await pilot.pause()
+                assert app.query_one("#view-1")
+                fatal.assert_not_called()
+
+    asyncio.run(drive())
+    reloading.close()
+
+
 def test_builtin_pane_error_keeps_the_run_shell_alive(tmp_path: Path) -> None:
     app = configured_app(
         tmp_path,

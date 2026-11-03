@@ -41,6 +41,12 @@ lines = [221]
 reason = "the leave action name is the string literal from the Binding, which CPython interns, so is equals =="
 
 [[python.exempt]]
+path = "src/labnotes/tui/run_app.py"
+rules = ["mutation"]
+lines = [485]
+reason = "the switcher contains only view-1 through view-9; every non-built-in view id sorts above view-1, so > equals !="
+
+[[python.exempt]]
 path = "src/labnotes/runner/hold_experiment.py"
 rules = ["mutation"]
 lines = [18]

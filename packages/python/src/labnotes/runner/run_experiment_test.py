@@ -200,7 +200,9 @@ def test_targets_one_failed_run_with_recorded_arguments(
     assert executed.kwargs["args"] == ["--token", "saved"]
     collaborators["param_grid"].assert_not_called()
     collaborators["plan_runs"].assert_not_called()
-    collaborators["claim_run"].assert_called_with(folder)
+    collaborators["claim_run"].assert_any_call(folder)
+    if not continues:
+        collaborators["claim_run"].assert_any_call(tmp_path / "exp" / "r1")
     assert collaborators["close"].called
 
 
@@ -313,7 +315,8 @@ def test_target_id_matches_by_value_among_neighbors(
     assert len(result) == 1
     executed = collaborators["execute_run"].await_args
     assert executed.args[3] == A
-    collaborators["claim_run"].assert_called_once_with(folder)
+    collaborators["claim_run"].assert_any_call(folder)
+    collaborators["claim_run"].assert_any_call(tmp_path / "exp" / "r1")
 
 
 def test_plans_the_runs_still_needed(

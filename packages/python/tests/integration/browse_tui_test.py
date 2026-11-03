@@ -118,6 +118,26 @@ def test_opens_a_run_and_follows_its_output(terminal, tmp_path: Path) -> None:
     term.wait()
 
 
+def test_opens_the_end_of_a_large_run_log_quickly(terminal, tmp_path: Path) -> None:
+    root = project(tmp_path)
+    run = root / "alpha/runs/20261017-000000/second"
+    block = (b"old output " + b"x" * 80 + b"\n") * 1024
+    with (run / "stdout.log").open("wb") as log:
+        for _ in range(450):
+            log.write(block)
+        log.write(b"newest line from huge log\n")
+    term = labnotes(terminal, root, "alpha")
+    expect(term.get_by_text("20261017-000000/second")).to_be_visible()
+
+    started = time.monotonic()
+    term.key_enter()
+    expect(term.get_by_text("newest line from huge log")).to_be_visible(timeout=5)
+    assert time.monotonic() - started < 5
+
+    term.key_ctrl_c()
+    term.wait()
+
+
 def test_prints_and_exits_when_format_is_given(terminal, tmp_path: Path) -> None:
     term = labnotes(terminal, project(tmp_path), "--format json")
     expect(term.get_by_text('"display_name": "alpha"')).to_be_visible()

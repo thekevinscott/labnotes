@@ -1175,7 +1175,7 @@ def test_x_does_nothing_without_rows() -> None:
 
 def output(app: RunApp) -> list[str]:
     log: Any = app.query_one("#output")
-    return [line.text.rstrip() for line in log.lines]
+    return [line.rstrip() for line in log.lines]
 
 
 def test_enter_follows_the_output_of_the_run_under_the_cursor(

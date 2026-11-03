@@ -1,19 +1,23 @@
 import codecs
+from collections.abc import Iterable
 from pathlib import Path
-from typing import Any, Self
+from typing import Self
 
+from rich.style import Style
 from rich.text import Text
+from rich.cells import cell_len
 from textual.geometry import Size
-from textual.widgets import RichLog
+from textual.strip import Strip
+from textual.widgets import Log
 
 from labnotes.latest_log import latest_log
 
 STREAMS = ("stdout", "stderr")
 
 
-class RunOutput(RichLog):
+class RunOutput(Log):
     def __init__(self, id: str | None = None) -> None:
-        super().__init__(id=id, wrap=True, min_width=1)
+        super().__init__(id=id)
         self.reset()
 
     def reset(self) -> None:
@@ -25,11 +29,7 @@ class RunOutput(RichLog):
         }
         self.last_stream: str | None = None
         self.unfinished = ""
-        self.written_rows = 0
         self.clear()
-        # A hidden log has no width; writing now would wrap every line to one
-        # cell. Hold writes until it's shown and resized.
-        self._size_known = bool(self.scrollable_content_region.width)
 
     @property
     def mid_line(self) -> bool:
@@ -57,24 +57,50 @@ class RunOutput(RichLog):
                 text = self.unfinished + text
             *complete, self.unfinished = text.split("\n")
             if complete:
-                self.write(Text.from_ansi("\n".join(complete)))
+                self.write_lines(complete)
             if self.unfinished:
-                self.write(Text.from_ansi(self.unfinished))
+                self.write_lines([self.unfinished])
             self.last_stream = stream
 
-    # Counted here, not in follow: writes made before the size is known
-    # render later, from on_resize.
-    def write(self, content: object, *args: Any, **kwargs: Any) -> Self:
-        rows = len(self.lines)
-        super().write(content, *args, **kwargs)
-        self.written_rows = len(self.lines) - rows
+    def write_lines(self, lines: Iterable[str], scroll_end: bool | None = None) -> Self:
+        new_lines = list(lines)
+        if not new_lines:
+            return self
+        at_end = self.is_vertical_scroll_end
+        self._lines.extend(new_lines)
+        self._width = max(self._width, max(map(len, new_lines)))
+        self.virtual_size = Size(self._width, len(self._lines))
+        self.refresh()
+        if (
+            self.is_mounted
+            and (self.auto_scroll if scroll_end is None else scroll_end)
+            and at_end
+        ):
+            self.scroll_end(animate=False, immediate=True, x_axis=False)
         return self
 
     def drop_unfinished(self) -> None:
-        if not self._size_known:
-            self._deferred_renders.pop()
-            return
-        del self.lines[-self.written_rows :]
-        self._line_cache.clear()
-        self.virtual_size = Size(self.virtual_size.width, len(self.lines))
+        self._lines.pop()
+        self._render_line_cache.discard(len(self._lines))
+        self.virtual_size = Size(self._width, len(self._lines))
         self.refresh()
+
+    def _render_line_strip(self, y: int, rich_style: Style) -> Strip:
+        selection = self.text_selection
+        if selection is None and y in self._render_line_cache:
+            return self._render_line_cache[y]
+        line_text = Text.from_ansi(self._lines[y], style=rich_style)
+        if selection is not None:
+            if (span := selection.get_span(y)) is not None:
+                start, end = span
+                if end == -1:
+                    end = len(line_text)
+                line_text.stylize(
+                    self.screen.get_component_rich_style("screen--selection"),
+                    start,
+                    end,
+                )
+        line = Strip(line_text.render(self.app.console), cell_len(line_text.plain))
+        if selection is None:
+            self._render_line_cache[y] = line
+        return line

@@ -8,7 +8,7 @@ uvx labnotes experiments foo run
 
 ![The TUI running an experiment](/demos/tui.gif)
 
-From the table you can change how many run at once, stop a run, filter runs by params and read a run's output as it's written. The [TUI reference](../api/tui) lists every key.
+From the table you can change how many run at once, stop a run, filter runs by params and read a run's output as it's written. Output does not wrap; scroll sideways to read long lines. The [TUI reference](../api/tui) lists every key.
 
 Experiments with `[views]` also show custom views in the run TUI. Press `1` for the live runs table and `2`–`9` for custom views; `0` returns to the table. The same views and keys are available while browsing.
 

@@ -13,7 +13,7 @@ class Host(App[None]):
 
 
 def shown(output: RunOutput) -> list[str]:
-    return [line.text.rstrip() for line in output.lines]
+    return [line.rstrip() for line in output.lines]
 
 
 def mounted(
@@ -133,15 +133,17 @@ def test_renders_ansi_color(tmp_path: Path) -> None:
         output.follow(tmp_path)
         append(tmp_path / "stdout.log", b"ld\x1b[0m\n")
         output.follow(tmp_path)
-        assert shown(output) == ["red plain", "bold"]
+        assert shown(output) == ["\x1b[31mred\x1b[0m plain", "\x1b[1mbold\x1b[0m"]
+        lines = [output._render_line_strip(y, output.rich_style) for y in range(2)]
         colors = {
             s.text.strip(): s.style.color.name if s.style and s.style.color else None
-            for line in output.lines
-            for s in line
+            for line in lines
+            for s in line._segments
             if s.text.strip()
         }
-        assert colors == {"red": "color(1)", "plain": None, "bold": None}
-        bold = [s.style for s in output.lines[1] if s.text == "bold"]
+        assert colors["red"] == "color(1)"
+        assert colors["plain"] == colors["bold"]
+        bold = [s.style for s in lines[1]._segments if s.text == "bold"]
         assert bold[0] is not None
         assert bold[0].bold
 
@@ -153,24 +155,27 @@ def test_drops_escapes_other_than_color(tmp_path: Path) -> None:
 
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
-        assert shown(output) == ["20% done"]
+        assert (
+            "".join(s.text for s in output.render_line(0)._segments).strip()
+            == "20% done"
+        )
 
     mounted(check)
 
 
-def test_wraps_long_lines_instead_of_scrolling_sideways(tmp_path: Path) -> None:
+def test_long_lines_scroll_sideways_without_wrapping(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("word " * 12 + "\n")
 
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
-        assert len(shown(output)) > 1
-        assert " ".join(shown(output)).split() == ["word"] * 12
-        assert output.virtual_size.width <= output.scrollable_content_region.width
+        assert shown(output) == [("word " * 12).rstrip()]
+        assert output.virtual_size.height == 1
+        assert output.virtual_size.width > output.scrollable_content_region.width
 
     mounted(check, size=(30, 10))
 
 
-def test_redraws_an_unfinished_line_that_wraps(tmp_path: Path) -> None:
+def test_redraws_an_unfinished_long_line(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("word " * 12)
 
     def check(output: RunOutput) -> None:
@@ -178,7 +183,7 @@ def test_redraws_an_unfinished_line_that_wraps(tmp_path: Path) -> None:
         append(tmp_path / "stdout.log", b"end\nnext\n")
         output.follow(tmp_path)
         lines = shown(output)
-        assert " ".join(lines).split() == ["word"] * 12 + ["end", "next"]
+        assert lines == ["word " * 12 + "end", "next"]
 
     mounted(check, size=(30, 10))
 
@@ -191,7 +196,7 @@ def test_redraws_an_unfinished_line_written_before_the_size_is_known(
     output.follow(tmp_path)
     append(tmp_path / "stdout.log", b"tial\n")
     output.follow(tmp_path)
-    assert [str(render.content) for render in output._deferred_renders] == ["partial"]
+    assert shown(output) == ["partial"]
 
 
 def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:

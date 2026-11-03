@@ -1,5 +1,3 @@
-from collections import deque
-from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
@@ -7,130 +5,83 @@ import pytest
 
 from labnotes.tui.run_output import RunOutput
 
-DROP_UNFINISHED = RunOutput.drop_unfinished
-WRITE = RunOutput.write
-
-
-@pytest.fixture(autouse=True)
-def log() -> Iterator[dict[str, mock.MagicMock]]:
-    with (
-        mock.patch.object(RunOutput, "write") as write,
-        mock.patch.object(RunOutput, "clear") as clear,
-        mock.patch.object(RunOutput, "drop_unfinished") as drop,
-    ):
-        yield {"write": write, "clear": clear, "drop": drop}
-
-
-def written(log: dict[str, mock.MagicMock]) -> list[str]:
-    return [call.args[0].plain for call in log["write"].call_args_list]
-
 
 def append(path: Path, text: str) -> None:
     with path.open("a") as file:
         file.write(text)
 
 
-def test_starts_empty(log: dict[str, mock.MagicMock]) -> None:
+def test_starts_empty() -> None:
     output = RunOutput(id="output")
     assert output.id == "output"
     assert output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
-    assert output.written_rows == 0
-    assert (output.wrap, output.min_width) == (True, 1)
-    assert not output._size_known
-    log["clear"].assert_called_once_with()
+    assert list(output.lines) == []
+    assert output.auto_scroll
 
 
-@pytest.mark.parametrize("width, known", [(0, False), (1, True), (40, True)])
-def test_reset_holds_writes_while_the_log_has_no_width(width: int, known: bool) -> None:
+def test_empty_write_leaves_the_log_unchanged() -> None:
     output = RunOutput()
-    with mock.patch.object(
-        RunOutput, "scrollable_content_region", mock.Mock(width=width)
-    ):
-        output.reset()
-    assert output._size_known is known
+    assert output.write_lines([]) is output
+    assert list(output.lines) == []
 
 
-def test_write_counts_the_rows_it_adds() -> None:
-    output = RunOutput()
-    output.lines = ["earlier", "earlier"]  # type: ignore[list-item]
-    with mock.patch("textual.widgets.RichLog.write") as write:
-        write.side_effect = lambda *args, **kwargs: output.lines.extend(["a", "b"])  # type: ignore[list-item]
-        assert WRITE(output, "text", 9, scroll_end=False) is output
-    write.assert_called_once_with("text", 9, scroll_end=False)
-    assert output.written_rows == 2
-
-
-def test_follows_nothing_before_a_run_writes_output(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
     output = RunOutput()
     output.follow(tmp_path)
-    assert written(log) == []
+    assert list(output.lines) == []
     assert output.offsets == {"stdout": 0, "stderr": 0}
 
 
 @pytest.mark.parametrize("stdout", [None, ""])
-def test_follows_stderr_without_stdout(
-    tmp_path: Path, log: dict[str, mock.MagicMock], stdout: str | None
-) -> None:
+def test_follows_stderr_without_stdout(tmp_path: Path, stdout: str | None) -> None:
     if stdout is not None:
         (tmp_path / "stdout.log").write_text(stdout)
     (tmp_path / "stderr.log").write_text("oops\n")
     output = RunOutput()
     output.follow(tmp_path)
-    assert written(log) == ["oops"]
+    assert list(output.lines) == ["oops"]
     assert output.offsets == {"stdout": 0, "stderr": 5}
 
 
-def test_appends_only_new_bytes_on_each_follow(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
     output = RunOutput()
     (tmp_path / "stdout.log").write_text("one\n")
     output.follow(tmp_path)
     output.follow(tmp_path)
     append(tmp_path / "stdout.log", "two\nthree\n")
     output.follow(tmp_path)
-    assert written(log) == ["one", "two\nthree"]
+    assert list(output.lines) == ["one", "two", "three"]
     assert output.offsets == {"stdout": 14, "stderr": 0}
 
 
-def test_decodes_characters_split_across_follows(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:
     output = RunOutput()
     (tmp_path / "stdout.log").write_bytes(b"caf\xc3")
     output.follow(tmp_path)
     with (tmp_path / "stdout.log").open("ab") as file:
         file.write(b"\xa9 done\n")
     output.follow(tmp_path)
-    assert written(log) == ["caf", "café done"]
+    assert list(output.lines) == ["café done"]
     assert output.offsets == {"stdout": 11, "stderr": 0}
 
 
-def test_redraws_a_streams_own_unfinished_line(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_redraws_a_streams_own_unfinished_line(tmp_path: Path) -> None:
     output = RunOutput()
     (tmp_path / "stdout.log").write_text("par")
     output.follow(tmp_path)
+    assert list(output.lines) == ["par"]
     assert output.mid_line
-    log["drop"].assert_not_called()
     append(tmp_path / "stdout.log", "tial\nne")
     output.follow(tmp_path)
-    log["drop"].assert_called_once_with()
-    assert written(log) == ["par", "partial", "ne"]
+    assert list(output.lines) == ["partial", "ne"]
     append(tmp_path / "stdout.log", "xt\n")
     output.follow(tmp_path)
-    assert log["drop"].call_count == 2
-    assert written(log) == ["par", "partial", "ne", "next"]
+    assert list(output.lines) == ["partial", "next"]
     assert not output.mid_line
 
 
-def test_breaks_an_unfinished_line_before_the_other_stream(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_breaks_an_unfinished_line_before_the_other_stream(tmp_path: Path) -> None:
     output = RunOutput()
     (tmp_path / "stdout.log").write_text("next")
     (tmp_path / "stderr.log").write_text("oops\n")
@@ -143,26 +94,19 @@ def test_breaks_an_unfinished_line_before_the_other_stream(
     assert (output.last_stream, output.mid_line) == ("stderr", True)
     append(tmp_path / "stdout.log", "end\n")
     output.follow(tmp_path)
-    log["drop"].assert_not_called()
-    assert written(log) == ["next", "oops", "more", "warn", "end"]
+    assert list(output.lines) == ["next", "oops", "more", "warn", "end"]
 
 
-def test_parses_ansi_into_styles(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_keeps_ansi_raw_until_a_line_is_rendered(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("\x1b[31mred\x1b[0m plain\x1b[2K\n")
     output = RunOutput()
-    output.follow(tmp_path)
-    text = log["write"].call_args.args[0]
-    assert text.plain == "red plain"
-    assert [(span.start, span.end, str(span.style)) for span in text.spans] == [
-        (0, 3, "color(1)")
-    ]
+    with mock.patch("labnotes.tui.run_output.Text.from_ansi") as parse:
+        output.follow(tmp_path)
+    parse.assert_not_called()
+    assert list(output.lines) == ["\x1b[31mred\x1b[0m plain\x1b[2K"]
 
 
-def test_reset_starts_over_for_another_folder(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
     (tmp_path / "r1").mkdir()
     (tmp_path / "r2").mkdir()
     (tmp_path / "r1" / "stdout.log").write_bytes(b"cut \xe2\x82")
@@ -170,18 +114,15 @@ def test_reset_starts_over_for_another_folder(
     (tmp_path / "r2" / "stderr.log").write_bytes(b"warn\n")
     output = RunOutput()
     output.follow(tmp_path / "r1")
-    log["clear"].reset_mock()
     output.reset()
-    log["clear"].assert_called_once_with()
     assert output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
+    assert list(output.lines) == []
     output.follow(tmp_path / "r2")
-    assert written(log) == ["cut ", "hi", "warn"]
+    assert list(output.lines) == ["hi", "warn"]
 
 
-def test_reset_forgets_an_unfinished_line(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_reset_forgets_an_unfinished_line(tmp_path: Path) -> None:
     (tmp_path / "r1").mkdir()
     (tmp_path / "r2").mkdir()
     (tmp_path / "r1" / "stdout.log").write_text("partial")
@@ -190,45 +131,70 @@ def test_reset_forgets_an_unfinished_line(
     output.follow(tmp_path / "r1")
     output.reset()
     output.follow(tmp_path / "r2")
-    log["drop"].assert_not_called()
-    assert written(log) == ["partial", "more"]
+    assert list(output.lines) == ["more"]
 
 
-def test_drops_a_deferred_write_before_the_size_is_known() -> None:
+def test_dropping_an_unfinished_line_invalidates_its_cache() -> None:
     output = RunOutput()
-    output._size_known = False
-    output._deferred_renders = deque(["kept", "dropped"])  # type: ignore[list-item]
-    DROP_UNFINISHED(output)
-    assert list(output._deferred_renders) == ["kept"]
+    output.write_lines(["kept", "partial"])
+    output._render_line_cache[1] = mock.Mock()
+    output.drop_unfinished()
+    assert list(output.lines) == ["kept"]
+    assert 1 not in output._render_line_cache
+    assert output.virtual_size.height == 1
 
 
-def test_drops_every_row_of_the_unfinished_line() -> None:
+def test_reuses_a_cached_visible_line() -> None:
     output = RunOutput()
-    output._size_known = True
-    output.written_rows = 2
-    output.lines = ["first", "kept", "kept", "dropped", "dropped"]  # type: ignore[list-item]
-    output._line_cache = mock.Mock()
+    output.write_lines(["kept"])
+    cached = mock.Mock()
+    output._render_line_cache[0] = cached
+    with mock.patch.object(
+        RunOutput, "text_selection", new_callable=mock.PropertyMock
+    ) as selected:
+        selected.return_value = None
+        assert output._render_line_strip(0, mock.Mock()) is cached
+
+
+@pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
+def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) -> None:
+    output = RunOutput()
+    output.write_lines(["red"])
+    selection = mock.Mock()
+    selection.get_span.return_value = span
+    line_text = mock.Mock(plain="red")
+    line_text.__len__ = mock.Mock(return_value=3)
+    line_text.render.return_value = []
     with (
-        mock.patch.object(RunOutput, "virtual_size", mock.Mock(width=9)),
-        mock.patch("labnotes.tui.run_output.Size") as size,
-        mock.patch.object(output, "refresh") as refresh,
+        mock.patch.object(
+            RunOutput, "text_selection", new_callable=mock.PropertyMock
+        ) as selected,
+        mock.patch.object(
+            RunOutput, "screen", new_callable=mock.PropertyMock
+        ) as screen,
+        mock.patch.object(RunOutput, "app", new_callable=mock.PropertyMock),
+        mock.patch("labnotes.tui.run_output.Text.from_ansi", return_value=line_text),
     ):
-        DROP_UNFINISHED(output)
-        assert output.virtual_size is size.return_value
-    size.assert_called_once_with(9, 3)
-    assert output.lines == ["first", "kept", "kept"]
-    output._line_cache.clear.assert_called_once_with()
-    refresh.assert_called_once_with()
+        selected.return_value = selection
+        output._render_line_strip(0, mock.Mock())
+    selection.get_span.assert_called_once_with(0)
+    if span is None:
+        line_text.stylize.assert_not_called()
+    else:
+        line_text.stylize.assert_called_once_with(
+            screen.return_value.get_component_rich_style.return_value,
+            span[0],
+            3 if span[1] == -1 else span[1],
+        )
+    assert 0 not in output._render_line_cache
 
 
-def test_moves_to_the_newest_invocation_log_from_its_start(
-    tmp_path: Path, log: dict[str, mock.MagicMock]
-) -> None:
+def test_moves_to_the_newest_invocation_log_from_its_start(tmp_path: Path) -> None:
     output = RunOutput()
     (tmp_path / "stdout-20261102-090000-000000.txt").write_text("first\n")
     output.follow(tmp_path)
     (tmp_path / "stdout-20261102-100000-000000.txt").write_text("next\n")
     output.follow(tmp_path)
     output.follow(tmp_path)
-    assert written(log) == ["first", "next"]
+    assert list(output.lines) == ["first", "next"]
     assert output.offsets == {"stdout": 5, "stderr": 0}

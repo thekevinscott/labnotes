@@ -1,11 +1,18 @@
 from collections.abc import Iterator
 from importlib.metadata import version
 from pathlib import Path
+import runpy
 from unittest import mock
 
 import pytest
 
 from labnotes.cli import main
+
+
+def test_module_entrypoint_uses_labnotes_program_name() -> None:
+    with mock.patch("labnotes.cli.main") as entrypoint:
+        runpy.run_module("labnotes.__main__", run_name="__main__")
+    entrypoint.assert_called_once_with(prog_name="labnotes")
 
 
 @pytest.fixture

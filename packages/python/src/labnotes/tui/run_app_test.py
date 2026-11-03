@@ -6,124 +6,175 @@ from unittest import mock
 
 import pytest
 
-from labnotes.models import LabnotesConfig
 from labnotes.tui.run_app import RunApp, RunLiveView
-from labnotes.view.experiment import Experiment
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]
 Listen = Callable[[Any], None]
 
 
-def test_no_custom_views_opens_no_tables(tmp_path: Path) -> None:
-    (tmp_path / "alpha").mkdir()
-    (tmp_path / "alpha/experiment.toml").write_text(
-        'command = "echo ok"\ncontinues = false\n[views]\nruns = "echo"\n'
-    )
-    config = LabnotesConfig(
-        tmp_path / ".labnotes.toml", tmp_path, "{experiment}", "", ""
+def configured_app(
+    tmp_path: Path, source: str | None, defaults: dict[str, object] | None = None
+) -> RunApp:
+    folder = tmp_path / "alpha"
+    folder.mkdir(exist_ok=True)
+    if source is not None:
+        (folder / "experiment.toml").write_text(source)
+    config = mock.Mock(
+        root=tmp_path, experiments="{experiment}", defaults=defaults or {}
     )
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
+    return RunApp(start, "alpha", COLUMNS, config)
+
+
+def test_configured_views_handles_missing_invalid_and_override_files(
+    tmp_path: Path,
+) -> None:
+    defaults: dict[str, object] = {"views": {"progress": "progress.py:Progress"}}
+    assert configured_app(tmp_path, None, defaults).view_specs == defaults["views"]
+    assert configured_app(tmp_path, "[bad", defaults).view_specs == defaults["views"]
+    override = tmp_path / "other.toml"
+    override.write_text('command = "echo ok"\n[views]\ncustom = "custom.py:Custom"\n')
+    app = configured_app(tmp_path, "[bad", defaults)
+    app.experiment_config = override
+    assert app.configured_views() == {"custom": "custom.py:Custom"}
+
+
+def test_custom_views_mount_in_pane_and_open_tables(tmp_path: Path) -> None:
+    app = configured_app(
+        tmp_path,
+        'command = "echo ok"\ncontinues = false\n[views]\nprogress = "progress.py:Progress"\n',
+    )
+
+    async def changes():
+        yield {"path": "alpha/runs/first/stdout.log"}
+
+    async def reload():
+        await asyncio.Event().wait()
+
+    reloading = reload()
+
     async def drive() -> None:
-        app = RunApp(start, "alpha", COLUMNS, config)
-        with mock.patch("labnotes.tui.run_app.open_tables") as open_tables:
+        with (
+            mock.patch("labnotes.tui.run_app.open_tables") as open_tables,
+            mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+            mock.patch("labnotes.tui.run_app.reload_on_change", return_value=reloading),
+        ):
             async with app.run_test() as pilot:
                 await pilot.pause()
-                assert app.query_one(RunLiveView)
-                open_tables.assert_not_called()
+                assert app.query_one("#view-1")
+                assert app.body_ready
+                open_tables.assert_called_once_with(app.config, run_files=True)
 
     asyncio.run(drive())
+    reloading.close()
 
 
-def test_builtin_view_failure_stays_in_its_pane(tmp_path: Path) -> None:
-    (tmp_path / "alpha").mkdir()
-    (tmp_path / "alpha/experiment.toml").write_text(
-        'command = "echo ok"\ncontinues = false\n[views]\nprogress = "progress.py:Progress"\n'
+def test_builtin_pane_error_keeps_the_run_shell_alive(tmp_path: Path) -> None:
+    app = configured_app(
+        tmp_path,
+        'command = "echo ok"\ncontinues = false\n[views]\nprogress = "progress.py:Progress"\n',
     )
-    config = LabnotesConfig(
-        tmp_path / ".labnotes.toml", tmp_path, "{experiment}", "", ""
-    )
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1"))
-        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
 
     async def drive() -> None:
-        app = RunApp(start, "alpha", COLUMNS, config)
-        with mock.patch(
-            "labnotes.tui.view_pane.load_view", side_effect=ImportError("broken")
+        with (
+            mock.patch(
+                "labnotes.tui.view_pane.load_view", side_effect=ImportError("broken")
+            ),
+            mock.patch("labnotes.tui.run_app.open_tables"),
         ):
             async with app.run_test() as pilot:
                 await pilot.pause()
                 assert not app.body_ready
-                assert "broken" in str(app.query_one("#view-1 .failure").render())
+                assert app.query_one("#view-1 .failure")
+                app.listen(mock.Mock())
+                app.show_event({"event": "planned"})
+                app.stop_runs()
+                app.action_interrupt()
 
     asyncio.run(drive())
 
 
-def test_missing_or_invalid_config_uses_default_views(tmp_path: Path) -> None:
-    config = LabnotesConfig(
-        tmp_path / ".labnotes.toml",
-        tmp_path,
-        "{experiment}",
-        "",
-        "",
-        defaults={"views": {"progress": "progress.py:Progress"}},
-    )
+def test_load_data_delivers_native_rows_and_skips_removed_experiment(
+    tmp_path: Path,
+) -> None:
+    app = configured_app(tmp_path, None)
+    loaded = {
+        "views": {"progress": "progress.py:Progress"},
+        "config": {"command": "go"},
+    }
 
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return []
+    async def drive() -> None:
+        with (
+            mock.patch(
+                "labnotes.tui.run_app.load_experiment",
+                new=mock.AsyncMock(return_value=None),
+            ) as load,
+            mock.patch(
+                "labnotes.tui.run_app.native_rows", return_value=({"status": "passed"},)
+            ),
+            mock.patch.object(app, "add_views", new=mock.AsyncMock()) as add_views,
+            mock.patch.object(app, "deliver") as deliver,
+        ):
+            await app.load_data(mock.Mock())
+            assert not app.loaded_views
+            load.return_value = loaded
+            await app.load_data(mock.Mock())
+            await app.load_data(mock.Mock())
+            add_views.assert_awaited_once_with(loaded["views"], tmp_path)
+            assert deliver.call_count == 2
+            assert app.shown is not None
+            assert app.shown.name == "alpha"
+            assert app.shown.runs == ({"status": "passed"},)
+            assert app.shown.config == {"command": "go"}
 
-    app = RunApp(start, "alpha", COLUMNS, config)
-    assert app.view_specs == {"progress": "progress.py:Progress"}
-    (tmp_path / "alpha").mkdir()
-    (tmp_path / "alpha/experiment.toml").write_text("[bad")
-    app = RunApp(start, "alpha", COLUMNS, config)
-    assert app.view_specs == {"progress": "progress.py:Progress"}
-
-
-def test_missing_loaded_experiment_keeps_views_empty(tmp_path: Path) -> None:
-    config = LabnotesConfig(
-        tmp_path / ".labnotes.toml", tmp_path, "{experiment}", "", ""
-    )
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return []
-
-    app = RunApp(start, "alpha", COLUMNS, config)
-    with mock.patch(
-        "labnotes.tui.run_app.load_experiment", new=mock.AsyncMock(return_value=None)
-    ):
-        asyncio.run(app.load_data(mock.Mock()))
-    assert app.shown is None
-    assert not app.loaded_views
+    asyncio.run(drive())
 
 
-def test_run_file_change_delivers_relative_path_to_views(tmp_path: Path) -> None:
-    config = LabnotesConfig(
-        tmp_path / ".labnotes.toml", tmp_path, "{experiment}", "", ""
-    )
-
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        return []
-
-    app = RunApp(start, "alpha", COLUMNS, config)
-    app.shown = Experiment(tmp_path, "alpha", ())
+def test_run_file_change_notifies_view_and_escape_returns_to_runs(
+    tmp_path: Path,
+) -> None:
+    app = configured_app(tmp_path, None)
+    app.shown = mock.Mock()
 
     async def changes():
         yield {"path": "alpha/runs/first/stdout.log"}
+        yield {"path": "alpha/runs/first/stderr.log"}
 
     with (
         mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
         mock.patch.object(app, "deliver") as deliver,
     ):
         asyncio.run(app.watch_files(mock.Mock()))
-    deliver.assert_called_once_with(
-        app.shown, frozenset({"alpha/runs/first/stdout.log"})
-    )
+    assert deliver.call_args_list == [
+        mock.call(app.shown, frozenset({"alpha/runs/first/stdout.log"})),
+        mock.call(app.shown, frozenset({"alpha/runs/first/stderr.log"})),
+    ]
+
+    app.shown = None
+    with (
+        mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+        mock.patch.object(app, "deliver") as deliver,
+    ):
+        asyncio.run(app.watch_files(mock.Mock()))
+    deliver.assert_not_called()
+
+    with (
+        mock.patch.object(app, "query_one", return_value=mock.Mock(current="view-2")),
+        mock.patch.object(app, "action_show_view") as show,
+    ):
+        app.action_leave()
+    show.assert_called_once_with(1)
+
+    with (
+        mock.patch.object(app, "query_one", return_value=mock.Mock(current="view-1")),
+        mock.patch.object(app, "action_show_view") as show,
+    ):
+        app.action_leave()
+    show.assert_not_called()
 
 
 @pytest.fixture(autouse=True)

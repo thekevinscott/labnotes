@@ -1600,3 +1600,27 @@ def test_retried_run_ids_use_value_equality(
             await pilot.press("ctrl+c")
 
     asyncio.run(drive())
+
+
+def test_live_app_delivers_only_events_read_from_its_invocation_journal() -> None:
+    disk_event = {"event": "planned", "runs": []}
+    journal = mock.Mock()
+    journal.read.return_value = [disk_event]
+
+    class Invocation:
+        run_state = journal
+
+        async def __call__(
+            self, report: Report, listen: Listen
+        ) -> list[dict[str, object]]:
+            return []
+
+    with mock.patch("labnotes.tui.run_app.ExperimentStart", Invocation):
+        app = RunApp(Invocation(), "exp", COLUMNS)
+    with (
+        mock.patch.object(app, "set_interval") as interval,
+        mock.patch.object(app.body, "show_event") as show,
+    ):
+        app.show_event({"event": "callback only"})
+        interval.assert_called_once()
+        show.assert_called_once_with(disk_event)

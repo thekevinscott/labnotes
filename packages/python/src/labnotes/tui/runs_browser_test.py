@@ -115,6 +115,7 @@ def test_binds_enter_and_escape() -> None:
         ({"ended": "now", "exit_code": 0, "error": "broken"}, 42, "Restarting", True),
         ({"ended": "now", "exit_code": 1}, None, "held by another run", False),
         ({"ended": "now", "exit_code": 1}, 42, "Restarting", True),
+        ({"ended": "now", "exit_code": -9}, 42, "Restarting", True),
     ],
 )
 def test_restart_key_checks_selected_run(
@@ -147,6 +148,59 @@ def test_restart_key_checks_selected_run(
     assert close.called is launched
     assert restart.called is launched
     assert getattr(browser.run_worker, "called") is launched
+    if launched:
+        getattr(browser.run_worker, "assert_called_once_with")(
+            mock.sentinel.work, exit_on_error=False
+        )
+
+
+def test_restart_action_uses_value_equality_and_checks_view_state(
+    browser: RunsBrowser,
+) -> None:
+    equal = "".join(["restart", "_run"])
+    expected = "restart_run"
+    assert equal == expected and equal is not expected
+    assert browser.check_action(equal, ()) is True
+    browser.viewing = "lone"
+    assert browser.check_action(equal, ()) is False
+    assert browser.check_action("zzzz", ()) is True
+
+
+def test_restart_selects_exact_folder_among_neighbors(
+    browser: RunsBrowser, table: mock.MagicMock
+) -> None:
+    target = "".join(["alpha/runs/", "lone"])
+    expected = "alpha/runs/lone"
+    assert target == expected and target is not expected
+    table.coordinate_to_cell_key.return_value.row_key.value = target
+    browser.experiment = Experiment(
+        ROOT,
+        "alpha",
+        (
+            {
+                "id": "before",
+                "folder": "alpha/runs/aaaa",
+                "ended": "now",
+                "exit_code": 0,
+            },
+            {
+                "id": "after",
+                "folder": "alpha/runs/zzzz",
+                "ended": "now",
+                "exit_code": 0,
+            },
+            {"id": "lone", "folder": "alpha/runs/lone", "ended": "now", "exit_code": 1},
+        ),
+    )
+    with (
+        mock.patch("labnotes.tui.runs_browser.claim_run", return_value=42),
+        mock.patch("labnotes.tui.runs_browser.os.close"),
+        mock.patch.object(
+            browser, "restart", new=mock.Mock(return_value=mock.sentinel.work)
+        ) as restart,
+    ):
+        browser.action_restart_run()
+    restart.assert_called_once_with("lone")
 
 
 def test_restart_key_ignores_an_empty_table(
@@ -163,6 +217,7 @@ def test_restart_key_ignores_an_empty_table(
         (0, b"done", b"", "Restarted lone"),
         (2, b"", b"locked", "Could not restart lone: locked"),
         (2, b"fallback", b"", "Could not restart lone: fallback"),
+        (-9, b"", b"signal", "Could not restart lone: signal"),
     ],
 )
 def test_restart_worker_reports_process_result(

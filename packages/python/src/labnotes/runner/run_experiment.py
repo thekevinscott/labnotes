@@ -276,11 +276,7 @@ async def run_experiment(
         fill()
 
     async def start(run: str, params: dict[str, object]) -> None:
-        folder = (
-            target_folder
-            if run == run_id and target_folder is not None
-            else run_folder(config.root, config.runs, name, run)
-        )
+        folder = target_folder or run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
         if experiment.continues:
             claim(run)

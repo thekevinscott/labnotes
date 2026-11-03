@@ -207,6 +207,7 @@ def test_targets_one_failed_run_with_recorded_arguments(
         ("now", 0, None, "has not failed"),
         ("now", 1, None, None),
         ("now", 0, "broken", None),
+        ("now", -9, None, None),
     ],
 )
 def test_target_requires_a_failed_ended_run(
@@ -262,6 +263,53 @@ def test_target_rejects_unknown_and_held_runs(
     collaborators["claim_run"].return_value = None
     with pytest.raises(ValueError, match="held by another run"):
         run(tmp_path, mock.Mock(), run_id="target")
+
+
+def test_target_id_matches_by_value_among_neighbors(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    target = "".join(["tar", "get"])
+    expected = "target"
+    assert target == expected and target is not expected
+    folder = tmp_path / "exp" / "target"
+    folder.mkdir(parents=True)
+    (folder / "run.json").write_text("{}")
+    collaborators["list_runs"].return_value = [
+        {
+            "id": "aaaa",
+            "folder": "exp/aaaa",
+            "params": '{"m": "b"}',
+            "ended": "now",
+            "exit_code": 1,
+            "error": None,
+            "counted": 0,
+        },
+        {
+            "id": "zzzz",
+            "folder": "exp/zzzz",
+            "params": '{"m": "b"}',
+            "ended": "now",
+            "exit_code": 1,
+            "error": None,
+            "counted": 0,
+        },
+        {
+            "id": expected,
+            "folder": "exp/target",
+            "params": '{"m": "a"}',
+            "ended": "now",
+            "exit_code": 1,
+            "error": None,
+            "counted": 0,
+        },
+    ]
+
+    result = run(tmp_path, mock.Mock(), run_id=target)
+
+    assert len(result) == 1
+    executed = collaborators["execute_run"].await_args
+    assert executed.args[3] == A
+    collaborators["claim_run"].assert_called_once_with(folder)
 
 
 def test_plans_the_runs_still_needed(

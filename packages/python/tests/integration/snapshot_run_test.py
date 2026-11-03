@@ -285,7 +285,7 @@ def test_snapshot_git_metadata_matches_live_repo_without_mutating_index(
     index_mtime = (root / ".git/index").stat().st_mtime_ns
     result = _run(root)
     assert result.returncode == 0, result.stdout + result.stderr
-    [run] = list((root / "runs/exp").iterdir())
+    [run] = [p.parent for p in (root / "runs/exp").glob("*/run.json")]
     assert (run / "head").read_bytes() == before_sha
     assert (run / "tag").read_text().strip() == "v1.2.3"
     assert (run / "status").read_bytes() == before_status
@@ -305,7 +305,7 @@ def test_dangling_tracked_symlink_survives_snapshot(tmp_path: Path) -> None:
     _commit(root)
     result = _run(root)
     assert result.returncode == 0, result.stdout + result.stderr
-    [run] = list((root / "runs/exp").iterdir())
+    [run] = [p.parent for p in (root / "runs/exp").glob("*/run.json")]
     assert (run / "link-result").read_text() == "True:missing-target"
 
 
@@ -317,7 +317,7 @@ def test_snapshot_uses_default_temp_directory(tmp_path: Path) -> None:
     _commit(root)
     result = _run(root)
     assert result.returncode == 0, result.stdout + result.stderr
-    [run] = list((root / "runs/exp").iterdir())
+    [run] = [p.parent for p in (root / "runs/exp").glob("*/run.json")]
     snapshot = Path((run / "snapshot-path").read_text())
     assert snapshot.parent == Path(tempfile.gettempdir())
     assert snapshot.name.startswith("labnotes-")

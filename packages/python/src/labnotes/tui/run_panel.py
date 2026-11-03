@@ -1,16 +1,15 @@
 from pathlib import Path
 
 from textual.app import ComposeResult
-from textual.binding import Binding
-from textual.screen import Screen
-from textual.widgets import Footer, Header
+from textual.containers import Vertical
+from textual.widgets import Static
 
 from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.run_output import RunOutput
 
 
-class RunScreen(Screen[None]):
-    BINDINGS = [Binding("escape", "app.pop_screen", "Back")]
+class RunPanel(Vertical):
+    DEFAULT_CSS = "RunPanel #run-id { padding: 0 1; text-style: bold; }"
 
     def __init__(self, run_id: str, folder: Path) -> None:
         super().__init__()
@@ -18,13 +17,11 @@ class RunScreen(Screen[None]):
         self.folder = folder
 
     def compose(self) -> ComposeResult:
-        yield Header()
+        yield Static(self.run_id, id="run-id", markup=False)
         yield LogBlocks(id="blocks")
         yield RunOutput(id="output")
-        yield Footer()
 
     def on_mount(self) -> None:
-        self.sub_title = self.run_id
         self.follow()
         self.set_interval(0.25, self.follow)
 

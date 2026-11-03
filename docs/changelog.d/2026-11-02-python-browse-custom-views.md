@@ -1,0 +1,3 @@
+Added: The browse TUI loads custom Textual views from `[views]` in experiment config. Number keys switch views while preserving their state, and `labnotes.view.Experiment` and `Changed` provide run data and change notifications. The existing `[views] runs` column script continues to extend the built-in runs view. A run's `status` is now `"running"` while its process is alive and `"unfinished"` only once it has stopped, in both `Experiment.runs` and the rows sent to the column script.
+
+Changed: The browse TUI lists every run as its own row. Runs that older labnotes versions nested in one invocation folder no longer fold under a row with counts; their id still shows the invocation folder. The web frontend still groups them.

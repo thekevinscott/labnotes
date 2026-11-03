@@ -19,9 +19,11 @@ from labnotes.parse_run_view import parse_run_view
 from labnotes.pivot_runs import pivot_runs
 from labnotes.python_blocks import python_blocks
 from labnotes.render_markdown import render_markdown
+from labnotes.run_columns import run_columns
 from labnotes.runs_view_command import runs_view_command
 from labnotes.sort_href import sort_href
 from labnotes.sql_quote import quote_string
+from labnotes.view_specs import view_specs
 from labnotes.summarize_config import summarize_config
 from labnotes.utils.process_alive import process_alive
 
@@ -49,7 +51,7 @@ async def load_experiment(
     varies = cast(dict[str, list[object]], summary["varies"])
     source = experiment_runs(name, list(varies))
     summary = await check_counts(tables, source, summary)
-    shown = ["id", *(key for key in varies if key != "id"), "started", "duration"]
+    shown = run_columns(config)
     choices = {
         key: {format_value(value): json.dumps(value) for value in values}
         for key, values in varies.items()
@@ -70,7 +72,9 @@ async def load_experiment(
             pid, created if isinstance(created, int | float) else None
         )
 
-    runs_live = any(is_running(run) for run in runs)
+    for run in runs:
+        run["labnotes_running"] = is_running(run)
+    runs_live = any(run["labnotes_running"] for run in runs)
     nested = await nests_runs(tables, source)
     groups = (
         group_runs(runs, list(choices), await count_groups(tables, source))
@@ -92,6 +96,7 @@ async def load_experiment(
     return {
         "name": row["name"],
         "display_name": row["display_name"],
+        "config": config,
         "config_source": row["source"],
         "counts_set": "counts" in (config or {}),
         **summary,
@@ -115,6 +120,7 @@ async def load_experiment(
         "run_view": view,
         "run_choices": choices,
         "runs_view": runs_view_command(config),
+        "views": view_specs(config),
         "sort_hrefs": {
             column: sort_href(view, column) for column in ["status", *shown]
         },

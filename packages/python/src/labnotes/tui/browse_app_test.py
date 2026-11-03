@@ -23,11 +23,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             new=mock.AsyncMock(
                 return_value={
                     "display_name": "Alpha",
-                    "run_columns": ["id"],
-                    "runs_live": False,
+                    "config": None,
                     "runs_list": [],
-                    "run_groups": None,
-                    "runs_view": None,
+                    "views": {},
                 }
             ),
         ),
@@ -94,19 +92,3 @@ def test_ctrl_c_quits_and_q_does_not() -> None:
 
     asyncio.run(drive())
     assert app.return_value is None
-
-
-def test_shares_one_view_process_per_command_and_closes_them() -> None:
-    async def drive() -> None:
-        with mock.patch("labnotes.tui.browse_app.ViewProcess") as process:
-            process.return_value.close = mock.AsyncMock()
-            app = BrowseApp(CONFIG, None)
-            async with app.run_test():
-                first = app.view_request("go")
-                second = app.view_request("go")
-
-                assert first is second is process.return_value.request
-                process.assert_called_once_with("go", CONFIG.root)
-            process.return_value.close.assert_awaited_once_with()
-
-    asyncio.run(drive())

@@ -1,8 +1,8 @@
 # Views
 
-A runs view adds columns to the [TUI's](tui#browsing) runs table. It is a script you write. labnotes starts it, sends it the table's rows, and draws the columns and rows it sends back.
+A custom view replaces the body of the [browse TUI](tui#browsing). It is a Python class that subclasses any Textual widget. labnotes imports and mounts it; the TUI header and footer stay visible. The built-in `runs` view shows the runs table and run output.
 
-Views work in the TUI's experiment screen only. The frontend and the CLI ignore them.
+`[views] runs` is the existing column script for the built-in table. Custom views work in `labnotes experiments NAME` only. The run TUI and frontend do not show them yet.
 
 ## Config
 
@@ -10,9 +10,47 @@ Views work in the TUI's experiment screen only. The frontend and the CLI ignore 
 # experiment.toml
 [views]
 runs = "uv run views/runs.py"
+progress = "views/progress.py:Progress"
 ```
 
-`runs` is a shell command, run from the project root. It can live in `.labnotes.toml` under [`[experiment]`](config#experiment) like any other key, so one script can serve every experiment.
+Every key except `runs` names a custom view. Its value is `path/to/file.py:ClassName`, relative to the project root. Views appear in config order: the built-in view is `1`, and custom views use `2` through `9`. Press `0` or Escape to return to the built-in view; a view's own Escape binding gets the key first. The footer shows the view names and keys, only when there is more than one view. A view keeps its widget and state while you switch away. A view that raises during import or mounting shows its error in that view's body, and the other views keep working.
+
+Views run in labnotes' own process and Python environment: they can import `textual`, `rich`, `labnotes` and the standard library; other dependencies need `uvx --with ...`.
+
+The config can also live in `.labnotes.toml` under [`[experiment]`](config#experiment).
+
+## Custom view contract
+
+Views construct their own Textual widgets. labnotes provides only `labnotes.view.Experiment` and `labnotes.view.Changed` for data and notifications:
+
+```python
+# views/progress.py
+from textual.widgets import Static
+from labnotes.view import Changed
+
+
+class Progress(Static):
+    def on_labnotes_changed(self, message: Changed) -> None:
+        experiment = message.experiment
+        if experiment is None:
+            self.update("Experiment removed")
+            return
+        passed = sum(row["status"] == "passed" for row in experiment.runs)
+        self.update(f"{passed} of {len(experiment.runs)} passed")
+```
+
+The class must be constructible without arguments. `Changed.experiment` holds data only; the view decides how to show it:
+
+- `root`: the project path.
+- `name`: the experiment name.
+- `runs`: a tuple of rows, one per run, in display order. Each is the row the [runs table](#rows) gets, so `row["folder"]` locates the run and `row["status"]` says whether it is still going.
+- `config`: the experiment's config as labnotes resolved it, read-only.
+
+`Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
+
+## Runs table columns
+
+`runs` is a shell command, run from the project root. It adds columns to the built-in runs table. labnotes starts it, sends it the table's rows, and draws the columns and rows it sends back.
 
 ## Writing one
 
@@ -76,7 +114,6 @@ A column is an object with a `key` and an optional `label`, or a bare string, wh
 | --- | --- | --- |
 | `status` | (none) | ✓ passed, ✕ failed, ◐ running, – unfinished. |
 | `id` | `id` | The run id. |
-| `runs` | `runs` | Only when runs are grouped by invocation. Each run's own value is blank. |
 | each param that varies | its name | The value. |
 | `started` | `started` | `created` in UTC, to the second. |
 | `duration` | `duration` | Seconds, as `1m 05s`. |
@@ -101,7 +138,7 @@ A row is one run, keyed by column. labnotes sends:
 | `meta` | The run's [`meta`](config#meta), as written to `run.json`, or `null`. |
 | `run` | All of `run.json`, as an object. |
 | each param that varies | Its value, as in the columns. A param named like another field here keeps that field; read it from `params`. |
-| `status` | `"passed"`, `"failed"` or `"unfinished"`. |
+| `status` | `"passed"`, `"failed"`, `"running"` while its process is alive, or `"unfinished"` when it stopped without finishing. |
 | `started` | `created`. |
 | `duration` | Seconds from `created` to `ended`, or `null`. |
 
@@ -134,7 +171,7 @@ An answer is rejected when:
 
 ## In the TUI
 
-labnotes starts the command the first time an experiment screen needs it and keeps it for the rest of the session. Experiments with the same command share one process. On quit, labnotes closes the script's stdin, waits a second, then kills it and anything it started.
+The built-in view starts the command when an experiment opens and stops it when you leave the experiment. Each open experiment has its own process. On stop, labnotes closes the script's stdin, waits a second, then kills it and anything it started.
 
 The line under the table reports problems:
 
@@ -145,6 +182,6 @@ The line under the table reports problems:
 ## Limits
 
 - labnotes asks again only when a file in the run's folder changes. A value that depends on anything else, such as another run or a file outside the folder, goes stale until the run changes.
-- A crashed script isn't restarted. Quit and reopen the TUI.
+- A crashed script isn't restarted. Leave and reopen the experiment.
 - A script that never answers stops the column from updating. Nothing times it out.
-- A change to `[views] runs` takes effect when you reopen the experiment. The old script keeps running until you quit.
+- A change to `[views] runs` takes effect when you reopen the experiment.

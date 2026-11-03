@@ -4,19 +4,9 @@ from labnotes.tui.format_cell import format_cell
 
 
 def run_cells(
-    row: Mapping[str, object],
-    columns: Sequence[Mapping[str, str]],
-    nested: bool,
-    live: bool,
+    row: Mapping[str, object], columns: Sequence[Mapping[str, str]]
 ) -> list[object]:
-    cells: list[object] = []
-    for column in columns:
-        key = column["key"]
-        if key not in row:
-            cells.append("")
-        elif key == "id" and nested:
-            child = str(row[key]).partition("/")[2]
-            cells.append(f"  {child}" if child else str(row[key]))
-        else:
-            cells.append(format_cell(key, row[key], live))
-    return cells
+    return [
+        format_cell(column["key"], row[column["key"]]) if column["key"] in row else ""
+        for column in columns
+    ]

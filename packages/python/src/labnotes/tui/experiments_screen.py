@@ -1,5 +1,3 @@
-from collections.abc import Callable
-
 from dirsql import DirSQL
 from textual.app import ComposeResult
 from textual.screen import Screen
@@ -12,7 +10,6 @@ from labnotes.tui.experiment_screen import ExperimentScreen
 from labnotes.tui.fill_table import fill_table
 from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.runs_table import RunsTable
-from labnotes.tui.runs_view import Request
 from labnotes.tui.stopped_title import stopped_title
 from labnotes.watch_rows import watch_rows
 
@@ -20,13 +17,10 @@ WATCHED = {"files", "runs", "experiment_configs"}
 
 
 class ExperimentsScreen(Screen[None]):
-    def __init__(
-        self, tables: DirSQL, config: LabnotesConfig, views: Callable[[str], Request]
-    ) -> None:
+    def __init__(self, tables: DirSQL, config: LabnotesConfig) -> None:
         super().__init__()
         self.tables = tables
         self.config = config
-        self.views = views
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -63,7 +57,5 @@ class ExperimentsScreen(Screen[None]):
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.app.push_screen(
-            ExperimentScreen(
-                self.tables, self.config, str(event.row_key.value), self.views
-            )
+            ExperimentScreen(self.tables, self.config, str(event.row_key.value))
         )

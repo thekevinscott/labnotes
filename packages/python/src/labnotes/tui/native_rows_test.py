@@ -5,6 +5,7 @@ from labnotes.tui.native_rows import native_row, native_rows
 RUN = {
     "labnotes_completed": 1,
     "labnotes_unfinished": 0,
+    "labnotes_running": False,
     "experiment": "alpha",
     "id": "r1",
     "folder": "alpha/runs/r1",
@@ -42,19 +43,33 @@ def test_decodes_meta_when_the_runs_table_has_it() -> None:
 
 
 @pytest.mark.parametrize(
-    ("completed", "unfinished", "status"),
-    [(1, 0, "passed"), (0, 0, "failed"), (0, 1, "unfinished"), (1, 1, "unfinished")],
+    ("completed", "unfinished", "running", "status"),
+    [
+        (1, 0, False, "passed"),
+        (0, 0, False, "failed"),
+        (0, 1, False, "unfinished"),
+        (1, 1, False, "unfinished"),
+        (0, 1, True, "running"),
+        (1, 1, True, "running"),
+    ],
 )
-def test_names_the_status(completed: int, unfinished: int, status: str) -> None:
-    run = {**RUN, "labnotes_completed": completed, "labnotes_unfinished": unfinished}
+def test_names_the_status(
+    completed: int, unfinished: int, running: bool, status: str
+) -> None:
+    run = {
+        **RUN,
+        "labnotes_completed": completed,
+        "labnotes_unfinished": unfinished,
+        "labnotes_running": running,
+    }
 
     assert native_row(run)["status"] == status
 
 
-def test_keys_each_run_by_its_folder() -> None:
-    other = {**RUN, "id": "r2", "folder": "alpha/runs/r2"}
+def test_lists_runs_flat_in_order_including_old_nested_ones() -> None:
+    nested = {**RUN, "id": "inv/r2", "folder": "alpha/runs/inv/r2"}
 
-    assert native_rows({"runs_list": [RUN, other]}) == {
-        "alpha/runs/r1": native_row(RUN),
-        "alpha/runs/r2": native_row(other),
-    }
+    assert native_rows({"runs_list": [nested, RUN]}) == (
+        native_row(nested),
+        native_row(RUN),
+    )

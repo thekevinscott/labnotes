@@ -5,27 +5,15 @@ lines = [44]
 reason = "last_stream is always the same str object taken from STREAMS, so is equals =="
 
 [[python.exempt]]
-path = "src/labnotes/tui/run_cells.py"
-rules = ["mutation"]
-lines = [22, 25]
-reason = "run columns come from string literals in load_experiment, which CPython interns, so is equals =="
-
-[[python.exempt]]
-path = "src/labnotes/tui/group_cells.py"
-rules = ["mutation"]
-lines = [20]
-reason = "run columns come from string literals in load_experiment, which CPython interns, so is equals =="
-
-[[python.exempt]]
 path = "src/labnotes/tui/experiment_screen.py"
 rules = ["mutation"]
-lines = [53]
-reason = "WorkerState members are singletons, so is equals =="
+lines = [64, 140]
+reason = "WorkerState members are singletons, so is equals ==; view pane ids run view-1 through view-9 and none sorts below view-1, so <= equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/experiments_screen.py"
 rules = ["mutation"]
-lines = [36]
+lines = [37]
 reason = "WorkerState members are singletons, so is equals =="
 
 [[python.exempt]]

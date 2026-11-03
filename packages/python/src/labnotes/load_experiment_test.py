@@ -109,11 +109,14 @@ def test_loads_config_notes_progress_and_runs(
     assert loaded is not None
     assert (loaded["name"], loaded["display_name"]) == ("a", "Alpha")
     assert (loaded["runs"], loaded["completed"]) == (3, 2)
+    assert loaded["config"] == CONFIG
     assert (loaded["config_source"], loaded["counts_set"]) == ("toml", False)
     assert loaded["notes"] == [
         {"name": "PLAN.md", "content": "plan", "html": "<p>plan</p>", "runnable": True}
     ]
-    assert loaded["runs_list"] == [{"labnotes_completed": 1, "id": "r1"}]
+    assert loaded["runs_list"] == [
+        {"labnotes_completed": 1, "id": "r1", "labnotes_running": False}
+    ]
     assert loaded["runs_live"] is False
     assert loaded["run_groups"] is None
     assert loaded["run_columns"] == ["id", "x", "y", "started", "duration"]
@@ -246,6 +249,19 @@ def test_names_the_runs_view_command(
     assert loaded["runs_view"] == "uv run view.py"
 
 
+def test_names_the_views(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    config = {**CONFIG, "views": {"runs": "uv run v.py", "plot": "v.py:Plot"}}
+
+    loaded = asyncio.run(
+        load_experiment(make_tables(experiment(config)), ROOT, "a", query())
+    )
+
+    assert loaded is not None
+    assert loaded["views"] == {"plot": "v.py:Plot"}
+
+
 def test_has_no_counts_rule_without_a_config(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
@@ -354,6 +370,10 @@ def test_reports_live_only_for_an_unfinished_run_with_a_live_process(
 
     assert loaded is not None
     assert loaded["runs_live"] is expected
+    assert (
+        cast(list[dict[str, object]], loaded["runs_list"])[0]["labnotes_running"]
+        is expected
+    )
     record = row.get("run")
     if isinstance(record, str) and row["labnotes_unfinished"] and "pid" in record:
         check.assert_called_once()
@@ -386,3 +406,23 @@ def test_live_run_check_ignores_an_invalid_process_start_time(
     assert loaded is not None
     assert loaded["runs_live"] is True
     check.assert_called_once_with(7, expected)
+
+
+def test_marks_each_run_running_or_not_with_one_check_apiece(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    collaborators["list_runs"].return_value = [
+        {"labnotes_unfinished": True, "run": json.dumps({"pid": pid})} for pid in (7, 8)
+    ]
+    with mock.patch(
+        "labnotes.load_experiment.process_alive", side_effect=[True, False]
+    ) as check:
+        loaded = asyncio.run(
+            load_experiment(make_tables(experiment()), ROOT, "a", query())
+        )
+
+    assert loaded is not None
+    runs = cast(list[dict[str, object]], loaded["runs_list"])
+    assert [run["labnotes_running"] for run in runs] == [True, False]
+    assert loaded["runs_live"] is True
+    assert check.call_args_list == [mock.call(7, None), mock.call(8, None)]

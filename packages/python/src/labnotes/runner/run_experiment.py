@@ -56,9 +56,9 @@ async def run_experiment(
     snapshot: ProjectSnapshot | None = None,
     command_line: str | None = None,
     run_id: str | None = None,
+    run_state: RunState | None = None,
 ) -> list[dict[str, object]]:
-    state = RunState(config, name)
-    state.begin()
+    state = run_state or RunState.create(config, name)
     forward = report
 
     def emit(event: dict[str, object]) -> None:

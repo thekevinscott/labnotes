@@ -29,7 +29,7 @@ def test_uvx_run_leaves_replayable_state(tmp_path: Path, uvx: dict[str, str]) ->
         timeout=60,
     )
     assert result.returncode == 0, result.stdout + result.stderr
-    state = root / "exp/run-state.jsonl"
+    [state] = list((root / "exp/runs/run-state").glob("*.jsonl"))
     events = [json.loads(line) for line in state.read_text().splitlines()]
     assert len(events[0]["runs"]) == 2
     assert {event["event"] for event in events} >= {

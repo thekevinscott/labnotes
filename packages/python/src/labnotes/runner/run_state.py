@@ -1,40 +1,39 @@
-"""Persist the run TUI's presentation events under one experiment."""
+"""Persist one invocation's run TUI events under its experiment's runs folder."""
 
 import json
 import os
 import time
-from tempfile import mkstemp
+from pathlib import Path
+from uuid import uuid4
 
 from labnotes.models import LabnotesConfig
+from labnotes.runner.run_folder import run_folder
 
 
 class RunState:
     """Append complete events and replay them from a disk cursor."""
 
-    def __init__(self, config: LabnotesConfig, experiment: str) -> None:
-        folder = config.root / config.experiments.replace("{experiment}", experiment)
-        self.path = folder / "run-state.jsonl"
+    def __init__(self, path: Path) -> None:
+        self.path = path
         self.offset = 0
-        self.inode: int | None = None
 
-    def begin(self) -> None:
-        """Start a new invocation without retaining stale presentation state."""
-        self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd, temporary = mkstemp(prefix=".run-state-", dir=self.path.parent)
-        os.close(fd)
-        try:
-            os.replace(temporary, self.path)
-        finally:
-            if os.path.exists(temporary):
-                os.unlink(temporary)
+    @classmethod
+    def create(cls, config: LabnotesConfig, experiment: str) -> "RunState":
+        """Choose a journal unique to this invocation without touching disk yet."""
+        runs = run_folder(config.root, config.runs, experiment, "_").parent
+        stamp = time.strftime("%Y%m%d-%H%M%S", time.gmtime())
+        return cls(
+            runs / "run-state" / f"{stamp}-{os.getpid()}-{uuid4().hex[:8]}.jsonl"
+        )
 
     def record(self, event: dict[str, object]) -> None:
         """Write one event before callers display it."""
         at = time.time()
         stored = {**event, "at": at}
         if event["event"] == "retrying":
-            stored["retry_at"] = at + float(event["seconds"])  # type: ignore[arg-type]
+            stored["retry_at"] = at + float(str(event["seconds"]))
         data = (json.dumps(stored, default=str) + "\n").encode()
+        self.path.parent.mkdir(parents=True, exist_ok=True)
         fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
         try:
             while data:
@@ -43,13 +42,9 @@ class RunState:
             os.close(fd)
 
     def read(self) -> list[dict[str, object]]:
-        """Return only complete new events, including after a file restart."""
+        """Return only complete new events."""
         try:
             with self.path.open("rb") as file:
-                stat = os.fstat(file.fileno())
-                if self.inode != stat.st_ino or self.offset > stat.st_size:
-                    self.offset = 0
-                    self.inode = stat.st_ino
                 file.seek(self.offset)
                 data = file.read()
         except FileNotFoundError:

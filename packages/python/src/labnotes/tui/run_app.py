@@ -21,7 +21,7 @@ from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
-from labnotes.runner.run_state import RunState
+from labnotes.runner.start_experiment import ExperimentStart
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
@@ -377,7 +377,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.shown: Experiment | None = None
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
-        self.run_state = RunState(config, title) if config is not None else None
+        self.run_state = start.run_state if isinstance(start, ExperimentStart) else None
         self.watching_state = False
 
     def compose(self) -> ComposeResult:

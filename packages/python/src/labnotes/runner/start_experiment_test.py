@@ -6,7 +6,7 @@ from labnotes.runner.start_experiment import start_experiment
 
 
 def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
-    config = mock.Mock()
+    config = mock.Mock(root=Path("/tmp/project"), runs="{experiment}/runs/{run}")
     experiment = mock.sentinel.experiment
     report = mock.Mock()
     listen = mock.Mock()
@@ -69,4 +69,5 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         snapshot=snapshot,
         command_line="labnotes experiments exp run",
         run_id=None,
+        run_state=start.run_state,
     )

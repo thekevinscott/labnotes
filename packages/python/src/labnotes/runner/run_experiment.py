@@ -16,7 +16,7 @@ from labnotes.models import (
 )
 from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
 from labnotes.runner.check_hook_placeholders import check_hook_placeholders
-from labnotes.runner.claim_run import claim_run
+from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.fill_experiment_env import fill_experiment_env
 from labnotes.runner.fill_dirs import fill_dirs
@@ -29,6 +29,7 @@ from labnotes.runner.placeholders import PLACEHOLDERS
 from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.project_snapshot import ProjectSnapshot
 from labnotes.runner.run_folder import run_folder
+from labnotes.runner.run_locked import run_locked
 from labnotes.runner.signal_tree import signal_tree
 from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
@@ -59,7 +60,20 @@ async def run_experiment(
     tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
     counted = await list_experiment_runs(tables, name, experiment.counts)
-    finished = [json.loads(str(r["params"])) for r in counted if r["counted"]]
+    held = [
+        r
+        for r in counted
+        if not r["counted"]
+        and r.get("folder") is not None
+        and (config.root / str(r["folder"]) / LOCK_FILE).exists()
+        and run_locked(config.root / str(r["folder"]))
+    ]
+    held_ids = {str(r["id"]) for r in held}
+    finished = [
+        json.loads(str(r["params"]))
+        for r in counted
+        if r["counted"] or str(r.get("id")) in held_ids
+    ]
     planned: set[str] = set()
 
     def taken(run: str) -> bool:
@@ -126,6 +140,8 @@ async def run_experiment(
             "concurrency": concurrency,
         }
     )
+    for row in held:
+        report({"event": "held", "run": str(row["id"])})
     running: dict[str, set[asyncio.subprocess.Process]] = {}
     trees: dict[str, set[psutil.Process]] = {}
     stopped: set[str] = set()
@@ -248,8 +264,9 @@ async def run_experiment(
     async def start(run: str, params: dict[str, object]) -> None:
         folder = run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
-        if experiment.continues:
-            claim(run)
+        if not claim(run):
+            report({"event": "held", "run": run})
+            return
         if snapshot is not None and snapshot.sha is not None:
             (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
             (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")

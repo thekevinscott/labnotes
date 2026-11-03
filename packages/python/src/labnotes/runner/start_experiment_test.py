@@ -28,7 +28,6 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         mock.patch(
             "labnotes.runner.start_experiment.project_snapshot"
         ) as project_snapshot,
-        mock.patch("labnotes.runner.start_experiment.hold_experiment") as hold,
     ):
         project_snapshot.return_value.__enter__.return_value = snapshot
         start = start_experiment(
@@ -56,9 +55,6 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         "teardown",
     )
     finalize.assert_awaited_once_with(config)
-    hold.assert_called_once_with(config, "exp")
-    hold.return_value.__enter__.assert_called_once()
-    hold.return_value.__exit__.assert_called_once()
     project_snapshot.assert_called_once_with(config.root)
     run.assert_awaited_once_with(
         config,

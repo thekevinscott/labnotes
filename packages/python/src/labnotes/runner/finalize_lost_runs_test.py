@@ -138,3 +138,46 @@ def test_reads_a_run_with_a_lock_file_by_its_lock(
                 "invocations": [{"exit_code": 1}, {"started": "s", **LOST}],
             },
         )
+
+
+def test_marks_only_the_last_of_several_invocations_lost(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    run: dict[str, object] = {
+        **GOING,
+        "invocations": [
+            {"exit_code": 1},
+            {"exit_code": 2},
+            {"started": "s", "ended": None},
+        ],
+    }
+    finalize(collaborators, run)
+    collaborators["write"].assert_called_once_with(
+        Path("/lab/a/runs/r0"),
+        {
+            **run,
+            **LOST,
+            "invocations": [
+                {"exit_code": 1},
+                {"exit_code": 2},
+                {"started": "s", **LOST},
+            ],
+        },
+    )
+
+
+def test_continues_after_a_locked_run_to_finalize_a_later_lost_run(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    first = tmp_path / "a/runs/r0"
+    first.mkdir(parents=True)
+    (first / "run.lock").write_text("")
+    collaborators["open_tables"].return_value.query.return_value = [
+        {"folder": "a/runs/r0", "run": json.dumps(GOING)},
+        {"folder": "a/runs/r1", "run": json.dumps(GOING)},
+    ]
+    with mock.patch("labnotes.runner.finalize_lost_runs.run_locked", return_value=True):
+        asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
+    collaborators["write"].assert_called_once_with(
+        tmp_path / "a/runs/r1", {**GOING, **LOST}
+    )

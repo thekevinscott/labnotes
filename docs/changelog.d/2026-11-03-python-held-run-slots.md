@@ -1,0 +1,1 @@
+Fixed: An in-progress run now holds its repeat slot when a second `experiments <name> run` starts. The plan reports runs held by another invocation, preventing duplicate work while still replacing stale runs whose locks are no longer held. This applies with `continues` on or off.

@@ -45,6 +45,7 @@ def param_args() -> Iterator[mock.MagicMock]:
         ({"event": "idle"}, "No runs left."),
         ({"event": "stopping run", "run": "r1"}, "Stopping r1."),
         ({"event": "killing run", "run": "r1"}, "Killing r1."),
+        ({"event": "held", "run": "r1"}, "r1 held by another run."),
         ({"event": "concurrency", "concurrency": 3}, "3 at a time."),
         (
             {"event": "ended", "run": "r1", "exit_code": 3, "error": None},
@@ -77,4 +78,19 @@ def test_describes_a_started_run_without_params(param_args: mock.MagicMock) -> N
 
     assert describe_event({"event": "started", "run": "r1", "params": {}}) == (
         "r1 started"
+    )
+
+
+def test_retried_uses_value_equality_for_ids() -> None:
+    run = "".join(["run", "-1"])
+    retry = "".join(["run-", "1"])
+    assert run == retry and run is not retry
+    assert describe_event({"event": "retried", "run": run, "retry": retry}) == (
+        "run-1 retried in its folder."
+    )
+
+
+def test_retried_does_not_treat_a_smaller_id_as_the_same_run() -> None:
+    assert describe_event({"event": "retried", "run": "r2", "retry": "r1"}) == (
+        "r2 retried as r1."
     )

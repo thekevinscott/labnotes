@@ -231,3 +231,26 @@ def test_moves_to_the_newest_invocation_log_from_its_start(tmp_path: Path) -> No
     output.follow(tmp_path)
     assert list(output.lines) == ["first", "next"]
     assert output.offsets == {"stdout": 5, "stderr": 0}
+
+
+def test_switches_to_a_log_path_that_sorts_before_the_previous_one(
+    tmp_path: Path,
+) -> None:
+    older_name = tmp_path / "z.log"
+    newer_name = tmp_path / "a.log"
+    older_name.write_text("first line\n")
+    newer_name.write_text("new\n")
+    output = RunOutput()
+    with mock.patch(
+        "labnotes.tui.run_output.latest_log",
+        side_effect=[
+            older_name,
+            tmp_path / "stderr.log",
+            newer_name,
+            tmp_path / "stderr.log",
+        ],
+    ):
+        output.follow(tmp_path)
+        output.follow(tmp_path)
+    assert list(output.lines) == ["first line", "new"]
+    assert output.offsets["stdout"] == 4

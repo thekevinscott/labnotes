@@ -60,6 +60,29 @@ def test_starts_the_command_once(tmp_path: Path) -> None:
     )
 
 
+def test_each_view_has_its_own_worker_lifetime(tmp_path: Path) -> None:
+    async def test() -> tuple[str, str]:
+        first = ViewProcess(command(ECHO), tmp_path)
+        second = ViewProcess(command(ECHO), tmp_path)
+        try:
+            first_reply = (await first.request({}))[0]
+            await second.request({})
+            await first.close()
+            assert first.process is not None and first.process.returncode == 0
+            assert second.process is not None and second.process.returncode is None
+            return first_reply, (await second.request({"n": 2}))[0]
+        finally:
+            await first.close()
+            await second.close()
+
+    first_reply, second_reply = run(test)
+    assert (
+        first_reply.split('"pid": ')[1].split(",")[0]
+        != second_reply.split('"pid": ')[1].split(",")[0]
+    )
+    assert '"n": 2' in second_reply
+
+
 def test_times_the_reply(tmp_path: Path) -> None:
     async def test() -> float:
         view = ViewProcess(command(ECHO), tmp_path)

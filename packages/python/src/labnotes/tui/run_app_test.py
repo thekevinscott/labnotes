@@ -6,11 +6,222 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.run_app import RunApp
+from labnotes.tui.run_app import RunApp, RunLiveView
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]
 Listen = Callable[[Any], None]
+
+
+def configured_app(
+    tmp_path: Path, source: str | None, defaults: dict[str, object] | None = None
+) -> RunApp:
+    folder = tmp_path / "alpha"
+    folder.mkdir(exist_ok=True)
+    if source is not None:
+        (folder / "experiment.toml").write_text(source)
+    config = mock.Mock(
+        root=tmp_path, experiments="{experiment}", defaults=defaults or {}
+    )
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    return RunApp(start, "alpha", COLUMNS, config)
+
+
+def test_configured_views_handles_missing_invalid_and_override_files(
+    tmp_path: Path,
+) -> None:
+    defaults: dict[str, object] = {"views": {"progress": "progress.py:Progress"}}
+    assert configured_app(tmp_path, None, defaults).view_specs == defaults["views"]
+    assert configured_app(tmp_path, "[bad", defaults).view_specs == defaults["views"]
+    override = tmp_path / "other.toml"
+    override.write_text('command = "echo ok"\n[views]\ncustom = "custom.py:Custom"\n')
+    app = configured_app(tmp_path, "[bad", defaults)
+    app.experiment_config = override
+    assert app.configured_views() == {"custom": "custom.py:Custom"}
+
+
+def test_no_custom_views_mounts_builtin_without_opening_tables(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, 'command = "echo ok"\n[views]\nruns = "echo"\n')
+
+    async def drive() -> None:
+        with mock.patch("labnotes.tui.run_app.open_tables") as open_tables:
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert app.query_one(RunLiveView)
+                open_tables.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def test_custom_views_mount_in_pane_and_open_tables(tmp_path: Path) -> None:
+    app = configured_app(
+        tmp_path,
+        'command = "echo ok"\ncontinues = false\n[views]\nprogress = "progress.py:Progress"\n',
+    )
+
+    async def changes():
+        yield {"path": "alpha/runs/first/stdout.log"}
+
+    async def reload():
+        await asyncio.Event().wait()
+
+    reloading = reload()
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.tui.run_app.open_tables") as open_tables,
+            mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+            mock.patch("labnotes.tui.run_app.reload_on_change", return_value=reloading),
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert app.query_one("#view-1")
+                assert app.body_ready
+                open_tables.assert_called_once_with(app.config, run_files=True)
+
+    asyncio.run(drive())
+    reloading.close()
+
+
+def test_run_file_watcher_failure_keeps_shell_alive(tmp_path: Path) -> None:
+    app = configured_app(
+        tmp_path,
+        'command = "echo ok"\n[views]\nprogress = "progress.py:Progress"\n',
+    )
+    failed = asyncio.Event()
+
+    async def changes():
+        yield {"path": "alpha/runs/first/stdout.log"}
+        failed.set()
+        raise RuntimeError("watch failed")
+
+    async def reload():
+        await asyncio.Event().wait()
+
+    reloading = reload()
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.tui.run_app.open_tables"),
+            mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+            mock.patch("labnotes.tui.run_app.reload_on_change", return_value=reloading),
+            mock.patch.object(app, "_handle_exception") as fatal,
+        ):
+            async with app.run_test() as pilot:
+                await asyncio.wait_for(failed.wait(), timeout=2)
+                await pilot.pause()
+                assert app.query_one("#view-1")
+                fatal.assert_not_called()
+
+    asyncio.run(drive())
+    reloading.close()
+
+
+def test_builtin_pane_error_keeps_the_run_shell_alive(tmp_path: Path) -> None:
+    app = configured_app(
+        tmp_path,
+        'command = "echo ok"\ncontinues = false\n[views]\nprogress = "progress.py:Progress"\n',
+    )
+
+    async def drive() -> None:
+        with (
+            mock.patch(
+                "labnotes.tui.view_pane.load_view", side_effect=ImportError("broken")
+            ),
+            mock.patch("labnotes.tui.run_app.open_tables"),
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert not app.body_ready
+                assert app.query_one("#view-1 .failure")
+                app.listen(mock.Mock())
+                app.show_event({"event": "planned"})
+                app.stop_runs()
+                app.action_interrupt()
+
+    asyncio.run(drive())
+
+
+def test_load_data_delivers_native_rows_and_skips_removed_experiment(
+    tmp_path: Path,
+) -> None:
+    app = configured_app(tmp_path, None)
+    loaded = {
+        "views": {"progress": "progress.py:Progress"},
+        "config": {"command": "go"},
+    }
+
+    async def drive() -> None:
+        with (
+            mock.patch(
+                "labnotes.tui.run_app.load_experiment",
+                new=mock.AsyncMock(return_value=None),
+            ) as load,
+            mock.patch(
+                "labnotes.tui.run_app.native_rows", return_value=({"status": "passed"},)
+            ),
+            mock.patch.object(app, "add_views", new=mock.AsyncMock()) as add_views,
+            mock.patch.object(app, "deliver") as deliver,
+        ):
+            await app.load_data(mock.Mock())
+            assert not app.loaded_views
+            load.return_value = loaded
+            await app.load_data(mock.Mock())
+            await app.load_data(mock.Mock())
+            add_views.assert_awaited_once_with(loaded["views"], tmp_path)
+            assert deliver.call_count == 2
+            assert app.shown is not None
+            assert app.shown.name == "alpha"
+            assert app.shown.runs == ({"status": "passed"},)
+            assert app.shown.config == {"command": "go"}
+
+    asyncio.run(drive())
+
+
+def test_run_file_change_notifies_view_and_escape_returns_to_runs(
+    tmp_path: Path,
+) -> None:
+    app = configured_app(tmp_path, None)
+    app.shown = mock.Mock()
+
+    async def changes():
+        yield {"path": "alpha/runs/first/stdout.log"}
+        yield {"path": "alpha/runs/first/stderr.log"}
+
+    with (
+        mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+        mock.patch.object(app, "deliver") as deliver,
+    ):
+        asyncio.run(app.watch_files(mock.Mock()))
+    assert deliver.call_args_list == [
+        mock.call(app.shown, frozenset({"alpha/runs/first/stdout.log"})),
+        mock.call(app.shown, frozenset({"alpha/runs/first/stderr.log"})),
+    ]
+
+    app.shown = None
+    with (
+        mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+        mock.patch.object(app, "deliver") as deliver,
+    ):
+        asyncio.run(app.watch_files(mock.Mock()))
+    deliver.assert_not_called()
+
+    with (
+        mock.patch.object(app, "query_one", return_value=mock.Mock(current="view-2")),
+        mock.patch.object(app, "action_show_view") as show,
+    ):
+        app.action_leave()
+    show.assert_called_once_with(1)
+
+    with (
+        mock.patch.object(app, "query_one", return_value=mock.Mock(current="view-1")),
+        mock.patch.object(app, "action_show_view") as show,
+    ):
+        app.action_leave()
+    show.assert_not_called()
 
 
 @pytest.fixture(autouse=True)
@@ -80,7 +291,7 @@ def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> N
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.tick()
+            app.body.tick()
             await pilot.pause()
             assert usage(app) == [["3.2 GB", "5.0 kB"], ["", "5.0 kB"], ["", ""]]
             assert app.query_one("#runs").ordered_columns[4].label.plain == "memory"  # type: ignore[attr-defined]
@@ -124,7 +335,7 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.tick()
+            app.body.tick()
             await sampled.wait()
             await pilot.pause()
             release.set()
@@ -159,14 +370,14 @@ def test_waits_for_one_sample_before_taking_another(
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.tick()
-            app.tick()
+            app.body.tick()
+            app.body.tick()
             await pilot.pause()
             assert collaborators["run_usage"].await_count == 1
             release.set()
             await pilot.pause()
             assert usage(app) == [["2.0 kB", "3.0 kB"]]
-            app.tick()
+            app.body.tick()
             await pilot.pause()
             assert collaborators["run_usage"].await_count == 2
             done.set()
@@ -209,7 +420,7 @@ def test_measures_runs_that_end_together_one_scan_at_a_time(
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.tick()
+            app.body.tick()
             await sampled.wait()
             await pilot.pause()
             release.set()
@@ -247,7 +458,7 @@ def test_shows_only_the_columns_it_is_given_in_their_order(
         app = RunApp(start, "exp", ["size", "status", "run"])
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.tick()
+            app.body.tick()
             await pilot.pause()
             table: Any = app.query_one("#runs")
             assert [column.label.plain for column in table.ordered_columns] == [
@@ -478,7 +689,7 @@ def test_shows_the_new_concurrency() -> None:
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert (app.concurrency, corner(app)) == (5, "5 at a time")
+            assert (app.body.concurrency, corner(app)) == (5, "5 at a time")
             assert status(app) == ""
 
     asyncio.run(drive())
@@ -518,7 +729,7 @@ def test_ticks_the_time_of_running_runs(
         async with app.run_test() as pilot:
             await pilot.pause()
             collaborators["time"].monotonic.return_value = 25.0
-            app.tick()
+            app.body.tick()
             assert rows(app) == [["r1", "--m a", "|", "15 seconds"]]
 
     asyncio.run(drive())
@@ -543,10 +754,10 @@ def test_spins_the_status_of_running_runs() -> None:
         with mock.patch("labnotes.tui.run_app.DataTable.set_interval") as interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
-                interval.assert_called_once_with(0.1, app.spin)
+                interval.assert_called_once_with(0.1, app.body.spin)
                 spun = []
                 for _ in range(4):
-                    app.spin()
+                    app.body.spin()
                     spun.append([row[2] for row in rows(app)])
                 assert spun == [["/", "○"], ["-", "○"], ["\\", "○"], ["|", "○"]]
 
@@ -762,12 +973,12 @@ def test_ticks_every_second_and_follows_output_often() -> None:
 
     async def drive() -> None:
         app = RunApp(start, "exp", COLUMNS)
-        with mock.patch.object(app, "set_interval") as set_interval:
+        with mock.patch.object(app.body, "set_interval") as set_interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
         assert set_interval.call_args_list == [
-            mock.call(1, app.tick),
-            mock.call(0.25, app.follow),
+            mock.call(1, app.body.tick),
+            mock.call(0.25, app.body.follow),
         ]
 
     asyncio.run(drive())
@@ -899,15 +1110,15 @@ def test_escape_shows_on_the_table_only_with_the_filter_open() -> None:
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            assert not app.check_action("leave", ())
+            assert not app.body.check_action("leave", ())
             await pilot.press("slash")
-            assert app.check_action("leave", ())
+            assert app.body.check_action("leave", ())
             await pilot.press("r", "enter")
-            assert app.check_action("leave", ())
+            assert app.body.check_action("leave", ())
             await pilot.press("escape")
-            assert not app.check_action("leave", ())
+            assert not app.body.check_action("leave", ())
             await pilot.press("enter")
-            assert app.check_action("leave", ())
+            assert app.body.check_action("leave", ())
 
     asyncio.run(drive())
 
@@ -954,7 +1165,7 @@ def test_x_does_nothing_without_rows() -> None:
 
     async def drive() -> None:
         app = RunApp(start, "exp", COLUMNS)
-        with mock.patch.object(app, "controls") as controls:
+        with mock.patch.object(app.body, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.press("x")
             controls.kill.assert_not_called()
@@ -988,7 +1199,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                 assert not app.query_one("#runs").display
                 assert (app.sub_title, status(app)) == ("r2", "")
                 assert output(app) == []
-                app.follow()
+                app.body.follow()
                 assert output(app) == []
                 (tmp_path / "stdout.log").write_text("hi\n")
                 reports[0](
@@ -999,10 +1210,10 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
                         "folder": tmp_path,
                     }
                 )
-                app.follow()
+                app.body.follow()
                 with (tmp_path / "stdout.log").open("a") as log:
                     log.write("more\n")
-                app.follow()
+                app.body.follow()
                 await pilot.pause()
                 assert output(app) == ["hi", "more"]
                 await pilot.press("escape")
@@ -1020,19 +1231,23 @@ def test_only_back_and_quit_work_while_following_output() -> None:
 
     async def drive() -> None:
         app = RunApp(start, "exp", COLUMNS)
-        with mock.patch.object(app, "controls") as controls:
+        with mock.patch.object(app.body, "controls") as controls:
             async with app.run_test() as pilot:
                 await pilot.pause()
                 await pilot.press("enter")
-                actions = [binding.action for binding in RunApp.BINDINGS]  # type: ignore[union-attr]
-                live = [action for action in actions if app.check_action(action, ())]
+                actions = [binding.action for binding in RunLiveView.BINDINGS]  # type: ignore[union-attr]
+                live = [
+                    action
+                    for action in ["interrupt", *actions]
+                    if app.body.check_action(action, ())
+                ]
                 assert live == ["interrupt", "leave"]
-                assert app.check_action("command_palette", ())
+                assert app.body.check_action("command_palette", ())
                 await pilot.press("x", "plus")
                 controls.kill.assert_not_called()
                 controls.set_concurrency.assert_not_called()
                 await pilot.press("escape")
-                assert app.check_action("kill_run", ())
+                assert app.body.check_action("kill_run", ())
                 await pilot.press("x")
                 controls.kill.assert_called_once_with("r1")
 
@@ -1062,8 +1277,8 @@ def test_starts_over_when_viewing_another_run(tmp_path: Path) -> None:
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
-                app.view("r1")
-                app.view("r2")
+                app.body.view("r1")
+                app.body.view("r2")
                 await pilot.pause()
                 assert output(app) == ["hi"]
 
@@ -1107,7 +1322,7 @@ def test_opens_a_lone_run_in_its_output(
         with mock.patch.object(app, "set_interval"):
             async with app.run_test() as pilot:
                 await pilot.pause()
-                assert app.viewing == viewing
+                assert app.body.viewing == viewing
                 assert app.query_one("#output").display is (viewing is not None)
                 if viewing is None:
                     return
@@ -1120,7 +1335,7 @@ def test_opens_a_lone_run_in_its_output(
                         "folder": tmp_path,
                     }
                 )
-                app.follow()
+                app.body.follow()
                 assert output(app)[0] == "hi"
                 await pilot.press("escape")
                 assert [row[0] for row in rows(app)] == ["r1"]
@@ -1207,7 +1422,7 @@ def test_shows_log_blocks_above_the_output(tmp_path: Path) -> None:
                 await pilot.pause()
                 blocks = app.query_one("#blocks")
                 assert not blocks.display
-                app.view("r1")
+                app.body.view("r1")
                 await pilot.pause()
                 assert blocks.display
                 assert [str(block.render()) for block in blocks.children] == [
@@ -1216,7 +1431,7 @@ def test_shows_log_blocks_above_the_output(tmp_path: Path) -> None:
                 assert blocks.region.y < app.query_one("#output").region.y
                 await pilot.press("escape")
                 assert not blocks.display
-                app.view("r2")
+                app.body.view("r2")
                 await pilot.pause()
                 assert not blocks.display
                 assert list(blocks.children) == []
@@ -1251,10 +1466,10 @@ def test_shows_tempfail_retries_counting_down_then_their_outcome(
             assert [row[2] for row in styles(app)] == ["yellow"] * 2
             assert status(app) == "said retrying"
             collaborators["time"].monotonic.return_value = 25.0
-            app.tick()
+            app.body.tick()
             assert rows(app)[0][2] == "✗ exited 75, retry in 15 seconds"
             collaborators["time"].monotonic.return_value = 50.0
-            app.tick()
+            app.body.tick()
             assert rows(app)[0][2] == "✗ exited 75, retry in 0 seconds"
             report = reports[0]
             report(
@@ -1267,7 +1482,7 @@ def test_shows_tempfail_retries_counting_down_then_their_outcome(
             report({"event": "ended", "run": "r2", "exit_code": 75, "error": None})
             report({"event": "gave up", "run": "r2", "retries": 2})
             assert status(app) == "said gave up"
-            app.tick()
+            app.body.tick()
             assert [row[2] for row in rows(app)] == [
                 "✗ exited 75, retried",
                 "✗ exited 75",

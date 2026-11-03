@@ -12,11 +12,13 @@ COMMAND = (
 )
 
 
-def run_tui(terminal, tmp_path: Path, repeats: int) -> Terminal:
+def run_tui(
+    terminal, tmp_path: Path, repeats: int, command: str = COMMAND, extra: str = ""
+) -> Terminal:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp" / "experiment.toml").write_text(
-        f"continues = false\ncommand = '''{COMMAND}'''\nrepeats = {repeats}\n"
+        f"continues = false\ncommand = '''{command}'''\nrepeats = {repeats}\n{extra}"
     )
     labnotes = Path(sys.executable).parent / "labnotes"
     return terminal(
@@ -87,3 +89,80 @@ def test_shows_a_running_runs_memory_and_size(terminal, tmp_path: Path) -> None:
     ).to_be_visible()
 
     stop(term)
+
+
+def test_live_table_shows_columns_status_time_badge_and_footer(
+    terminal, tmp_path: Path
+) -> None:
+    term = run_tui(terminal, tmp_path, 2)
+    for label in ("run", "params", "status", "time", "memory", "size"):
+        expect(term.get_by_text(label)).to_be_visible()
+    expect(term.get_by_text("1 at a time")).to_be_visible()
+    expect(term.get_by_text(re.compile(r"[|/\\-] +\d+s"))).to_be_visible()
+    expect(term.get_by_text("○")).to_be_visible()
+    for key in ("Stop run", "Filter", "More at once", "Fewer at once"):
+        expect(term.get_by_text(key)).to_be_visible()
+    term.key_enter()
+    expect(term.get_by_text("Back")).to_be_visible()
+    term.key_escape()
+    expect(term.get_by_text("1 runs")).not_to_be_visible()
+    stop(term)
+
+
+def test_filter_and_concurrency_keys(terminal, tmp_path: Path) -> None:
+    term = run_tui(terminal, tmp_path, 2)
+    expect(term.get_by_text("1 at a time")).to_be_visible()
+    term.write("+")
+    expect(term.get_by_text("2 at a time")).to_be_visible()
+    term.write("-")
+    expect(term.get_by_text("1 at a time")).to_be_visible()
+    term.write("/")
+    expect(term.get_by_text("Filter params")).to_be_visible()
+    term.write("nomatch")
+    expect(term.get_by_text("nomatch")).to_be_visible()
+    term.key_enter()
+    term.key_escape()
+    expect(term.get_by_text("Filter params")).not_to_be_visible()
+    stop(term)
+
+
+def test_x_stops_selected_run(terminal, tmp_path: Path) -> None:
+    term = run_tui(terminal, tmp_path, 2)
+    expect(term.get_by_text(re.compile(r"[|/\\-] +\d+s"))).to_be_visible()
+    term.write("x")
+    expect(term.get_by_text(re.compile(r"✗|killing|stopping"))).to_be_visible()
+    stop(term)
+
+
+def test_retry_wait_and_end_summary(terminal, tmp_path: Path) -> None:
+    command = f"{shlex.quote(sys.executable)} -c 'import sys; sys.exit(75)'"
+    term = run_tui(terminal, tmp_path, 2, command, "retries = 1\n")
+    expect(term.get_by_text("retry in")).to_be_visible(timeout=15)
+    expect(term.get_by_text("✗")).to_be_visible()
+    term.key_ctrl_c()
+    term.wait()
+
+
+def test_end_summary_shows_passed_and_failed(terminal, tmp_path: Path) -> None:
+    command = f"{shlex.quote(sys.executable)} -c 'print(\"done\")'"
+    term = run_tui(terminal, tmp_path, 2, command, "retries = 0\n")
+    expect(term.get_by_text("2 passed, 0 failed")).to_be_visible(timeout=15)
+    expect(term.get_by_text("✓")).to_be_visible()
+    term.key_ctrl_c()
+    term.wait()
+
+
+def test_ctrl_c_prompt_can_cancel_then_stop(terminal, tmp_path: Path) -> None:
+    term = run_tui(terminal, tmp_path, 2)
+    expect(term.get_by_text("1 at a time")).to_be_visible()
+    term.key_ctrl_c()
+    expect(term.get_by_text("still going")).to_be_visible()
+    expect(term.get_by_text("Stop them")).to_be_visible()
+    term.key_escape()
+    expect(term.get_by_text("still going")).not_to_be_visible()
+    term.key_ctrl_c()
+    expect(term.get_by_text("still going")).to_be_visible()
+    term.write("s")
+    expect(term.get_by_text("Ctrl-C to quit")).to_be_visible(timeout=15)
+    term.key_ctrl_c()
+    term.wait()

@@ -1,38 +1,58 @@
 import signal
 import time
-from collections.abc import Sequence
+import tomllib
+from collections.abc import Mapping, Sequence
 from pathlib import Path
+from types import MappingProxyType
+from typing import Any, cast
 
 from rich.text import Text
+from starlette.datastructures import QueryParams
 from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
-from textual.widgets import DataTable, Footer, Header, Input, Static
+from textual.css.query import NoMatches
+from textual.widget import Widget
+from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
 
-from labnotes.utils.format_bytes import format_bytes
-from labnotes.models import Controls, Start
+from labnotes.compose_experiment import compose_experiment
+from labnotes.load_experiment import load_experiment
+from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
-from labnotes.utils.run_usage import run_usage
 from labnotes.runner.describe_event import describe_event
-from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.runner.param_args import param_args
+from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
+from labnotes.tables.open_tables import open_tables
+from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.leave_prompt import LeavePrompt
 from labnotes.tui.log_blocks import LogBlocks
+from labnotes.tui.native_rows import native_rows
+from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
+from labnotes.tui.view_pane import ViewPane
+from labnotes.tui.view_switcher import ViewSwitcher
+from labnotes.utils.format_bytes import format_bytes
+from labnotes.utils.run_usage import run_usage
+from labnotes.view.experiment import Experiment
+from labnotes.view_specs import view_specs
+from labnotes.watch_rows import watch_rows
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED = "–"
 VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette"}
+BUILT_IN = "labnotes.tui.run_app:RunLiveView"
 
 
-class RunApp(App[None]):
-    CSS = "#concurrency { dock: right; width: auto; padding: 0 1; }"
+class RunLiveView(Widget):
+    DEFAULT_CSS = """
+    RunLiveView { height: 1fr; }
+    RunLiveView RunsTable { height: 1fr; }
+    """
     BINDINGS = [
-        Binding("ctrl+c", "interrupt", "Quit"),
         Binding("x", "kill_run", "Stop run"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "leave", "Back"),
@@ -40,13 +60,9 @@ class RunApp(App[None]):
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
     ]
 
-    def __init__(self, start: Start, title: str, columns: Sequence[str]) -> None:
+    def __init__(self, columns: Sequence[str] = ()) -> None:
         super().__init__()
-        self.columns = tuple(columns)
-        self.start = start
-        self.title = title
-        self.results: list[dict[str, object]] = []
-        self.error: Exception | None = None
+        self.columns = tuple(columns or RUN_COLUMNS)
         self.controls = Controls(
             lambda: None, lambda count: None, lambda run: None, lambda: None
         )
@@ -67,13 +83,11 @@ class RunApp(App[None]):
         self.unmeasured: dict[str, None] = {}
 
     def compose(self) -> ComposeResult:
-        yield Header()
         yield RunsTable(id="runs", cursor_type="row")
         yield LogBlocks(id="blocks")
         yield RunOutput(id="output")
         yield Input(id="filter", placeholder="Filter params")
         yield Static(id="status")
-        yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one(DataTable)
@@ -81,32 +95,16 @@ class RunApp(App[None]):
             table.add_column(column, key=column)
         self.query_one(Input).display = False
         self.query_one(RunOutput).display = False
-        self.query_one(Header).mount(Static(id="concurrency"))
         table.set_interval(0.1, self.spin)
-
-    def on_ready(self) -> None:
         self.set_interval(1, self.tick)
         self.set_interval(0.25, self.follow)
-        self.run_worker(self.drive())
-
-    async def drive(self) -> None:
-        try:
-            self.results = await self.start(self.show_event, self.listen)
-        except Exception as error:
-            self.error = error
-        self.exit()
-
-    def listen(self, controls: Controls) -> None:
-        self.controls = controls
-        stop_then_kill(self.stop_runs, signal.SIGTERM)
-        stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
         table = self.query_one(DataTable)
         run = str(event.get("run"))
         match event["event"]:
             case "planned":
-                self.title = str(event["title"])
+                self.app.title = str(event["title"])
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
                     self.cells[planned["run"]] = self.waiting_cells(
@@ -219,7 +217,7 @@ class RunApp(App[None]):
             table.update_cell(run, column, cell, update_width=True)
 
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
-        if isinstance(self.screen, LeavePrompt):
+        if isinstance(self.app.screen, LeavePrompt):
             return False
         if action == "leave" and self.viewing is None:
             return self.query_one(Input).display
@@ -227,7 +225,9 @@ class RunApp(App[None]):
 
     def show_concurrency(self, event: dict[str, object]) -> None:
         self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]
-        self.query_one("#concurrency", Static).update(f"{self.concurrency} at a time")
+        self.app.query_one("#concurrency", Static).update(
+            f"{self.concurrency} at a time"
+        )
 
     def tick(self) -> None:
         now = time.monotonic()
@@ -271,28 +271,6 @@ class RunApp(App[None]):
     def show(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
 
-    def stop_runs(self) -> None:
-        if self.idle:
-            self.controls.finish()
-        else:
-            self.controls.interrupt()
-
-    def action_interrupt(self) -> None:
-        if self.started:
-            self.push_screen(LeavePrompt(len(self.started)), self.answer)
-        elif self.idle:
-            self.controls.finish()
-        else:
-            self.exit()
-
-    async def action_quit(self) -> None:
-        self.action_interrupt()
-
-    def answer(self, choice: str | None) -> None:
-        if choice == "stop":
-            self.controls.interrupt()
-            self.set_timer(GRACE_SECONDS, self.controls.interrupt)
-
     def cursor_run(self) -> str | None:
         table = self.query_one(DataTable)
         if not table.row_count:
@@ -322,7 +300,7 @@ class RunApp(App[None]):
         self.query_one(RunOutput).reset()
         self.query_one(DataTable).display = False
         self.query_one(RunOutput).display = True
-        self.sub_title = run
+        self.app.sub_title = run
         self.show("")
         self.refresh_bindings()
         self.follow()
@@ -338,7 +316,7 @@ class RunApp(App[None]):
             self.query_one(LogBlocks).display = False
             self.query_one(RunOutput).display = False
             self.query_one(DataTable).display = True
-            self.sub_title = ""
+            self.app.sub_title = ""
             self.refresh_bindings()
             if self.idle:
                 self.show_summary()
@@ -359,3 +337,150 @@ class RunApp(App[None]):
         event.input.display = bool(event.value)
         self.query_one(DataTable).focus()
         self.refresh_bindings()
+
+
+class RunApp(ViewSwitcher, App[None]):
+    CSS = "#concurrency { dock: right; width: auto; padding: 0 1; }"
+    BINDINGS = [Binding("ctrl+c", "interrupt", "Quit")]
+
+    def __init__(
+        self,
+        start: Start,
+        title: str,
+        columns: Sequence[str],
+        config: LabnotesConfig | None = None,
+        experiment_config: Path | None = None,
+    ) -> None:
+        super().__init__()
+        self.start = start
+        self.title = title
+        self.config = config
+        self.experiment_config = experiment_config
+        self.experiment_name = title
+        self.view_specs = self.configured_views()
+        self.results: list[dict[str, object]] = []
+        self.error: Exception | None = None
+        self.columns = tuple(columns)
+        self.body = RunLiveView(columns)
+        self.body.id = "view-1"
+        self.body_ready = True
+        self.loaded_views = False
+        self.shown: Experiment | None = None
+        self.left: dict[str, Widget] = {}
+        self.controls = self.body.controls
+
+    def compose(self) -> ComposeResult:
+        yield Header()
+        with ContentSwitcher(initial="view-1"):
+            if self.view_specs:
+                assert self.config is not None
+                yield ViewPane("runs", BUILT_IN, self.config.root, id="view-1")
+            else:
+                yield self.body
+        yield Footer()
+
+    async def on_mount(self) -> None:
+        await self.query_one(Header).mount(Static(id="concurrency"))
+        if self.view_specs:
+            assert self.config is not None
+            self._bindings.bind("escape", "leave", "Back")
+            try:
+                self.body = self.query_one(RunLiveView)
+            except NoMatches:
+                # ViewPane already displays the built-in view's loading error.
+                self.body_ready = False
+            tables = open_tables(self.config, run_files=True)
+            self.run_worker(
+                reload_on_change(
+                    watch_rows(
+                        tables, {"runs", "experiment_configs"}, self.experiment_name
+                    ),
+                    lambda: self.load_data(tables),
+                    lambda error: None,
+                ),
+                exit_on_error=False,
+            )
+            self.run_worker(self.watch_files(tables), exit_on_error=False)
+        self.run_worker(self.drive())
+
+    def configured_views(self) -> dict[str, str]:
+        if self.config is None:
+            return {}
+        folder = self.config.experiments.replace("{experiment}", self.experiment_name)
+        path = self.experiment_config or self.config.root / folder / "experiment.toml"
+        try:
+            source = path.read_text()
+            layer = tomllib.loads(source)
+        except (OSError, tomllib.TOMLDecodeError):
+            # The runner reports missing or invalid config through its normal path.
+            layer = {}
+        return view_specs(compose_experiment(self.config.defaults, layer))
+
+    async def load_data(self, tables: Any) -> None:
+        assert self.config is not None
+        loaded = await load_experiment(
+            tables, self.config.root, self.experiment_name, QueryParams()
+        )
+        if loaded is None:
+            return
+        if not self.loaded_views:
+            await self.add_views(
+                cast(Mapping[str, str], loaded["views"]), self.config.root
+            )
+            self.loaded_views = True
+        self.shown = Experiment(
+            self.config.root,
+            self.experiment_name,
+            native_rows(loaded),
+            MappingProxyType(cast(dict[str, Any], loaded["config"] or {})),
+        )
+        self.deliver(self.shown)
+
+    async def watch_files(self, tables: Any) -> None:
+        async for row in watch_rows(tables, {"run_files"}, self.experiment_name):
+            if self.shown is not None:
+                self.deliver(self.shown, frozenset({str(row["path"])}))
+
+    async def drive(self) -> None:
+        try:
+            self.results = await self.start(self.show_event, self.listen)
+        except Exception as error:
+            self.error = error
+        self.exit()
+
+    def listen(self, controls: Controls) -> None:
+        self.controls = controls
+        if self.body_ready:
+            self.body.controls = controls
+        stop_then_kill(self.stop_runs, signal.SIGTERM)
+        stop_then_kill(self.stop_runs, signal.SIGHUP)
+
+    def show_event(self, event: dict[str, object]) -> None:
+        if self.body_ready:
+            self.body.show_event(event)
+
+    def stop_runs(self) -> None:
+        if self.body_ready and self.body.idle:
+            self.controls.finish()
+        else:
+            self.controls.interrupt()
+
+    def action_interrupt(self) -> None:
+        if self.body_ready and self.body.started:
+            self.push_screen(LeavePrompt(len(self.body.started)), self.answer)
+        elif self.body_ready and self.body.idle:
+            self.controls.finish()
+        else:
+            self.exit()
+
+    async def action_quit(self) -> None:
+        self.action_interrupt()
+
+    def answer(self, choice: str | None) -> None:
+        if choice == "stop":
+            self.controls.interrupt()
+            self.set_timer(GRACE_SECONDS, self.controls.interrupt)
+
+    def action_leave(self) -> None:
+        if self.query_one(ContentSwitcher).current != "view-1":
+            self.action_show_view(1)

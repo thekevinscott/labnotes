@@ -231,6 +231,7 @@ def test_runs_an_experiment_in_process(
         None,
         None,
         None,
+        None,
     )
     drivers["run_headless"].assert_called_once_with(
         drivers["start_experiment"].return_value
@@ -291,6 +292,7 @@ def test_runs_the_subset_given_as_params(
         None,
         5,
         drivers["parse_subset"].return_value,
+        None,
         None,
         None,
         None,
@@ -466,6 +468,7 @@ def test_shows_the_live_view_in_a_terminal(
         3,
         None,
         {},
+        None,
         None,
         None,
         None,

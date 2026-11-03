@@ -1,6 +1,9 @@
+import asyncio
+import os
+import sys
 from collections.abc import Mapping
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from textual.app import ComposeResult
 from textual.binding import Binding
@@ -8,6 +11,8 @@ from textual.widget import Widget
 from textual.widgets import DataTable, Static
 
 from labnotes.runs_view_command import runs_view_command
+from labnotes.models import LabnotesConfig
+from labnotes.runner.claim_run import claim_run
 from labnotes.tui.fill_table import fill_table
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.run_panel import RunPanel
@@ -30,6 +35,7 @@ class RunsBrowser(Widget):
     BINDINGS = [
         Binding("enter", "open_row", "Open", priority=True),
         Binding("escape", "close_run", "Back"),
+        Binding("r", "restart_run", "Restart", priority=True),
     ]
 
     def __init__(self) -> None:
@@ -38,6 +44,7 @@ class RunsBrowser(Widget):
         self.view: RunsView | None = None
         self.experiment = Experiment(Path(), "", ())
         self.viewing: str | None = None
+        self.restart_status = ""
 
     def compose(self) -> ComposeResult:
         yield RunsTable(id="runs", cursor_type="row")
@@ -48,6 +55,8 @@ class RunsBrowser(Widget):
             return self.viewing is None
         if action == "close_run":
             return self.viewing is not None
+        if action == "restart_run":
+            return self.viewing is None
         return True
 
     def on_labnotes_changed(self, message: Changed) -> None:
@@ -103,10 +112,61 @@ class RunsBrowser(Widget):
         self.show_status()
 
     def show_status(self) -> None:
-        text = "" if self.view is None else self.view.status()
+        text = self.restart_status or ("" if self.view is None else self.view.status())
         status = self.query_one("#view-status", Static)
         status.update(text)
         status.display = bool(text) and self.viewing is None
+
+    def action_restart_run(self) -> None:
+        table = self.query_one(DataTable)
+        if not table.row_count:
+            return
+        folder = str(
+            table.coordinate_to_cell_key(table.cursor_coordinate).row_key.value
+        )
+        row = next(row for row in self.experiment.runs if str(row["folder"]) == folder)
+        run_id = str(row["id"])
+        if row.get("ended") is None or (
+            row.get("exit_code") == 0 and not row.get("error")
+        ):
+            self.restart_status = f"{run_id} has not failed."
+            self.show_status()
+            return
+        lock = claim_run(self.experiment.root / folder)
+        if lock is None:
+            self.restart_status = f"{run_id} is held by another run."
+            self.show_status()
+            return
+        os.close(lock)
+        self.restart_status = f"Restarting {run_id}..."
+        self.show_status()
+        self.run_worker(self.restart(run_id), exit_on_error=False)
+
+    async def restart(self, run_id: str) -> None:
+        config = cast(LabnotesConfig, getattr(self.app, "config"))
+        process = await asyncio.create_subprocess_exec(
+            sys.executable,
+            "-m",
+            "labnotes",
+            "-c",
+            str(config.path),
+            "experiments",
+            self.experiment.name,
+            "run",
+            "--run-id",
+            run_id,
+            stdout=asyncio.subprocess.PIPE,
+            stderr=asyncio.subprocess.PIPE,
+        )
+        stdout, stderr = await process.communicate()
+        if process.returncode == 0:
+            self.restart_status = (
+                f"Restarted {run_id}. Select the run to view its output."
+            )
+        else:
+            detail = stderr.decode().strip() or stdout.decode().strip()
+            self.restart_status = f"Could not restart {run_id}: {detail}"
+        self.show_status()
 
     async def action_open_row(self) -> None:
         table = self.query_one(DataTable)

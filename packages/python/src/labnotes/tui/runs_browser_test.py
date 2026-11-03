@@ -103,6 +103,7 @@ def test_binds_enter_and_escape() -> None:
     ] == [
         ("enter", "open_row", "Open", True),
         ("escape", "close_run", "Back", False),
+        ("r", "restart_run", "Restart", True),
     ]
 
 

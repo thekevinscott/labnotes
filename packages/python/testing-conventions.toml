@@ -51,3 +51,9 @@ path = "src/labnotes/runner/hold_experiment.py"
 rules = ["mutation"]
 lines = [18]
 reason = "LOCK_EX and LOCK_NB are disjoint bits, so | equals + and ^"
+
+[[python.exempt]]
+path = "src/labnotes/tui/run_output.py"
+rules = ["mutation"]
+lines = [96]
+reason = "a selection span ends at -1 or a non-negative offset, so <= equals ==; -1 is a CPython cached small int, so is equals =="

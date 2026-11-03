@@ -89,9 +89,9 @@ class RunOutput(Log):
         selection = self.text_selection
         if selection is None and y in self._render_line_cache:
             return self._render_line_cache[y]
-        line_text = Text.from_ansi(self._lines[y], style=rich_style, no_wrap=True)
+        line_text = Text.from_ansi(self._lines[y], style=rich_style)
         if selection is not None:
-            if (span := selection.get_span(y - self._clear_y)) is not None:
+            if (span := selection.get_span(y)) is not None:
                 start, end = span
                 if end == -1:
                     end = len(line_text)

@@ -26,6 +26,39 @@ def test_empty_write_leaves_the_log_unchanged() -> None:
     assert list(output.lines) == []
 
 
+@pytest.mark.parametrize(
+    ("auto_scroll", "scroll_end", "scrolls"),
+    [
+        (True, None, True),
+        (False, None, False),
+        (True, False, False),
+        (False, True, True),
+    ],
+)
+def test_scrolls_to_the_newest_line_only_from_the_end(
+    auto_scroll: bool, scroll_end: bool | None, scrolls: bool
+) -> None:
+    output = RunOutput()
+    output.auto_scroll = auto_scroll
+    with (
+        mock.patch.object(
+            RunOutput, "is_mounted", new_callable=mock.PropertyMock, return_value=True
+        ),
+        mock.patch.object(
+            RunOutput,
+            "is_vertical_scroll_end",
+            new_callable=mock.PropertyMock,
+            return_value=True,
+        ),
+        mock.patch.object(RunOutput, "scroll_end") as scroll,
+    ):
+        output.write_lines(["new"], scroll_end=scroll_end)
+    if scrolls:
+        scroll.assert_called_once_with(animate=False, immediate=True, x_axis=False)
+    else:
+        scroll.assert_not_called()
+
+
 def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
     output = RunOutput()
     output.follow(tmp_path)

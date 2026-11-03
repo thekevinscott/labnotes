@@ -91,9 +91,11 @@ def test_run_file_watcher_failure_keeps_shell_alive(tmp_path: Path) -> None:
         tmp_path,
         'command = "echo ok"\n[views]\nprogress = "progress.py:Progress"\n',
     )
+    failed = asyncio.Event()
 
     async def changes():
         yield {"path": "alpha/runs/first/stdout.log"}
+        failed.set()
         raise RuntimeError("watch failed")
 
     async def reload():
@@ -109,7 +111,7 @@ def test_run_file_watcher_failure_keeps_shell_alive(tmp_path: Path) -> None:
             mock.patch.object(app, "_handle_exception") as fatal,
         ):
             async with app.run_test() as pilot:
-                await pilot.pause()
+                await asyncio.wait_for(failed.wait(), timeout=2)
                 await pilot.pause()
                 assert app.query_one("#view-1")
                 fatal.assert_not_called()

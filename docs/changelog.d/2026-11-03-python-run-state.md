@@ -1,0 +1,1 @@
+Added: Persist each experiment invocation's planned cells, run events, retry deadlines, and invocation phases in `run-state.jsonl`. The run TUI reads the recorded events from disk, so its presentation state can be reconstructed independently of the scheduler callback.

@@ -6,6 +6,7 @@ from unittest import mock
 
 import pytest
 
+from labnotes.runner.run_state import RunState
 from labnotes.tui.run_app import RunApp, RunLiveView
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
@@ -1598,5 +1599,39 @@ def test_retried_run_ids_use_value_equality(
             await pilot.pause()
             assert ("r2" in app.body.retried) is not same_run
             await pilot.press("ctrl+c")
+
+    asyncio.run(drive())
+
+
+def test_configured_run_view_reads_state_from_disk(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    (tmp_path / "alpha").mkdir()
+    (tmp_path / "alpha" / "experiment.toml").write_text('command = "echo ok"\n')
+    written = RunState(config, "alpha")
+    ready = asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        written.begin()
+        written.record(
+            {
+                "event": "planned",
+                "title": "alpha",
+                "concurrency": 1,
+                "runs": [{"run": "one", "params": {"m": "a"}}],
+            }
+        )
+        report({"event": "ignored"})
+        ready.set()
+        await asyncio.Event().wait()
+        return []
+
+    app = RunApp(start, "alpha", COLUMNS, config)
+
+    async def drive() -> None:
+        async with app.run_test() as pilot:
+            await asyncio.wait_for(ready.wait(), timeout=2)
+            await pilot.pause()
+            assert [row[0] for row in rows(app)] == ["one"]
+            assert app.query_one(RunLiveView).pending == {"one"}
 
     asyncio.run(drive())

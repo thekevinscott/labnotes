@@ -30,6 +30,7 @@ from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.project_snapshot import ProjectSnapshot
 from labnotes.runner.run_folder import run_folder
 from labnotes.runner.run_locked import run_locked
+from labnotes.runner.run_state import RunState
 from labnotes.runner.signal_tree import signal_tree
 from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
@@ -56,6 +57,14 @@ async def run_experiment(
     command_line: str | None = None,
     run_id: str | None = None,
 ) -> list[dict[str, object]]:
+    state = RunState(config, name)
+    state.begin()
+    forward = report
+
+    def emit(event: dict[str, object]) -> None:
+        state.record(event)
+        forward(event)
+
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
     tables = open_tables(config)
@@ -161,7 +170,7 @@ async def run_experiment(
     if experiment.meta is not None:
         meta = await invocation_meta(command_root, experiment.meta, hook_env["meta"])
     runs = [{"run": run, "params": params} for run, params in plan]
-    report(
+    emit(
         {
             "event": "planned",
             "title": experiment.name or name,
@@ -170,7 +179,7 @@ async def run_experiment(
         }
     )
     for row in held:
-        report({"event": "held", "run": str(row["id"])})
+        emit({"event": "held", "run": str(row["id"])})
     running: dict[str, set[asyncio.subprocess.Process]] = {}
     trees: dict[str, set[psutil.Process]] = {}
     stopped: set[str] = set()
@@ -189,14 +198,14 @@ async def run_experiment(
         plan.clear()
         if not stopping.is_set():
             stopping.set()
-            report({"event": "stopping"})
+            emit({"event": "stopping"})
             signal_runs(signal.SIGTERM)
             if waiting:
                 for run in list(waiting):
                     cancel_retry(run)
                 fill()
         elif any(running.values()):
-            report({"event": "killing"})
+            emit({"event": "killing"})
             signal_runs(signal.SIGKILL)
 
     def kill(run: str) -> None:
@@ -207,11 +216,11 @@ async def run_experiment(
         if not running.get(run):
             return
         if run in stopped:
-            report({"event": "killing run", "run": run})
+            emit({"event": "killing run", "run": run})
             signal_run(run, signal.SIGKILL)
         else:
             stopped.add(run)
-            report({"event": "stopping run", "run": run})
+            emit({"event": "stopping run", "run": run})
             signal_run(run, signal.SIGTERM)
 
     ended: dict[str, dict[str, object]] = {}
@@ -227,13 +236,13 @@ async def run_experiment(
             parents[again] = run
         attempts[again] = attempt
         plan.append((again, ended[run]))
-        report({"event": "retried", "run": run, "retry": again, "params": ended[run]})
+        emit({"event": "retried", "run": run, "retry": again, "params": ended[run]})
         fill()
 
     def retry_later(run: str) -> None:
         tried = attempts.get(run, 0)
         if tried >= experiment.retries:
-            report({"event": "gave up", "run": run, "retries": tried})
+            emit({"event": "gave up", "run": run, "retries": tried})
             return
         seconds = retry_seconds * 2**tried
 
@@ -242,7 +251,7 @@ async def run_experiment(
             requeue(run, tried + 1)
 
         waiting[run] = asyncio.get_running_loop().call_later(seconds, due)
-        report(
+        emit(
             {
                 "event": "retrying",
                 "run": run,
@@ -255,7 +264,7 @@ async def run_experiment(
     def cancel_retry(run: str) -> None:
         waiting.pop(run).cancel()
         release(run)
-        report({"event": "retry cancelled", "run": run})
+        emit({"event": "retry cancelled", "run": run})
 
     limit = concurrency
     live: set[asyncio.Task[None]] = set()
@@ -270,7 +279,7 @@ async def run_experiment(
             live.add(task)
             started.append(task)
         if not (live or waiting):
-            report({"event": "idle"})
+            emit({"event": "idle"})
             if finishing:
                 done.set()
 
@@ -287,19 +296,19 @@ async def run_experiment(
     def set_concurrency(count: int) -> None:
         nonlocal limit
         limit = max(1, count)
-        report({"event": "concurrency", "concurrency": limit})
+        emit({"event": "concurrency", "concurrency": limit})
         fill()
 
     async def start(run: str, params: dict[str, object]) -> None:
         folder = target_folder or run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
         if not claim(run):
-            report({"event": "held", "run": run})
+            emit({"event": "held", "run": run})
             return
         if snapshot is not None and snapshot.sha is not None:
             (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
             (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")
-        report({"event": "started", "run": run, "params": params, "folder": folder})
+        emit({"event": "started", "run": run, "params": params, "folder": folder})
         # {invocation_dir} stays for configs written before runs were flat.
         dirs = dict.fromkeys(PLACEHOLDERS, str(folder.resolve()))
         running[run] = set()
@@ -337,7 +346,7 @@ async def run_experiment(
             command_line=command_line,
         )
         del running[run], trees[run]
-        report({"event": "ended", "run": run, **result})
+        emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
         if result["exit_code"] == RETRY_EXIT_CODE and not (
@@ -349,7 +358,7 @@ async def run_experiment(
 
     async def teardown() -> None:
         if experiment.teardown is not None:
-            report({"event": "tearing down"})
+            emit({"event": "tearing down"})
             await invocation_hook(
                 command_root,
                 "teardown",
@@ -366,7 +375,7 @@ async def run_experiment(
         # Like vitest's globalSetup: a failed setup still gets its teardown.
         try:
             if experiment.setup is not None:
-                report({"event": "setting up"})
+                emit({"event": "setting up"})
                 await invocation_hook(
                     command_root,
                     "setup",
@@ -380,7 +389,7 @@ async def run_experiment(
             try:
                 await teardown()
             except Exception as failure:  # noqa: BLE001
-                report({"event": "teardown failed", "error": str(failure)})
+                emit({"event": "teardown failed", "error": str(failure)})
             raise
         finally:
             for run in list(locks):

@@ -1,0 +1,1 @@
+Fixed: The final `experiments <name> run` summary now counts a superseded run as retried instead of failed. A retry that passes is counted as passed, and the summary totals match the number of run results.

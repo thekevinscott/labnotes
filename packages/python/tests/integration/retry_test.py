@@ -110,6 +110,18 @@ def test_retries_a_tempfail_into_a_new_folder_that_links_back(
     assert counted(root, capsys) == {first["id"]: 0, second["id"]: 1}
 
 
+def test_summary_counts_a_retry_that_passes(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_project(tmp_path, "75")
+
+    assert labnotes(root, ["experiments", "exp", "run"]) == 0
+
+    first, second = chain(root)
+    assert (first["exit_code"], second["exit_code"]) == (75, 0)
+    assert capsys.readouterr().out.endswith("1 passed, 0 failed. 1 retried.\n")
+
+
 def test_retries_fill_a_matrix_without_extra_replicates(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

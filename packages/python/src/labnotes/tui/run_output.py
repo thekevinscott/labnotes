@@ -3,22 +3,49 @@ from collections.abc import Iterable
 from pathlib import Path
 from typing import Self
 
-from rich.style import Style
+from rich.ansi import re_ansi
 from rich.text import Text
 from rich.cells import cell_len
 from textual.geometry import Size
+from textual.scroll_view import ScrollView
 from textual.strip import Strip
-from textual.widgets import Log
 
 from labnotes.latest_log import latest_log
 
 STREAMS = ("stdout", "stderr")
 
 
-class RunOutput(Log):
+class RunOutput(ScrollView):
+    DEFAULT_CSS = """
+    RunOutput {
+        background: $surface;
+        color: $text;
+        overflow: scroll;
+        &:focus { background-tint: $foreground 5%; }
+    }
+    """
+
     def __init__(self, id: str | None = None) -> None:
         super().__init__(id=id)
+        self.auto_scroll = True
+        self._lines: list[str] = []
+        self._line_widths: list[int] = []
+        self._line_cache: dict[int, Strip] = {}
+        self._width = 0
         self.reset()
+
+    @property
+    def lines(self) -> list[str]:
+        return self._lines
+
+    def clear(self) -> Self:
+        self._lines.clear()
+        self._line_widths.clear()
+        self._line_cache.clear()
+        self._width = 0
+        self.virtual_size = Size(0, 0)
+        self.refresh()
+        return self
 
     def reset(self) -> None:
         self.offsets = dict.fromkeys(STREAMS, 0)
@@ -68,7 +95,11 @@ class RunOutput(Log):
             return self
         at_end = self.is_vertical_scroll_end
         self._lines.extend(new_lines)
-        self._width = max(self._width, max(map(len, new_lines)))
+        widths = [
+            cell_len(re_ansi.sub("", line.rsplit("\r", 1)[-1])) for line in new_lines
+        ]
+        self._line_widths.extend(widths)
+        self._width = max(self._width, *widths)
         self.virtual_size = Size(self._width, len(self._lines))
         self.refresh()
         if (
@@ -81,17 +112,26 @@ class RunOutput(Log):
 
     def drop_unfinished(self) -> None:
         self._lines.pop()
-        self._render_line_cache.discard(len(self._lines))
+        removed_width = self._line_widths.pop()
+        if removed_width == self._width:
+            self._width = max(self._line_widths, default=0)
+        self._line_cache.pop(len(self._lines), None)
         self.virtual_size = Size(self._width, len(self._lines))
         self.refresh()
 
-    def _render_line_strip(self, y: int, rich_style: Style) -> Strip:
+    def render_line(self, y: int) -> Strip:
+        """Render only the visible line, keeping the uncropped result cached."""
+        scroll_x, scroll_y = self.scroll_offset
+        row = scroll_y + y
+        rich_style = self.rich_style
+        if row >= len(self._lines):
+            return Strip.blank(self.size.width, rich_style)
         selection = self.text_selection
-        if selection is None and y in self._render_line_cache:
-            return self._render_line_cache[y]
-        line_text = Text.from_ansi(self._lines[y], style=rich_style)
-        if selection is not None:
-            if (span := selection.get_span(y)) is not None:
+        if selection is None and row in self._line_cache:
+            line = self._line_cache[row]
+        else:
+            line_text = Text.from_ansi(self._lines[row], style=rich_style)
+            if selection is not None and (span := selection.get_span(row)) is not None:
                 start, end = span
                 if end == -1:
                     end = len(line_text)
@@ -100,7 +140,9 @@ class RunOutput(Log):
                     start,
                     end,
                 )
-        line = Strip(line_text.render(self.app.console), cell_len(line_text.plain))
-        if selection is None:
-            self._render_line_cache[y] = line
-        return line
+            line = Strip(line_text.render(self.app.console), cell_len(line_text.plain))
+            if selection is None:
+                self._line_cache[row] = line
+        return line.crop_extend(
+            scroll_x, scroll_x + self.size.width, rich_style
+        ).apply_offsets(scroll_x, row)

@@ -134,7 +134,7 @@ def test_renders_ansi_color(tmp_path: Path) -> None:
         append(tmp_path / "stdout.log", b"ld\x1b[0m\n")
         output.follow(tmp_path)
         assert shown(output) == ["\x1b[31mred\x1b[0m plain", "\x1b[1mbold\x1b[0m"]
-        lines = [output._render_line_strip(y, output.rich_style) for y in range(2)]
+        lines = [output.render_line(y) for y in range(2)]
         colors = {
             s.text.strip(): s.style.color.name if s.style and s.style.color else None
             for line in lines

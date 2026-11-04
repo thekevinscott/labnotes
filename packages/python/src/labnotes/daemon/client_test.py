@@ -52,3 +52,16 @@ def test_held_lock_exposes_recorded_socket(paths: tuple[Path, Path]) -> None:
     with mock.patch("labnotes.daemon.client.fcntl.flock", side_effect=BlockingIOError):
         assert daemon_socket(mock.Mock(), "exp") == Path("/tmp/held.sock")
     assert record.exists()
+
+
+def test_stale_record_for_a_vanished_socket_is_cleaned(
+    paths: tuple[Path, Path], tmp_path: Path
+) -> None:
+    record, lock = paths
+    record.write_text(str(tmp_path / "gone.sock"))
+    assert daemon_socket(mock.Mock(), "exp") is None
+    assert not record.exists()
+    record.write_text(str(tmp_path / "gone.sock"))
+    lock.touch()
+    assert daemon_socket(mock.Mock(), "exp") is None
+    assert not record.exists()

@@ -339,7 +339,8 @@ def test_headless_forces_foreground_even_in_a_terminal(
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = True
     drivers["sys"].stderr.isatty.return_value = True
-    assert run(["a", "run", "--headless"]) == 0
+    # Real argv strings are not interned, so `is` checks would miss them.
+    assert run(["a", "".join(["r", "un"]), "--headless"]) == 0
     drivers["run_headless"].assert_called_once()
     drivers["run_tui"].assert_not_called()
 

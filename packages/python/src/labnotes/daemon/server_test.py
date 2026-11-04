@@ -266,7 +266,10 @@ def test_socket_replies_once_and_attach_holds_connection(tmp_path: Path) -> None
                 )
                 writer.write(payload)
                 await writer.drain()
-                assert json.loads(await reader.readline())["error"] == expected
+                assert json.loads(await reader.readline()) == {
+                    "ok": False,
+                    "error": expected,
+                }
                 writer.close()
                 await writer.wait_closed()
             reader, writer = await asyncio.open_unix_connection(
@@ -415,3 +418,125 @@ def test_server_signal_stops_and_closes_early(
         assert lock.stat().st_mode & 0o777 == 0o600
 
     asyncio.run(drive())
+
+
+def test_commands_from_the_wire_reach_their_handlers(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        controls = mock.Mock()
+        daemon.active["one"] = Invocation(controls=controls)
+
+        async def send(line: str) -> dict[str, object]:
+            return await daemon.dispatch(json.loads(line))
+
+        assert await send('{"command": "ping"}') == {"ok": True}
+        assert await send('{"command": "restart", "options": {}}') == {
+            "ok": False,
+            "error": "restart needs run_id",
+        }
+        assert await send('{"command": "stop_one", "run": "r"}') == {"ok": True}
+        assert await send('{"command": "set_concurrency", "count": 1}') == {"ok": True}
+        assert await send('{"command": "stop_all"}') == {"ok": True}
+        controls.kill.assert_called_once_with("r")
+        controls.set_concurrency.assert_called_once_with(1)
+        controls.interrupt.assert_called_once_with()
+        for name in ("aaa", "zzz"):
+            assert await send(json.dumps({"command": name})) == {
+                "ok": False,
+                "error": f"Unknown command {name}",
+            }
+
+    asyncio.run(drive())
+
+
+def test_socket_closes_after_one_reply_unless_attached(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        server = await asyncio.start_unix_server(
+            daemon.handle, path=str(tmp_path / "s.sock")
+        )
+        try:
+            for payload in (b'{"command":"ping"}\n', b'{"command":"aaa"}\n'):
+                reader, writer = await asyncio.open_unix_connection(
+                    str(tmp_path / "s.sock")
+                )
+                writer.write(payload)
+                await writer.drain()
+                await reader.readline()
+                assert await asyncio.wait_for(reader.read(), timeout=1) == b""
+                writer.close()
+                await writer.wait_closed()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    asyncio.run(drive())
+
+
+def test_idle_exit_waits_five_seconds_after_last_busy(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon.last_busy = 3.0
+        with (
+            mock.patch(
+                "labnotes.daemon.server.time.monotonic", side_effect=[7.0, 7.9, 8.0]
+            ),
+            mock.patch(
+                "labnotes.daemon.server.asyncio.sleep", new=mock.AsyncMock()
+            ) as sleep,
+        ):
+            await daemon.wait_until_idle()
+        assert sleep.await_args_list == [mock.call(0.2), mock.call(0.2)]
+
+    asyncio.run(drive())
+
+
+def test_start_waits_thirty_seconds_for_preparation(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "slow.jsonl"))
+
+        async def run(report, listen):
+            await asyncio.Event().wait()
+
+        async def expire(future, timeout):
+            assert timeout == 30.0
+            raise TimeoutError
+
+        selected.side_effect = run
+        with (
+            mock.patch(
+                "labnotes.daemon.server.start_experiment", return_value=selected
+            ),
+            mock.patch("labnotes.daemon.server.asyncio.wait_for", new=expire),
+        ):
+            assert (await daemon.start({}))["ok"] is False
+
+    asyncio.run(drive())
+
+
+def test_server_creates_its_folder_and_waits_for_invocations(tmp_path: Path) -> None:
+    lock = tmp_path / "state" / "labnotes" / "daemon.lock"
+    record = tmp_path / "socket.record"
+    finished: list[str] = []
+
+    class Daemon(ExperimentDaemon):
+        async def wait_until_idle(self) -> None:
+            async def run() -> None:
+                await asyncio.sleep(0.01)
+                finished.append("run")
+
+            self.active["one"] = Invocation(task=asyncio.create_task(run()))
+            record.unlink()
+
+    with (
+        mock.patch("labnotes.daemon.server.lock_path", return_value=lock),
+        mock.patch(
+            "labnotes.daemon.server.socket_path", return_value=tmp_path / "d.sock"
+        ),
+        mock.patch("labnotes.daemon.server.socket_record", return_value=record),
+        mock.patch("labnotes.daemon.server.ExperimentDaemon", Daemon),
+    ):
+        asyncio.run(serve_daemon(config(tmp_path), "exp"))
+    assert lock.exists()
+    assert finished == ["run"]

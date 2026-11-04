@@ -1,6 +1,7 @@
 import hashlib
 import os
 import tempfile
+from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
@@ -65,3 +66,16 @@ def test_discovery_records_live_with_journals(tmp_path: Path) -> None:
     assert socket_record(project, "exp").parent == folder
     assert lock_path(project, "exp").parent == folder
     assert socket_record(project, "exp").stem == daemon_key(project, "exp")
+
+
+@pytest.fixture
+def nested_runtime(tmp_path: Path) -> Iterator[Path]:
+    runtime = tmp_path / "missing" / "run"
+    with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(runtime)}):
+        yield runtime
+
+
+def test_runtime_folder_is_created_under_a_missing_parent(
+    nested_runtime: Path,
+) -> None:
+    assert runtime_folder() == nested_runtime / "labnotes"

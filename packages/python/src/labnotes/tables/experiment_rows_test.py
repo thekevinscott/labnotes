@@ -67,9 +67,12 @@ def test_summarizes_one_experiment(queries: dict[str, mock.MagicMock]) -> None:
 def test_lists_one_experiments_runs(queries: dict[str, mock.MagicMock]) -> None:
     queries["summarize"].return_value = [{"name": "a", "config": '{"counts": "x"}'}]
 
-    assert asyncio.run(experiment_rows(CONFIG, "a", "runs")) == [
+    # Real argv strings are not interned, so `is` checks would miss them.
+    action = "".join(["ru", "ns"])
+    assert asyncio.run(experiment_rows(CONFIG, "a", action)) == [
         {**RUN, "memory": None, "size": 7}
     ]
+    queries["marker"].assert_not_awaited()
     queries["run_usage"].assert_awaited_once_with(Path("/lab/a/runs/r"), False)
 
     queries["summarize_config"].assert_called_once_with({"counts": "x"})

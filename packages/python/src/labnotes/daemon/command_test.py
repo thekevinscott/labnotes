@@ -60,3 +60,19 @@ def test_command_reports_connection_closed_without_reply(tmp_path: Path) -> None
         sockets.return_value.__enter__.return_value = client
         with pytest.raises(ValueError, match="closed without a reply"):
             command(mock.Mock(), "exp", {"command": "ping"})
+
+
+def test_failed_connect_to_a_vanished_socket_still_reports_no_daemon(
+    tmp_path: Path,
+) -> None:
+    record = tmp_path / "socket.record"
+    record.touch()
+    with (
+        mock.patch(
+            "labnotes.daemon.command.daemon_socket", return_value=tmp_path / "gone"
+        ),
+        mock.patch("labnotes.daemon.command.socket_record", return_value=record),
+    ):
+        with pytest.raises(ValueError, match="No daemon is running"):
+            command(mock.Mock(), "exp", {"command": "ping"})
+    assert not record.exists()

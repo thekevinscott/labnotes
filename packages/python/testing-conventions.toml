@@ -74,3 +74,21 @@ reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^
 path = "src/labnotes/daemon/socket_path.py"
 rules = ["one-function-per-file"]
 reason = "The small path helpers share one version key and journal location policy; keeping them together prevents the daemon lock, socket and discovery record from drifting apart"
+
+[[python.exempt]]
+path = "src/labnotes/daemon/client.py"
+rules = ["mutation"]
+lines = [23, 34]
+reason = "the record was read a moment earlier, so it is missing only if another client cleaned it up concurrently; missing_ok guards that race and cannot be triggered deterministically"
+
+[[python.exempt]]
+path = "src/labnotes/daemon/command.py"
+rules = ["mutation"]
+lines = [27]
+reason = "daemon_socket just read this record, so it is missing only if another client cleaned it up concurrently; missing_ok guards that race"
+
+[[python.exempt]]
+path = "src/labnotes/daemon/socket_path.py"
+rules = ["mutation"]
+lines = [29]
+reason = "the next line chmods the folder to 0700, so the mkdir mode only narrows the creation window and any nearby mode ends the same"

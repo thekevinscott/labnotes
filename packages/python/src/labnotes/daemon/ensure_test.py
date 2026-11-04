@@ -93,3 +93,34 @@ def test_startup_timeout_names_limit(tmp_path: Path) -> None:
     ):
         with pytest.raises(ValueError, match="did not start in 0s"):
             asyncio.run(ensure_daemon(project, "exp"))
+
+
+def test_signal_death_reports_stderr_and_folder_is_created(tmp_path: Path) -> None:
+    folder = tmp_path / "state" / "labnotes" / "key"
+    process = mock.Mock()
+    process.poll.return_value = -9
+    with (
+        mock.patch("labnotes.daemon.ensure.daemon_socket", return_value=None),
+        mock.patch("labnotes.daemon.ensure.discovery_folder", return_value=folder),
+        mock.patch("labnotes.daemon.ensure.subprocess.Popen", return_value=process),
+        mock.patch("labnotes.daemon.ensure.asyncio.sleep", new=mock.AsyncMock()),
+    ):
+        with pytest.raises(ValueError, match="exited during startup"):
+            asyncio.run(ensure_daemon(config(tmp_path), "exp"))
+    assert (folder / "daemon.stderr").exists()
+
+
+def test_startup_polls_for_ten_seconds(tmp_path: Path) -> None:
+    process = mock.Mock()
+    process.poll.return_value = None
+    with (
+        mock.patch("labnotes.daemon.ensure.daemon_socket", return_value=None),
+        mock.patch("labnotes.daemon.ensure.discovery_folder", return_value=tmp_path),
+        mock.patch("labnotes.daemon.ensure.subprocess.Popen", return_value=process),
+        mock.patch(
+            "labnotes.daemon.ensure.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep,
+    ):
+        with pytest.raises(ValueError, match="did not start in 10s"):
+            asyncio.run(ensure_daemon(config(tmp_path), "exp"))
+    assert sleep.await_args_list.count(mock.call(0.1)) == 100

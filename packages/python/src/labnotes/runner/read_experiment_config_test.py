@@ -92,6 +92,42 @@ def test_falls_back_to_the_project_concurrency_and_retries() -> None:
     assert (config.concurrency, config.retries) == (3, 5)
 
 
+def test_falls_back_to_the_project_retry_wait() -> None:
+    config = read_experiment_config(
+        PATH, 'command = "run"\ncontinues = false\n', 1, 2, retry_wait=7
+    )
+
+    assert config.retry_wait == 7
+
+
+def test_waits_thirty_seconds_without_a_project_retry_wait() -> None:
+    config = read_experiment_config(PATH, 'command = "run"\ncontinues = false\n', 1, 2)
+
+    assert config.retry_wait == 30.0
+
+
+@pytest.mark.parametrize("retry_wait", [0, 1.5])
+def test_reads_retry_wait_over_the_project_retry_wait(retry_wait: float) -> None:
+    config = read_experiment_config(
+        PATH,
+        f'command = "run"\ncontinues = false\nretry_wait = {retry_wait}\n',
+        1,
+        2,
+        retry_wait=7,
+    )
+
+    assert config.retry_wait == retry_wait
+
+
+@pytest.mark.parametrize(("source", "retry_wait"), [("", 4), ("retry_wait = 0\n", 0)])
+def test_layers_retry_wait_over_the_defaults(source: str, retry_wait: float) -> None:
+    config = read_experiment_config(
+        PATH, source, 1, 2, {"command": "run", "continues": False, "retry_wait": 4}
+    )
+
+    assert config.retry_wait == retry_wait
+
+
 @pytest.mark.parametrize("retries", [0, 3])
 def test_reads_retries_over_the_project_retries(retries: int) -> None:
     config = read_experiment_config(
@@ -221,6 +257,18 @@ def test_layers_meta_from_the_defaults() -> None:
             "retries must be 0 or more",
         ),
         (
+            'command = "run"\ncontinues = false\nretry_wait = -1\n',
+            "retry_wait must be 0 or more seconds",
+        ),
+        (
+            'command = "run"\ncontinues = false\nretry_wait = true\n',
+            "retry_wait must be 0 or more seconds",
+        ),
+        (
+            'command = "run"\ncontinues = false\nretry_wait = "1"\n',
+            "retry_wait must be 0 or more seconds",
+        ),
+        (
             'command = "run"\ncontinues = false\nmemory_interval = -1\n',
             "memory_interval must be",
         ),
@@ -322,6 +370,7 @@ def test_layers_retries_over_the_defaults(source: str, retries: int) -> None:
     [
         ({"repeats": 0}, "repeats must be a positive integer"),
         ({"retries": -1}, "retries must be 0 or more"),
+        ({"retry_wait": -1}, "retry_wait must be 0 or more seconds"),
     ],
 )
 def test_rejects_a_bad_default(defaults: dict[str, object], message: str) -> None:

@@ -216,7 +216,9 @@ def run_now(root: Path) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
 
     async def go() -> list[dict[str, object]]:
-        experiment, concurrency = await prepare_experiment(config, "exp", None, None)
+        experiment, concurrency = await prepare_experiment(
+            config, "exp", None, None, retry_wait=0.01
+        )
 
         def listen(controls: Controls) -> None:
             controls.finish()
@@ -228,7 +230,6 @@ def run_now(root: Path) -> list[dict[str, object]]:
             concurrency,
             events.append,
             listen,
-            retry_seconds=0.01,
         )
 
     asyncio.run(go())

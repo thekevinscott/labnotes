@@ -111,6 +111,34 @@ def test_rejects_bad_retries(
     assert str(error.value) == f"{path}: [experiments] retries must be 0 or more"
 
 
+@pytest.mark.parametrize(
+    ("text", "retry_wait"),
+    [
+        ("", 30.0),
+        ("[experiments]\nretry_wait = 0\n", 0),
+        ("[experiments]\nretry_wait = 1.5\n", 1.5),
+    ],
+)
+def test_reads_the_project_retry_wait(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, retry_wait: float
+) -> None:
+    assert read_config(write(tmp_path, text)).retry_wait == retry_wait
+
+
+@pytest.mark.parametrize("value", ["-1", '"2"', "true", "inf"])
+def test_rejects_a_bad_retry_wait(
+    tmp_path: Path, read_path: mock.MagicMock, value: str
+) -> None:
+    path = write(tmp_path, f"[experiments]\nretry_wait = {value}\n")
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == (
+        f"{path}: [experiments] retry_wait must be 0 or more seconds"
+    )
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 

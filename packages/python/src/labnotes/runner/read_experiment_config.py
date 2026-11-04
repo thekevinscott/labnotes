@@ -11,6 +11,7 @@ from labnotes.is_non_negative_number import is_non_negative_number
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
 from labnotes.is_positive_int import is_positive_int
 from labnotes.config_migration import MISSING_CONTINUES, REMOVED_MODE
+from labnotes.retries import RETRY_SECONDS
 
 SETTINGS = {
     "name",
@@ -20,6 +21,7 @@ SETTINGS = {
     "counts",
     "concurrency",
     "retries",
+    "retry_wait",
     "meta",
     "memory_interval",
     "views",
@@ -39,6 +41,7 @@ def read_experiment_config(
     concurrency: int,
     retries: int,
     defaults: dict[str, object] | None = None,
+    retry_wait: float = RETRY_SECONDS,
 ) -> ExperimentConfig:
     try:
         layer = tomllib.loads(source)
@@ -78,6 +81,9 @@ def read_experiment_config(
     retries = values.get("retries", retries)
     if not is_non_negative_int(retries):
         raise ValueError(f"{path}: retries must be 0 or more")
+    retry_wait = values.get("retry_wait", retry_wait)
+    if not is_non_negative_number(retry_wait):
+        raise ValueError(f"{path}: retry_wait must be 0 or more seconds")
     meta = values.get("meta")
     if meta is not None and (not isinstance(meta, str) or not meta.strip()):
         raise ValueError(f"{path}: meta must be a string")
@@ -127,6 +133,7 @@ def read_experiment_config(
         counts,
         concurrency,
         retries,
+        retry_wait,
         meta,
         memory_interval,
         values.get("setup"),

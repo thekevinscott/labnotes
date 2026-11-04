@@ -111,6 +111,7 @@ def test_headless_needs_run(
         ["--setup", "echo ok"],
         ["--teardown", "echo ok"],
         ["--retries", "2"],
+        ["--retry-wait", "1"],
         ["--replace-capped"],
         ["--", "arg"],
         ["--model=x"],
@@ -183,6 +184,7 @@ def test_needs_run_for_params(
     [
         (["a", "runs", "--run-id", "r1"], "--run-id needs run"),
         (["a", "runs", "--retries", "2"], "--retries needs run"),
+        (["a", "runs", "--retry-wait", "1"], "--retry-wait needs run"),
         (["a", "--replace-capped"], "--replace-capped needs run"),
         (
             ["a", "run", "--run-id", "r1", "--model=small"],
@@ -626,6 +628,7 @@ def test_terminal_restart_sends_options_to_daemon(
                 "command_line": None,
                 "run_id": "failed",
                 "retries": None,
+                "retry_wait": None,
                 "replace_capped": False,
             },
         },
@@ -816,7 +819,36 @@ def test_passes_retries_and_replace_capped_to_the_run(
 ) -> None:
     assert run(["a", "run", "--retries", "0", "--replace-capped"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[11:] == (0, True)
+    assert drivers["start_experiment"].call_args.args[11:] == (0, None, True)
+
+
+def test_passes_retry_wait_to_the_run(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--retry-wait", "0.5"]) == 0
+
+    assert drivers["start_experiment"].call_args.args[12] == 0.5
+
+
+def test_terminal_run_sends_retry_wait_to_daemon(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+    assert run(["a", "run", "--retry-wait", "2"]) == 0
+
+    options = drivers["daemon_command"].call_args.args[2]["options"]
+    assert options["retry_wait"] == 2.0
+
+
+def test_rejects_a_negative_retry_wait(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run", "--retry-wait", "-1"]) == 2
+    drivers["start_experiment"].assert_not_called()
 
 
 def test_terminal_run_sends_retries_and_replace_capped_to_daemon(

@@ -40,6 +40,7 @@ def make_config(root: Path) -> mock.Mock:
         runs="data/{experiment}/{run}",
         concurrency=3,
         retries=4,
+        retry_wait=6,
     )
 
 
@@ -60,7 +61,7 @@ def test_reads_the_experiment(
 
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}
+        path, "source", 3, 4, {}, 6
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
@@ -108,7 +109,7 @@ def test_reads_the_named_experiment_config(
     prepare(tmp_path, path)
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}
+        path, "source", 3, 4, {}, 6
     )
 
 
@@ -160,7 +161,7 @@ def test_runs_from_the_defaults_alone(
     asyncio.run(prepare_experiment(config, "exp", None, None))
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}
+        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}, 6
     )
 
 
@@ -170,6 +171,7 @@ class Hooks:
     teardown: str
     concurrency: int = 1
     retries: int = 3
+    retry_wait: float = 30.0
     replace_capped: bool = False
 
 
@@ -230,3 +232,21 @@ def test_overrides_retries_and_replace_capped_with_the_flags(
     )
 
     assert (experiment.retries, experiment.replace_capped) == expected
+
+
+@pytest.mark.parametrize(("retry_wait", "expected"), [(None, 30.0), (0.5, 0.5)])
+def test_overrides_retry_wait_with_the_flag(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    retry_wait: float | None,
+    expected: float,
+) -> None:
+    collaborators["read_experiment_config"].return_value = Hooks("up", "down")
+
+    experiment, _ = asyncio.run(
+        prepare_experiment(
+            make_config(tmp_path), "exp", None, None, retry_wait=retry_wait
+        )
+    )
+
+    assert experiment.retry_wait == expected

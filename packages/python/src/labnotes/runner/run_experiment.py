@@ -14,7 +14,7 @@ from labnotes.models import (
     Listen,
     Report,
 )
-from labnotes.retries import RETRY_EXIT_CODE, RETRY_SECONDS
+from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.check_hook_placeholders import check_hook_placeholders
 from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.execute_run import execute_run
@@ -49,7 +49,6 @@ async def run_experiment(
     report: Report,
     listen: Listen,
     timeout: float | None = None,
-    retry_seconds: float = RETRY_SECONDS,
     only: dict[str, list[str]] | None = None,
     args: list[str] | None = None,
     environment: dict[str, str] | None = None,
@@ -254,7 +253,7 @@ async def run_experiment(
         if tried >= experiment.retries:
             emit({"event": "gave up", "run": run, "retries": tried})
             return
-        seconds = retry_seconds * 2 ** (tried - earlier.get(run, 0))
+        seconds = experiment.retry_wait * 2 ** (tried - earlier.get(run, 0))
 
         def due() -> None:
             del waiting[run]

@@ -101,7 +101,7 @@ For botbox sandboxes, labnotes sets `BOTBOX_LABELS` with `labnotes.run=<absolute
 
 Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI lets you filter runs by a parameter, raise or lower concurrency as runs go, and kill specific runs. Failed runs show in red.
 
-A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (3 by default). Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more. See [`retries`](../api/config#retries-1).
+A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (3 by default). [`retry_wait`](../api/config#retry-wait-1) or `run --retry-wait` changes the first wait. Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more. See [`retries`](../api/config#retries-1).
 
 Two `run` invocations of the same experiment can run at once. In a terminal they share the experiment's daemon, while each TUI follows its own invocation. Run locks prevent both invocations from claiming the same cell.
 

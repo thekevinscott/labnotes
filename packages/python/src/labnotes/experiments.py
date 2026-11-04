@@ -6,7 +6,7 @@ import click
 
 from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
-from labnotes.daemon.client import command as daemon_command
+from labnotes.daemon.command import command as daemon_command
 from labnotes.runner.start_experiment import start_experiment
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config

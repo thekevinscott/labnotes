@@ -61,7 +61,7 @@ reason = "a selection span ends at -1 or a non-negative offset, so <= equals ==;
 [[python.exempt]]
 path = "src/labnotes/daemon/client.py"
 rules = ["mutation"]
-lines = [29]
+lines = [27]
 reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^ gives the same flock operation"
 
 [[python.exempt]]
@@ -69,3 +69,8 @@ path = "src/labnotes/daemon/server.py"
 rules = ["mutation"]
 lines = [198]
 reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^ gives the same flock operation"
+
+[[python.exempt]]
+path = "src/labnotes/daemon/socket_path.py"
+rules = ["one-function-per-file"]
+reason = "The small path helpers share one version key and journal location policy; keeping them together prevents the daemon lock, socket and discovery record from drifting apart"

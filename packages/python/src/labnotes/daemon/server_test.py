@@ -1,12 +1,12 @@
 import asyncio
-import fcntl
 import json
+from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
+import pytest
+
 from labnotes.daemon.server import ExperimentDaemon, Invocation, serve_daemon
-from labnotes.daemon.socket_path import lock_path, socket_path, socket_record
-from labnotes.models import Controls
 
 
 def config(root: Path) -> mock.Mock:
@@ -15,6 +15,19 @@ def config(root: Path) -> mock.Mock:
         experiments="{experiment}",
         runs="{experiment}/runs/{run}",
     )
+
+
+@pytest.fixture
+def paths(tmp_path: Path) -> Iterator[tuple[Path, Path, Path]]:
+    lock = tmp_path / "daemon.lock"
+    socket = tmp_path / "daemon.sock"
+    record = tmp_path / "socket.record"
+    with (
+        mock.patch("labnotes.daemon.server.lock_path", return_value=lock),
+        mock.patch("labnotes.daemon.server.socket_path", return_value=socket),
+        mock.patch("labnotes.daemon.server.socket_record", return_value=record),
+    ):
+        yield lock, socket, record
 
 
 def test_commands_control_one_invocation_and_reply_to_bad_requests(
@@ -27,7 +40,12 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
         set_concurrency = mock.Mock()
         kill = mock.Mock()
         finish = mock.Mock()
-        controls = Controls(done.set, set_concurrency, kill, finish)
+        controls = mock.Mock(
+            interrupt=done.set,
+            set_concurrency=set_concurrency,
+            kill=kill,
+            finish=finish,
+        )
         selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
 
         async def run(report, listen):
@@ -111,7 +129,7 @@ def test_start_returns_preparation_error_and_records_late_error(
         assert not daemon.active
 
         async def fail_late(report, listen):
-            listen(Controls(mock.Mock(), mock.Mock(), mock.Mock(), mock.Mock()))
+            listen(mock.Mock())
             await asyncio.sleep(0)
             raise RuntimeError("run failed")
 
@@ -160,7 +178,7 @@ def test_repeated_listen_callback_does_not_reply_twice(tmp_path: Path) -> None:
         selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
 
         async def run(report, listen):
-            controls = Controls(mock.Mock(), mock.Mock(), mock.Mock(), mock.Mock())
+            controls = mock.Mock()
             listen(controls)
             listen(controls)
             return []
@@ -187,7 +205,7 @@ def test_stop_requested_while_start_is_preparing_reaches_controls(
         async def run(report, listen):
             preparing.set()
             await release.wait()
-            listen(Controls(interrupted, mock.Mock(), mock.Mock(), mock.Mock()))
+            listen(mock.Mock(interrupt=interrupted))
             return []
 
         selected.side_effect = run
@@ -321,28 +339,35 @@ def test_shutdown_exits_even_with_an_attached_client(tmp_path: Path) -> None:
 
 
 def test_server_exits_after_idle_and_second_owner_does_not_bind(
-    tmp_path: Path,
+    tmp_path: Path, paths: tuple[Path, Path, Path]
 ) -> None:
     async def drive() -> None:
         project = config(tmp_path)
-        lock = lock_path(project, "exp")
-        lock.parent.mkdir(parents=True)
-        with lock.open("a+b") as held:
-            fcntl.flock(held, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _, _, record = paths
+        with mock.patch(
+            "labnotes.daemon.server.fcntl.flock", side_effect=BlockingIOError
+        ):
             await serve_daemon(project, "exp")
-            assert not socket_record(project, "exp").exists()
-        with mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0.05):
+            assert not record.exists()
+        with (
+            mock.patch("labnotes.daemon.server.fcntl.flock"),
+            mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0.05),
+        ):
             await serve_daemon(project, "exp")
-        assert not socket_record(project, "exp").exists()
+        assert not record.exists()
 
     asyncio.run(drive())
 
 
-def test_server_signal_stops_and_closes_early(tmp_path: Path) -> None:
+def test_server_signal_stops_and_closes_early(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
     async def drive() -> None:
         project = config(tmp_path)
+        lock, socket, record = paths
         loop = asyncio.get_running_loop()
         with (
+            mock.patch("labnotes.daemon.server.fcntl.flock"),
             mock.patch.object(loop, "add_signal_handler") as handlers,
             mock.patch("labnotes.daemon.server.IDLE_SECONDS", 100),
         ):
@@ -352,11 +377,11 @@ def test_server_signal_stops_and_closes_early(tmp_path: Path) -> None:
                     break
                 await asyncio.sleep(0.01)
             assert handlers.call_count == 3
-            assert socket_path(project, "exp").stat().st_mode & 0o777 == 0o600
-            assert socket_record(project, "exp").stat().st_mode & 0o777 == 0o600
+            assert socket.stat().st_mode & 0o777 == 0o600
+            assert record.stat().st_mode & 0o777 == 0o600
             handlers.call_args_list[0].args[1]()
             await asyncio.wait_for(serving, timeout=2)
-        assert not socket_record(project, "exp").exists()
-        assert lock_path(project, "exp").stat().st_mode & 0o777 == 0o600
+        assert not record.exists()
+        assert lock.stat().st_mode & 0o777 == 0o600
 
     asyncio.run(drive())

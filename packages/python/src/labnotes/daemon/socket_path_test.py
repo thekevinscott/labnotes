@@ -14,7 +14,6 @@ from labnotes.daemon.socket_path import (
     socket_path,
     socket_record,
 )
-from labnotes.runner.run_state import journal_folder
 
 
 def config(root: Path) -> mock.Mock:
@@ -59,7 +58,9 @@ def test_missing_runtime_dir_uses_owner_only_temp_folder(
 
 def test_discovery_records_live_with_journals(tmp_path: Path) -> None:
     project = config(tmp_path)
-    folder = journal_folder(tmp_path / "experiments/exp/runs")
+    runs = tmp_path / "experiments/exp/runs"
+    key = hashlib.sha256(str(runs.resolve()).encode()).hexdigest()[:16]
+    folder = Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state" / key
     assert discovery_folder(project, "exp") == folder
     assert socket_record(project, "exp").parent == folder
     assert lock_path(project, "exp").parent == folder

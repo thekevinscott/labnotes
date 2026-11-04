@@ -21,7 +21,7 @@ jobs:
         with:
           python-version: '3.12'
       - id: perf
-        run: uv run pytest tests/perf
+        run: uv run pytest -s tests/perf
         working-directory: packages/python
       - if: always()
         run: uv run --project packages/python python scripts/perf_report.py

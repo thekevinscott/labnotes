@@ -18,13 +18,13 @@ def write_log(log: Path, log_shape: str) -> None:
 
 
 @pytest.mark.parametrize("log_shape", ["colored_lines", "one_huge_line"])
-def test_overview_timer_keeps_ticking_through_large_run_output(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, log_shape: str
+def test_event_loop_keeps_running_through_large_run_output(
+    tmp_path: Path, log_shape: str
 ) -> None:
     run_folder = tmp_path / "run-1"
     run_folder.mkdir()
     write_log(run_folder / "stdout.log", log_shape)
-    ticks: list[float] = []
+    beats: list[float] = []
 
     async def drive() -> None:
         keep_running = asyncio.Event()
@@ -35,6 +35,8 @@ def test_overview_timer_keeps_ticking_through_large_run_output(
                     "event": "planned",
                     "title": "perf",
                     "concurrency": 1,
+                    # Older releases require it; probing them with this test needs it.
+                    "mode": "run",
                     "runs": [
                         {"run": "run-1", "params": {}},
                         {"run": "run-2", "params": {}},
@@ -53,34 +55,27 @@ def test_overview_timer_keeps_ticking_through_large_run_output(
             return []
 
         app = RunApp(start, "perf", RUN_COLUMNS)
-        original_tick = app.body.tick
 
-        def timed_tick() -> None:
-            ticks.append(time.monotonic())
-            original_tick()
+        async def beat() -> None:
+            while True:
+                beats.append(time.monotonic())
+                await asyncio.sleep(0.1)
 
-        monkeypatch.setattr(app.body, "tick", timed_tick)
-
-        async def wait_for_ticks(count: int) -> None:
-            async def wait() -> None:
-                while len(ticks) < count:
-                    await asyncio.sleep(0.05)
-
-            await asyncio.wait_for(wait(), timeout=30)
-
+        heart = asyncio.create_task(beat())
         try:
             async with app.run_test(size=(100, 30)) as pilot:
-                await wait_for_ticks(2)
+                await asyncio.sleep(2)
                 await pilot.press("enter")
                 assert app.body.viewing == "run-1"
-                await wait_for_ticks(4)
+                await asyncio.sleep(3)
                 await pilot.press("escape")
                 assert app.body.viewing is None
-                await wait_for_ticks(6)
+                await asyncio.sleep(3)
         finally:
             keep_running.set()
+            heart.cancel()
 
     asyncio.run(drive())
 
-    gaps = [later - earlier for earlier, later in zip(ticks, ticks[1:])]
-    assert gaps and max(gaps) < 3.0, f"overview timer paused for {max(gaps):.1f}s"
+    gaps = [later - earlier for earlier, later in zip(beats, beats[1:])]
+    assert gaps and max(gaps) < 3.0, f"event loop froze for {max(gaps):.1f}s"

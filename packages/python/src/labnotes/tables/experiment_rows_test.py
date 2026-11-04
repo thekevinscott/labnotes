@@ -31,6 +31,10 @@ def queries() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.tables.experiment_rows.run_usage",
             new=mock.AsyncMock(return_value={"memory": None, "size": 7}),
         ) as run_usage,
+        mock.patch(
+            "labnotes.tables.experiment_rows.daemon_marker",
+            new=mock.AsyncMock(return_value={"daemon": False, "running_cells": 0}),
+        ) as marker,
     ):
         yield {
             "open_tables": open_tables,
@@ -38,11 +42,14 @@ def queries() -> Iterator[dict[str, mock.MagicMock]]:
             "list_runs": list_runs,
             "summarize_config": summarize_config,
             "run_usage": run_usage,
+            "marker": marker,
         }
 
 
 def test_summarizes_every_experiment(queries: dict[str, mock.MagicMock]) -> None:
-    assert asyncio.run(experiment_rows(CONFIG, None, None)) == [{"name": "a"}]
+    assert asyncio.run(experiment_rows(CONFIG, None, None)) == [
+        {"name": "a", "daemon": False, "running_cells": 0}
+    ]
 
     queries["open_tables"].assert_called_once_with(CONFIG)
     queries["summarize"].assert_awaited_once_with(
@@ -51,7 +58,9 @@ def test_summarizes_every_experiment(queries: dict[str, mock.MagicMock]) -> None
 
 
 def test_summarizes_one_experiment(queries: dict[str, mock.MagicMock]) -> None:
-    assert asyncio.run(experiment_rows(CONFIG, "a", None)) == [{"name": "a"}]
+    assert asyncio.run(experiment_rows(CONFIG, "a", None)) == [
+        {"name": "a", "daemon": False, "running_cells": 0}
+    ]
     queries["list_runs"].assert_not_awaited()
 
 

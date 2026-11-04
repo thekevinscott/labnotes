@@ -63,6 +63,22 @@ def test_prints_help_without_a_command(
     collaborators["load_config"].assert_not_called()
 
 
+def test_hidden_daemon_command_serves_named_experiment(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    with mock.patch("labnotes.cli.serve_daemon", new=mock.AsyncMock()) as serve:
+        assert run(["daemon", "exp"]) == 0
+    serve.assert_awaited_once_with(collaborators["load_config"].return_value, "exp")
+
+
+def test_hidden_daemon_needs_config(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["load_config"].return_value = None
+    assert run(["daemon", "exp"]) == 1
+    assert "No .labnotes.toml here" in capsys.readouterr().err
+
+
 def test_context_prints_the_agent_guide_for_the_config(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:

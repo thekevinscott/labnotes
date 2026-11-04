@@ -27,6 +27,7 @@ def test_uvx_sighup_stops_child_and_records_run(
             "experiments",
             "exp",
             "run",
+            "--headless",
         ],
         cwd=root,
         env={**os.environ, **uvx},

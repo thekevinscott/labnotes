@@ -4,6 +4,7 @@ from textual.screen import Screen
 from textual.widgets import DataTable, Footer, Header
 from textual.worker import Worker, WorkerState
 
+from labnotes.daemon.marker import daemon_marker
 from labnotes.models import LabnotesConfig
 from labnotes.tables.summarize_experiments import summarize_experiments
 from labnotes.tui.experiment_screen import ExperimentScreen
@@ -32,6 +33,11 @@ class ExperimentsScreen(Screen[None]):
             reload_on_change(watch_rows(self.tables, WATCHED), self.load, self.stopped),
             exit_on_error=False,
         )
+        self.set_interval(5, self.refresh_daemons)
+
+    def refresh_daemons(self) -> None:
+        """Update socket ownership even when no experiment file changes."""
+        self.run_worker(self.load(), exit_on_error=False)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
         if event.state == WorkerState.ERROR:
@@ -42,6 +48,10 @@ class ExperimentsScreen(Screen[None]):
 
     async def load(self) -> None:
         rows = await summarize_experiments(self.tables)
+        rows = [
+            {**row, **await daemon_marker(self.tables, self.config, str(row["name"]))}
+            for row in rows
+        ]
         self.sub_title = "" if rows else "No experiments."
         fill_table(
             self.query_one(DataTable),

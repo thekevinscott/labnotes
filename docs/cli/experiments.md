@@ -28,6 +28,8 @@ uvx labnotes experiments foo runs --format table
 
 Piped output and scripts always get a table, but agents may run under a terminal, so they should always pass `--format`.
 
+The list marks an experiment with a live daemon and shows its number of running cells. `--format json` exposes these as `daemon` and `running_cells`.
+
 ## Creating Experiments
 
 Create an experiment from the command line:
@@ -58,6 +60,16 @@ uvx labnotes experiments foo run
 ```
 
 By default, this launches the [TUI](tui).
+
+Use `--headless` to keep the run in the foreground and print events without opening the TUI. In this mode, Ctrl-C or SIGHUP asks labnotes to stop its cells cleanly, including when a terminal or SSH connection closes.
+
+To stop every cell owned by a live experiment daemon from another shell, run:
+
+```bash
+labnotes experiments foo stop
+```
+
+The command reports an error and exits non-zero when no daemon is live.
 
 To run an experiment needs a script and parameters defined. This should be defined in an `experiment.toml` file in the experiment folder; it can also be provided on the command line (`uvx labnotes experiments foo run --experiment-config ./foo.toml`).
 

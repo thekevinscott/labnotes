@@ -28,6 +28,7 @@
         <a class="title-link" href="{{ url_for('experiment', name=experiment.name) }}">{{ experiment.display_name }}</a>
         {% if experiment.display_name != experiment.name %}<div class="study">{{ experiment.name }}</div>{% endif %}
         {% if experiment.counts_error %}<div class="counts-error" title="{{ experiment.counts_error }}">counts rule doesn't work</div>{% endif %}
+        {% if experiment.daemon %}<div class="study">daemon running · {{ experiment.running_cells }} cell{{ '' if experiment.running_cells == 1 else 's' }} running</div>{% endif %}
       </td>
       <td class="num" data-label="Runs">{{ experiment.runs }}</td>
     </tr>

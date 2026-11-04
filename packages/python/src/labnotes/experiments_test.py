@@ -65,6 +65,75 @@ def test_needs_a_config(
     collaborators["experiment_rows"].assert_not_awaited()
 
 
+def test_stop_sends_command_and_reports_missing_daemon(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    with mock.patch(
+        "labnotes.experiments.daemon_command", return_value={"ok": True}
+    ) as send:
+        assert run(["a", "stop"]) == 0
+    send.assert_called_once_with(
+        collaborators["load_config"].return_value, "a", {"command": "stop_all"}
+    )
+    assert "stop all runs" in capsys.readouterr().out
+    with mock.patch(
+        "labnotes.experiments.daemon_command",
+        side_effect=ValueError("No daemon is running"),
+    ):
+        assert run(["a", "stop"]) == 1
+    assert "No daemon" in capsys.readouterr().err
+    with mock.patch(
+        "labnotes.experiments.daemon_command",
+        return_value={"ok": False, "error": "command failed"},
+    ):
+        assert run(["a", "stop"]) == 1
+    assert "command failed" in capsys.readouterr().err
+
+
+def test_headless_needs_run(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["a", "--headless"]) == 2
+    assert "--headless needs run" in capsys.readouterr().err
+    assert run(["new", "a", "--headless"]) == 2
+    assert "--headless needs run" in capsys.readouterr().err
+    assert run(["a", "stop", "--headless"]) == 2
+    assert "--headless needs run" in capsys.readouterr().err
+
+
+@pytest.mark.parametrize(
+    "option",
+    [
+        ["--format", "json"],
+        ["--concurrency", "2"],
+        ["--run-id", "r"],
+        ["--timeout", "3"],
+        ["--setup", "echo ok"],
+        ["--teardown", "echo ok"],
+        ["--", "arg"],
+        ["--model=x"],
+    ],
+)
+def test_stop_rejects_run_and_listing_options(
+    option: list[str],
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "stop", *option]) == 2
+    assert "stop takes no run or listing options" in capsys.readouterr().err
+
+
+def test_stop_rejects_an_experiment_config_option(
+    tmp_path: Path,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    path = tmp_path / "other.toml"
+    path.touch()
+    assert run(["a", "stop", "-e", str(path)]) == 2
+    assert "stop takes no run or listing options" in capsys.readouterr().err
+
+
 def test_reports_an_unknown_experiment(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -92,7 +161,7 @@ def test_rejects_an_unknown_action(
 ) -> None:
     assert run(["a", "jump"]) == 2
 
-    assert "Unknown action jump. Use runs or run." in capsys.readouterr().err
+    assert "Unknown action jump. Use runs, run or stop." in capsys.readouterr().err
     collaborators["experiment_rows"].assert_not_called()
 
 
@@ -263,6 +332,16 @@ def test_runs_an_experiment_in_process(
     drivers["run_tui"].assert_not_called()
     assert capsys.readouterr().out == "2 passed, 0 failed.\n"
     collaborators["experiment_rows"].assert_not_awaited()
+
+
+def test_headless_forces_foreground_even_in_a_terminal(
+    collaborators: dict[str, mock.MagicMock], drivers: dict[str, mock.MagicMock]
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+    drivers["sys"].stderr.isatty.return_value = True
+    assert run(["a", "run", "--headless"]) == 0
+    drivers["run_headless"].assert_called_once()
+    drivers["run_tui"].assert_not_called()
 
 
 def test_runs_an_experiment_from_a_named_config(

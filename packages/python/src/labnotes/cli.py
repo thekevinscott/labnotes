@@ -1,9 +1,11 @@
+import asyncio
 from pathlib import Path
 
 import click
 
 from labnotes.command_line_group import CommandLineGroup
 from labnotes.context_guide import context_guide
+from labnotes.daemon.server import serve_daemon
 from labnotes.experiments import experiments
 from labnotes.init import init
 from labnotes.load_config import load_config
@@ -42,3 +44,14 @@ def context(ctx: click.Context) -> None:
 main.add_command(experiments)
 main.add_command(init)
 main.add_command(server)
+
+
+@main.command(hidden=True)
+@click.argument("name")
+@click.pass_context
+def daemon(ctx: click.Context, name: str) -> None:
+    """Serve one experiment from a detached process."""
+    config = load_config(ctx)
+    if config is None:
+        raise click.ClickException(f"No {CONFIG_FILE} here.")
+    asyncio.run(serve_daemon(config, name))

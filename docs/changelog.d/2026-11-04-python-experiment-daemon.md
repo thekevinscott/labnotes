@@ -1,0 +1,1 @@
+Added a version-keyed daemon per experiment with a private Unix command socket and disk discovery record. The experiments list now marks live daemons and counts running cells; `labnotes experiments NAME stop` asks one to stop all runs. `run --headless` explicitly keeps the scheduler in the foreground and retains clean Ctrl-C and SIGHUP stopping.

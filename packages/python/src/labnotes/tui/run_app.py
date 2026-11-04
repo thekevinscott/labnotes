@@ -21,6 +21,7 @@ from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
+from labnotes.runner.start_experiment import ExperimentStart
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
@@ -119,7 +120,11 @@ class RunLiveView(Widget):
             case "started":
                 self.idle = False
                 self.pending.discard(run)
-                self.started[run] = time.monotonic()
+                self.started[run] = (
+                    time.monotonic() - max(0.0, time.time() - float(str(event["at"])))
+                    if "at" in event
+                    else time.monotonic()
+                )
                 self.folders[run] = Path(str(event["folder"]))
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 shown = {
@@ -146,7 +151,11 @@ class RunLiveView(Widget):
                 self.unmeasured[run] = None
                 self.measure()
             case "retrying":
-                self.waiting[run] = time.monotonic() + float(event["seconds"])  # type: ignore[arg-type]
+                self.waiting[run] = time.monotonic() + (
+                    max(0.0, float(str(event["retry_at"])) - time.time())
+                    if "retry_at" in event
+                    else float(str(event["seconds"]))
+                )
                 self.tick()
                 self.show(describe_event(event))
             case "gave up":
@@ -368,6 +377,8 @@ class RunApp(ViewSwitcher, App[None]):
         self.shown: Experiment | None = None
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
+        self.run_state = start.run_state if isinstance(start, ExperimentStart) else None
+        self.watching_state = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -456,8 +467,19 @@ class RunApp(ViewSwitcher, App[None]):
         stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
-        if self.body_ready:
-            self.body.show_event(event)
+        if self.run_state is None:
+            if self.body_ready:
+                self.body.show_event(event)
+            return
+        if not self.watching_state:
+            self.watching_state = True
+            self.set_interval(0.25, self.refresh_state)
+        self.refresh_state()
+
+    def refresh_state(self) -> None:
+        if self.run_state is not None and self.body_ready:
+            for event in self.run_state.read():
+                self.body.show_event(event)
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:

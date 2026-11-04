@@ -146,7 +146,9 @@ def run(
     continues: bool = False,
     run_id: str | None = None,
 ) -> list[dict[str, object]]:
-    config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+    config = mock.Mock(
+        root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+    )
     hear = mock.Mock() if listen is None else listen
     configured = experiment(retries, continues)
     configured.env = env or {}
@@ -339,7 +341,9 @@ def test_passes_snapshot_root_and_starting_git_info_to_cells(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     snapshot = mock.Mock(root=tmp_path / "snapshot", sha="abc", diff=b"patch")
-    config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+    config = mock.Mock(
+        root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+    )
 
     def listening(controls: object) -> None:
         controls.finish()  # type: ignore[attr-defined]
@@ -361,7 +365,9 @@ def test_passes_snapshot_root_and_starting_git_info_to_cells(
 def test_passes_the_labnotes_command_line_to_each_run(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+    config = mock.Mock(
+        root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+    )
 
     def listening(controls: object) -> None:
         controls.finish()  # type: ignore[attr-defined]
@@ -443,7 +449,9 @@ def start_with_meta(tmp_path: Path, report: mock.Mock) -> list[dict[str, object]
     configured.meta = "git log -1"
     return settle(
         run_experiment(
-            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            mock.Mock(
+                root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+            ),
             "exp",
             configured,
             1,
@@ -501,7 +509,9 @@ def start_with_hooks(
     configured.teardown = "down"
     return settle(
         run_experiment(
-            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            mock.Mock(
+                root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+            ),
             "exp",
             configured,
             1,
@@ -607,7 +617,9 @@ def test_fills_hook_environments_without_folders_before_reporting(
     ):
         settle(
             run_experiment(
-                mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+                mock.Mock(
+                    root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+                ),
                 "exp",
                 configured,
                 1,
@@ -694,7 +706,9 @@ def test_titles_the_plan_with_the_experiments_name(
 
     settle(
         run_experiment(
-            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            mock.Mock(
+                root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+            ),
             "exp",
             named,
             1,
@@ -754,7 +768,7 @@ def test_makes_no_folder_when_nothing_is_planned(
 
     [setup, _] = collaborators["invocation_hook"].await_args_list
     assert tmp_path not in Path(setup.args[3]["LABNOTES_STATE"]).parents
-    assert not (tmp_path / "exp").exists()
+    assert not (tmp_path / "exp" / "runs").exists()
 
 
 def test_fills_both_folder_placeholders_with_each_runs_own_folder(
@@ -1135,7 +1149,9 @@ def test_waits_for_finish_once_idle(
     heard: list[Any] = []
 
     async def go() -> None:
-        config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+        config = mock.Mock(
+            root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+        )
         report = mock.Mock()
         task = asyncio.create_task(
             run_experiment(config, "exp", experiment(), 1, report, heard.append)
@@ -1155,7 +1171,9 @@ def test_passes_the_timeout_to_each_run(
 ) -> None:
     asyncio.run(
         run_experiment(
-            mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+            mock.Mock(
+                root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+            ),
             "exp",
             experiment(),
             1,
@@ -1626,7 +1644,9 @@ def test_releases_a_continuing_run_whose_retry_is_cancelled(
     collaborators["execute_run"].side_effect = exiting(75)
 
     async def go() -> None:
-        config = mock.Mock(root=tmp_path, runs="{experiment}/{run}")
+        config = mock.Mock(
+            root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+        )
 
         def listening(controls: object) -> None:
             listen(controls)
@@ -1661,7 +1681,9 @@ def test_lets_go_of_claimed_runs_when_setup_fails(
     with pytest.raises(ValueError, match="setup failed"):
         settle(
             run_experiment(
-                mock.Mock(root=tmp_path, runs="{experiment}/{run}"),
+                mock.Mock(
+                    root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
+                ),
                 "exp",
                 configured,
                 1,

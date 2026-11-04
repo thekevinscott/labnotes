@@ -1,0 +1,1 @@
+Added: Persist each experiment invocation's planned cells, run events, retry deadlines, and invocation phases in a unique journal under `$XDG_STATE_HOME/labnotes/run-state/` (default `~/.local/state`), outside the runs folder. The run TUI reads the recorded events from disk, so its presentation state can be reconstructed independently of the scheduler callback.

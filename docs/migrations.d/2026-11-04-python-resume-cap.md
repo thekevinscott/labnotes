@@ -18,6 +18,7 @@ None.
 ## Behavior changes without code changes
 
 - With `continues = true`, a run with 4 invocations in `run.json` is left alone. Its combination stays short of `repeats`, and `run` prints `1 cell gave up after 3 retries.`
+- With `continues = true`, `retries = 0` now also means a failed run is never invoked again. Raise it if you set it only to turn off exit-75 retries.
 - A run that exits 75 now gets 3 retries, not 2. With `continues = true`, a resumed run only gets the retries its earlier invocations left.
 - `run --replace-capped` gives an out-of-retries combination a new run. `run --run-id ID` still invokes the run itself, whatever its invocations.
 

@@ -1,3 +1,4 @@
+import hashlib
 import json
 import os
 from pathlib import Path
@@ -89,3 +90,72 @@ def test_empty_state_home_falls_back_to_local_state(
     monkeypatch.setenv("HOME", str(tmp_path))
     folder = journal_folder(tmp_path / "runs")
     assert folder.parent == tmp_path / ".local/state/labnotes/run-state"
+
+
+def test_journal_names_have_stable_folder_key_and_unique_eight_digit_nonce(
+    tmp_path: Path,
+) -> None:
+    runs = tmp_path / "experiments/exp/runs"
+    folder = journal_folder(runs)
+    expected = hashlib.sha256(str(runs.resolve()).encode()).hexdigest()[:16]
+    assert folder.name == expected
+    assert len(folder.name) == 16
+    first, second = state(tmp_path), state(tmp_path)
+    assert first.path.parent == folder
+    assert first.path != second.path
+    nonce = first.path.stem.rsplit("-", 1)[-1]
+    assert len(nonce) == 8
+    assert all(character in "0123456789abcdef" for character in nonce)
+
+
+def test_record_appends_without_overwriting_and_keeps_private_mode(
+    tmp_path: Path,
+) -> None:
+    writer = state(tmp_path)
+    old_umask = os.umask(0)
+    try:
+        writer.record({"event": "planned", "runs": []})
+    finally:
+        os.umask(old_umask)
+    assert writer.path.stat().st_mode & 0o777 == 0o600
+    writer.record({"event": "idle"})
+    assert [event["event"] for event in RunState(writer.path).read()] == [
+        "planned",
+        "idle",
+    ]
+
+
+def test_retry_event_uses_value_equality_for_a_distinct_string(tmp_path: Path) -> None:
+    name = "".join(("retry", "ing"))
+    writer = state(tmp_path)
+    writer.record({"event": name, "seconds": 5})
+    [event] = RunState(writer.path).read()
+    assert isinstance(event["at"], float)
+    assert isinstance(event["retry_at"], float)
+    assert event["retry_at"] == event["at"] + 5
+
+
+def test_read_cursor_stops_at_complete_lines_and_resumes_exactly(
+    tmp_path: Path,
+) -> None:
+    writer = state(tmp_path)
+    writer.path.parent.mkdir(parents=True)
+    first = b'{"event":"planned"}\n'
+    second = b'{"event":"idle"}\n'
+    writer.path.write_bytes(first + second[:1])
+    reader = RunState(writer.path)
+    assert reader.read() == [{"event": "planned"}]
+    assert reader.offset == len(first)
+    with writer.path.open("ab") as file:
+        file.write(second[1:])
+    assert reader.read() == [{"event": "idle"}]
+    assert reader.offset == len(first + second)
+    assert reader.read() == []
+
+
+def test_empty_line_is_invalid_journal_data(tmp_path: Path) -> None:
+    reader = state(tmp_path)
+    reader.path.parent.mkdir(parents=True)
+    reader.path.write_bytes(b"\n")
+    with pytest.raises(json.JSONDecodeError):
+        reader.read()

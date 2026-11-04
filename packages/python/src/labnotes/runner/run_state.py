@@ -42,12 +42,9 @@ class RunState:
             stored["retry_at"] = at + float(str(event["seconds"]))
         data = (json.dumps(stored, default=str) + "\n").encode()
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        fd = os.open(self.path, os.O_WRONLY | os.O_APPEND | os.O_CREAT, 0o600)
-        try:
-            while data:
-                data = data[os.write(fd, data) :]
-        finally:
-            os.close(fd)
+        self.path.touch(mode=0o600, exist_ok=True)
+        with self.path.open("ab") as file:
+            file.write(data)
 
     def read(self) -> list[dict[str, object]]:
         """Return only complete new events."""
@@ -57,8 +54,9 @@ class RunState:
                 data = file.read()
         except FileNotFoundError:
             return []
-        complete = data.rfind(b"\n")
-        if complete < 0:
+        try:
+            end = data.rindex(b"\n") + 1
+        except ValueError:
             return []
-        self.offset += complete + 1
-        return [json.loads(line) for line in data[: complete + 1].splitlines()]
+        self.offset += end
+        return [json.loads(line) for line in data[:end].splitlines()]

@@ -1623,8 +1623,55 @@ def test_live_app_delivers_only_events_read_from_its_invocation_journal() -> Non
     ):
         app.show_event({"event": "callback only"})
         app.show_event({"event": "callback only again"})
-        interval.assert_called_once()
+        interval.assert_called_once_with(0.25, app.refresh_state)
         assert show.call_args_list == [mock.call(disk_event), mock.call(disk_event)]
         app.body_ready = False
         app.refresh_state()
         assert show.call_count == 2
+
+
+@pytest.mark.parametrize(
+    ("started_at", "retry_at", "expected_started", "expected_retry"),
+    [(990.0, 1020.0, 90.0, 120.0), (1005.0, 995.0, 100.0, 100.0)],
+)
+def test_replayed_wall_times_keep_elapsed_and_retry_countdown(
+    collaborators: dict[str, Any],
+    started_at: float,
+    retry_at: float,
+    expected_started: float,
+    expected_retry: float,
+) -> None:
+    clock = collaborators["time"]
+    clock.monotonic.return_value = 100.0
+    clock.time.return_value = 1000.0
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("running", "waiting"))
+        report(
+            {
+                "event": "started",
+                "run": "running",
+                "params": {"m": "a"},
+                "folder": "/",
+                "at": started_at,
+            }
+        )
+        report(
+            {
+                "event": "retrying",
+                "run": "waiting",
+                "seconds": 30.0,
+                "retry_at": retry_at,
+            }
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.body.started["running"] == expected_started
+            assert app.body.waiting["waiting"] == expected_retry
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())

@@ -1718,7 +1718,7 @@ def test_a_run_past_its_retries_gives_up_its_cell_unless_replaced(
     run(tmp_path, report, continues=True, retries=2, replace_capped=replace_capped)
 
     finished = collaborators["plan_runs"].call_args.args[2]
-    assert (A in finished) is not replace_capped
+    assert finished.count(A) == (1 if replace_capped else 2)
     assert B not in finished
     assert started_runs(report) == ["r1", "live"]
     capped = [e for e in reported(report) if e["event"] == "capped"]
@@ -1738,10 +1738,10 @@ def test_only_reports_capped_runs_in_the_subset(
     collaborators["plan_runs"].return_value = []
     report = mock.Mock()
 
-    run(tmp_path, report, continues=True, retries=1, only={"m": ["b"]})
+    run(tmp_path, report, continues=True, retries=1, only={"m": ["a"]})
 
     capped = [e for e in reported(report) if e["event"] == "capped"]
-    assert capped == [{"event": "capped", "runs": ["capped-b"], "retries": 1}]
+    assert capped == [{"event": "capped", "runs": ["capped-a"], "retries": 1}]
 
 
 def test_an_explicit_restart_ignores_the_cap(

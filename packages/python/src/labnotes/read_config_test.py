@@ -91,7 +91,7 @@ def test_rejects_a_bad_concurrency(tmp_path: Path, read_path: mock.MagicMock) ->
 
 @pytest.mark.parametrize(
     ("text", "retries"),
-    [("", 2), ("[experiments]\nretries = 0\n", 0), ("[experiments]\nretries = 5\n", 5)],
+    [("", 3), ("[experiments]\nretries = 0\n", 0), ("[experiments]\nretries = 5\n", 5)],
 )
 def test_reads_the_project_retries(
     tmp_path: Path, read_path: mock.MagicMock, text: str, retries: int

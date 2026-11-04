@@ -18,7 +18,7 @@ py-test:
     cd packages/python && uv run pytest src/labnotes tests/integration ../../scripts
 
 perf:
-    cd packages/python && uv run pytest tests/perf
+    cd packages/python && uv run pytest -s tests/perf
 
 # Drives a real `claude` (installed, on PATH) with the mod loaded.
 py-e2e:

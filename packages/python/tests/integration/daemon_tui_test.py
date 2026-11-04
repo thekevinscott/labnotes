@@ -8,6 +8,7 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import psutil
 import pytest
@@ -34,6 +35,13 @@ def cleanup_daemons(tmp_path: Path) -> Iterator[None]:
             process.kill()
         except psutil.NoSuchProcess:
             pass
+
+
+@pytest.fixture
+def runtime_env() -> Iterator[Path]:
+    with TemporaryDirectory(prefix="ln-runtime-") as runtime:
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": runtime}):
+            yield Path(runtime)
 
 
 def launch_tty(root: Path, slave: int) -> subprocess.Popen[bytes]:
@@ -125,6 +133,7 @@ def test_frozen_tui_does_not_delay_queued_cell(tmp_path: Path) -> None:
 
 def test_second_tty_reuses_daemon_and_idle_disconnect_releases_it(
     tmp_path: Path,
+    runtime_env: Path,
 ) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
@@ -132,65 +141,56 @@ def test_second_tty_reuses_daemon_and_idle_disconnect_releases_it(
     (root / "exp/experiment.toml").write_text(
         f"continues = false\ncommand = \"{sys.executable} -c 'import time; time.sleep(1)'\"\n"
     )
-    with TemporaryDirectory(prefix="ln-runtime-") as runtime:
-        original = os.environ.get("XDG_RUNTIME_DIR")
-        os.environ["XDG_RUNTIME_DIR"] = runtime
-        first_master, first_slave = pty.openpty()
-        first = launch_tty(root, first_slave)
-        os.close(first_slave)
-        second_master = second_slave = None
-        second = None
-        try:
-            for _ in range(100):
-                sockets = list(Path(runtime).glob("labnotes/*.sock"))
-                if sockets and records(root):
-                    break
-                time.sleep(0.05)
-            assert len(sockets) == 1
-            second_master, second_slave = pty.openpty()
-            second = launch_tty(root, second_slave)
-            os.close(second_slave)
-            second_slave = None
-            for _ in range(100):
-                if (
-                    len(list(Path(runtime).glob("labnotes/*.sock"))) == 1
-                    and second.poll() is None
-                ):
-                    break
-                time.sleep(0.05)
-            assert len(list(Path(runtime).glob("labnotes/*.sock"))) == 1
-            for _ in range(100):
-                if records(root) and all(
-                    record.get("ended") for record in records(root)
-                ):
-                    break
-                time.sleep(0.05)
-            assert all(record["exit_code"] == 0 for record in records(root))
-            time.sleep(5.5)
-            assert sockets[0].exists(), "attached TUI should keep idle daemon alive"
+    first_master, first_slave = pty.openpty()
+    first = launch_tty(root, first_slave)
+    os.close(first_slave)
+    second_master = second_slave = None
+    second = None
+    try:
+        for _ in range(100):
+            sockets = list(runtime_env.glob("labnotes/*.sock"))
+            if sockets and records(root):
+                break
+            time.sleep(0.05)
+        assert len(sockets) == 1
+        second_master, second_slave = pty.openpty()
+        second = launch_tty(root, second_slave)
+        os.close(second_slave)
+        second_slave = None
+        for _ in range(100):
+            if (
+                len(list(runtime_env.glob("labnotes/*.sock"))) == 1
+                and second.poll() is None
+            ):
+                break
+            time.sleep(0.05)
+        assert len(list(runtime_env.glob("labnotes/*.sock"))) == 1
+        for _ in range(100):
+            if records(root) and all(record.get("ended") for record in records(root)):
+                break
+            time.sleep(0.05)
+        assert all(record["exit_code"] == 0 for record in records(root))
+        time.sleep(5.5)
+        assert sockets[0].exists(), "attached TUI should keep idle daemon alive"
+        first.kill()
+        second.kill()
+        first.wait(timeout=10)
+        second.wait(timeout=10)
+        for _ in range(150):
+            if not sockets[0].exists():
+                break
+            time.sleep(0.05)
+        assert not sockets[0].exists()
+    finally:
+        if first.poll() is None:
             first.kill()
-            second.kill()
-            first.wait(timeout=10)
+        first.wait(timeout=10)
+        os.close(first_master)
+        if second is not None:
+            if second.poll() is None:
+                second.kill()
             second.wait(timeout=10)
-            for _ in range(150):
-                if not sockets[0].exists():
-                    break
-                time.sleep(0.05)
-            assert not sockets[0].exists()
-        finally:
-            if first.poll() is None:
-                first.kill()
-            first.wait(timeout=10)
-            os.close(first_master)
-            if second is not None:
-                if second.poll() is None:
-                    second.kill()
-                second.wait(timeout=10)
-            if second_master is not None:
-                os.close(second_master)
-            if second_slave is not None:
-                os.close(second_slave)
-            if original is None:
-                os.environ.pop("XDG_RUNTIME_DIR", None)
-            else:
-                os.environ["XDG_RUNTIME_DIR"] = original
+        if second_master is not None:
+            os.close(second_master)
+        if second_slave is not None:
+            os.close(second_slave)

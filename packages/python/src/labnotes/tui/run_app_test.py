@@ -1,7 +1,7 @@
 import asyncio
 from collections.abc import Callable, Iterator
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 from unittest import mock
 
 import pytest
@@ -870,6 +870,151 @@ def test_detached_stop_waits_for_daemon_reply_before_exit(tmp_path: Path) -> Non
                 assert not app.is_running
 
     asyncio.run(drive())
+
+
+def test_detached_attach_replies_and_closes(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with (
+        mock.patch(
+            "labnotes.tui.run_app.daemon_socket", return_value=tmp_path / "run.sock"
+        ),
+        mock.patch("labnotes.tui.run_app.socket.socket") as socket_factory,
+    ):
+        client = cast(mock.MagicMock, socket_factory.return_value)
+        client.makefile.return_value.__enter__.return_value.readline.return_value = (
+            '{"ok":true}\n'
+        )
+        app.attach_daemon()
+        assert app.attached is client
+        client.connect.assert_called_once_with(str(tmp_path / "run.sock"))
+        client.sendall.assert_called_once_with(b'{"command":"attach"}\n')
+        app.on_unmount()
+        client.close.assert_called_once_with()
+
+
+def test_detached_attach_reports_missing_or_rejected_daemon(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with mock.patch("labnotes.tui.run_app.daemon_socket", return_value=None):
+        with pytest.raises(ValueError, match="No daemon"):
+            app.attach_daemon()
+    with (
+        mock.patch(
+            "labnotes.tui.run_app.daemon_socket", return_value=tmp_path / "run.sock"
+        ),
+        mock.patch("labnotes.tui.run_app.socket.socket") as socket_factory,
+    ):
+        client = cast(mock.MagicMock, socket_factory.return_value)
+        client.makefile.return_value.__enter__.return_value.readline.return_value = (
+            '{"ok":false,"error":"busy"}\n'
+        )
+        with pytest.raises(ValueError, match="busy"):
+            app.attach_daemon()
+        client.close.assert_called_once_with()
+
+
+def test_detached_command_errors_are_visible(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with (
+        mock.patch(
+            "labnotes.tui.run_app.daemon_command",
+            return_value={"ok": False, "error": "cell gone"},
+        ) as command,
+        mock.patch.object(app.body, "show") as show,
+    ):
+        asyncio.run(app.send_command({"command": "stop_one", "run": "r1"}))
+    command.assert_called_once_with(config, "exp", {"command": "stop_one", "run": "r1"})
+    show.assert_called_once_with("cell gone")
+
+
+def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with mock.patch.object(app.body, "show") as show:
+        app.restart_run("r1")
+        show.assert_called_with("r1 has not failed.")
+        app.body.failed.add("r1")
+        with mock.patch.object(app, "run_worker") as worker:
+            app.restart_run("r1")
+            worker.assert_called_once()
+            worker.call_args.args[0].close()
+        with mock.patch(
+            "labnotes.tui.run_app.daemon_command", return_value={"ok": True}
+        ) as command:
+            asyncio.run(app.restart_daemon_run("r1"))
+            command.assert_called_once_with(
+                config, "exp", {"command": "restart", "options": {"run_id": "r1"}}
+            )
+            show.assert_called_with("Restarted r1.")
+        with mock.patch(
+            "labnotes.tui.run_app.daemon_command",
+            return_value={"ok": False, "error": "locked"},
+        ):
+            asyncio.run(app.restart_daemon_run("r1"))
+            show.assert_called_with("Could not restart r1: locked")
+
+
+def test_detached_startup_error_is_reported(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    journal = mock.Mock(path=tmp_path / "j")
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=journal)
+
+    async def drive() -> None:
+        with mock.patch.object(app, "attach_daemon", side_effect=ValueError("gone")):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert isinstance(app.error, ValueError)
+                assert str(app.error) == "gone"
+
+    asyncio.run(drive())
+
+
+def test_detached_idle_and_unavailable_view_quit_without_stopping(
+    tmp_path: Path,
+) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with (
+        mock.patch.object(app, "exit") as exit_app,
+        mock.patch.object(app, "push_screen") as prompt_screen,
+    ):
+        app.action_interrupt()
+        exit_app.assert_called_once_with()
+        prompt_screen.assert_not_called()
+        exit_app.reset_mock()
+        app.body.started["r1"] = 0.0
+        app.body_ready = False
+        app.action_interrupt()
+        exit_app.assert_called_once_with()
+        prompt_screen.assert_not_called()
+
+
+def test_detached_restart_binding_selects_row(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with (
+        mock.patch.object(
+            type(app.body), "app", new_callable=mock.PropertyMock, return_value=app
+        ),
+        mock.patch.object(app.body, "cursor_run", return_value="r1"),
+        mock.patch.object(app, "restart_run") as restart,
+    ):
+        app.body.action_restart_run()
+        restart.assert_called_once_with("r1")
 
 
 def test_ctrl_q_asks_like_ctrl_c() -> None:

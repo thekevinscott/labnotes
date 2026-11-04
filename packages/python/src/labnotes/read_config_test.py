@@ -111,6 +111,28 @@ def test_rejects_bad_retries(
     assert str(error.value) == f"{path}: [experiments] retries must be 0 or more"
 
 
+@pytest.mark.parametrize(
+    ("text", "resumes"),
+    [("", 3), ("[experiments]\nresumes = 0\n", 0), ("[experiments]\nresumes = 5\n", 5)],
+)
+def test_reads_the_project_resumes(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, resumes: int
+) -> None:
+    assert read_config(write(tmp_path, text)).resumes == resumes
+
+
+@pytest.mark.parametrize("value", ["-1", '"2"'])
+def test_rejects_bad_resumes(
+    tmp_path: Path, read_path: mock.MagicMock, value: str
+) -> None:
+    path = write(tmp_path, f"[experiments]\nresumes = {value}\n")
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == f"{path}: [experiments] resumes must be 0 or more"
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 

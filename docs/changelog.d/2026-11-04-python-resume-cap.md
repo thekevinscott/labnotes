@@ -1,0 +1,1 @@
+Added: `resumes` (in `experiment.toml` or `[experiments]` in `.labnotes.toml`, default 3) caps how many times `continues = true` invokes a failed run again. A capped run's cell stays short and `run` prints `N cells gave up after R resumes.` `run --resumes N` overrides the cap for one run, and `run --replace-capped` gives a capped cell a fresh run.

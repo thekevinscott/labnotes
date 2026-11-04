@@ -138,6 +138,27 @@ def test_a_run_that_fails_again_continues_again(tmp_path: Path) -> None:
     assert [i["exit_code"] for i in record["invocations"]] == [1, 2, 0]
 
 
+def test_failed_run_gives_up_after_two_resumes_and_explicit_restart_works(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_project(tmp_path, "1 1 1 1", settings="continues = true\nresumes = 2\n")
+    for _ in range(3):
+        run(root)
+    [(folder, record)] = folders(root).items()
+    before = (folder / "run.json").read_bytes()
+
+    run(root)
+    output = capsys.readouterr().out
+    assert "1 cell gave up after 2 resumes" in output
+    assert list(folders(root)) == [folder]
+    assert (folder / "run.json").read_bytes() == before
+    assert len(record["invocations"]) == 3
+    assert (folder / "state.txt").read_text() == "xxx"
+
+    assert labnotes(root, ["experiments", "exp", "run", "--run-id", folder.name]) == 0
+    assert len(folders(root)[folder]["invocations"]) == 4
+
+
 def test_args_and_commit_are_recorded_per_invocation(tmp_path: Path) -> None:
     root = make_project(tmp_path, "1")
 

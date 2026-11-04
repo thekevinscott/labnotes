@@ -61,6 +61,8 @@ class ExperimentDaemon:
             cast(str | None, options.get("teardown")),
             cast(str | None, options.get("command_line")),
             cast(str | None, options.get("run_id")),
+            cast(int | None, options.get("resumes")),
+            bool(options.get("replace_capped")),
         )
         path = str(selected.run_state.path)
         invocation = Invocation()

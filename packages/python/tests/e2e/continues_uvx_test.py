@@ -42,9 +42,9 @@ def labnotes(root: Path) -> list[str]:
     return ["uvx", "labnotes", "-c", config, "experiments", "exp", "run"]
 
 
-def run(root: Path, uvx: dict[str, str]) -> str:
+def run(root: Path, uvx: dict[str, str], *options: str) -> str:
     result = subprocess.run(
-        labnotes(root),
+        [*labnotes(root), *options],
         cwd=root,
         env={**os.environ, **uvx},
         stdout=subprocess.PIPE,
@@ -126,3 +126,29 @@ def test_uvx_without_continues_redoes_a_failed_run_in_a_new_folder(
     for folder, record in recorded.items():
         assert "invocations" not in record
         assert (folder / "stdout.log").exists()
+
+
+def test_uvx_caps_failed_resumes_and_can_replace_the_run(
+    tmp_path: Path, uvx: dict[str, str]
+) -> None:
+    root = project(tmp_path / "project", "fail", "continues = true\nresumes = 2\n")
+    (root / "script.py").write_text(
+        "import os, sys\nfrom pathlib import Path\n"
+        'p = Path(os.environ["LABNOTES_RUN"]) / "attempts"\n'
+        'p.write_text(p.read_text() + "x" if p.exists() else "x")\n'
+        "sys.exit(1)\n"
+    )
+    for _ in range(3):
+        run(root, uvx)
+    [(folder, record)] = records(root).items()
+    before = (folder / "run.json").read_bytes()
+
+    output = run(root, uvx)
+    assert "1 cell gave up after 2 resumes" in output
+    assert records(root) == {folder: record}
+    assert (folder / "run.json").read_bytes() == before
+    assert (folder / "attempts").read_text() == "xxx"
+
+    run(root, uvx, "--replace-capped")
+    assert len(records(root)) == 2
+    assert (folder / "run.json").read_bytes() == before

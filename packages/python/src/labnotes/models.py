@@ -5,6 +5,7 @@ from typing import Any, Protocol
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
+from labnotes.resumes import DEFAULT_RESUMES
 from labnotes.retries import DEFAULT_RETRIES
 
 Report = Callable[[dict[str, object]], None]
@@ -44,6 +45,7 @@ class LabnotesConfig:
     runs: str
     concurrency: int = 1
     retries: int = DEFAULT_RETRIES
+    resumes: int = DEFAULT_RESUMES
     # Set when the config's folder is itself the one experiment.
     experiment: str | None = None
     # [experiment] in .labnotes.toml, under each experiment.toml.
@@ -65,3 +67,6 @@ class ExperimentConfig:
     teardown: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     continues: bool = False
+    resumes: int = DEFAULT_RESUMES
+    # A run option, not a config key: lets a run that hit `resumes` free its slot.
+    replace_capped: bool = False

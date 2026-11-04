@@ -40,6 +40,7 @@ def make_config(root: Path) -> mock.Mock:
         runs="data/{experiment}/{run}",
         concurrency=3,
         retries=4,
+        resumes=5,
     )
 
 
@@ -60,7 +61,7 @@ def test_reads_the_experiment(
 
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}
+        path, "source", 3, 4, {}, 5
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
@@ -108,7 +109,7 @@ def test_reads_the_named_experiment_config(
     prepare(tmp_path, path)
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}
+        path, "source", 3, 4, {}, 5
     )
 
 
@@ -160,7 +161,7 @@ def test_runs_from_the_defaults_alone(
     asyncio.run(prepare_experiment(config, "exp", None, None))
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}
+        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}, 5
     )
 
 
@@ -169,6 +170,8 @@ class Hooks:
     setup: str
     teardown: str
     concurrency: int = 1
+    resumes: int = 3
+    replace_capped: bool = False
 
 
 @pytest.mark.parametrize(
@@ -201,3 +204,30 @@ def test_overrides_the_hooks_with_the_flags(
     )
 
     assert (experiment.setup, experiment.teardown) == expected
+
+
+@pytest.mark.parametrize(
+    ("resumes", "replace_capped", "expected"),
+    [(None, False, (3, False)), (0, False, (0, False)), (None, True, (3, True))],
+)
+def test_overrides_resumes_and_replace_capped_with_the_flags(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    resumes: int | None,
+    replace_capped: bool,
+    expected: tuple[int, bool],
+) -> None:
+    collaborators["read_experiment_config"].return_value = Hooks("up", "down")
+
+    experiment, _ = asyncio.run(
+        prepare_experiment(
+            make_config(tmp_path),
+            "exp",
+            None,
+            None,
+            resumes=resumes,
+            replace_capped=replace_capped,
+        )
+    )
+
+    assert (experiment.resumes, experiment.replace_capped) == expected

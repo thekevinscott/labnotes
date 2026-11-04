@@ -60,7 +60,22 @@ class PassthroughCommand(click.Command):
     help="With run: how many runs at once. Overrides experiment.toml and"
     " .labnotes.toml; 1 if none sets it.",
 )
-@click.option("--run-id", help="With run: restart only this failed run by id.")
+@click.option(
+    "--run-id",
+    help="With run: restart only this failed run by id, whatever its resumes.",
+)
+@click.option(
+    "--resumes",
+    type=click.IntRange(min=0),
+    help="With run: how many times a later run picks up a failed run again."
+    " Overrides experiment.toml and .labnotes.toml; 3 if none sets it.",
+)
+@click.option(
+    "--replace-capped",
+    is_flag=True,
+    help="With run: start a fresh run for a cell whose run hit the resumes"
+    " cap. Unset, that cell stays short.",
+)
 @click.option(
     "--headless",
     is_flag=True,
@@ -124,6 +139,8 @@ def experiments(
     output_format: str | None,
     concurrency: int | None,
     run_id: str | None,
+    resumes: int | None,
+    replace_capped: bool,
     headless: bool,
     experiment_config: Path | None,
     timeout: int | None,
@@ -191,6 +208,8 @@ def experiments(
                                 "teardown": teardown,
                                 "command_line": ctx.meta.get(COMMAND_LINE),
                                 "run_id": run_id,
+                                "resumes": resumes,
+                                "replace_capped": replace_capped,
                             },
                         },
                     )
@@ -220,6 +239,8 @@ def experiments(
                             teardown,
                             ctx.meta.get(COMMAND_LINE),
                             run_id,
+                            resumes,
+                            replace_capped,
                         )
                     )
             except ValueError as error:
@@ -239,6 +260,8 @@ def experiments(
                 output_format is not None
                 or concurrency is not None
                 or run_id is not None
+                or resumes is not None
+                or replace_capped
                 or experiment_config is not None
                 or timeout is not None
                 or setup is not None
@@ -261,6 +284,10 @@ def experiments(
         raise click.UsageError("-- ARGS needs run.")
     if run_id is not None:
         raise click.UsageError("--run-id needs run.")
+    if resumes is not None:
+        raise click.UsageError("--resumes needs run.")
+    if replace_capped:
+        raise click.UsageError("--replace-capped needs run.")
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
     if action not in (None, "runs"):

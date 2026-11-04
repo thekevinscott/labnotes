@@ -7,6 +7,7 @@ from labnotes.is_positive_int import is_positive_int
 from labnotes.config_migration import REMOVED_MODE
 from labnotes.runner.read_experiment_config import SETTINGS
 from labnotes.read_path import DEFAULT_PATHS, read_path
+from labnotes.resumes import DEFAULT_RESUMES
 from labnotes.retries import DEFAULT_RETRIES
 
 CONFIG_FILE = ".labnotes.toml"
@@ -51,12 +52,16 @@ def read_config(path: Path) -> LabnotesConfig:
     retries = experiments.get("retries", DEFAULT_RETRIES)
     if not is_non_negative_int(retries):
         raise ValueError(f"{path}: [experiments] retries must be 0 or more")
+    resumes = experiments.get("resumes", DEFAULT_RESUMES)
+    if not is_non_negative_int(resumes):
+        raise ValueError(f"{path}: [experiments] resumes must be 0 or more")
     return LabnotesConfig(
         path.resolve(),
         root,
         **paths,
         concurrency=concurrency,
         retries=retries,
+        resumes=resumes,
         experiment=root.name if single else None,
         defaults=defaults,
     )

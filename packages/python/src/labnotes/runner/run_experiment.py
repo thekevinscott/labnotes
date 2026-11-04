@@ -84,6 +84,15 @@ async def run_experiment(
         for r in counted
         if r["counted"] or str(r.get("id")) in held_ids
     ]
+    resumable: list[Entry] = []
+    capped: list[Entry] = []
+    if experiment.continues:
+        for row in await list_resumable_runs(tables, name, experiment.counts):
+            entry = (str(row["id"]), json.loads(str(row["params"])))
+            over = int(str(row["invocations"])) > experiment.resumes
+            (capped if over else resumable).append(entry)
+    if not experiment.replace_capped:
+        finished += [params for _, params in capped]
     planned: set[str] = set()
 
     def taken(run: str) -> bool:
@@ -112,12 +121,6 @@ async def run_experiment(
     def release(run: str) -> None:
         os.close(locks.pop(run))
 
-    resumable: list[Entry] = []
-    if experiment.continues:
-        resumable = [
-            (str(row["id"]), json.loads(str(row["params"])))
-            for row in await list_resumable_runs(tables, name, experiment.counts)
-        ]
     plan: list[Entry] = []
     target_folder: Path | None = None
     if run_id is not None:
@@ -180,6 +183,9 @@ async def run_experiment(
     )
     for row in held:
         emit({"event": "held", "run": str(row["id"])})
+    gave_up = [run for run, params in capped if in_subset(params, only or {})]
+    if gave_up and run_id is None and not experiment.replace_capped:
+        emit({"event": "capped", "runs": gave_up, "resumes": experiment.resumes})
     running: dict[str, set[asyncio.subprocess.Process]] = {}
     trees: dict[str, set[psutil.Process]] = {}
     stopped: set[str] = set()

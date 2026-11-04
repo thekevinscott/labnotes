@@ -110,6 +110,30 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
     asyncio.run(drive())
 
 
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [({}, (None, False)), ({"resumes": 2, "replace_capped": True}, (2, True))],
+)
+def test_start_passes_resumes_and_replace_capped(
+    tmp_path: Path, options: dict[str, object], expected: tuple[object, bool]
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+
+        async def fail_early(report, listen):
+            raise ValueError("stop here")
+
+        selected.side_effect = fail_early
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ) as start:
+            await daemon.start(options)
+        assert start.call_args.args[11:] == expected
+
+    asyncio.run(drive())
+
+
 def test_start_returns_preparation_error_and_records_late_error(
     tmp_path: Path,
 ) -> None:

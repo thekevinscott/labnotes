@@ -59,6 +59,13 @@ Runs at once for every experiment whose `experiment.toml` doesn't set it.
 
 Retries for a run that exits 75, for every experiment whose `experiment.toml` doesn't set it. See [`retries`](#retries-1).
 
+#### `resumes`
+
+- Type: integer, 0 or more
+- Default: `3`
+
+How many times a later `run` invokes a failed run again, for every experiment whose `experiment.toml` doesn't set it. See [`resumes`](#resumes-1).
+
 ### `[files]`
 
 #### `path`
@@ -125,6 +132,7 @@ retries = 3
 memory_interval = 10
 counts = "exit_code = 0 AND created > '2026-10-01'"
 continues = true
+resumes = 3
 
 [params]
 model = ["opus", "sonnet"]
@@ -301,3 +309,16 @@ For each combination short of `repeats`, `run` first takes that combination's ru
 Each invocation adds an entry to `"invocations"` in `run.json`: `started`, `ended`, `exit_code`, `ended_by`, `error`, `git` (the commit), `args` (what followed `--`), `labnotes_version`, `labnotes_command`, and the names of its logs. The top-level fields mirror the latest invocation. Each invocation writes its own `stdout-<time>.txt` and `stderr-<time>.txt`, so earlier logs are kept.
 
 While an invocation runs, labnotes holds a lock on `run.lock` in the run folder. A run marked running whose lock nobody holds died with its `run`, for example in a reboot. The next look marks it `"ended_by": "lost"`, and the next `run` invokes it again.
+
+A failed run is invoked again at most [`resumes`](#resumes-1) times.
+
+### `resumes`
+
+- Type: integer, 0 or more
+- Default: `[experiments] resumes` in `.labnotes.toml`, else `3`
+
+With [`continues`](#continues), how many times a later `run` invokes a failed run again. A run with `resumes` + 1 invocations in `run.json` has used them up. `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R resumes.` `0` means a failed run is never invoked again. `run --resumes N` overrides it for one `run`.
+
+To give such a combination a new run, use `run --replace-capped`. To invoke the capped run itself once more, use `run --run-id ID`, which ignores `resumes`.
+
+Every invocation counts, including retries of a run that exits 75. Without `continues`, `resumes` does nothing.

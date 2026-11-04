@@ -20,7 +20,12 @@ def settle[T](work: Coroutine[Any, Any, T]) -> T:
     return asyncio.run(asyncio.wait_for(work, 5))
 
 
-def experiment(retries: int = 2, continues: bool = False) -> mock.Mock:
+def experiment(
+    retries: int = 2,
+    continues: bool = False,
+    resumes: int = 3,
+    replace_capped: bool = False,
+) -> mock.Mock:
     config = mock.Mock(
         command="run",
         params={"m": ["a", "b"]},
@@ -33,6 +38,8 @@ def experiment(retries: int = 2, continues: bool = False) -> mock.Mock:
         teardown=None,
         env={},
         continues=continues,
+        resumes=resumes,
+        replace_capped=replace_capped,
     )
     config.name = None
     return config
@@ -145,12 +152,14 @@ def run(
     env: dict[str, str] | None = None,
     continues: bool = False,
     run_id: str | None = None,
+    resumes: int = 3,
+    replace_capped: bool = False,
 ) -> list[dict[str, object]]:
     config = mock.Mock(
         root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
     )
     hear = mock.Mock() if listen is None else listen
-    configured = experiment(retries, continues)
+    configured = experiment(retries, continues, resumes, replace_capped)
     configured.env = env or {}
 
     def listening(controls: object) -> None:
@@ -1503,8 +1512,8 @@ def test_continues_a_failed_run_of_the_same_cell(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["resumable"].return_value = [
-        {"id": "old-b", "params": '{"m": "b"}'},
-        {"id": "old-a", "params": '{"m": "a"}'},
+        {"id": "old-b", "params": '{"m": "b"}', "invocations": 1},
+        {"id": "old-a", "params": '{"m": "a"}', "invocations": 1},
     ]
     collaborators["plan_runs"].return_value = [A, A]
     report = mock.Mock()
@@ -1532,8 +1541,8 @@ def test_skips_a_failed_run_someone_else_holds(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["resumable"].return_value = [
-        {"id": "held", "params": '{"m": "a"}'},
-        {"id": "free", "params": '{"m": "a"}'},
+        {"id": "held", "params": '{"m": "a"}', "invocations": 1},
+        {"id": "free", "params": '{"m": "a"}', "invocations": 1},
     ]
     collaborators["claim_run"].side_effect = lambda folder: (
         None if folder.name == "held" else 7
@@ -1671,7 +1680,9 @@ def test_releases_a_continuing_run_whose_retry_is_cancelled(
 def test_lets_go_of_claimed_runs_when_setup_fails(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    collaborators["resumable"].return_value = [{"id": "old", "params": '{"m": "a"}'}]
+    collaborators["resumable"].return_value = [
+        {"id": "old", "params": '{"m": "a"}', "invocations": 1}
+    ]
     collaborators["plan_runs"].return_value = [A]
     collaborators["claim_run"].side_effect = lambda folder: 7
     collaborators["invocation_hook"].side_effect = [ValueError("setup failed"), None]
@@ -1694,3 +1705,71 @@ def test_lets_go_of_claimed_runs_when_setup_fails(
 
     collaborators["execute_run"].assert_not_awaited()
     collaborators["close"].assert_called_once_with(7)
+
+
+@pytest.mark.parametrize("replace_capped", [False, True])
+def test_a_run_past_its_resumes_gives_up_its_cell_unless_replaced(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], replace_capped: bool
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "capped", "params": '{"m": "a"}', "invocations": 3},
+        {"id": "live", "params": '{"m": "b"}', "invocations": 2},
+    ]
+    collaborators["plan_runs"].return_value = [A, B]
+    report = mock.Mock()
+
+    run(tmp_path, report, continues=True, resumes=2, replace_capped=replace_capped)
+
+    finished = collaborators["plan_runs"].call_args.args[2]
+    assert (A in finished) is not replace_capped
+    assert B not in finished
+    assert started_runs(report) == ["r1", "live"]
+    capped = [e for e in reported(report) if e["event"] == "capped"]
+    if replace_capped:
+        assert capped == []
+    else:
+        assert capped == [{"event": "capped", "runs": ["capped"], "resumes": 2}]
+
+
+def test_only_reports_capped_runs_in_the_subset(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "capped-a", "params": '{"m": "a"}', "invocations": 2},
+        {"id": "capped-b", "params": '{"m": "b"}', "invocations": 2},
+    ]
+    collaborators["plan_runs"].return_value = []
+    report = mock.Mock()
+
+    run(tmp_path, report, continues=True, resumes=1, only={"m": ["b"]})
+
+    capped = [e for e in reported(report) if e["event"] == "capped"]
+    assert capped == [{"event": "capped", "runs": ["capped-b"], "resumes": 1}]
+
+
+def test_an_explicit_restart_ignores_the_cap(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    folder = tmp_path / "old" / "target"
+    folder.mkdir(parents=True)
+    (folder / "run.json").write_text("{}")
+    collaborators["list_runs"].return_value = [
+        {
+            "id": "target",
+            "folder": "old/target",
+            "params": '{"m": "a"}',
+            "ended": "now",
+            "exit_code": 1,
+            "error": None,
+            "counted": 0,
+        }
+    ]
+    collaborators["resumable"].return_value = [
+        {"id": "target", "params": '{"m": "a"}', "invocations": 5},
+    ]
+    report = mock.Mock()
+
+    run(tmp_path, report, continues=True, resumes=0, run_id="target")
+
+    assert started_runs(report) == ["target"]
+    assert [e for e in reported(report) if e["event"] == "capped"] == []

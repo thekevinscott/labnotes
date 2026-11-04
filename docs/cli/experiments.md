@@ -157,6 +157,8 @@ continues = true
 
 The folder then holds every invocation. `run.json` lists them under `"invocations"`, each with its own times, exit code, commit, args, labnotes version, and labnotes command line, and each writes its own `stdout-<time>.txt` and `stderr-<time>.txt`. See [`continues`](../api/config#continues) for the fields.
 
+A failed run is invoked again at most 3 times, then left alone, and its combination stays short. Set [`resumes`](../api/config#resumes-1) or pass `run --resumes N` to change that. `run --replace-capped` gives that combination a new run, and `run --run-id ID` invokes the capped run once more.
+
 Your command finds what its last invocation left in `{run_dir}` and decides what to do with it. labnotes does nothing to those files. In return, your command must never delete `run.json`, `stdout-*`, `stderr-*`, or `run.lock`. labnotes holds a lock on `run.lock` while an invocation runs, and a second `run` skips any run that is locked.
 
 ### Run folders

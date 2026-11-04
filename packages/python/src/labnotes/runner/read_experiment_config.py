@@ -9,6 +9,7 @@ from labnotes.models import ExperimentConfig
 from labnotes.is_non_negative_int import is_non_negative_int
 from labnotes.is_non_negative_number import is_non_negative_number
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
+from labnotes.resumes import DEFAULT_RESUMES
 from labnotes.is_positive_int import is_positive_int
 from labnotes.config_migration import MISSING_CONTINUES, REMOVED_MODE
 
@@ -20,6 +21,7 @@ SETTINGS = {
     "counts",
     "concurrency",
     "retries",
+    "resumes",
     "meta",
     "memory_interval",
     "views",
@@ -39,6 +41,7 @@ def read_experiment_config(
     concurrency: int,
     retries: int,
     defaults: dict[str, object] | None = None,
+    resumes: int = DEFAULT_RESUMES,
 ) -> ExperimentConfig:
     try:
         layer = tomllib.loads(source)
@@ -78,6 +81,9 @@ def read_experiment_config(
     retries = values.get("retries", retries)
     if not is_non_negative_int(retries):
         raise ValueError(f"{path}: retries must be 0 or more")
+    resumes = values.get("resumes", resumes)
+    if not is_non_negative_int(resumes):
+        raise ValueError(f"{path}: resumes must be 0 or more")
     meta = values.get("meta")
     if meta is not None and (not isinstance(meta, str) or not meta.strip()):
         raise ValueError(f"{path}: meta must be a string")
@@ -133,4 +139,5 @@ def read_experiment_config(
         values.get("teardown"),
         env,
         continues,
+        resumes=resumes,
     )

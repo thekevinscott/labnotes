@@ -2,6 +2,10 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+from rich.console import Console
+from rich.style import Style
+from rich.text import Text
+from textual.geometry import Size
 
 from labnotes.tui.run_output import RunOutput
 
@@ -210,9 +214,8 @@ def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) ->
     output.write_lines(["red"])
     selection = mock.Mock()
     selection.get_span.return_value = span
-    line_text = mock.Mock(plain="red")
-    line_text.__len__ = mock.Mock(return_value=3)
-    line_text.render.return_value = []
+    line_text = Text("red")
+    selection_style = Style(reverse=True)
     with (
         mock.patch.object(
             RunOutput, "text_selection", new_callable=mock.PropertyMock
@@ -220,20 +223,23 @@ def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) ->
         mock.patch.object(
             RunOutput, "screen", new_callable=mock.PropertyMock
         ) as screen,
-        mock.patch.object(RunOutput, "app", new_callable=mock.PropertyMock),
+        mock.patch.object(RunOutput, "app", new_callable=mock.PropertyMock) as app,
+        mock.patch.object(
+            RunOutput, "size", new_callable=mock.PropertyMock, return_value=Size(3, 1)
+        ),
         mock.patch("labnotes.tui.run_output.Text.from_ansi", return_value=line_text),
     ):
         selected.return_value = selection
+        screen.return_value.get_component_rich_style.return_value = selection_style
+        app.return_value.console = Console()
         output.render_line(0)
     selection.get_span.assert_called_once_with(0)
     if span is None:
-        line_text.stylize.assert_not_called()
+        assert line_text.spans == []
     else:
-        line_text.stylize.assert_called_once_with(
-            screen.return_value.get_component_rich_style.return_value,
-            span[0],
-            3 if span[1] == -1 else span[1],
-        )
+        assert [(s.start, s.end, s.style) for s in line_text.spans] == [
+            (span[0], 3 if span[1] == -1 else span[1], selection_style)
+        ]
     assert 0 not in output._line_cache
 
 

@@ -73,3 +73,19 @@ def test_lists_each_experiment_with_its_config_summary_and_run_counts(
     assert second.args[1] == (
         "(SELECT *, " + COMPUTED + " FROM runs WHERE experiment = 'b')"
     )
+
+
+def test_adds_live_daemon_marker_for_web_list(count_runs: mock.AsyncMock) -> None:
+    tables = mock.Mock()
+    tables.query = mock.AsyncMock(
+        return_value=[{"name": "a", "display_name": "a", "config": None}]
+    )
+    config = mock.Mock()
+    with mock.patch(
+        "labnotes.list_experiments.daemon_marker",
+        new=mock.AsyncMock(return_value={"daemon": True, "running_cells": 1}),
+    ) as marker:
+        [row] = asyncio.run(list_experiments(tables, config))
+    marker.assert_awaited_once_with(tables, config, "a")
+    assert row["daemon"] is True
+    assert row["running_cells"] == 1

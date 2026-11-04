@@ -31,6 +31,10 @@ def queries() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.tables.experiment_rows.run_usage",
             new=mock.AsyncMock(return_value={"memory": None, "size": 7}),
         ) as run_usage,
+        mock.patch(
+            "labnotes.tables.experiment_rows.daemon_marker",
+            new=mock.AsyncMock(return_value={"daemon": False, "running_cells": 0}),
+        ) as marker,
     ):
         yield {
             "open_tables": open_tables,
@@ -38,11 +42,14 @@ def queries() -> Iterator[dict[str, mock.MagicMock]]:
             "list_runs": list_runs,
             "summarize_config": summarize_config,
             "run_usage": run_usage,
+            "marker": marker,
         }
 
 
 def test_summarizes_every_experiment(queries: dict[str, mock.MagicMock]) -> None:
-    assert asyncio.run(experiment_rows(CONFIG, None, None)) == [{"name": "a"}]
+    assert asyncio.run(experiment_rows(CONFIG, None, None)) == [
+        {"name": "a", "daemon": False, "running_cells": 0}
+    ]
 
     queries["open_tables"].assert_called_once_with(CONFIG)
     queries["summarize"].assert_awaited_once_with(
@@ -51,16 +58,21 @@ def test_summarizes_every_experiment(queries: dict[str, mock.MagicMock]) -> None
 
 
 def test_summarizes_one_experiment(queries: dict[str, mock.MagicMock]) -> None:
-    assert asyncio.run(experiment_rows(CONFIG, "a", None)) == [{"name": "a"}]
+    assert asyncio.run(experiment_rows(CONFIG, "a", None)) == [
+        {"name": "a", "daemon": False, "running_cells": 0}
+    ]
     queries["list_runs"].assert_not_awaited()
 
 
 def test_lists_one_experiments_runs(queries: dict[str, mock.MagicMock]) -> None:
     queries["summarize"].return_value = [{"name": "a", "config": '{"counts": "x"}'}]
 
-    assert asyncio.run(experiment_rows(CONFIG, "a", "runs")) == [
+    # Real argv strings are not interned, so `is` checks would miss them.
+    action = "".join(["ru", "ns"])
+    assert asyncio.run(experiment_rows(CONFIG, "a", action)) == [
         {**RUN, "memory": None, "size": 7}
     ]
+    queries["marker"].assert_not_awaited()
     queries["run_usage"].assert_awaited_once_with(Path("/lab/a/runs/r"), False)
 
     queries["summarize_config"].assert_called_once_with({"counts": "x"})

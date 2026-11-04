@@ -29,6 +29,10 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as runs_table,
         mock.patch("labnotes.tui.experiments_screen.fill_table") as fill_table,
         mock.patch(
+            "labnotes.tui.experiments_screen.daemon_marker",
+            new=mock.AsyncMock(return_value={"daemon": False, "running_cells": 0}),
+        ) as marker,
+        mock.patch(
             "labnotes.tui.experiments_screen.watch_rows", return_value="changes"
         ) as watch_rows,
         mock.patch(
@@ -46,6 +50,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "experiment_screen": experiment_screen,
             "runs_table": runs_table,
             "fill_table": fill_table,
+            "marker": marker,
             "watch_rows": watch_rows,
             "reload_on_change": reload_on_change,
             "app": app,
@@ -63,6 +68,7 @@ def screen(table: mock.MagicMock) -> Iterator[ExperimentsScreen]:
     with (
         mock.patch.object(shown, "query_one", return_value=table),
         mock.patch.object(shown, "run_worker"),
+        mock.patch.object(shown, "set_interval"),
     ):
         yield shown
 
@@ -90,6 +96,15 @@ def test_reloads_the_experiments_on_each_change(
     getattr(screen.run_worker, "assert_called_once_with")(
         "reloading", exit_on_error=False
     )
+    getattr(screen.set_interval, "assert_called_once_with")(5, screen.refresh_daemons)
+
+
+def test_refreshes_daemon_marker_without_file_change(screen: ExperimentsScreen) -> None:
+    with mock.patch.object(screen, "load", new=mock.Mock(return_value="loading")):
+        screen.refresh_daemons()
+    getattr(screen.run_worker, "assert_called_once_with")(
+        "loading", exit_on_error=False
+    )
 
 
 def test_lists_the_experiments_with_the_table_columns(
@@ -105,9 +120,13 @@ def test_lists_the_experiments_with_the_table_columns(
     assert screen.sub_title == ""
     collaborators["fill_table"].assert_called_once_with(
         table,
-        ["name", "last_run", "files"],
-        [("alpha", ["alpha", "2026-10-17", "2"]), ("beta", ["beta", "", "0"])],
+        ["name", "last_run", "files", "daemon", "running_cells"],
+        [
+            ("alpha", ["alpha", "2026-10-17", "2", "False", "0"]),
+            ("beta", ["beta", "", "0", "False", "0"]),
+        ],
     )
+    assert collaborators["marker"].await_count == 2
 
 
 def test_says_when_there_are_no_experiments(

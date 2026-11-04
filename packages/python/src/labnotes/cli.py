@@ -4,6 +4,7 @@ import click
 
 from labnotes.command_line_group import CommandLineGroup
 from labnotes.context_guide import context_guide
+from labnotes.daemon_command import daemon
 from labnotes.experiments import experiments
 from labnotes.init import init
 from labnotes.load_config import load_config
@@ -42,3 +43,4 @@ def context(ctx: click.Context) -> None:
 main.add_command(experiments)
 main.add_command(init)
 main.add_command(server)
+main.add_command(daemon)

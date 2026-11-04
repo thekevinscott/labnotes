@@ -29,15 +29,16 @@ Prints a guide to `labnotes` for coding agents, headed by the config it found an
 ## `experiments`
 
 ```bash
-labnotes experiments [NAME] [runs|run]
+labnotes experiments [NAME] [runs|run|stop]
 ```
 
 | Form | Does |
 | --- | --- |
-| `labnotes experiments` | Lists experiments: name, last run, created, files, runs. |
+| `labnotes experiments` | Lists experiments: name, last run, created, files, runs, live daemon and running cell count. |
 | `labnotes experiments NAME` | Shows one experiment, plus its config. |
 | `labnotes experiments NAME runs` | Lists the experiment's runs, oldest first, with each run's `memory` and `size`. |
 | `labnotes experiments NAME run` | Runs the experiment. Opens the [TUI](tui) in a terminal; otherwise prints a line per event and blocks until the runs end. |
+| `labnotes experiments NAME stop` | Asks the live daemon to stop all its cells. Exits non-zero with a clear message if no daemon is live. |
 | `labnotes experiments new [NAME]` | Creates an experiment folder and writes its `experiment.toml`, from the starter or from `--from OTHER`, with any `--command`, `--param` and `--repeats` written in. Picks a random name if you give none. Refuses a folder that already exists. |
 
 With `--format` unset, the three listing forms open the [browser](tui#browsing) when stdout and stderr are both a terminal, starting on the experiment if you name one. Otherwise they print a table.
@@ -46,6 +47,7 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 | --- | --- |
 | `--format table\|json` | Print the listing forms in this format and exit, even in a terminal. No default. |
 | `--concurrency N` | With `run`: how many runs at once. Overrides `experiment.toml` and `.labnotes.toml`; 1 if none sets it. |
+| `--headless` | With `run`: keep scheduling in the foreground and print events, even in a terminal. Ctrl-C and SIGHUP stop the cells cleanly. |
 | `-e, --experiment-config FILE` | With `run`: read this file instead of the experiment's `experiment.toml`. |
 | `--PARAM=VALUE` | With `run`: run only the cells where that param has that value, like `--model=small`. PARAM must be a key in `[params]` and VALUE one of its values, written as `runs` shows it (`true`, `2`). Repeat a param to run any of several values (`--model=small --model=large`); different params narrow further. Counts, progress and `repeats` still cover every cell. |
 | `-- ARGS` | With `run`: append ARGS to every run's command, after the params, like `-- --auth api`. Each run's `run.json` records them as `args` and in `command`. Use it for per-launch settings that aren't part of the design or a matrix axis; runs started with different ARGS still count toward the same cells. A flag already in the command overrides it in place: with `command = "study --memory 8g --out {run_dir}"`, `-- --memory 24g` runs `study --memory 24g --out ...`, and `--memory=8g` in the command stays in that form. A flag the command lacks is appended. A flag followed by a word that doesn't start with `-` takes that word as its value, so write a value that starts with `-` as `--flag=-1`. A flag given without a value that the command already has leaves the command alone. A flag that names a param, one the command has more than once, or one ARGS give more than once to override the command is an error. ARGS are written to disk as given, so never pass secrets. |

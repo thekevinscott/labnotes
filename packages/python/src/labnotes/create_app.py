@@ -63,7 +63,7 @@ def create_app(config: LabnotesConfig) -> Starlette:
             await kernel.stop()
 
     async def index(request: Request) -> Response:
-        experiments = await list_experiments(request.app.state.tables)
+        experiments = await list_experiments(request.app.state.tables, config)
         return templates.TemplateResponse(
             request,
             "index.html",

@@ -1,5 +1,6 @@
 import json
 
+from labnotes.daemon.marker import daemon_marker
 from labnotes.models import LabnotesConfig
 from labnotes.utils.run_usage import run_usage
 from labnotes.summarize_config import summarize_config
@@ -15,6 +16,11 @@ async def experiment_rows(
     rows = await summarize_experiments(tables, name)
     if name is not None and not rows:
         return None
+    if action != "runs":
+        rows = [
+            {**row, **await daemon_marker(tables, config, str(row["name"]))}
+            for row in rows
+        ]
     match name, action:
         case str(), "runs":
             [row] = rows

@@ -113,7 +113,7 @@ def test_index_lists_experiments(
     status, _ = call(app, "/")
 
     assert status == 200
-    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables)
+    collaborators["list_experiments"].assert_awaited_once_with(app.state.tables, CONFIG)
     collaborators["templates"].TemplateResponse.assert_called_once_with(
         mock.ANY, "index.html", {"experiments": [EXPERIMENT], "folder": "project"}
     )

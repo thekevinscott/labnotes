@@ -6,6 +6,7 @@ import click
 
 from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
+from labnotes.daemon.command import command as daemon_command
 from labnotes.runner.start_experiment import start_experiment
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
@@ -43,7 +44,7 @@ class PassthroughCommand(click.Command):
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
 @click.argument("name", required=False)
-@click.argument("action", required=False, metavar="[runs|run]")
+@click.argument("action", required=False, metavar="[runs|run|stop]")
 @click.option(
     "--format",
     "output_format",
@@ -58,6 +59,11 @@ class PassthroughCommand(click.Command):
     " .labnotes.toml; 1 if none sets it.",
 )
 @click.option("--run-id", help="With run: restart only this failed run by id.")
+@click.option(
+    "--headless",
+    is_flag=True,
+    help="With run: keep the scheduler in this foreground process.",
+)
 @click.option(
     "-e",
     "--experiment-config",
@@ -116,6 +122,7 @@ def experiments(
     output_format: str | None,
     concurrency: int | None,
     run_id: str | None,
+    headless: bool,
     experiment_config: Path | None,
     timeout: int | None,
     setup: str | None,
@@ -141,6 +148,8 @@ def experiments(
         for flag, value in given.items():
             if value is not None:
                 raise click.UsageError(f"{flag} needs new.")
+    if headless and action != "run":
+        raise click.UsageError("--headless needs run.")
     match name, action:
         case "new", _:
             try:
@@ -174,7 +183,7 @@ def experiments(
                 run_id,
             )
             try:
-                if sys.stdout.isatty() and sys.stderr.isatty():
+                if not headless and sys.stdout.isatty() and sys.stderr.isatty():
                     results = run_tui(start, name, config, experiment_config)
                 else:
                     results = run_headless(start)
@@ -190,6 +199,29 @@ def experiments(
             passed = len(results) - failed - retried
             click.echo(f"{passed} passed, {failed} failed.{again}")
             return
+        case str(), "stop":
+            if (
+                output_format is not None
+                or concurrency is not None
+                or run_id is not None
+                or experiment_config is not None
+                or timeout is not None
+                or setup is not None
+                or teardown is not None
+                or passthrough is not None
+                or ctx.args
+            ):
+                raise click.UsageError("stop takes no run or listing options.")
+            try:
+                reply = daemon_command(config, name, {"command": "stop_all"})
+            except ValueError as error:
+                raise click.ClickException(str(error)) from error
+            if not reply.get("ok"):
+                raise click.ClickException(
+                    str(reply.get("error", "Daemon rejected stop"))
+                )
+            click.echo(f"Asked daemon for {name} to stop all runs.")
+            return
     if passthrough is not None:
         raise click.UsageError("-- ARGS needs run.")
     if run_id is not None:
@@ -197,7 +229,7 @@ def experiments(
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
     if action not in (None, "runs"):
-        raise click.UsageError(f"Unknown action {action}. Use runs or run.")
+        raise click.UsageError(f"Unknown action {action}. Use runs, run or stop.")
     if output_format is None and sys.stdout.isatty() and sys.stderr.isatty():
         try:
             browse_tui(config, name)

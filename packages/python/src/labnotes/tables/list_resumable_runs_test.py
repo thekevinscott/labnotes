@@ -13,7 +13,9 @@ def test_lists_runs_that_ended_badly_oldest_first() -> None:
     assert rows == [{"id": "r1"}]
     tables.query.assert_awaited_once_with(
         "SELECT id, params, CASE WHEN json_type(run, '$.invocations') = 'array'"
-        " THEN json_array_length(run, '$.invocations') ELSE 1 END AS invocations"
+        " THEN (SELECT count(*) FROM json_each(run, '$.invocations')"
+        " WHERE json_extract(value, '$.ended_by') IS NOT 'stop')"
+        " ELSE json_extract(run, '$.ended_by') IS NOT 'stop' END AS invocations"
         " FROM runs WHERE experiment = 'it''s'"
         " AND NOT coalesce((rule), false) AND NOT unfinished"
         " AND (exit_code IS NULL OR exit_code <> 0)"

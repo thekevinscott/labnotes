@@ -159,6 +159,21 @@ def test_failed_run_gives_up_after_two_retries_and_explicit_restart_works(
     assert len(folders(root)[folder]["invocations"]) == 4
 
 
+def test_invocations_stopped_by_hand_do_not_spend_retries(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "0", settings="continues = true\nretries = 1\n")
+    stopped = {"ended": "2026-10-17T00:30:00Z", "exit_code": -15, "ended_by": "stop"}
+    folder = add_run(
+        root,
+        "old",
+        invocations=[stopped, stopped, stopped, {"exit_code": 1, "ended_by": None}],
+    )
+
+    run(root)
+
+    assert list(folders(root)) == [folder]
+    assert len(folders(root)[folder]["invocations"]) == 5
+
+
 def test_args_and_commit_are_recorded_per_invocation(tmp_path: Path) -> None:
     root = make_project(tmp_path, "1")
 

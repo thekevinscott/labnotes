@@ -332,13 +332,12 @@ def test_merges_when_a_save_finds_the_file_changed(site: str, root: Path) -> Non
     browse(f"{site}{NOTE}", check)
 
 
-def test_reads_and_runs_offline_without_the_editor(site: str) -> None:
+def test_editor_mounts_and_saves_offline(site: str, root: Path) -> None:
     async def check(page: Page) -> None:
-        await page.route("https://esm.sh/**", lambda route: route.abort())
-        await page.reload()
-
-        await page.get_by_role("heading", name="The plan").click()
-        await expect(page.get_by_role("textbox", name="Note")).to_have_count(0)
+        await open_editor(page)
+        await page.keyboard.press("End")
+        await page.keyboard.type(" offline")
+        await on_disk(root / PLAN, "# The plan offline\n\n```python\n1 + 1\n```\n")
         await page.get_by_role("button", name="Run").click()
         await expect(page.locator(".cell-output")).to_contain_text("2")
 

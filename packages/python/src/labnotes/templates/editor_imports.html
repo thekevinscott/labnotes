@@ -1,25 +1,25 @@
-{# Every package is fetched with its imports left bare (the * prefix) and pinned here, so each loads once. Two copies of @codemirror/state break CodeMirror. #}
+{# Vendored modules share chunks so @codemirror/state loads exactly once. Refresh with node scripts/refresh-editor-vendor.mjs. #}
 <script type="importmap">
 {
   "imports": {
-    "@atomic-editor/editor/inline-preview": "https://esm.sh/*@atomic-editor/editor@0.6.2/dist/inline-preview.js",
-    "@codemirror/autocomplete": "https://esm.sh/*@codemirror/autocomplete@6.20.4",
-    "@codemirror/commands": "https://esm.sh/*@codemirror/commands@6.11.1",
-    "@codemirror/lang-python": "https://esm.sh/*@codemirror/lang-python@6.2.1",
-    "@codemirror/language": "https://esm.sh/*@codemirror/language@6.13.1",
-    "@codemirror/state": "https://esm.sh/*@codemirror/state@6.7.6",
-    "@codemirror/streamparser": "https://esm.sh/*@codemirror/streamparser@6.0.0",
-    "@codemirror/view": "https://esm.sh/*@codemirror/view@6.43.15",
-    "@lezer/common": "https://esm.sh/*@lezer/common@1.5.3",
-    "@lezer/highlight": "https://esm.sh/*@lezer/highlight@1.2.5",
-    "@lezer/lr": "https://esm.sh/*@lezer/lr@1.4.11",
-    "@lezer/markdown": "https://esm.sh/*@lezer/markdown@1.8.1",
-    "@lezer/python": "https://esm.sh/*@lezer/python@1.1.19",
-    "@marijn/find-cluster-break": "https://esm.sh/*@marijn/find-cluster-break@1.0.4",
-    "crelt": "https://esm.sh/*crelt@1.0.7",
-    "diff-match-patch": "https://esm.sh/*diff-match-patch@1.0.5",
-    "style-mod": "https://esm.sh/*style-mod@4.1.4",
-    "w3c-keyname": "https://esm.sh/*w3c-keyname@2.2.8"
+    "@atomic-editor/editor/inline-preview": "/static/vendor/atomic-editor-editor-inline-preview.js",
+    "@codemirror/autocomplete": "/static/vendor/codemirror-autocomplete.js",
+    "@codemirror/commands": "/static/vendor/codemirror-commands.js",
+    "@codemirror/lang-python": "/static/vendor/codemirror-lang-python.js",
+    "@codemirror/language": "/static/vendor/codemirror-language.js",
+    "@codemirror/state": "/static/vendor/codemirror-state.js",
+    "@codemirror/streamparser": "/static/vendor/codemirror-streamparser.js",
+    "@codemirror/view": "/static/vendor/codemirror-view.js",
+    "@lezer/common": "/static/vendor/lezer-common.js",
+    "@lezer/highlight": "/static/vendor/lezer-highlight.js",
+    "@lezer/lr": "/static/vendor/lezer-lr.js",
+    "@lezer/markdown": "/static/vendor/lezer-markdown.js",
+    "@lezer/python": "/static/vendor/lezer-python.js",
+    "@marijn/find-cluster-break": "/static/vendor/marijn-find-cluster-break.js",
+    "crelt": "/static/vendor/crelt.js",
+    "diff-match-patch": "/static/vendor/diff-match-patch.js",
+    "style-mod": "/static/vendor/style-mod.js",
+    "w3c-keyname": "/static/vendor/w3c-keyname.js"
   }
 }
 </script>

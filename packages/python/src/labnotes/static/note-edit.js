@@ -14,7 +14,7 @@ export function attach(note, focus) {
       editing = edit(note, prose, status);
       if (focus) editing.view.focus();
     },
-    () => {},
+    (error) => console.error("Editor import failed:", error),
   );
 
   const changes = new EventSource(note.dataset.changesUrl);

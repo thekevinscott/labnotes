@@ -1,4 +1,4 @@
-import { AnsiUp } from "https://esm.sh/ansi_up@6.0.6";
+import { AnsiUp } from "/static/vendor/ansi_up.js";
 
 const output = document.querySelector(".run-output");
 const state = document.querySelector(".run-state");

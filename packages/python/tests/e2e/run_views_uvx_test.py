@@ -1,7 +1,35 @@
+import json
 import os
+import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from curtaincall import expect
+import psutil
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def cleanup_daemon(tmp_path: Path) -> Iterator[None]:
+    yield
+    config = str(tmp_path / "project" / ".labnotes.toml")
+    owners = [
+        process
+        for process in psutil.process_iter(["cmdline"])
+        if config in (process.info["cmdline"] or [])
+        and "daemon" in (process.info["cmdline"] or [])
+    ]
+    for process in owners:
+        try:
+            process.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _, alive = psutil.wait_procs(owners, timeout=15)
+    for process in alive:
+        try:
+            process.kill()
+        except psutil.NoSuchProcess:
+            pass
 
 
 def test_uvx_run_tui_switches_to_configured_view(
@@ -34,6 +62,11 @@ def test_uvx_run_tui_switches_to_configured_view(
     expect(term.get_by_text("run view: alpha")).not_to_be_visible()
     term.key_ctrl_c()
     term.write("s")
-    expect(term.get_by_text("Ctrl-C to quit")).to_be_visible(timeout=15)
-    term.key_ctrl_c()
     term.wait()
+    for _ in range(100):
+        paths = list(root.glob("alpha/runs/*/run.json"))
+        if paths and all(json.loads(path.read_text()).get("ended") for path in paths):
+            break
+        time.sleep(0.05)
+    assert paths
+    assert any(json.loads(path.read_text())["ended_by"] == "stop" for path in paths)

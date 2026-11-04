@@ -290,6 +290,13 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         ) as run_headless,
         mock.patch("labnotes.experiments.start_experiment") as start_experiment,
         mock.patch("labnotes.experiments.run_tui", return_value=results) as run_tui,
+        mock.patch(
+            "labnotes.experiments.ensure_daemon", new=mock.AsyncMock()
+        ) as ensure_daemon,
+        mock.patch(
+            "labnotes.experiments.daemon_command",
+            return_value={"ok": True, "journal": "/state/invocation.jsonl"},
+        ) as daemon_command,
         mock.patch("labnotes.experiments.sys") as sys,
         mock.patch(
             "labnotes.experiments.parse_subset", return_value={}
@@ -301,6 +308,8 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
             "run_headless": run_headless,
             "start_experiment": start_experiment,
             "run_tui": run_tui,
+            "ensure_daemon": ensure_daemon,
+            "daemon_command": daemon_command,
             "sys": sys,
             "parse_subset": parse_subset,
         }
@@ -565,27 +574,65 @@ def test_shows_the_live_view_in_a_terminal(
 
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    drivers["start_experiment"].assert_called_once_with(
-        collaborators["load_config"].return_value,
-        "a",
-        None,
-        3,
-        None,
-        {},
-        None,
-        None,
-        None,
-        None,
-        None,
-    )
+    drivers["start_experiment"].assert_not_called()
     drivers["run_tui"].assert_called_once_with(
-        drivers["start_experiment"].return_value,
+        None,
         "a",
         collaborators["load_config"].return_value,
         None,
+        daemon_journal=mock.ANY,
     )
+    assert drivers["run_tui"].call_args.kwargs["daemon_journal"].path == Path(
+        "/state/invocation.jsonl"
+    )
+    drivers["ensure_daemon"].assert_awaited_once_with(
+        collaborators["load_config"].return_value, "a"
+    )
+    drivers["daemon_command"].assert_called_once()
     drivers["run_headless"].assert_not_called()
-    assert capsys.readouterr().out == "2 passed, 0 failed.\n"
+    assert capsys.readouterr().out == ""
+
+
+def test_terminal_restart_sends_options_to_daemon(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    alternate = tmp_path / "alternate.toml"
+    alternate.write_text("command = 'true'\n")
+    drivers["sys"].stdout.isatty.return_value = True
+    assert run(["a", "run", "--run-id", "failed", "-e", str(alternate)]) == 0
+    drivers["daemon_command"].assert_called_once_with(
+        collaborators["load_config"].return_value,
+        "a",
+        {
+            "command": "restart",
+            "options": {
+                "experiment_config": str(alternate),
+                "concurrency": None,
+                "timeout": None,
+                "only": {},
+                "args": None,
+                "setup": None,
+                "teardown": None,
+                "command_line": None,
+                "run_id": "failed",
+            },
+        },
+    )
+    drivers["run_tui"].assert_called_once()
+
+
+def test_terminal_reports_daemon_rejection(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+    drivers["daemon_command"].return_value = {"ok": False, "error": "bad config"}
+    assert run(["a", "run"]) == 1
+    assert "bad config" in capsys.readouterr().err
+    drivers["run_tui"].assert_not_called()
 
 
 @pytest.mark.parametrize(

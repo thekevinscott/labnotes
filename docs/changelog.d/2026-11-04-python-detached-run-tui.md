@@ -1,0 +1,1 @@
+Changed: Terminal experiment runs now use a per-experiment daemon, so cells continue if the TUI crashes or the terminal disconnects. The TUI reads its invocation from disk, sends controls to the daemon, and asks whether to stop or leave runs going when quitting.

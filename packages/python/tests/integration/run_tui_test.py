@@ -1,10 +1,38 @@
 import re
+import json
 import shlex
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
 
 from curtaincall import Terminal, expect
+import psutil
+import pytest
+
+
+@pytest.fixture(autouse=True)
+def cleanup_daemons(tmp_path: Path) -> Iterator[None]:
+    yield
+    config = str(tmp_path / ".labnotes.toml")
+    owners = [
+        process
+        for process in psutil.process_iter(["cmdline"])
+        if config in (process.info["cmdline"] or [])
+        and "daemon" in (process.info["cmdline"] or [])
+    ]
+    for process in owners:
+        try:
+            process.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    _, alive = psutil.wait_procs(owners, timeout=15)
+    for process in alive:
+        try:
+            process.kill()
+        except psutil.NoSuchProcess:
+            pass
+
 
 COMMAND = (
     f"{shlex.quote(sys.executable)} -c "
@@ -163,6 +191,9 @@ def test_ctrl_c_prompt_can_cancel_then_stop(terminal, tmp_path: Path) -> None:
     term.key_ctrl_c()
     expect(term.get_by_text("still going")).to_be_visible()
     term.write("s")
-    expect(term.get_by_text("Ctrl-C to quit")).to_be_visible(timeout=15)
-    term.key_ctrl_c()
     term.wait()
+    records = [
+        json.loads(path.read_text()) for path in tmp_path.glob("exp/runs/*/run.json")
+    ]
+    assert records
+    assert any(record["ended_by"] == "stop" for record in records)

@@ -92,3 +92,9 @@ path = "src/labnotes/daemon/socket_path.py"
 rules = ["mutation"]
 lines = [29]
 reason = "the next line chmods the folder to 0700, so the mkdir mode only narrows the creation window and any nearby mode ends the same"
+
+[[python.exempt]]
+path = "src/labnotes/daemon/server.py"
+rules = ["mutation"]
+lines = [112]
+reason = "action is \"start\" or \"restart\" here, and \"start\" sorts after \"restart\", so <= equals =="

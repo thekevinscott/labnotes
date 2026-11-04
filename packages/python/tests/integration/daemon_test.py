@@ -10,6 +10,7 @@ import time
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import pytest
 import psutil
@@ -53,15 +54,12 @@ def request(path: Path, message: dict[str, object]) -> dict[str, object]:
             return json.loads(reply.readline())
 
 
-def test_concurrent_starters_reuse_one_daemon(
-    tmp_path: Path, runtime: Path, monkeypatch: pytest.MonkeyPatch
-) -> None:
+def test_concurrent_starters_reuse_one_daemon(tmp_path: Path, runtime: Path) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     config_path = root / ".labnotes.toml"
     config_path.write_text("")
     (root / "exp/experiment.toml").write_text("command = 'true'\n")
-    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
     config = read_config(config_path)
 
     async def start_both() -> None:
@@ -81,7 +79,8 @@ def test_concurrent_starters_reuse_one_daemon(
             )
 
     try:
-        asyncio.run(start_both())
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(runtime)}):
+            asyncio.run(start_both())
         path = daemon_socket(config, "exp")
         assert path is not None
         assert path == wait_for_socket(runtime)

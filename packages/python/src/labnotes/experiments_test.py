@@ -593,6 +593,48 @@ def test_shows_the_live_view_in_a_terminal(
     assert capsys.readouterr().out == ""
 
 
+def test_terminal_restart_sends_options_to_daemon(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    alternate = tmp_path / "alternate.toml"
+    alternate.write_text("command = 'true'\n")
+    drivers["sys"].stdout.isatty.return_value = True
+    assert run(["a", "run", "--run-id", "failed", "-e", str(alternate)]) == 0
+    drivers["daemon_command"].assert_called_once_with(
+        collaborators["load_config"].return_value,
+        "a",
+        {
+            "command": "restart",
+            "options": {
+                "experiment_config": str(alternate),
+                "concurrency": None,
+                "timeout": None,
+                "only": {},
+                "args": None,
+                "setup": None,
+                "teardown": None,
+                "command_line": None,
+                "run_id": "failed",
+            },
+        },
+    )
+    drivers["run_tui"].assert_called_once()
+
+
+def test_terminal_reports_daemon_rejection(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+    drivers["daemon_command"].return_value = {"ok": False, "error": "bad config"}
+    assert run(["a", "run"]) == 1
+    assert "bad config" in capsys.readouterr().err
+    drivers["run_tui"].assert_not_called()
+
+
 @pytest.mark.parametrize(
     ("argv", "name"), [(["new"], None), (["new", "study"], "study")]
 )

@@ -1015,6 +1015,45 @@ def test_detached_restart_binding_selects_row(tmp_path: Path) -> None:
     ):
         app.body.action_restart_run()
         restart.assert_called_once_with("r1")
+        restart.reset_mock()
+        with mock.patch.object(app.body, "cursor_run", return_value=None):
+            app.body.action_restart_run()
+        restart.assert_not_called()
+
+
+def test_detached_queue_command_starts_worker(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with mock.patch.object(app, "run_worker") as worker:
+        app.queue_command({"command": "stop_all"})
+        worker.assert_called_once_with(mock.ANY, exit_on_error=False)
+        worker.call_args.args[0].close()
+
+
+def test_detached_command_error_with_unavailable_view_is_safe(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    app.body_ready = False
+    with (
+        mock.patch(
+            "labnotes.tui.run_app.daemon_command", side_effect=ValueError("gone")
+        ),
+        mock.patch.object(app.body, "show") as show,
+    ):
+        asyncio.run(app.send_command({"command": "stop_all"}))
+    show.assert_not_called()
+
+
+def test_restart_binding_ignores_foreground_mode(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(mock.AsyncMock(), "exp", COLUMNS, config)
+    with mock.patch.object(app, "run_worker") as worker:
+        app.restart_run("r1")
+        worker.assert_not_called()
 
 
 def test_ctrl_q_asks_like_ctrl_c() -> None:

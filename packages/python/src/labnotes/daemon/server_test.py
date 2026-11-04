@@ -344,16 +344,46 @@ def test_server_exits_after_idle_and_second_owner_does_not_bind(
     async def drive() -> None:
         project = config(tmp_path)
         _, _, record = paths
-        with mock.patch(
-            "labnotes.daemon.server.fcntl.flock", side_effect=BlockingIOError
+        with (
+            mock.patch(
+                "labnotes.daemon.server.fcntl.flock", side_effect=BlockingIOError
+            ),
+            mock.patch(
+                "labnotes.daemon.server.asyncio.sleep", new=mock.AsyncMock()
+            ) as sleep,
         ):
             await serve_daemon(project, "exp")
             assert not record.exists()
+            assert sleep.await_count == 10
         with (
             mock.patch("labnotes.daemon.server.fcntl.flock"),
             mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0.05),
         ):
             await serve_daemon(project, "exp")
+        assert not record.exists()
+
+    asyncio.run(drive())
+
+
+def test_server_retries_a_probe_lock_before_binding(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    async def drive() -> None:
+        project = config(tmp_path)
+        _, _, record = paths
+        with (
+            mock.patch(
+                "labnotes.daemon.server.fcntl.flock",
+                side_effect=[BlockingIOError, None],
+            ) as flock,
+            mock.patch(
+                "labnotes.daemon.server.asyncio.sleep", new=mock.AsyncMock()
+            ) as sleep,
+            mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0),
+        ):
+            await serve_daemon(project, "exp")
+        assert flock.call_count == 2
+        sleep.assert_awaited_once_with(0.1)
         assert not record.exists()
 
     asyncio.run(drive())

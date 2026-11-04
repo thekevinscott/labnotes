@@ -194,9 +194,14 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
     lock.touch(mode=0o600, exist_ok=True)
     descriptor = os.open(lock, os.O_RDONLY)
     try:
-        try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        except BlockingIOError:
+        for _ in range(10):
+            try:
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            except BlockingIOError:
+                await asyncio.sleep(0.1)
+            else:
+                break
+        else:
             return
         path = socket_path(config, name)
         path.unlink(missing_ok=True)

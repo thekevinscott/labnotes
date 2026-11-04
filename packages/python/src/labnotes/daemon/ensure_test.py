@@ -62,6 +62,25 @@ def test_startup_failure_reports_stderr(tmp_path: Path) -> None:
             asyncio.run(ensure_daemon(project, "exp"))
 
 
+def test_zero_exit_waits_for_other_daemon_to_publish_socket(tmp_path: Path) -> None:
+    process = mock.Mock()
+    process.poll.return_value = 0
+    socket = tmp_path / "winner.sock"
+    with (
+        mock.patch(
+            "labnotes.daemon.ensure.daemon_socket", side_effect=[None, None, socket]
+        ),
+        mock.patch("labnotes.daemon.ensure.discovery_folder", return_value=tmp_path),
+        mock.patch("labnotes.daemon.ensure.subprocess.Popen", return_value=process),
+        mock.patch(
+            "labnotes.daemon.ensure.asyncio.sleep", new=mock.AsyncMock()
+        ) as sleep,
+    ):
+        asyncio.run(ensure_daemon(config(tmp_path), "exp"))
+    process.poll.assert_called_once()
+    sleep.assert_awaited_once_with(0.1)
+
+
 def test_startup_timeout_names_limit(tmp_path: Path) -> None:
     project = config(tmp_path)
     process = mock.Mock()

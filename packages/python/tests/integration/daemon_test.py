@@ -1,3 +1,5 @@
+import asyncio
+import fcntl
 import json
 import os
 import signal
@@ -10,6 +12,12 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import pytest
+import psutil
+
+from labnotes.daemon.client import daemon_socket
+from labnotes.daemon.ensure import ensure_daemon
+from labnotes.daemon.socket_path import lock_path
+from labnotes.read_config import read_config
 
 
 @pytest.fixture
@@ -45,6 +53,58 @@ def request(path: Path, message: dict[str, object]) -> dict[str, object]:
             return json.loads(reply.readline())
 
 
+def test_concurrent_starters_reuse_one_daemon(
+    tmp_path: Path, runtime: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    root = tmp_path / "project"
+    (root / "exp").mkdir(parents=True)
+    config_path = root / ".labnotes.toml"
+    config_path.write_text("")
+    (root / "exp/experiment.toml").write_text("command = 'true'\n")
+    monkeypatch.setenv("XDG_RUNTIME_DIR", str(runtime))
+    config = read_config(config_path)
+
+    async def start_both() -> None:
+        lock = lock_path(config, "exp")
+        lock.parent.mkdir(parents=True, exist_ok=True)
+        with lock.open("a+b") as held:
+            fcntl.flock(held, fcntl.LOCK_EX)
+
+            async def release_probe() -> None:
+                await asyncio.sleep(0.5)
+                fcntl.flock(held, fcntl.LOCK_UN)
+
+            await asyncio.gather(
+                ensure_daemon(config, "exp"),
+                ensure_daemon(config, "exp"),
+                release_probe(),
+            )
+
+    try:
+        asyncio.run(start_both())
+        path = daemon_socket(config, "exp")
+        assert path is not None
+        assert path == wait_for_socket(runtime)
+        for _ in range(30):
+            owners = [
+                process
+                for process in psutil.process_iter(["cmdline"])
+                if str(config_path) in (process.info["cmdline"] or [])
+                and "daemon" in (process.info["cmdline"] or [])
+            ]
+            if len(owners) == 1:
+                break
+            time.sleep(0.1)
+        assert len(owners) == 1
+    finally:
+        for process in psutil.process_iter(["cmdline"]):
+            if str(config_path) in (process.info["cmdline"] or []) and "daemon" in (
+                process.info["cmdline"] or []
+            ):
+                process.terminate()
+                process.wait(timeout=15)
+
+
 def test_daemon_lists_running_cell_and_stop_command_stops_it(
     tmp_path: Path, runtime: Path
 ) -> None:
@@ -74,6 +134,9 @@ def test_daemon_lists_running_cell_and_stop_command_stops_it(
                 break
             time.sleep(0.05)
         assert records, "cell did not start"
+        stray = root / "exp/runs/stale/run.json"
+        stray.parent.mkdir()
+        stray.write_text(json.dumps({"created": "2026-01-01T00:00:00Z", "ended": None}))
         listed = subprocess.run(
             command(root, "experiments", "--format", "json"),
             cwd=root,

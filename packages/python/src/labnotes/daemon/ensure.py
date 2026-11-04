@@ -39,7 +39,7 @@ async def ensure_daemon(config: LabnotesConfig, name: str) -> None:
     for _ in range(START_SECONDS * 10):
         if daemon_socket(config, name) is not None:
             return
-        if process.poll() is not None:
+        if (status := process.poll()) is not None and status != 0:
             detail = errors.read_text().strip()
             raise ValueError(detail or f"Daemon for {name} exited during startup.")
         await asyncio.sleep(0.1)

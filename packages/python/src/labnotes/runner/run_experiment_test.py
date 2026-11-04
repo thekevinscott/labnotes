@@ -1775,3 +1775,23 @@ def test_a_resumed_run_spends_its_earlier_tries_from_its_retries(
     retrying = [e for e in reported(report) if e["event"] == "retrying"]
     assert [(e["attempt"], e["seconds"]) for e in retrying] == [(3, 0.01)]
     assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+
+
+def test_a_resumed_run_doubles_its_wait_from_this_session_only(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "old", "params": '{"m": "a"}', "invocations": 1},
+    ]
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75, 75, 75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=4, retry_seconds=0.01, continues=True)
+
+    retrying = [e for e in reported(report) if e["event"] == "retrying"]
+    assert [(e["attempt"], e["seconds"]) for e in retrying] == [
+        (2, 0.01),
+        (3, 0.02),
+        (4, 0.04),
+    ]

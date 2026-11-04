@@ -22,7 +22,7 @@ def test_installed_server_serves_editor_vendor(
         stderr=subprocess.DEVNULL,
     )
     try:
-        url = f"http://127.0.0.1:{port}/static/vendor/module-5.js"
+        url = f"http://127.0.0.1:{port}/static/vendor/codemirror-state.js"
         for _ in range(100):
             try:
                 with urlopen(url, timeout=1) as response:

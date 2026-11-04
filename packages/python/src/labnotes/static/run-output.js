@@ -1,4 +1,4 @@
-import { AnsiUp } from "/static/vendor/module-18.js";
+import { AnsiUp } from "/static/vendor/ansi_up.js";
 
 const output = document.querySelector(".run-output");
 const state = document.querySelector(".run-state");

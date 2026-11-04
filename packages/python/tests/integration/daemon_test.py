@@ -27,6 +27,12 @@ def runtime() -> Iterator[Path]:
         yield Path(folder)
 
 
+@pytest.fixture
+def runtime_env(runtime: Path) -> Iterator[Path]:
+    with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(runtime)}):
+        yield runtime
+
+
 def command(root: Path, *args: str) -> list[str]:
     return [
         str(Path(sys.executable).parent / "labnotes"),
@@ -54,7 +60,10 @@ def request(path: Path, message: dict[str, object]) -> dict[str, object]:
             return json.loads(reply.readline())
 
 
-def test_concurrent_starters_reuse_one_daemon(tmp_path: Path, runtime: Path) -> None:
+def test_concurrent_starters_reuse_one_daemon(
+    tmp_path: Path, runtime_env: Path
+) -> None:
+    runtime = runtime_env
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     config_path = root / ".labnotes.toml"
@@ -79,8 +88,7 @@ def test_concurrent_starters_reuse_one_daemon(tmp_path: Path, runtime: Path) -> 
             )
 
     try:
-        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": str(runtime)}):
-            asyncio.run(start_both())
+        asyncio.run(start_both())
         path = daemon_socket(config, "exp")
         assert path is not None
         assert path == wait_for_socket(runtime)

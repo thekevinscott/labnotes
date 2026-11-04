@@ -62,19 +62,20 @@ class PassthroughCommand(click.Command):
 )
 @click.option(
     "--run-id",
-    help="With run: restart only this failed run by id, whatever its resumes.",
+    help="With run: restart only this failed run by id, even if out of retries.",
 )
 @click.option(
-    "--resumes",
+    "--retries",
     type=click.IntRange(min=0),
-    help="With run: how many times a later run picks up a failed run again."
-    " Overrides experiment.toml and .labnotes.toml; 3 if none sets it.",
+    help="With run: how many times a failed run is tried again, on exit 75 or,"
+    " with continues, by a later run. Overrides experiment.toml and"
+    " .labnotes.toml; 3 if none sets it.",
 )
 @click.option(
     "--replace-capped",
     is_flag=True,
-    help="With run: start a fresh run for a cell whose run hit the resumes"
-    " cap. Unset, that cell stays short.",
+    help="With run: start a fresh run for a cell whose run is out of retries."
+    " Unset, that cell stays short.",
 )
 @click.option(
     "--headless",
@@ -139,7 +140,7 @@ def experiments(
     output_format: str | None,
     concurrency: int | None,
     run_id: str | None,
-    resumes: int | None,
+    retries: int | None,
     replace_capped: bool,
     headless: bool,
     experiment_config: Path | None,
@@ -208,7 +209,7 @@ def experiments(
                                 "teardown": teardown,
                                 "command_line": ctx.meta.get(COMMAND_LINE),
                                 "run_id": run_id,
-                                "resumes": resumes,
+                                "retries": retries,
                                 "replace_capped": replace_capped,
                             },
                         },
@@ -239,7 +240,7 @@ def experiments(
                             teardown,
                             ctx.meta.get(COMMAND_LINE),
                             run_id,
-                            resumes,
+                            retries,
                             replace_capped,
                         )
                     )
@@ -260,7 +261,7 @@ def experiments(
                 output_format is not None
                 or concurrency is not None
                 or run_id is not None
-                or resumes is not None
+                or retries is not None
                 or replace_capped
                 or experiment_config is not None
                 or timeout is not None
@@ -284,8 +285,8 @@ def experiments(
         raise click.UsageError("-- ARGS needs run.")
     if run_id is not None:
         raise click.UsageError("--run-id needs run.")
-    if resumes is not None:
-        raise click.UsageError("--resumes needs run.")
+    if retries is not None:
+        raise click.UsageError("--retries needs run.")
     if replace_capped:
         raise click.UsageError("--replace-capped needs run.")
     if ctx.args:

@@ -169,19 +169,20 @@ def test_labels_each_retry_with_its_own_folder(
 
 
 def test_gives_up_once_the_retries_run_out(tmp_path: Path) -> None:
-    root = make_project(tmp_path, "75 75 75 75")
+    root = make_project(tmp_path, "75 75 75 75 75")
 
     events = run_now(root)
 
     recorded = chain(root)
-    assert [run["exit_code"] for run in recorded] == [75, 75, 75]
+    assert [run["exit_code"] for run in recorded] == [75, 75, 75, 75]
     assert [run.get("retry_of") for run in recorded] == [
         None,
         recorded[0]["id"],
         recorded[1]["id"],
+        recorded[2]["id"],
     ]
     assert events[-2:] == [
-        {"event": "gave up", "run": recorded[2]["id"], "retries": 2},
+        {"event": "gave up", "run": recorded[3]["id"], "retries": 3},
         {"event": "idle"},
     ]
 

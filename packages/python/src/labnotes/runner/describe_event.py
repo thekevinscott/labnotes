@@ -36,7 +36,7 @@ def describe_event(event: dict[str, object]) -> str:
         case "capped":
             cells = len(event["runs"])  # type: ignore[arg-type]
             noun = "cell" if cells == 1 else "cells"
-            return f"{cells} {noun} gave up after {event['resumes']} resumes."
+            return f"{cells} {noun} gave up after {event['retries']} retries."
         case "retry cancelled":
             return f"{event['run']} won't retry."
         case "idle":

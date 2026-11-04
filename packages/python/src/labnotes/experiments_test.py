@@ -110,7 +110,7 @@ def test_headless_needs_run(
         ["--timeout", "3"],
         ["--setup", "echo ok"],
         ["--teardown", "echo ok"],
-        ["--resumes", "2"],
+        ["--retries", "2"],
         ["--replace-capped"],
         ["--", "arg"],
         ["--model=x"],
@@ -182,7 +182,7 @@ def test_needs_run_for_params(
     "argv,expected",
     [
         (["a", "runs", "--run-id", "r1"], "--run-id needs run"),
-        (["a", "runs", "--resumes", "2"], "--resumes needs run"),
+        (["a", "runs", "--retries", "2"], "--retries needs run"),
         (["a", "--replace-capped"], "--replace-capped needs run"),
         (
             ["a", "run", "--run-id", "r1", "--model=small"],
@@ -625,7 +625,7 @@ def test_terminal_restart_sends_options_to_daemon(
                 "teardown": None,
                 "command_line": None,
                 "run_id": "failed",
-                "resumes": None,
+                "retries": None,
                 "replace_capped": False,
             },
         },
@@ -810,30 +810,30 @@ def test_keeps_memory_and_size_in_bytes_in_json(
     assert [type(printed[0][key]) for key in ("memory", "size")] == [int, int]
 
 
-def test_passes_resumes_and_replace_capped_to_the_run(
+def test_passes_retries_and_replace_capped_to_the_run(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(["a", "run", "--resumes", "0", "--replace-capped"]) == 0
+    assert run(["a", "run", "--retries", "0", "--replace-capped"]) == 0
 
     assert drivers["start_experiment"].call_args.args[11:] == (0, True)
 
 
-def test_terminal_run_sends_resumes_and_replace_capped_to_daemon(
+def test_terminal_run_sends_retries_and_replace_capped_to_daemon(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = True
-    assert run(["a", "run", "--resumes", "1", "--replace-capped"]) == 0
+    assert run(["a", "run", "--retries", "1", "--replace-capped"]) == 0
 
     options = drivers["daemon_command"].call_args.args[2]["options"]
-    assert (options["resumes"], options["replace_capped"]) == (1, True)
+    assert (options["retries"], options["replace_capped"]) == (1, True)
 
 
-def test_rejects_negative_resumes(
+def test_rejects_negative_retries(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(["a", "run", "--resumes", "-1"]) == 2
+    assert run(["a", "run", "--retries", "-1"]) == 2
     drivers["start_experiment"].assert_not_called()

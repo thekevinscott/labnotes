@@ -32,7 +32,7 @@ def start_experiment(
     teardown: str | None,
     command_line: str | None = None,
     run_id: str | None = None,
-    resumes: int | None = None,
+    retries: int | None = None,
     replace_capped: bool = False,
 ) -> ExperimentStart:
     state = RunState.create(config, name)
@@ -47,7 +47,7 @@ def start_experiment(
             args,
             setup,
             teardown,
-            resumes,
+            retries,
             replace_capped,
         )
         await finalize_lost_runs(config)

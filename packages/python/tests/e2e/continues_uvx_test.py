@@ -128,10 +128,10 @@ def test_uvx_without_continues_redoes_a_failed_run_in_a_new_folder(
         assert (folder / "stdout.log").exists()
 
 
-def test_uvx_caps_failed_resumes_and_can_replace_the_run(
+def test_uvx_caps_failed_retries_and_can_replace_the_run(
     tmp_path: Path, uvx: dict[str, str]
 ) -> None:
-    root = project(tmp_path / "project", "fail", "continues = true\nresumes = 2\n")
+    root = project(tmp_path / "project", "fail", "continues = true\nretries = 2\n")
     (root / "script.py").write_text(
         "import os, sys\nfrom pathlib import Path\n"
         'p = Path(os.environ["LABNOTES_RUN"]) / "attempts"\n'
@@ -144,7 +144,7 @@ def test_uvx_caps_failed_resumes_and_can_replace_the_run(
     before = (folder / "run.json").read_bytes()
 
     output = run(root, uvx)
-    assert "1 cell gave up after 2 resumes" in output
+    assert "1 cell gave up after 2 retries" in output
     assert records(root) == {folder: record}
     assert (folder / "run.json").read_bytes() == before
     assert (folder / "attempts").read_text() == "xxx"

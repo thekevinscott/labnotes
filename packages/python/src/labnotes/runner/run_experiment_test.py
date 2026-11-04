@@ -23,7 +23,6 @@ def settle[T](work: Coroutine[Any, Any, T]) -> T:
 def experiment(
     retries: int = 2,
     continues: bool = False,
-    resumes: int = 3,
     replace_capped: bool = False,
 ) -> mock.Mock:
     config = mock.Mock(
@@ -38,7 +37,6 @@ def experiment(
         teardown=None,
         env={},
         continues=continues,
-        resumes=resumes,
         replace_capped=replace_capped,
     )
     config.name = None
@@ -152,14 +150,13 @@ def run(
     env: dict[str, str] | None = None,
     continues: bool = False,
     run_id: str | None = None,
-    resumes: int = 3,
     replace_capped: bool = False,
 ) -> list[dict[str, object]]:
     config = mock.Mock(
         root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
     )
     hear = mock.Mock() if listen is None else listen
-    configured = experiment(retries, continues, resumes, replace_capped)
+    configured = experiment(retries, continues, replace_capped)
     configured.env = env or {}
 
     def listening(controls: object) -> None:
@@ -1708,7 +1705,7 @@ def test_lets_go_of_claimed_runs_when_setup_fails(
 
 
 @pytest.mark.parametrize("replace_capped", [False, True])
-def test_a_run_past_its_resumes_gives_up_its_cell_unless_replaced(
+def test_a_run_past_its_retries_gives_up_its_cell_unless_replaced(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock], replace_capped: bool
 ) -> None:
     collaborators["resumable"].return_value = [
@@ -1718,7 +1715,7 @@ def test_a_run_past_its_resumes_gives_up_its_cell_unless_replaced(
     collaborators["plan_runs"].return_value = [A, B]
     report = mock.Mock()
 
-    run(tmp_path, report, continues=True, resumes=2, replace_capped=replace_capped)
+    run(tmp_path, report, continues=True, retries=2, replace_capped=replace_capped)
 
     finished = collaborators["plan_runs"].call_args.args[2]
     assert (A in finished) is not replace_capped
@@ -1728,7 +1725,7 @@ def test_a_run_past_its_resumes_gives_up_its_cell_unless_replaced(
     if replace_capped:
         assert capped == []
     else:
-        assert capped == [{"event": "capped", "runs": ["capped"], "resumes": 2}]
+        assert capped == [{"event": "capped", "runs": ["capped"], "retries": 2}]
 
 
 def test_only_reports_capped_runs_in_the_subset(
@@ -1741,10 +1738,10 @@ def test_only_reports_capped_runs_in_the_subset(
     collaborators["plan_runs"].return_value = []
     report = mock.Mock()
 
-    run(tmp_path, report, continues=True, resumes=1, only={"m": ["b"]})
+    run(tmp_path, report, continues=True, retries=1, only={"m": ["b"]})
 
     capped = [e for e in reported(report) if e["event"] == "capped"]
-    assert capped == [{"event": "capped", "runs": ["capped-b"], "resumes": 1}]
+    assert capped == [{"event": "capped", "runs": ["capped-b"], "retries": 1}]
 
 
 def test_an_explicit_restart_ignores_the_cap(
@@ -1769,7 +1766,25 @@ def test_an_explicit_restart_ignores_the_cap(
     ]
     report = mock.Mock()
 
-    run(tmp_path, report, continues=True, resumes=0, run_id="target")
+    run(tmp_path, report, continues=True, retries=0, run_id="target")
 
     assert started_runs(report) == ["target"]
     assert [e for e in reported(report) if e["event"] == "capped"] == []
+
+
+def test_a_resumed_run_spends_its_earlier_tries_from_its_retries(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "old", "params": '{"m": "a"}', "invocations": 2},
+    ]
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75, 75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=3, retry_seconds=0.01, continues=True)
+
+    assert started_runs(report) == ["old", "old"]
+    retrying = [e for e in reported(report) if e["event"] == "retrying"]
+    assert [(e["attempt"], e["seconds"]) for e in retrying] == [(3, 0.01)]
+    assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)

@@ -92,27 +92,6 @@ def test_falls_back_to_the_project_concurrency_and_retries() -> None:
     assert (config.concurrency, config.retries) == (3, 5)
 
 
-def test_falls_back_to_the_project_resumes() -> None:
-    source = 'command = "run"\ncontinues = false\n'
-
-    assert read_experiment_config(PATH, source, 1, 2).resumes == 3
-    assert read_experiment_config(PATH, source, 1, 2, None, 7).resumes == 7
-
-
-@pytest.mark.parametrize("resumes", [0, 4])
-def test_reads_resumes_over_the_project_resumes(resumes: int) -> None:
-    config = read_experiment_config(
-        PATH,
-        f'command = "run"\ncontinues = false\nresumes = {resumes}\n',
-        1,
-        2,
-        None,
-        7,
-    )
-
-    assert config.resumes == resumes
-
-
 @pytest.mark.parametrize("retries", [0, 3])
 def test_reads_retries_over_the_project_retries(retries: int) -> None:
     config = read_experiment_config(
@@ -240,14 +219,6 @@ def test_layers_meta_from_the_defaults() -> None:
         (
             'command = "run"\ncontinues = false\nretries = true\n',
             "retries must be 0 or more",
-        ),
-        (
-            'command = "run"\ncontinues = false\nresumes = -1\n',
-            "resumes must be 0 or more",
-        ),
-        (
-            'command = "run"\ncontinues = false\nresumes = true\n',
-            "resumes must be 0 or more",
         ),
         (
             'command = "run"\ncontinues = false\nmemory_interval = -1\n',

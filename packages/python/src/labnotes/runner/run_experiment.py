@@ -86,10 +86,12 @@ async def run_experiment(
     ]
     resumable: list[Entry] = []
     capped: list[Entry] = []
+    tries: dict[str, int] = {}
     if experiment.continues:
         for row in await list_resumable_runs(tables, name, experiment.counts):
             entry = (str(row["id"]), json.loads(str(row["params"])))
-            over = int(str(row["invocations"])) > experiment.resumes
+            tries[entry[0]] = int(str(row["invocations"]))
+            over = tries[entry[0]] > experiment.retries
             (capped if over else resumable).append(entry)
     if not experiment.replace_capped:
         finished += [params for _, params in capped]
@@ -158,6 +160,8 @@ async def run_experiment(
         run = new_stamped_run_id(taken) if resumed is None else resumed[0]
         planned.add(run)
         plan.append((run, params))
+    # A resumed run's earlier invocations spend the same retries as exit 75 does.
+    earlier = {run: tries[run] for run, _ in plan if run in tries and run != run_id}
     hooks = {
         "setup": experiment.setup,
         "teardown": experiment.teardown,
@@ -185,7 +189,7 @@ async def run_experiment(
         emit({"event": "held", "run": str(row["id"])})
     gave_up = [run for run, params in capped if in_subset(params, only or {})]
     if gave_up and run_id is None and not experiment.replace_capped:
-        emit({"event": "capped", "runs": gave_up, "resumes": experiment.resumes})
+        emit({"event": "capped", "runs": gave_up, "retries": experiment.retries})
     running: dict[str, set[asyncio.subprocess.Process]] = {}
     trees: dict[str, set[psutil.Process]] = {}
     stopped: set[str] = set()
@@ -246,11 +250,11 @@ async def run_experiment(
         fill()
 
     def retry_later(run: str) -> None:
-        tried = attempts.get(run, 0)
+        tried = attempts.get(run, earlier.get(run, 0))
         if tried >= experiment.retries:
             emit({"event": "gave up", "run": run, "retries": tried})
             return
-        seconds = retry_seconds * 2**tried
+        seconds = retry_seconds * 2 ** (tried - earlier.get(run, 0))
 
         def due() -> None:
             del waiting[run]

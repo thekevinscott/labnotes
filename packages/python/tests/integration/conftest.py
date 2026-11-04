@@ -77,6 +77,23 @@ def browse(
             page = await browser.new_page(
                 viewport={"width": width, "height": 800}, timezone_id=timezone_id
             )
+            # pytest shows these only when a test fails (#307).
+            page.on(
+                "requestfailed",
+                lambda r: print("request failed:", r.url, r.failure),
+            )
+            page.on(
+                "response",
+                lambda r: print("response:", r.status, r.url)
+                if r.status >= 400
+                else None,
+            )
+            page.on(
+                "console",
+                lambda m: print("console:", m.type, m.text)
+                if m.type == "error"
+                else None,
+            )
             await page.goto(url)
             await check(page)
             await browser.close()

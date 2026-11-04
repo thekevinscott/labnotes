@@ -26,6 +26,20 @@ def test_empty_write_leaves_the_log_unchanged() -> None:
     assert list(output.lines) == []
 
 
+def test_colored_lines_use_visible_cell_width_for_horizontal_scrolling() -> None:
+    output = RunOutput()
+    output.write_lines(["\x1b[31mred\x1b[0m", "界"])
+    assert output.virtual_size.width == 3
+
+
+def test_replacing_an_unfinished_line_updates_horizontal_scroll_width() -> None:
+    output = RunOutput()
+    output.write_lines(["\x1b[31mcolored\x1b[0m"])
+    output.drop_unfinished()
+    output.write_lines(["ok"])
+    assert output.virtual_size.width == 2
+
+
 @pytest.mark.parametrize(
     ("auto_scroll", "scroll_end", "scrolls"),
     [
@@ -170,10 +184,10 @@ def test_reset_forgets_an_unfinished_line(tmp_path: Path) -> None:
 def test_dropping_an_unfinished_line_invalidates_its_cache() -> None:
     output = RunOutput()
     output.write_lines(["kept", "partial"])
-    output._render_line_cache[1] = mock.Mock()
+    output._line_cache[1] = mock.Mock()
     output.drop_unfinished()
     assert list(output.lines) == ["kept"]
-    assert 1 not in output._render_line_cache
+    assert 1 not in output._line_cache
     assert output.virtual_size.height == 1
 
 
@@ -181,12 +195,13 @@ def test_reuses_a_cached_visible_line() -> None:
     output = RunOutput()
     output.write_lines(["kept"])
     cached = mock.Mock()
-    output._render_line_cache[0] = cached
+    cached.crop_extend.return_value.apply_offsets.return_value = cached
+    output._line_cache[0] = cached
     with mock.patch.object(
         RunOutput, "text_selection", new_callable=mock.PropertyMock
     ) as selected:
         selected.return_value = None
-        assert output._render_line_strip(0, mock.Mock()) is cached
+        assert output.render_line(0) is cached
 
 
 @pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
@@ -209,7 +224,7 @@ def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) ->
         mock.patch("labnotes.tui.run_output.Text.from_ansi", return_value=line_text),
     ):
         selected.return_value = selection
-        output._render_line_strip(0, mock.Mock())
+        output.render_line(0)
     selection.get_span.assert_called_once_with(0)
     if span is None:
         line_text.stylize.assert_not_called()
@@ -219,7 +234,7 @@ def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) ->
             span[0],
             3 if span[1] == -1 else span[1],
         )
-    assert 0 not in output._render_line_cache
+    assert 0 not in output._line_cache
 
 
 def test_moves_to_the_newest_invocation_log_from_its_start(tmp_path: Path) -> None:

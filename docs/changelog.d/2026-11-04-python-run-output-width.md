@@ -1,0 +1,1 @@
+Fixed horizontal scrolling in colored run output by measuring visible terminal cells instead of ANSI escape bytes. Run output now uses Textual's public ScrollView API while retaining lazy rendering and live follow behavior.

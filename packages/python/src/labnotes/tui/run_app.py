@@ -1,4 +1,7 @@
+import asyncio
+import json
 import signal
+import socket
 import time
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -16,18 +19,21 @@ from textual.widget import Widget
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
 
 from labnotes.compose_experiment import compose_experiment
+from labnotes.daemon.command import command as daemon_command
+from labnotes.daemon.client import daemon_socket
 from labnotes.load_experiment import load_experiment
 from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
 from labnotes.runner.start_experiment import ExperimentStart
+from labnotes.runner.run_state import RunState
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
-from labnotes.tui.leave_prompt import LeavePrompt
+from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
 from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.native_rows import native_rows
 from labnotes.tui.reload_on_change import reload_on_change
@@ -55,6 +61,7 @@ class RunLiveView(Widget):
     """
     BINDINGS = [
         Binding("x", "kill_run", "Stop run"),
+        Binding("r", "restart_run", "Restart"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
@@ -294,6 +301,10 @@ class RunLiveView(Widget):
     def action_concurrency(self, change: int) -> None:
         self.controls.set_concurrency(self.concurrency + change)
 
+    def action_restart_run(self) -> None:
+        if (run := self.cursor_run()) is not None and isinstance(self.app, RunApp):
+            self.app.restart_run(run)
+
     def action_filter(self) -> None:
         field = self.query_one(Input)
         field.display = True
@@ -354,11 +365,12 @@ class RunApp(ViewSwitcher, App[None]):
 
     def __init__(
         self,
-        start: Start,
+        start: Start | None,
         title: str,
         columns: Sequence[str],
         config: LabnotesConfig | None = None,
         experiment_config: Path | None = None,
+        daemon_journal: RunState | None = None,
     ) -> None:
         super().__init__()
         self.start = start
@@ -377,8 +389,12 @@ class RunApp(ViewSwitcher, App[None]):
         self.shown: Experiment | None = None
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
-        self.run_state = start.run_state if isinstance(start, ExperimentStart) else None
+        self.daemon_journal = daemon_journal
+        self.run_state = daemon_journal or (
+            start.run_state if isinstance(start, ExperimentStart) else None
+        )
         self.watching_state = False
+        self.attached: socket.socket | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -412,7 +428,93 @@ class RunApp(ViewSwitcher, App[None]):
                 exit_on_error=False,
             )
             self.run_worker(self.watch_files(tables), exit_on_error=False)
-        self.run_worker(self.drive())
+        if self.daemon_journal is not None:
+            journal = self.daemon_journal
+            try:
+                self.attach_daemon()
+            except (OSError, ValueError) as error:
+                self.error = error
+                self.exit()
+                return
+            self.listen(
+                Controls(
+                    lambda: self.queue_command({"command": "stop_all"}),
+                    lambda count: self.queue_command(
+                        {
+                            "command": "set_concurrency",
+                            "count": count,
+                            "journal": str(journal.path),
+                        }
+                    ),
+                    lambda run: self.queue_command({"command": "stop_one", "run": run}),
+                    lambda: None,
+                )
+            )
+            self.set_interval(0.25, self.refresh_state)
+            self.refresh_state()
+        else:
+            self.run_worker(self.drive())
+
+    def attach_daemon(self) -> None:
+        assert self.config is not None
+        path = daemon_socket(self.config, self.experiment_name)
+        if path is None:
+            raise ValueError(f"No daemon is running for {self.experiment_name}.")
+        client = socket.socket(socket.AF_UNIX)
+        try:
+            client.settimeout(10)
+            client.connect(str(path))
+            client.sendall(b'{"command":"attach"}\n')
+            with client.makefile("r") as replies:
+                reply = json.loads(replies.readline())
+            if not reply.get("ok"):
+                raise ValueError(str(reply.get("error", "Daemon rejected attach")))
+        except Exception:
+            client.close()
+            raise
+        self.attached = client
+
+    def on_unmount(self) -> None:
+        if self.attached is not None:
+            self.attached.close()
+
+    def queue_command(self, message: dict[str, object]) -> None:
+        self.run_worker(self.send_command(message), exit_on_error=False)
+
+    async def send_command(self, message: dict[str, object]) -> None:
+        assert self.config is not None
+        try:
+            reply = await asyncio.to_thread(
+                daemon_command, self.config, self.experiment_name, message
+            )
+            if not reply.get("ok"):
+                raise ValueError(str(reply.get("error", "Daemon rejected command")))
+        except ValueError as error:
+            if self.body_ready:
+                self.body.show(str(error))
+
+    def restart_run(self, run: str) -> None:
+        if self.daemon_journal is None:
+            return
+        if run not in self.body.failed:
+            self.body.show(f"{run} has not failed.")
+            return
+        self.run_worker(self.restart_daemon_run(run), exit_on_error=False)
+
+    async def restart_daemon_run(self, run: str) -> None:
+        assert self.config is not None
+        try:
+            reply = await asyncio.to_thread(
+                daemon_command,
+                self.config,
+                self.experiment_name,
+                {"command": "restart", "options": {"run_id": run}},
+            )
+            if not reply.get("ok"):
+                raise ValueError(str(reply.get("error", "Daemon rejected restart")))
+            self.body.show(f"Restarted {run}.")
+        except ValueError as error:
+            self.body.show(f"Could not restart {run}: {error}")
 
     def configured_views(self) -> dict[str, str]:
         if self.config is None:
@@ -453,6 +555,7 @@ class RunApp(ViewSwitcher, App[None]):
                 self.deliver(self.shown, frozenset({str(row["path"])}))
 
     async def drive(self) -> None:
+        assert self.start is not None
         try:
             self.results = await self.start(self.show_event, self.listen)
         except Exception as error:
@@ -463,8 +566,9 @@ class RunApp(ViewSwitcher, App[None]):
         self.controls = controls
         if self.body_ready:
             self.body.controls = controls
-        stop_then_kill(self.stop_runs, signal.SIGTERM)
-        stop_then_kill(self.stop_runs, signal.SIGHUP)
+        if self.daemon_journal is None:
+            stop_then_kill(self.stop_runs, signal.SIGTERM)
+            stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
         if self.run_state is None:
@@ -488,6 +592,14 @@ class RunApp(ViewSwitcher, App[None]):
             self.controls.interrupt()
 
     def action_interrupt(self) -> None:
+        if self.daemon_journal is not None:
+            if self.body_ready and self.body.started:
+                self.push_screen(
+                    DetachedLeavePrompt(len(self.body.started)), self.answer
+                )
+            else:
+                self.exit()
+            return
         if self.body_ready and self.body.started:
             self.push_screen(LeavePrompt(len(self.body.started)), self.answer)
         elif self.body_ready and self.body.idle:
@@ -500,8 +612,17 @@ class RunApp(ViewSwitcher, App[None]):
 
     def answer(self, choice: str | None) -> None:
         if choice == "stop":
-            self.controls.interrupt()
-            self.set_timer(GRACE_SECONDS, self.controls.interrupt)
+            if self.daemon_journal is None:
+                self.controls.interrupt()
+                self.set_timer(GRACE_SECONDS, self.controls.interrupt)
+            else:
+                self.run_worker(self.stop_daemon_and_exit(), exit_on_error=False)
+        elif choice == "leave" and self.daemon_journal is not None:
+            self.exit()
+
+    async def stop_daemon_and_exit(self) -> None:
+        await self.send_command({"command": "stop_all"})
+        self.exit()
 
     def action_leave(self) -> None:
         if self.query_one(ContentSwitcher).current != "view-1":

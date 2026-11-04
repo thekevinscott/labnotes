@@ -7,7 +7,9 @@ import click
 from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
 from labnotes.daemon.command import command as daemon_command
+from labnotes.daemon.ensure import ensure_daemon
 from labnotes.runner.start_experiment import start_experiment
+from labnotes.runner.run_state import RunState
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
 from labnotes.parse_params import parse_params
@@ -169,24 +171,57 @@ def experiments(
                 only = parse_subset(ctx.args)
             except ValueError as error:
                 raise click.UsageError(str(error)) from error
-            start = start_experiment(
-                config,
-                name,
-                experiment_config,
-                concurrency,
-                timeout,
-                only,
-                passthrough or None,
-                setup,
-                teardown,
-                ctx.meta.get(COMMAND_LINE),
-                run_id,
-            )
             try:
                 if not headless and sys.stdout.isatty() and sys.stderr.isatty():
-                    results = run_tui(start, name, config, experiment_config)
+                    asyncio.run(ensure_daemon(config, name))
+                    reply = daemon_command(
+                        config,
+                        name,
+                        {
+                            "command": "restart" if run_id else "start",
+                            "options": {
+                                "experiment_config": str(experiment_config)
+                                if experiment_config
+                                else None,
+                                "concurrency": concurrency,
+                                "timeout": timeout,
+                                "only": only,
+                                "args": passthrough or None,
+                                "setup": setup,
+                                "teardown": teardown,
+                                "command_line": ctx.meta.get(COMMAND_LINE),
+                                "run_id": run_id,
+                            },
+                        },
+                    )
+                    if not reply.get("ok"):
+                        raise ValueError(
+                            str(reply.get("error", "Daemon rejected start"))
+                        )
+                    run_tui(
+                        None,
+                        name,
+                        config,
+                        experiment_config,
+                        daemon_journal=RunState(Path(str(reply["journal"]))),
+                    )
+                    return
                 else:
-                    results = run_headless(start)
+                    results = run_headless(
+                        start_experiment(
+                            config,
+                            name,
+                            experiment_config,
+                            concurrency,
+                            timeout,
+                            only,
+                            passthrough or None,
+                            setup,
+                            teardown,
+                            ctx.meta.get(COMMAND_LINE),
+                            run_id,
+                        )
+                    )
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
             superseded = {r["retry_of"] for r in results if "retry_of" in r}

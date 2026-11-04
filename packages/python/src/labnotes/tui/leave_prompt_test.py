@@ -3,7 +3,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.leave_prompt import LeavePrompt
+from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
 
 
 @pytest.fixture(autouse=True)
@@ -38,5 +38,21 @@ def test_answers_leave_by_default_stop_on_s_and_nothing_on_escape() -> None:
         for binding in LeavePrompt.BINDINGS
     ] == [
         ("enter,ctrl+c,s", "dismiss('stop')"),
+        ("escape", "dismiss"),
+    ]
+
+
+def test_detached_prompt_offers_stop_leave_and_cancel(static: mock.MagicMock) -> None:
+    assert list(DetachedLeavePrompt(2).compose()) == ["prompt"]
+    static.assert_called_once_with(
+        "2 runs still going. Stop them (s) / leave running (enter or l) / cancel (esc).",
+        id="prompt",
+    )
+    assert [
+        (binding.key, binding.action)  # type: ignore[union-attr]
+        for binding in DetachedLeavePrompt.BINDINGS
+    ] == [
+        ("s", "dismiss('stop')"),
+        ("enter,l", "dismiss('leave')"),
         ("escape", "dismiss"),
     ]

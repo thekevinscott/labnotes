@@ -1,6 +1,5 @@
 import asyncio
 import os
-import sys
 from collections.abc import Mapping
 from pathlib import Path
 from typing import Any, cast
@@ -11,6 +10,8 @@ from textual.widget import Widget
 from textual.widgets import DataTable, Static
 
 from labnotes.runs_view_command import runs_view_command
+from labnotes.daemon.command import command as daemon_command
+from labnotes.daemon.ensure import ensure_daemon
 from labnotes.models import LabnotesConfig
 from labnotes.runner.claim_run import claim_run
 from labnotes.tui.fill_table import fill_table
@@ -144,28 +145,21 @@ class RunsBrowser(Widget):
 
     async def restart(self, run_id: str) -> None:
         config = cast(LabnotesConfig, getattr(self.app, "config"))
-        process = await asyncio.create_subprocess_exec(
-            sys.executable,
-            "-m",
-            "labnotes",
-            "-c",
-            str(config.path),
-            "experiments",
-            self.experiment.name,
-            "run",
-            "--run-id",
-            run_id,
-            stdout=asyncio.subprocess.PIPE,
-            stderr=asyncio.subprocess.PIPE,
-        )
-        stdout, stderr = await process.communicate()
-        if process.returncode == 0:
+        try:
+            await ensure_daemon(config, self.experiment.name)
+            reply = await asyncio.to_thread(
+                daemon_command,
+                config,
+                self.experiment.name,
+                {"command": "restart", "options": {"run_id": run_id}},
+            )
+            if not reply.get("ok"):
+                raise ValueError(str(reply.get("error", "Daemon rejected restart")))
             self.restart_status = (
                 f"Restarted {run_id}. Select the run to view its output."
             )
-        else:
-            detail = stderr.decode().strip() or stdout.decode().strip()
-            self.restart_status = f"Could not restart {run_id}: {detail}"
+        except ValueError as error:
+            self.restart_status = f"Could not restart {run_id}: {error}"
         self.show_status()
 
     async def action_open_row(self) -> None:

@@ -212,40 +212,38 @@ def test_restart_key_ignores_an_empty_table(
 
 
 @pytest.mark.parametrize(
-    "returncode,stdout,stderr,expected",
+    "reply,expected",
     [
-        (0, b"done", b"", "Restarted lone"),
-        (2, b"", b"locked", "Could not restart lone: locked"),
-        (2, b"fallback", b"", "Could not restart lone: fallback"),
-        (-9, b"", b"signal", "Could not restart lone: signal"),
+        ({"ok": True, "journal": "/state/run.jsonl"}, "Restarted lone"),
+        ({"ok": False, "error": "locked"}, "Could not restart lone: locked"),
     ],
 )
-def test_restart_worker_reports_process_result(
+def test_restart_worker_reports_daemon_reply(
     browser: RunsBrowser,
     status: mock.MagicMock,
-    returncode: int,
-    stdout: bytes,
-    stderr: bytes,
+    reply: dict[str, object],
     expected: str,
 ) -> None:
-    process = mock.Mock(returncode=returncode)
-    process.communicate = mock.AsyncMock(return_value=(stdout, stderr))
     app = mock.Mock(config=mock.Mock(path=Path("/p/project/.labnotes.toml")))
+    browser.experiment = Experiment(ROOT, "alpha", ())
     with (
         mock.patch.object(
             type(browser), "app", new_callable=mock.PropertyMock, return_value=app
         ),
         mock.patch(
-            "labnotes.tui.runs_browser.asyncio.create_subprocess_exec",
-            new=mock.AsyncMock(return_value=process),
-        ) as launch,
+            "labnotes.tui.runs_browser.ensure_daemon", new=mock.AsyncMock()
+        ) as ensure,
+        mock.patch(
+            "labnotes.tui.runs_browser.daemon_command", return_value=reply
+        ) as command,
     ):
         asyncio.run(browser.restart("lone"))
     assert expected in browser.restart_status
     status.update.assert_called_with(browser.restart_status)
-    assert launch.await_args is not None
-    assert launch.await_args.args[0:3] == (mock.ANY, "-m", "labnotes")
-    assert launch.await_args.args[-2:] == ("--run-id", "lone")
+    ensure.assert_awaited_once_with(app.config, "alpha")
+    command.assert_called_once_with(
+        app.config, "alpha", {"command": "restart", "options": {"run_id": "lone"}}
+    )
 
 
 def test_lists_every_run_flat(

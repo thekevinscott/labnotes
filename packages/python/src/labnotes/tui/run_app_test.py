@@ -805,6 +805,73 @@ def test_ctrl_c_asks_before_stopping_runs() -> None:
     asyncio.run(drive())
 
 
+def test_detached_app_reads_journal_and_routes_controls(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    journal = mock.Mock(path=tmp_path / "invocation.jsonl")
+    journal.read.return_value = []
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=journal)
+
+    async def drive() -> None:
+        with (
+            mock.patch.object(app, "attach_daemon") as attach,
+            mock.patch.object(app, "queue_command") as queue,
+            mock.patch.object(app, "drive", new=mock.AsyncMock()) as in_process,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                attach.assert_called_once_with()
+                in_process.assert_not_awaited()
+                journal.read.assert_called()
+                app.controls.set_concurrency(3)
+                app.controls.kill("r1")
+                assert queue.call_args_list == [
+                    mock.call(
+                        {
+                            "command": "set_concurrency",
+                            "count": 3,
+                            "journal": str(journal.path),
+                        }
+                    ),
+                    mock.call({"command": "stop_one", "run": "r1"}),
+                ]
+                app.body.cells["r1"] = {"run": "r1"}
+                app.body.folders["r1"] = tmp_path
+                app.body.started["r1"] = 0.0
+                await pilot.press("ctrl+c")
+                await pilot.pause()
+                assert "leave running" in prompt(app)
+                await pilot.press("enter")
+                await pilot.pause()
+                assert not app.is_running
+
+    asyncio.run(drive())
+
+
+def test_detached_stop_waits_for_daemon_reply_before_exit(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    journal = mock.Mock(path=tmp_path / "invocation.jsonl")
+    journal.read.return_value = []
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=journal)
+
+    async def drive() -> None:
+        with (
+            mock.patch.object(app, "attach_daemon"),
+            mock.patch(
+                "labnotes.tui.run_app.daemon_command", return_value={"ok": True}
+            ) as command,
+        ):
+            async with app.run_test() as pilot:
+                app.body.cells["r1"] = {"run": "r1"}
+                app.body.folders["r1"] = tmp_path
+                app.body.started["r1"] = 0.0
+                await pilot.press("ctrl+c", "s")
+                await pilot.pause()
+                command.assert_called_once_with(config, "exp", {"command": "stop_all"})
+                assert not app.is_running
+
+    asyncio.run(drive())
+
+
 def test_ctrl_q_asks_like_ctrl_c() -> None:
     controls = mock.Mock()
 

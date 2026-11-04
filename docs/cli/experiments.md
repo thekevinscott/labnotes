@@ -59,7 +59,7 @@ You can run an experiment with:
 uvx labnotes experiments foo run
 ```
 
-By default, this launches the [TUI](tui).
+In a terminal, this starts or reuses a daemon for the experiment and opens the [TUI](tui). The daemon owns the cells. The TUI reads their state from disk and sends control commands over a local socket. Closing the terminal or losing an SSH connection leaves the runs going; run the command again to open a new TUI. Each experiment has its own daemon for each labnotes version, and it exits shortly after its last run finishes and its last TUI closes.
 
 Use `--headless` to keep the run in the foreground and print events without opening the TUI. In this mode, Ctrl-C or SIGHUP asks labnotes to stop its cells cleanly, including when a terminal or SSH connection closes.
 
@@ -103,9 +103,9 @@ Running an experiment opens a TUI that shows a table of all runs. Pending runs a
 
 A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (2 by default). Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more. See [`retries`](../api/config#retries-1).
 
-One experiment runs from one `run` at a time. A second `run` of the same experiment, filtered or not, refuses before any run starts and says the experiment is already running. Different experiments can run side by side.
+Two `run` invocations of the same experiment can run at once. In a terminal they share the experiment's daemon, while each TUI follows its own invocation. Run locks prevent both invocations from claiming the same cell.
 
-ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) stops them, `s` also stops them, and esc goes back.
+Ctrl-C opens a quit prompt while runs are going. Press `s` to stop them, Enter or `l` to leave them running, or Escape to return to the TUI. The `x` key stops the selected run, and `+` or `-` changes concurrency through the daemon.
 
 `--timeout 1800` stops any run still going after 1800 seconds (30 minutes), with SIGTERM and then SIGKILL 5 seconds later. Each run gets its own 30 minutes. Its `run.json` records `"error": "timed out after 30m 00s"`, so a timeout reads differently from a crash.
 

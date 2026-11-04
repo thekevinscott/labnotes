@@ -63,6 +63,20 @@ def test_prints_help_without_a_command(
     collaborators["load_config"].assert_not_called()
 
 
+def test_hidden_daemon_command_is_registered(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    with (
+        mock.patch("labnotes.daemon_command.load_config") as load_config,
+        mock.patch(
+            "labnotes.daemon_command.serve_daemon", new_callable=mock.AsyncMock
+        ) as serve,
+    ):
+        assert run(["daemon", "exp"]) == 0
+
+    serve.assert_awaited_once_with(load_config.return_value, "exp")
+
+
 def test_context_prints_the_agent_guide_for_the_config(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:

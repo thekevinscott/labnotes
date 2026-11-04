@@ -17,6 +17,8 @@ async def prepare_experiment(
     args: list[str] | None = None,
     setup: str | None = None,
     teardown: str | None = None,
+    retries: int | None = None,
+    replace_capped: bool = False,
 ) -> tuple[ExperimentConfig, int]:
     if config.experiment not in (None, name):
         raise ValueError(
@@ -39,6 +41,10 @@ async def prepare_experiment(
         experiment = dataclasses.replace(experiment, setup=setup)
     if teardown is not None:
         experiment = dataclasses.replace(experiment, teardown=teardown)
+    if retries is not None:
+        experiment = dataclasses.replace(experiment, retries=retries)
+    if replace_capped:
+        experiment = dataclasses.replace(experiment, replace_capped=True)
     if only:
         check_subset(experiment.params, only)
     if args:

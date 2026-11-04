@@ -65,3 +65,5 @@ class ExperimentConfig:
     teardown: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     continues: bool = False
+    # A run option, not a config key: lets a run that used up `retries` free its slot.
+    replace_capped: bool = False

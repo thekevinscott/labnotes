@@ -32,12 +32,23 @@ def start_experiment(
     teardown: str | None,
     command_line: str | None = None,
     run_id: str | None = None,
+    retries: int | None = None,
+    replace_capped: bool = False,
 ) -> ExperimentStart:
     state = RunState.create(config, name)
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         experiment, limit = await prepare_experiment(
-            config, name, experiment_config, concurrency, only, args, setup, teardown
+            config,
+            name,
+            experiment_config,
+            concurrency,
+            only,
+            args,
+            setup,
+            teardown,
+            retries,
+            replace_capped,
         )
         await finalize_lost_runs(config)
         with project_snapshot(config.root) as snapshot:

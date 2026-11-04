@@ -10,7 +10,7 @@ Must be at the project root; the folder holding it is the root. labnotes reads i
 [experiments]
 path = "{experiment}"
 concurrency = 1
-retries = 2
+retries = 3
 
 [files]
 path = "{experiment}/files/"
@@ -55,9 +55,9 @@ Runs at once for every experiment whose `experiment.toml` doesn't set it.
 #### `retries`
 
 - Type: integer, 0 or more
-- Default: `2`
+- Default: `3`
 
-Retries for a run that exits 75, for every experiment whose `experiment.toml` doesn't set it. See [`retries`](#retries-1).
+Retries for a failed run, for every experiment whose `experiment.toml` doesn't set it. See [`retries`](#retries-1).
 
 ### `[files]`
 
@@ -242,13 +242,15 @@ Runs at once. `--concurrency` on the command line overrides it.
 ### `retries`
 
 - Type: integer, 0 or more
-- Default: `[experiments] retries` in `.labnotes.toml`, else `2`
+- Default: `[experiments] retries` in `.labnotes.toml`, else `3`
 
 How many times to retry a run whose command exits 75 (`EX_TEMPFAIL`). Exit 75 means the run failed for a reason outside the experiment, such as no capacity, so labnotes runs it again with the same params. No other exit is retried. The first retry waits 30 seconds and each later one waits twice as long. `0` turns retries off.
 
 Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the id of the run it replaces. The failed run keeps its folder and logs. The default [`counts`](#counts) rule skips it, so a retry doesn't add a repeat. When retries run out, the last run keeps exit 75. Stopping the runs cancels a waiting retry, and a stopped run never retries.
 
 With [`continues`](#continues), a retry runs again in the same folder instead, as another invocation of the same run, and there is no `"retry_of"`.
+
+With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from exit 75 or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) doesn't count; one that was lost, timed out, or killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
 
 ### `memory_interval`
 
@@ -301,3 +303,5 @@ For each combination short of `repeats`, `run` first takes that combination's ru
 Each invocation adds an entry to `"invocations"` in `run.json`: `started`, `ended`, `exit_code`, `ended_by`, `error`, `git` (the commit), `args` (what followed `--`), `labnotes_version`, `labnotes_command`, and the names of its logs. The top-level fields mirror the latest invocation. Each invocation writes its own `stdout-<time>.txt` and `stderr-<time>.txt`, so earlier logs are kept.
 
 While an invocation runs, labnotes holds a lock on `run.lock` in the run folder. A run marked running whose lock nobody holds died with its `run`, for example in a reboot. The next look marks it `"ended_by": "lost"`, and the next `run` invokes it again.
+
+A failed run is invoked again at most [`retries`](#retries-1) times.

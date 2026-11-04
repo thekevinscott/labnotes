@@ -42,7 +42,7 @@ def test_configs_default_to_the_default_retries() -> None:
     project = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
     experiment = ExperimentConfig("run", 1, {})
 
-    assert (project.retries, experiment.retries) == (2, 2)
+    assert (project.retries, experiment.retries) == (3, 3)
 
 
 def test_an_experiment_has_no_meta_command_by_default() -> None:

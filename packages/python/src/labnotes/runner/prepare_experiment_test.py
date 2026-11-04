@@ -169,6 +169,8 @@ class Hooks:
     setup: str
     teardown: str
     concurrency: int = 1
+    retries: int = 3
+    replace_capped: bool = False
 
 
 @pytest.mark.parametrize(
@@ -201,3 +203,30 @@ def test_overrides_the_hooks_with_the_flags(
     )
 
     assert (experiment.setup, experiment.teardown) == expected
+
+
+@pytest.mark.parametrize(
+    ("retries", "replace_capped", "expected"),
+    [(None, False, (3, False)), (0, False, (0, False)), (None, True, (3, True))],
+)
+def test_overrides_retries_and_replace_capped_with_the_flags(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    retries: int | None,
+    replace_capped: bool,
+    expected: tuple[int, bool],
+) -> None:
+    collaborators["read_experiment_config"].return_value = Hooks("up", "down")
+
+    experiment, _ = asyncio.run(
+        prepare_experiment(
+            make_config(tmp_path),
+            "exp",
+            None,
+            None,
+            retries=retries,
+            replace_capped=replace_capped,
+        )
+    )
+
+    assert (experiment.retries, experiment.replace_capped) == expected

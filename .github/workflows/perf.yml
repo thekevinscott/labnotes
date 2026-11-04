@@ -1,0 +1,30 @@
+name: Perf
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  issues: write
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v6
+      - uses: astral-sh/setup-uv@v7
+        with:
+          python-version: '3.12'
+      - id: perf
+        run: uv run pytest tests/perf
+        working-directory: packages/python
+      - if: always()
+        run: uv run --project packages/python python scripts/perf_report.py
+        env:
+          PERF_OUTCOME: ${{ steps.perf.outcome }}
+          GH_TOKEN: ${{ github.token }}

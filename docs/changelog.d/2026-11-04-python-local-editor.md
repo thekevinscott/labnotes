@@ -1,0 +1,1 @@
+Fixed: The note editor and run output now load their JavaScript from the installed Python package, so editing and saving work offline. This reverses the 2026-10-20 behavior where a note stayed read-only without access to the editor CDN.

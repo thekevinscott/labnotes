@@ -6,6 +6,7 @@ import sys
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
+from urllib.parse import urlparse
 
 import pytest
 from playwright.async_api import Page, async_playwright
@@ -94,9 +95,38 @@ def browse(
                 if m.type == "error"
                 else None,
             )
+            external_request: asyncio.Future[str] = (
+                asyncio.get_running_loop().create_future()
+            )
+
+            async def block_external(route) -> None:
+                hostname = urlparse(route.request.url).hostname
+                if hostname not in {"127.0.0.1", "localhost", "::1"}:
+                    if not external_request.done():
+                        external_request.set_result(route.request.url)
+                    await route.abort()
+                else:
+                    await route.continue_()
+
+            await page.route("**/*", block_external)
             await page.goto(url)
-            await check(page)
-            await browser.close()
+            try:
+                if external_request.done():
+                    raise AssertionError(
+                        f"Non-local browser request: {external_request.result()}"
+                    )
+                check_task = asyncio.create_task(check(page))
+                done, _ = await asyncio.wait(
+                    [check_task, external_request], return_when=asyncio.FIRST_COMPLETED
+                )
+                if external_request in done:
+                    check_task.cancel()
+                    raise AssertionError(
+                        f"Non-local browser request: {external_request.result()}"
+                    )
+                await check_task
+            finally:
+                await browser.close()
 
     asyncio.run(drive())
 

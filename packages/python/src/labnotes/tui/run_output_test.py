@@ -1,11 +1,8 @@
+from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
 import pytest
-from rich.console import Console
-from rich.style import Style
-from rich.text import Text
-from textual.geometry import Size
 
 from labnotes.tui.run_output import RunOutput
 
@@ -208,14 +205,26 @@ def test_reuses_a_cached_visible_line() -> None:
         assert output.render_line(0) is cached
 
 
+@pytest.fixture
+def rendered_line() -> Iterator[mock.Mock]:
+    line_text = mock.Mock(plain="red")
+    line_text.__len__ = mock.Mock(return_value=3)
+    line_text.render.return_value = []
+    with (
+        mock.patch("labnotes.tui.run_output.Text.from_ansi", return_value=line_text),
+        mock.patch("labnotes.tui.run_output.Strip"),
+    ):
+        yield line_text
+
+
 @pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
-def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) -> None:
+def test_selection_is_applied_to_a_visible_line(
+    span: tuple[int, int] | None, rendered_line: mock.Mock
+) -> None:
     output = RunOutput()
     output.write_lines(["red"])
     selection = mock.Mock()
     selection.get_span.return_value = span
-    line_text = Text("red")
-    selection_style = Style(reverse=True)
     with (
         mock.patch.object(
             RunOutput, "text_selection", new_callable=mock.PropertyMock
@@ -223,23 +232,19 @@ def test_selection_is_applied_to_a_visible_line(span: tuple[int, int] | None) ->
         mock.patch.object(
             RunOutput, "screen", new_callable=mock.PropertyMock
         ) as screen,
-        mock.patch.object(RunOutput, "app", new_callable=mock.PropertyMock) as app,
-        mock.patch.object(
-            RunOutput, "size", new_callable=mock.PropertyMock, return_value=Size(3, 1)
-        ),
-        mock.patch("labnotes.tui.run_output.Text.from_ansi", return_value=line_text),
+        mock.patch.object(RunOutput, "app", new_callable=mock.PropertyMock),
     ):
         selected.return_value = selection
-        screen.return_value.get_component_rich_style.return_value = selection_style
-        app.return_value.console = Console()
         output.render_line(0)
     selection.get_span.assert_called_once_with(0)
     if span is None:
-        assert line_text.spans == []
+        rendered_line.stylize.assert_not_called()
     else:
-        assert [(s.start, s.end, s.style) for s in line_text.spans] == [
-            (span[0], 3 if span[1] == -1 else span[1], selection_style)
-        ]
+        rendered_line.stylize.assert_called_once_with(
+            screen.return_value.get_component_rich_style.return_value,
+            span[0],
+            3 if span[1] == -1 else span[1],
+        )
     assert 0 not in output._line_cache
 
 

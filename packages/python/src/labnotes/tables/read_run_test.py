@@ -1,6 +1,8 @@
 import json
 from pathlib import Path
 
+import pytest
+
 from labnotes.tables.read_run import read_run
 
 
@@ -88,3 +90,17 @@ def test_points_at_the_logs_of_the_last_invocation(tmp_path: Path) -> None:
         "exp/runs/r1/stdout-2.txt",
         "exp/runs/r1/stderr-2.txt",
     )
+
+
+@pytest.mark.parametrize("contents", ["{not json", ""])
+def test_surfaces_a_damaged_run_record(tmp_path: Path, contents: str) -> None:
+    path = tmp_path / "exp/runs/broken/run.json"
+    path.parent.mkdir(parents=True)
+    path.write_text(contents, encoding="utf-8")
+
+    [row] = read_run(tmp_path, "{experiment}/runs/{run}", str(path))
+
+    assert row["id"] == "broken"
+    assert row["folder"] == "exp/runs/broken"
+    assert "run.json" in str(row["error"])
+    assert row["exit_code"] is None

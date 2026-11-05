@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
@@ -340,6 +341,100 @@ def test_plans_the_runs_still_needed(
         mock.call(A, {}),
         mock.call(B, {}),
     ]
+
+
+def test_claims_queued_repeats_before_another_client_plans(tmp_path: Path) -> None:
+    started = asyncio.Event()
+    release = asyncio.Event()
+    first_planned: list[dict[str, object]] = []
+    second_planned: list[dict[str, object]] = []
+    config = mock.Mock(root=tmp_path, runs="{experiment}/runs/{run}")
+    configured = experiment(retries=0)
+    configured.params = {}
+    configured.repeats = 3
+
+    async def listed(*_: object) -> list[dict[str, object]]:
+        rows = []
+        for record in (tmp_path / "exp/runs").glob("*/run.json"):
+            data = json.loads(record.read_text())
+            rows.append(
+                {
+                    "id": record.parent.name,
+                    "folder": str(record.parent.relative_to(tmp_path)),
+                    "params": json.dumps(data["params"]),
+                    "counted": 0,
+                    "ended": data.get("ended"),
+                }
+            )
+        return rows
+
+    async def execute(*_: object, **__: object) -> dict[str, object]:
+        started.set()
+        await release.wait()
+        return {"exit_code": 0, "error": None}
+
+    second_read = asyncio.Event()
+
+    def report(events: list[dict[str, object]]):
+        def record(event: dict[str, object]) -> None:
+            if event["event"] == "planned":
+                events.append(event)
+                if events is second_planned:
+                    second_read.set()
+
+        return record
+
+    async def go() -> None:
+        with (
+            mock.patch("labnotes.runner.run_experiment.open_tables"),
+            mock.patch(
+                "labnotes.runner.run_experiment.list_experiment_runs",
+                side_effect=listed,
+            ),
+            mock.patch(
+                "labnotes.runner.run_experiment.experiment_run_ids",
+                new=mock.AsyncMock(return_value=set()),
+            ),
+            mock.patch(
+                "labnotes.runner.run_experiment.execute_run", side_effect=execute
+            ),
+        ):
+
+            def listener(controls: object) -> None:
+                controls.finish()  # type: ignore[attr-defined]
+
+            one = asyncio.create_task(
+                run_experiment(
+                    config,
+                    "exp",
+                    configured,
+                    1,
+                    report(first_planned),
+                    listener,
+                    run_state=mock.Mock(),
+                )
+            )
+            await asyncio.wait_for(started.wait(), 5)
+            two = asyncio.create_task(
+                run_experiment(
+                    config,
+                    "exp",
+                    configured,
+                    1,
+                    report(second_planned),
+                    listener,
+                    run_state=mock.Mock(),
+                )
+            )
+            try:
+                await asyncio.wait_for(second_read.wait(), 5)
+            finally:
+                release.set()
+                await asyncio.wait_for(asyncio.gather(one, two), 5)
+
+    settle(go())
+    assert len(first_planned[0]["runs"]) == 3
+    assert second_planned[0]["runs"] == []
 
 
 def test_passes_snapshot_root_and_starting_git_info_to_cells(

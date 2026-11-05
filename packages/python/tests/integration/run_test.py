@@ -78,6 +78,64 @@ def test_runs_every_param_combination_repeats_times(
     assert capsys.readouterr().out.endswith("2 passed, 2 failed.\n")
 
 
+def test_overlapping_headless_clients_share_the_repeat_budget(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(
+        tmp_path / "sleep.py",
+        "import pathlib, time\n"
+        "pathlib.Path('started').write_text('yes')\n"
+        "time.sleep(1.5)\n",
+    )
+    write(
+        tmp_path / "exp/experiment.toml",
+        f'continues = false\ncommand = "{sys.executable} sleep.py"\nrepeats = 3\n',
+    )
+    command = [
+        str(Path(sys.executable).parent / "labnotes"),
+        "-c",
+        str(tmp_path / ".labnotes.toml"),
+        "experiments",
+        "exp",
+        "run",
+        "--headless",
+        "--concurrency",
+        "1",
+    ]
+    first = subprocess.Popen(
+        command,
+        cwd=tmp_path,
+        stdout=subprocess.PIPE,
+        stderr=subprocess.STDOUT,
+        text=True,
+    )
+    second = None
+    try:
+        for _ in range(100):
+            if (tmp_path / "started").exists():
+                break
+            time.sleep(0.02)
+        else:
+            raise AssertionError("first client never started")
+        second = subprocess.Popen(
+            command,
+            cwd=tmp_path,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.STDOUT,
+            text=True,
+        )
+        second_output, _ = second.communicate(timeout=15)
+        first_output, _ = first.communicate(timeout=15)
+        assert first.returncode == 0, first_output
+        assert second.returncode == 0, second_output
+        assert len(runs(tmp_path)) == 3
+        assert second_output.endswith("0 passed, 0 failed.\n")
+    finally:
+        for process in (first, second):
+            if process is not None and process.poll() is None:
+                process.kill()
+                process.wait()
+
+
 def test_reruns_only_the_runs_that_failed(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

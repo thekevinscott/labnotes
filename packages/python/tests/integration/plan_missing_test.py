@@ -8,7 +8,7 @@ import pytest
 
 from labnotes.cli import main
 from conftest import run_tui_command
-from curtaincall import Terminal
+from curtaincall import Terminal, expect
 
 # Exits 1 the first time it runs a value listed in fail.txt, 0 otherwise.
 SCRIPT = """
@@ -233,10 +233,7 @@ def test_second_run_sees_the_first_as_held(
         assert len(runs(root)) == 1
     finally:
         (root / "hold.txt").unlink()
-        for _ in range(200):
-            if all(row.get("ended") for row in runs(root).values()):
-                break
-            time.sleep(0.05)
+        expect(first.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=30)
         first.key_ctrl_c()
         first.wait(timeout=10)
         first.kill()

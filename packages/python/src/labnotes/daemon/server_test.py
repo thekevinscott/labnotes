@@ -571,3 +571,38 @@ def test_server_creates_its_folder_and_waits_for_invocations(tmp_path: Path) -> 
         asyncio.run(serve_daemon(config(tmp_path), "exp"))
     assert lock.exists()
     assert finished == ["run"]
+
+
+def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None:
+    planned = {"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]}
+    later = {"event": "planned", "runs": [{"run": "r9", "params": {"m": "z"}}]}
+    live = tmp_path / "live.jsonl"
+    live.write_text(json.dumps(planned) + "\n" + json.dumps(later) + "\n")
+    stopping = tmp_path / "stopping.jsonl"
+    stopping.write_text(
+        json.dumps({**planned, "runs": [{"run": "r2", "params": {"m": "b"}}]})
+        + "\n"
+        + json.dumps({"event": "stopping"})
+        + "\n"
+    )
+
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        for path in (live, stopping, tmp_path / "gone.jsonl"):
+            daemon.active[str(path)] = Invocation()
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
+
+        async def fail_early(report, listen):
+            raise ValueError("stop here")
+
+        selected.side_effect = fail_early
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ) as start:
+            await daemon.start({"environment": {"KEY": "value"}})
+        assert start.call_args.args[14:] == (
+            {"r1": {"m": "a"}},
+            {"KEY": "value"},
+        )
+
+    asyncio.run(drive())

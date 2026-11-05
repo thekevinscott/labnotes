@@ -1,18 +1,15 @@
 import asyncio
 import os
 from pathlib import Path
-
-import pytest
+from unittest import mock
 
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.signal_tree import signal_tree
 
 
 def test_timeout_kills_the_labeled_container(
-    tmp_path: Path, fake_docker: dict[str, str], monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, fake_docker: dict[str, str]
 ) -> None:
-    for key, value in fake_docker.items():
-        monkeypatch.setenv(key, value)
     folder = tmp_path / "run"
     folder.mkdir()
     state = Path(fake_docker["FAKE_DOCKER_STATE"])
@@ -39,6 +36,7 @@ def test_timeout_kills_the_labeled_container(
             environment={**os.environ, **fake_docker},
         )
 
-    result = asyncio.run(go())
+    with mock.patch.dict(os.environ, fake_docker):
+        result = asyncio.run(go())
     assert result["ended_by"] == "timeout"
     assert not state.exists(), "timed-out Docker client left its container running"

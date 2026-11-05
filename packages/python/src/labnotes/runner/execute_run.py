@@ -16,6 +16,7 @@ from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.record_memory import record_memory
 from labnotes.runner.run_git import run_git
 from labnotes.runner.shell_command import shell_command
+from labnotes.runner.stop_containers import stop_containers
 from labnotes.runner.stop_then_kill import GRACE_SECONDS
 from labnotes.runner.wait_for_tree import wait_for_tree
 from labnotes.runner.write_run_json import write_run_json
@@ -157,6 +158,8 @@ async def execute_run(
                 # is gone. A normal exit ends the run even if helpers linger.
                 if stopping.is_set() or kill_later is not None:
                     await wait_for_tree(tree)
+                if stopping.is_set() or kill_later is not None or stopped():
+                    await asyncio.to_thread(stop_containers, str(folder.resolve()))
             finally:
                 if kill_later is not None:
                     kill_later.cancel()

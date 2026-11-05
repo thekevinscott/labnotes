@@ -39,7 +39,9 @@ def project_snapshot(root: Path) -> Iterator[ProjectSnapshot]:
         sha = git(root, "rev-parse", "HEAD").decode("ascii").strip()
         repo_root = Path(git(root, "rev-parse", "--show-toplevel").decode().strip())
         project_prefix = root.resolve().relative_to(repo_root.resolve())
-        diff = git(repo_root, "diff", "HEAD") + untracked_diff(repo_root)
+        diff = git(repo_root, "diff", "--submodule=diff", "HEAD") + untracked_diff(
+            repo_root
+        )
     except (OSError, subprocess.SubprocessError):
         logging.warning("Project has no readable Git HEAD; running from the live tree")
         yield ProjectSnapshot(root)

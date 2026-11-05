@@ -113,6 +113,18 @@ def test_reads_the_named_experiment_config(
     )
 
 
+def test_resolves_a_relative_experiment_config_before_reading(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    prepare(tmp_path, Path("alt/experiment.toml"))
+
+    path = tmp_path / "alt/experiment.toml"
+    collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
+    collaborators["read_experiment_config"].assert_called_once_with(
+        path, "source", 3, 4, {}, 6
+    )
+
+
 def test_needs_an_experiment_config(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

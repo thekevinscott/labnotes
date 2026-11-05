@@ -430,6 +430,7 @@ def test_runs_each_planned_run_in_a_new_folder(
             "title": "exp",
             "runs": [{"run": "r1", "params": A}, {"run": "r2", "params": B}],
             "concurrency": 1,
+            "hooks": [],
         },
         {
             "event": "started",
@@ -546,12 +547,26 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
 
     assert [c[0] for c in order.mock_calls] == ["hook", "run", "run", "hook"]
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up", mock.ANY),
-        mock.call(tmp_path, "teardown", "down", mock.ANY),
+        mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"]),
+        mock.call(tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]),
     ]
-    events = [c.args[0]["event"] for c in report.call_args_list]
-    assert events[1] == "setting up"
-    assert events[-2:] == ["tearing down", "idle"]
+    events = [c.args[0] for c in report.call_args_list]
+    stamp = collaborators["invocation_hook"].await_args_list[0].args[4].name
+    logs = tmp_path / "exp" / ".labnotes" / "logs"
+    assert events[0]["hooks"] == ["setup", "teardown"]
+    assert events[1:3] == [
+        {"event": "setting up", "hook": "setup", "folder": logs / "setup" / stamp},
+        {"event": "hook ended", "hook": "setup", "error": None},
+    ]
+    assert events[-3:] == [
+        {
+            "event": "tearing down",
+            "hook": "teardown",
+            "folder": logs / "teardown" / stamp,
+        },
+        {"event": "hook ended", "hook": "teardown", "error": None},
+        {"event": "idle"},
+    ]
 
 
 def test_checks_the_hooks_and_runs_them_unfilled(
@@ -565,8 +580,8 @@ def test_checks_the_hooks_and_runs_them_unfilled(
         {"setup": "up", "teardown": "down", "meta": None}
     )
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up", mock.ANY),
-        mock.call(tmp_path, "teardown", "down", mock.ANY),
+        mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"]),
+        mock.call(tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]),
     ]
 
 
@@ -575,7 +590,9 @@ def test_keeps_a_temp_state_file_through_teardown(
 ) -> None:
     seen: list[tuple[str, bool]] = []
 
-    async def hook(root: Path, name: str, command: str, env: dict[str, str]) -> None:
+    async def hook(
+        root: Path, name: str, command: str, env: dict[str, str], *rest: object
+    ) -> None:
         folder = Path(env["LABNOTES_STATE"]).parent
         seen.append((env["LABNOTES_STATE"], folder.is_dir()))
 
@@ -650,7 +667,21 @@ def test_starts_no_runs_and_still_tears_down_when_setup_fails(
 
     collaborators["execute_run"].assert_not_awaited()
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
-        tmp_path, "teardown", "down", mock.ANY
+        tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]
+    )
+
+
+def test_reports_a_failed_setup_as_ended_with_its_error(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["invocation_hook"].side_effect = [ValueError("setup failed"), None]
+    report = mock.Mock()
+
+    with pytest.raises(ValueError, match="setup failed"):
+        start_with_hooks(tmp_path, report)
+
+    report.assert_any_call(
+        {"event": "hook ended", "hook": "setup", "error": "setup failed"}
     )
 
 
@@ -698,7 +729,7 @@ def test_tears_down_after_an_interrupt_during_setup(
 
     collaborators["execute_run"].assert_not_awaited()
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
-        tmp_path, "teardown", "down", mock.ANY
+        tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]
     )
 
 

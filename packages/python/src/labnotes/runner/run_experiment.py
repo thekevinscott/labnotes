@@ -20,6 +20,7 @@ from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.execute_run import execute_run
 from labnotes.runner.fill_experiment_env import fill_experiment_env
 from labnotes.runner.fill_dirs import fill_dirs
+from labnotes.runner.hook_folder import hook_folder
 from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
@@ -186,6 +187,7 @@ async def run_experiment(
             "title": experiment.name or name,
             "runs": runs,
             "concurrency": concurrency,
+            "hooks": [hook for hook in ("setup", "teardown") if hooks[hook]],
         }
     )
     for row in held:
@@ -369,15 +371,26 @@ async def run_experiment(
         if run not in waiting:
             release(run)
 
-    async def teardown() -> None:
-        if experiment.teardown is not None:
-            emit({"event": "tearing down"})
+    async def run_hook(hook: str, command: str, announce: str) -> None:
+        folder = hook_folder(config, name, hook, state.path.stem)
+        emit({"event": announce, "hook": hook, "folder": folder})
+        try:
             await invocation_hook(
                 command_root,
-                "teardown",
-                experiment.teardown,
-                hook_env["teardown"],
+                hook,
+                command,
+                hook_env[hook],
+                folder,
+                [str(entry["run"]) for entry in runs],
             )
+        except Exception as failure:
+            emit({"event": "hook ended", "hook": hook, "error": str(failure)})
+            raise
+        emit({"event": "hook ended", "hook": hook, "error": None})
+
+    async def teardown() -> None:
+        if experiment.teardown is not None:
+            await run_hook("teardown", experiment.teardown, "tearing down")
 
     listen(Controls(interrupt, set_concurrency, kill, finish))
     with TemporaryDirectory(prefix="labnotes-state-") as state_dir:
@@ -388,13 +401,7 @@ async def run_experiment(
         # Like vitest's globalSetup: a failed setup still gets its teardown.
         try:
             if experiment.setup is not None:
-                emit({"event": "setting up"})
-                await invocation_hook(
-                    command_root,
-                    "setup",
-                    experiment.setup,
-                    hook_env["setup"],
-                )
+                await run_hook("setup", experiment.setup, "setting up")
             fill()
             await done.wait()
             await asyncio.gather(*started)

@@ -11,6 +11,7 @@ from unittest import mock
 import pytest
 
 from labnotes.cli import main
+from conftest import run_tui_command
 from labnotes.models import Controls
 from labnotes.read_config import read_config
 from labnotes.runner.prepare_experiment import prepare_experiment
@@ -92,6 +93,8 @@ def timed_run(root: Path, *flags: str) -> float:
 
 
 def labnotes(root: Path, argv: list[str]) -> int | str | None:
+    if len(argv) >= 3 and argv[0] == "experiments" and argv[2] == "run":
+        return run_tui_command(root, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(root / ".labnotes.toml"), *argv])
     return exit_info.value.code

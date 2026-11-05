@@ -193,7 +193,7 @@ Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every
 - Type: string
 - Default: none
 
-Shell command that labnotes runs once per `run`, from the project root, after [`meta`](#meta) and before the first run starts. While it runs, the TUI and headless output show `Setting up.`
+Shell command that labnotes runs once per `run`, from the project root, after [`meta`](#meta) and before the first run starts. While it runs, the TUI shows `Setting up.`
 
 A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
 
@@ -212,7 +212,7 @@ Shell command that labnotes runs once per `run`, from the project root, after ev
 
 A non-zero exit fails the invocation, with the command and its stderr in the error. The runs' results are already recorded. If setup or the invocation had already failed, that error is the one reported, and the teardown failure is shown as a line of output.
 
-In the TUI, the invocation ends when you quit, so teardown runs then, not when the last run ends. Closing the terminal stops the runs before teardown.
+The daemon runs teardown after the last run ends. Leaving or losing the TUI does not stop its runs.
 
 Like `setup`, it gets no folder placeholders and fails before setup if its command uses one. It reads what setup saved with [`get_state`](sdk#set-state-and-get-state).
 

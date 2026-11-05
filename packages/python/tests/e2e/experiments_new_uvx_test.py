@@ -1,3 +1,4 @@
+from conftest import run_uvx_tui
 import os
 import subprocess
 import sys
@@ -6,6 +7,8 @@ from pathlib import Path
 
 
 def labnotes(root: Path, uvx: dict[str, str], *argv: str) -> str:
+    if len(argv) >= 2 and argv[1] == "run":
+        return run_uvx_tui(root, uvx, "experiments", *argv).stdout
     result = subprocess.run(
         ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), "experiments", *argv],
         cwd=root,

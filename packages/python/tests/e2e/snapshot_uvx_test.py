@@ -1,7 +1,10 @@
 import os
+import shlex
 import subprocess
 import time
 from pathlib import Path
+
+from curtaincall import Terminal, expect
 
 
 def test_uvx_run_reads_code_captured_before_live_edit(
@@ -40,37 +43,35 @@ def test_uvx_run_reads_code_captured_before_live_edit(
         cwd=root,
         check=True,
     )
-    process = subprocess.Popen(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
+    term = Terminal(
+        shlex.join(
+            [
+                "uvx",
+                "labnotes",
+                "-c",
+                str(root / ".labnotes.toml"),
+                "experiments",
+                "exp",
+                "run",
+            ]
+        ),
+        rows=30,
+        cols=120,
         env={**os.environ, **uvx},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
     )
+    term.start()
     try:
         for _ in range(300):
             if (root / "data/ready").exists():
                 break
-            if process.poll() is not None:
-                break
             time.sleep(0.05)
-        assert (root / "data/ready").exists(), process.communicate(timeout=2)[0]
+        assert (root / "data/ready").exists(), term._get_screen_text()
         (root / "value.py").write_text('VALUE = "after"\n')
         (root / "data/go").touch()
-        output, _ = process.communicate(timeout=20)
-        assert process.returncode == 0, output
+        expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=20)
+        term.key_ctrl_c()
+        assert term.wait(timeout=10) == 0
         [result] = list((root / "runs/exp").glob("*/result.txt"))
         assert result.read_text() == "before"
     finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
+        term.kill()

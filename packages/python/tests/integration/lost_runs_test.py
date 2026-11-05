@@ -6,7 +6,7 @@ from pathlib import Path
 
 import psutil
 
-from conftest import write
+from conftest import run_tui_command, write
 
 
 UNFINISHED = {
@@ -44,14 +44,7 @@ def test_run_start_ends_runs_whose_process_died(tmp_path: Path) -> None:
     alive = add_run(tmp_path, "alive", pid=me.pid, pid_created=me.create_time())
     done = add_run(tmp_path, "done", exit_code=0, ended="2026-10-17T00:01:00Z")
 
-    labnotes = Path(sys.executable).parent / "labnotes"
-    subprocess.run(
-        [labnotes, "-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"],
-        cwd=tmp_path,
-        check=True,
-        capture_output=True,
-        text=True,
-    )
+    assert run_tui_command(tmp_path, ["experiments", "exp", "run"]) == 0
 
     for path in (never_launched, died, reused):
         run = read(path)

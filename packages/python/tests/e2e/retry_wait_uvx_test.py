@@ -1,6 +1,5 @@
+from conftest import run_uvx_tui
 import json
-import os
-import subprocess
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -50,15 +49,7 @@ def test_uvx_a_short_retry_wait_retries_sooner(
         f'continues = false\ncommand = "{sys.executable} script.py"\n{experiment}'
     )
 
-    result = subprocess.run(
-        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml")]
-        + ["experiments", "exp", "run", *flags],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    result = run_uvx_tui(root, uvx, "experiments", "exp", "run", *flags)
 
     assert result.returncode == 0, result.stdout + result.stderr
     assert "1 passed, 0 failed. 1 retried." in result.stdout

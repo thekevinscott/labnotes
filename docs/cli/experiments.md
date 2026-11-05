@@ -61,7 +61,7 @@ uvx labnotes experiments foo run
 
 In a terminal, this starts or reuses a daemon for the experiment and opens the [TUI](tui). The daemon owns the cells. The TUI reads their state from disk and sends control commands over a local socket. Closing the terminal or losing an SSH connection leaves the runs going; run the command again to open a new TUI. Each experiment has its own daemon for each labnotes version, and it exits shortly after its last run finishes and its last TUI closes.
 
-Use `--headless` to keep the run in the foreground and print events without opening the TUI. In this mode, Ctrl-C or SIGHUP asks labnotes to stop its cells cleanly, including when a terminal or SSH connection closes.
+`run` requires a terminal. In scripts, open it in a PTY and drive the TUI.
 
 To stop every cell owned by a live experiment daemon from another shell, run:
 
@@ -109,7 +109,7 @@ Ctrl-C opens a quit prompt while runs are going. Press `s` to stop them, Enter o
 
 `--timeout 1800` stops any run still going after 1800 seconds (30 minutes), with SIGTERM and then SIGKILL 5 seconds later. Each run gets its own 30 minutes. Its `run.json` records `"error": "timed out after 30m 00s"`, so a timeout reads differently from a crash.
 
-`run.json` also records why a run ended, in `ended_by`: `"timeout"` for `--timeout`, `"stop"` when labnotes stopped it (Ctrl-C, SIGHUP, or killing the run in the TUI), `"signal"` when a signal labnotes didn't send ended it, like the kernel's out-of-memory killer, `"lost"` when the process running it died without labnotes noticing (labnotes was killed, the machine rebooted), and `null` when the script exited on its own. `signal` holds the signal number, read from the exit code: a negative code, or 128 plus the number when the shell reports it (137 is SIGKILL, 9). A script that catches a signal and exits with its own code leaves `signal` null, and one that exits 137 on purpose reads as SIGKILL.
+`run.json` also records why a run ended, in `ended_by`: `"timeout"` for `--timeout`, `"stop"` when labnotes stopped it (`s` at the TUI's quit prompt, `experiments NAME stop`, or killing the run in the TUI), `"signal"` when a signal labnotes didn't send ended it, like the kernel's out-of-memory killer, `"lost"` when the process running it died without labnotes noticing (labnotes was killed, the machine rebooted), and `null` when the script exited on its own. `signal` holds the signal number, read from the exit code: a negative code, or 128 plus the number when the shell reports it (137 is SIGKILL, 9). A script that catches a signal and exits with its own code leaves `signal` null, and one that exits 137 on purpose reads as SIGKILL.
 
 `run.json` also records the labnotes version that ran the run, in `labnotes_version`, and the labnotes command line that started it, in `labnotes_command`, so you can tell which release ran an old run and launch it again the same way.
 

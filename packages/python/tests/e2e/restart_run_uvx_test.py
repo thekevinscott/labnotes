@@ -1,5 +1,5 @@
+from conftest import run_uvx_tui
 import json
-import os
 import subprocess
 import sys
 from pathlib import Path
@@ -8,23 +8,7 @@ from pathlib import Path
 def run(
     root: Path, uvx: dict[str, str], *args: str
 ) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-            *args,
-        ],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    return run_uvx_tui(root, uvx, "experiments", "exp", "run", *args)
 
 
 def test_uvx_restarts_only_the_selected_failed_run(

@@ -5,9 +5,7 @@ from importlib.metadata import version
 from pathlib import Path
 from typing import Any
 
-import pytest
-
-from labnotes.cli import main
+from conftest import run_tui_command
 
 
 def make_project(root: Path) -> Path:
@@ -17,12 +15,6 @@ def make_project(root: Path) -> Path:
         f'command = "{sys.executable} -c pass"\ncontinues = false\n[params]\nm = ["a", "b"]\n'
     )
     return root
-
-
-def labnotes(argv: list[str]) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        main(argv)
-    assert exit_info.value.code == 0
 
 
 def only_run(root: Path) -> dict[str, Any]:
@@ -36,7 +28,7 @@ def test_records_the_labnotes_version_and_command_line(tmp_path: Path) -> None:
     argv = ["-c", str(root / ".labnotes.toml"), "experiments", "exp", "run"]
     argv += ["--m=a", "--timeout", "60", "--", "--auth", "api key"]
 
-    labnotes(argv)
+    assert run_tui_command(root, argv[2:]) == 0
 
     run = only_run(root)
     assert run["labnotes_version"] == version("labnotes")

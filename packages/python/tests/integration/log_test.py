@@ -8,7 +8,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.cli import main
+from conftest import run_tui_command
 
 SCRIPT = """
 from labnotes import log
@@ -64,8 +64,7 @@ def test_a_run_logs_to_its_own_folder(tmp_path: Path, outer_log: Path) -> None:
         f'continues = false\ncommand = "{sys.executable} script.py"\n'
     )
 
-    with pytest.raises(SystemExit):
-        main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
+    assert run_tui_command(tmp_path, ["experiments", "exp", "run"]) == 0
 
     [path] = (tmp_path / "exp" / "runs").glob("**/log.jsonl")
     blocks = [json.loads(line) for line in path.read_text().splitlines()]

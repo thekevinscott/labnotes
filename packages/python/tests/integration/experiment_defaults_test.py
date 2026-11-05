@@ -7,6 +7,7 @@ import pytest
 from conftest import write
 
 from labnotes.cli import main
+from conftest import run_tui_command
 
 SCRIPT = """
 import sys
@@ -20,6 +21,8 @@ args.remove("--out")
 
 
 def labnotes(project: Path, argv: list[str]) -> int | str | None:
+    if len(argv) >= 3 and argv[0] == "experiments" and argv[2] == "run":
+        return run_tui_command(project, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(project / ".labnotes.toml"), *argv])
     return exit_info.value.code

@@ -1,6 +1,6 @@
 # TUI
 
-`labnotes experiments NAME run` opens the TUI when stdout and stderr are both a terminal. The listing forms open a read-only [browser](#browsing) the same way.
+`labnotes experiments NAME run` requires stdout and stderr to be terminals and opens the TUI. The listing forms open a read-only [browser](#browsing) the same way.
 
 Each table numbers its rows from 1 down the left edge. The numbers follow the rows shown, so a filter renumbers them.
 
@@ -57,9 +57,9 @@ Ctrl-C with nothing running quits. With runs going, it asks what to do with them
 
 So two Ctrl-Cs always quit without losing work. To stop one run, use `x` on its row.
 
-The live table belongs to the foreground `run` process. Quitting it stops its runs.
+The daemon owns the runs. Quitting the TUI can stop or leave them running.
 
-Closing the terminal leaves the runs going. Sending SIGTERM stops them like `s`.
+Closing the terminal leaves the runs going.
 
 ## Browsing
 

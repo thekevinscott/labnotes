@@ -1,99 +1,74 @@
 import json
 import os
+import re
+import shlex
 import signal
-import subprocess
 import sys
 import time
 from pathlib import Path
 
-import psutil
+from curtaincall import Terminal, expect
 
 from labnotes.runner.run_locked import run_locked
 
 
-def test_sighup_stops_child_and_records_run(tmp_path: Path) -> None:
+def command(root: Path) -> str:
+    return shlex.join(
+        [
+            str(Path(sys.executable).parent / "labnotes"),
+            "-c",
+            str(root / ".labnotes.toml"),
+            "experiments",
+            "exp",
+            "run",
+        ]
+    )
+
+
+def test_sighup_of_tui_leaves_daemon_run_alive(tmp_path: Path) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
-        f"continues = false\ncommand = \"{sys.executable} -c 'import time; time.sleep(600)'\"\n"
+        f"continues = false\ncommand = \"{sys.executable} -c 'import time; time.sleep(2)'\"\n"
     )
-    command = [
-        str(Path(sys.executable).parent / "labnotes"),
-        "-c",
-        str(tmp_path / ".labnotes.toml"),
-        "experiments",
-        "exp",
-        "run",
-    ]
-    process = subprocess.Popen(
-        command,
-        cwd=tmp_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-    )
-    child_pid = None
+    term = Terminal(command(tmp_path), rows=30, cols=120)
+    term.start()
     try:
-        for _ in range(200):
+        for _ in range(100):
             records = list(tmp_path.glob("exp/runs/*/run.json"))
-            if records:
-                record = json.loads(records[0].read_text())
-                if record.get("pid"):
-                    child_pid = record["pid"]
-                    break
+            if records and json.loads(records[0].read_text()).get("pid"):
+                break
             time.sleep(0.05)
-        assert child_pid is not None, "run did not start"
-        children = [
-            child_pid,
-            *(
-                child.pid
-                for child in psutil.Process(child_pid).children(recursive=True)
-            ),
-        ]
-        process.send_signal(signal.SIGHUP)
-        output, _ = process.communicate(timeout=15)
-        assert process.returncode is not None, output
-        record = json.loads(records[0].read_text())
-        assert record["ended_by"] == "stop", record
-        assert record["ended"] is not None
-        assert not psutil.pid_exists(child_pid), f"child {child_pid} survived"
+        assert records
+        assert term._child is not None
+        os.kill(term._child.pid, signal.SIGHUP)
+        term.wait(timeout=10)
+        for _ in range(100):
+            record = json.loads(records[0].read_text())
+            if record.get("ended"):
+                break
+            time.sleep(0.05)
+        assert record["exit_code"] == 0
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.wait()
-        for pid in locals().get("children", []):
-            if psutil.pid_exists(pid):
-                try:
-                    os.kill(pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
+        term.kill()
 
 
-def test_run_leaves_no_daemon_socket_or_held_lock(tmp_path: Path) -> None:
+def test_tui_run_releases_its_run_lock(tmp_path: Path) -> None:
     (tmp_path / ".labnotes.toml").write_text("")
     (tmp_path / "exp").mkdir()
     (tmp_path / "exp/experiment.toml").write_text(
         f'continues = false\ncommand = "{sys.executable} -c pass"\n'
     )
-    command = [
-        str(Path(sys.executable).parent / "labnotes"),
-        "-c",
-        str(tmp_path / ".labnotes.toml"),
-        "experiments",
-        "exp",
-        "run",
-    ]
-    result = subprocess.run(
-        command, cwd=tmp_path, capture_output=True, text=True, timeout=30
-    )
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert not list(tmp_path.rglob("*.sock"))
-    locks = list(tmp_path.rglob("*.lock"))
-    assert len(locks) == 1
-    assert not run_locked(locks[0].parent)
-    assert not any(
-        "daemon" in " ".join(info.info["cmdline"]).lower()
-        and str(tmp_path) in " ".join(info.info["cmdline"])
-        for info in psutil.process_iter(["cmdline"])
-        if info.pid != os.getpid() and info.info["cmdline"]
-    )
+    term = Terminal(command(tmp_path), rows=30, cols=120)
+    term.start()
+    try:
+        expect(term.get_by_text(re.compile(r"1 passed, 0 failed\."))).to_be_visible(
+            timeout=20
+        )
+        term.key_ctrl_c()
+        assert term.wait(timeout=10) == 0
+        locks = list(tmp_path.rglob("*.lock"))
+        assert len(locks) == 1
+        assert not run_locked(locks[0].parent)
+    finally:
+        term.kill()

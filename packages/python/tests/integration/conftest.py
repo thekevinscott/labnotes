@@ -148,3 +148,44 @@ def tmp_path(tmp_path: Path) -> Path:
 @pytest.fixture
 def site(tmp_path: Path) -> Iterator[str]:
     yield from serve(project(tmp_path))
+
+
+def run_tui_command(
+    root: Path, argv: list[str], timeout: float = 120, env: dict[str, str] | None = None
+) -> int:
+    """Drive a completed experiment through the real CLI and TUI in a PTY."""
+    import re
+    import shlex
+
+    from curtaincall import Terminal
+
+    executable = Path(sys.executable).parent / "labnotes"
+    command = shlex.join([str(executable), "-c", str(root / ".labnotes.toml"), *argv])
+    term = Terminal(
+        "/bin/sh -c " + shlex.quote(f"cd {shlex.quote(str(root))} && exec {command}"),
+        rows=30,
+        cols=300,
+        env=env,
+    )
+    term.start()
+    summary = re.compile(r"\d+ passed, \d+ failed\.(?: \d+ retried\.)?")
+    deadline = time.monotonic() + timeout
+    try:
+        while time.monotonic() < deadline:
+            screen = term._get_screen_text()
+            found = summary.search(screen)
+            if found:
+                print(screen.strip())
+                print(found.group())
+                term.key_ctrl_c()
+                return term.wait(timeout=10)
+            if not term.is_alive:
+                code = term.wait(timeout=2)
+                print(screen.strip(), file=sys.stderr)
+                return code
+            time.sleep(0.05)
+        raise TimeoutError(
+            f"TUI did not finish within {timeout}s: {term.to_snapshot()}"
+        )
+    finally:
+        term.kill()

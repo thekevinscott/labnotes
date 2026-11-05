@@ -13,6 +13,7 @@ The skill tells the agent to read `uvx labnotes context` before running anything
 ## Running experiments
 
 Start `uvx labnotes experiments NAME run` in a dedicated tmux window. The
-foreground process schedules runs and shows the live table there. Closing the
-window or pressing Ctrl-C stops its runs. Agents can inspect saved results with
+TUI shows the live table while a daemon schedules the runs. Closing the
+window leaves runs going; Ctrl-C asks whether to stop them or leave them
+going. Agents can inspect saved results with
 `uvx labnotes experiments NAME runs --format json`.

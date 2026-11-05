@@ -35,6 +35,8 @@ def start_experiment(
     retries: int | None = None,
     retry_wait: float | None = None,
     replace_capped: bool = False,
+    reserved: dict[str, dict[str, object]] | None = None,
+    environment: dict[str, str] | None = None,
 ) -> ExperimentStart:
     state = RunState.create(config, name)
 
@@ -68,6 +70,8 @@ def start_experiment(
                 command_line=command_line,
                 run_id=run_id,
                 run_state=state,
+                reserved=reserved,
+                environment=environment,
             )
 
     return ExperimentStart(state, start)

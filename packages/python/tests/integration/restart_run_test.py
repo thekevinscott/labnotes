@@ -8,7 +8,7 @@ from pathlib import Path
 import pytest
 import psutil
 
-from labnotes.cli import main
+from conftest import run_tui_command
 from labnotes.daemon.client import daemon_socket
 from labnotes.read_config import read_config
 
@@ -69,9 +69,7 @@ def project(root: Path, continues: bool) -> Path:
 
 
 def run(root: Path, *args: str) -> None:
-    with pytest.raises(SystemExit) as exit_info:
-        main(["-c", str(root / ".labnotes.toml"), "experiments", "exp", "run", *args])
-    assert exit_info.value.code == 0
+    assert run_tui_command(root, ["experiments", "exp", "run", *args]) == 0
 
 
 def records(root: Path) -> dict[str, dict[str, object]]:

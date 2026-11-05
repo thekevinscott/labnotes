@@ -1,4 +1,7 @@
 import json
+import shlex
+
+from curtaincall import Terminal, expect
 import os
 import pty
 import signal
@@ -164,15 +167,21 @@ def test_uvx_browse_restart_survives_tui_kill(
         f'command = "{sys.executable} script.py"\ncontinues = false\nretries = 0\n'
     )
     base = ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), "experiments", "exp"]
-    first = subprocess.run(
-        [*base, "run", "--headless"],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=30,
+    first_runtime_dir = TemporaryDirectory(prefix="ln-runtime-")
+    first_runtime = Path(first_runtime_dir.name)
+    first = Terminal(
+        shlex.join([*base, "run"]),
+        rows=30,
+        cols=120,
+        env={**os.environ, **uvx, "XDG_RUNTIME_DIR": str(first_runtime)},
     )
-    assert first.returncode == 0, first.stderr
+    first.start()
+    try:
+        expect(first.get_by_text("0 passed, 1 failed.")).to_be_visible(timeout=30)
+        first.key_ctrl_c()
+        assert first.wait(timeout=10) == 0
+    finally:
+        first.kill()
     with TemporaryDirectory(prefix="ln-runtime-") as runtime:
         master, slave = pty.openpty()
         process = subprocess.Popen(
@@ -198,7 +207,9 @@ def test_uvx_browse_restart_survives_tui_kill(
                     break
                 time.sleep(0.05)
             assert len(paths) == 2
-            assert list(Path(runtime).glob("labnotes/*.sock"))
+            assert list(Path(runtime).glob("labnotes/*.sock")) or list(
+                first_runtime.glob("labnotes/*.sock")
+            )
             signal_tui(process, signal.SIGKILL)
             process.wait(timeout=10)
             for _ in range(150):

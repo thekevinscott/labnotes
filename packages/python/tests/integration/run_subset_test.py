@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from labnotes.cli import main
+from conftest import run_tui_command
 
 SCRIPT = "import sys\nprint(*sys.argv[1:])\n"
 
@@ -22,6 +23,8 @@ def make_project(root: Path) -> Path:
 
 
 def labnotes(project: Path, argv: list[str]) -> int | str | None:
+    if argv and argv[0] == "run":
+        return run_tui_command(project, ["experiments", "exp", *argv])
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(project / ".labnotes.toml"), "experiments", "exp", *argv])
     return exit_info.value.code

@@ -1,5 +1,4 @@
 import json
-import subprocess
 import sys
 from pathlib import Path
 import time
@@ -8,6 +7,8 @@ from typing import Any
 import pytest
 
 from labnotes.cli import main
+from conftest import run_tui_command
+from curtaincall import Terminal
 
 # Exits 1 the first time it runs a value listed in fail.txt, 0 otherwise.
 SCRIPT = """
@@ -41,6 +42,8 @@ def make_project(root: Path, settings: str = "continues = false\n") -> Path:
 
 
 def labnotes(root: Path, argv: list[str]) -> int | str | None:
+    if len(argv) >= 3 and argv[0] == "experiments" and argv[2] == "run":
+        return run_tui_command(root, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(root / ".labnotes.toml"), *argv])
     return exit_info.value.code
@@ -69,7 +72,7 @@ def test_plans_nothing_once_every_cell_has_its_repeats(
     run(root)
 
     assert runs(root) == first
-    assert "Nothing to run" in capsys.readouterr().out
+    assert "0 passed, 0 failed." in capsys.readouterr().out
 
 
 def test_writes_every_run_to_a_flat_folder(tmp_path: Path) -> None:
@@ -214,23 +217,27 @@ def test_second_run_sees_the_first_as_held(
     )
     write(root / "hold.txt", "")
     labnotes_bin = Path(sys.executable).parent / "labnotes"
-    first = subprocess.Popen(
-        [labnotes_bin, "-c", root / ".labnotes.toml", "experiments", "exp", "run"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    first = Terminal(
+        f"{labnotes_bin} -c {root / '.labnotes.toml'} experiments exp run",
+        rows=30,
+        cols=120,
     )
+    first.start()
     try:
         for _ in range(200):
             if (root / "claimed").exists():
                 break
             time.sleep(0.05)
-        capsys.readouterr()
-
+        assert (root / "claimed").exists()
         assert labnotes(root, ["experiments", "exp", "run"]) == 0
-
-        assert "held by another run" in capsys.readouterr().out
+        assert len(runs(root)) == 1
     finally:
         (root / "hold.txt").unlink()
-        first.wait(timeout=60)
-    assert first.returncode == 0
+        for _ in range(200):
+            if all(row.get("ended") for row in runs(root).values()):
+                break
+            time.sleep(0.05)
+        first.key_ctrl_c()
+        first.wait(timeout=10)
+        first.kill()
     assert len(runs(root)) == 1

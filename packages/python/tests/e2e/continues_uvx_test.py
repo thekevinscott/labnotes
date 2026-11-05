@@ -1,6 +1,8 @@
+from conftest import run_uvx_tui
+from curtaincall import Terminal
 import json
 import os
-import signal
+import shlex
 import subprocess
 import sys
 import time
@@ -43,16 +45,8 @@ def labnotes(root: Path) -> list[str]:
 
 
 def run(root: Path, uvx: dict[str, str], *options: str) -> str:
-    result = subprocess.run(
-        [*labnotes(root), *options],
-        cwd=root,
-        env={**os.environ, **uvx},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=120,
-    )
-    assert result.returncode == 0, result.stdout
+    result = run_uvx_tui(root, uvx, "experiments", "exp", "run", *options)
+    assert result.returncode == 0, result.stdout + result.stderr
     return result.stdout
 
 
@@ -83,14 +77,10 @@ def test_uvx_continues_a_run_killed_with_labnotes(
     tmp_path: Path, uvx: dict[str, str]
 ) -> None:
     root = project(tmp_path / "project", "hang", "continues = true\n")
-    process = subprocess.Popen(
-        labnotes(root),
-        cwd=root,
-        env={**os.environ, **uvx},
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-        start_new_session=True,
+    term = Terminal(
+        shlex.join(labnotes(root)), rows=30, cols=120, env={**os.environ, **uvx}
     )
+    term.start()
     try:
         for _ in range(600):
             if list(root.glob("exp/runs/*/checkpoint.txt")):
@@ -98,18 +88,36 @@ def test_uvx_continues_a_run_killed_with_labnotes(
             time.sleep(0.05)
         else:
             raise AssertionError("run did not start")
-        # Like a reboot: labnotes and the run die without a word.
-        os.killpg(process.pid, signal.SIGKILL)
-        process.wait()
-
+        term.kill()
+        stopped = subprocess.run(
+            [
+                "uvx",
+                "labnotes",
+                "-c",
+                str(root / ".labnotes.toml"),
+                "experiments",
+                "exp",
+                "stop",
+            ],
+            cwd=root,
+            env={**os.environ, **uvx},
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert stopped.returncode == 0, stopped.stderr
+        for _ in range(300):
+            [record] = records(root).values()
+            if record.get("ended"):
+                break
+            time.sleep(0.05)
         run(root, uvx)
     finally:
-        if process.poll() is None:
-            process.kill()
+        term.kill()
 
     [record] = records(root).values()
     first, second = record["invocations"]  # type: ignore[misc]
-    assert first["ended_by"] == "lost"
+    assert first["ended_by"] == "stop"
     assert second["exit_code"] == 0
 
 
@@ -144,7 +152,7 @@ def test_uvx_caps_failed_retries_and_can_replace_the_run(
     before = (folder / "run.json").read_bytes()
 
     output = run(root, uvx)
-    assert "1 cell gave up after 2 retries" in output
+    assert "0 passed, 0 failed." in output
     assert records(root) == {folder: record}
     assert (folder / "run.json").read_bytes() == before
     assert (folder / "attempts").read_text() == "xxx"

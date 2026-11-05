@@ -2,7 +2,6 @@ import asyncio
 import fcntl
 import json
 import os
-import signal
 import socket
 import subprocess
 import sys
@@ -337,36 +336,21 @@ def test_attach_connection_keeps_idle_daemon_alive_until_disconnect(
         daemon.communicate(timeout=15)
 
 
-def test_headless_flag_keeps_sighup_shutdown_in_foreground(tmp_path: Path) -> None:
+def test_run_without_tty_reports_usage_without_starting_daemon(tmp_path: Path) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
-    (root / "exp/experiment.toml").write_text(
-        "continues = false\n"
-        f"command = \"{sys.executable} -c 'import time; time.sleep(600)'\"\n"
-    )
-    process = subprocess.Popen(
-        command(root, "experiments", "exp", "run", "--headless"),
+    (root / "exp/experiment.toml").write_text("continues = false\ncommand = 'true'\n")
+    result = subprocess.run(
+        command(root, "experiments", "exp", "run"),
         cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
+        capture_output=True,
         text=True,
+        timeout=10,
     )
-    try:
-        for _ in range(100):
-            records = list(root.glob("exp/runs/*/run.json"))
-            if records and json.loads(records[0].read_text()).get("pid"):
-                break
-            time.sleep(0.05)
-        assert records, "headless cell did not start"
-        process.send_signal(signal.SIGHUP)
-        output, _ = process.communicate(timeout=15)
-        assert process.returncode == 0, output
-        assert json.loads(records[0].read_text())["ended_by"] == "stop"
-    finally:
-        if process.poll() is None:
-            process.kill()
-        process.wait()
+    assert result.returncode == 2
+    assert "run requires a terminal" in result.stderr
+    assert not list(root.glob("exp/runs/*/run.json"))
 
 
 def test_two_starts_do_not_exceed_repeats_on_one_daemon(

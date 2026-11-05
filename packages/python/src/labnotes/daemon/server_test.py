@@ -135,7 +135,8 @@ def test_start_passes_retries_retry_wait_and_replace_capped(
             "labnotes.daemon.server.start_experiment", return_value=selected
         ) as start:
             await daemon.start(options)
-        assert start.call_args.args[11:] == expected
+        assert start.call_args.args[11:14] == expected
+        assert start.call_args.args[14:] == ({}, None)
 
     asyncio.run(drive())
 

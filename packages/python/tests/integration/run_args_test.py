@@ -5,6 +5,7 @@ from pathlib import Path
 import pytest
 
 from labnotes.cli import main
+from conftest import run_tui_command
 
 SCRIPT = "import sys\nprint(*sys.argv[1:])\n"
 
@@ -20,6 +21,8 @@ def make_project(root: Path, command: str = "--out x", config: str = "") -> Path
 
 
 def labnotes(project: Path, argv: list[str]) -> int | str | None:
+    if argv and argv[0] == "run":
+        return run_tui_command(project, ["experiments", "exp", *argv])
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(project / ".labnotes.toml"), "experiments", "exp", *argv])
     return exit_info.value.code
@@ -72,12 +75,8 @@ def test_args_override_a_command_from_the_labnotes_toml(tmp_path: Path) -> None:
         f'continues = false\ncommand = "{sys.executable} script.py --memory 8g --out x"\n'
     )
 
-    with pytest.raises(SystemExit) as exit_info:
-        main(
-            ["-c", str(tmp_path / ".labnotes.toml"), "experiments", tmp_path.name]
-            + ["run", "--", "--memory", "24g"]
-        )
-    assert exit_info.value.code == 0
+    argv = ["experiments", tmp_path.name, "run", "--", "--memory", "24g"]
+    assert run_tui_command(tmp_path, argv) == 0
 
     [log] = (tmp_path / "runs").glob("**/stdout.log")
     assert log.read_text() == "--memory 24g --out x\n"

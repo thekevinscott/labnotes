@@ -1,5 +1,5 @@
+from conftest import run_uvx_tui
 import json
-import os
 import subprocess
 from pathlib import Path
 
@@ -32,22 +32,7 @@ def test_uvx_run_records_untracked_files_it_ran_with(
     )
     (root / "helper.py").write_text("print('helper')\n")
     (root / "secret.txt").write_text("hunter2\n")
-    result = subprocess.run(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    result = run_uvx_tui(root, uvx, "experiments", "exp", "run")
     assert result.returncode == 0, result.stdout + result.stderr
     [run] = list((root / "runs/exp").iterdir())
     assert json.loads((run / "run.json").read_text())["git"]["dirty"] is True

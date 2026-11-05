@@ -56,6 +56,7 @@ async def run_experiment(
     command_line: str | None = None,
     run_id: str | None = None,
     run_state: RunState | None = None,
+    reserved: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
     state = run_state or RunState.create(config, name)
     forward = report
@@ -79,6 +80,9 @@ async def run_experiment(
     ]
     held_ids = {str(r["id"]) for r in held}
     finished = [
+        params for run, params in (reserved or {}).items() if run not in existing
+    ]
+    finished += [
         json.loads(str(r["params"]))
         for r in counted
         if r["counted"] or str(r.get("id")) in held_ids
@@ -404,4 +408,6 @@ async def run_experiment(
             for run in list(locks):
                 release(run)
         await teardown()
+        if experiment.teardown is not None:
+            emit({"event": "idle"})
     return list(results.values())

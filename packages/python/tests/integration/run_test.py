@@ -12,6 +12,8 @@ import psutil
 import pytest
 
 from labnotes.cli import main
+from curtaincall import Terminal
+from conftest import run_tui_command
 
 SCRIPT = """
 import sys
@@ -49,6 +51,8 @@ def project(tmp_path: Path) -> Path:
 
 
 def labnotes(project: Path, argv: list[str]) -> int | str | None:
+    if argv[:3] == ["experiments", "exp", "run"]:
+        return run_tui_command(project, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(project / ".labnotes.toml"), *argv])
     return exit_info.value.code
@@ -242,19 +246,27 @@ def test_records_runs_stopped_by_stopping_labnotes(tmp_path: Path) -> None:
     project = sleeper(tmp_path, [30])
     command = Path(sys.executable).parent / "labnotes"
     config = project / ".labnotes.toml"
-    process = subprocess.Popen(
-        [command, "-c", config, "experiments", "exp", "run"],
-        stdout=subprocess.DEVNULL,
-    )
+    term = Terminal(f"{command} -c {config} experiments exp run", rows=30, cols=120)
+    term.start()
     try:
         for _ in range(100):
             if any(project.glob("started-*.txt")):
                 break
             time.sleep(0.1)
-        process.send_signal(signal.SIGTERM)
-        process.wait(timeout=20)
+        assert any(project.glob("started-*.txt"))
+        result = subprocess.run(
+            [command, "-c", config, "experiments", "exp", "stop"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
+        for _ in range(100):
+            if runs(project) and runs(project)[0].get("ended"):
+                break
+            time.sleep(0.1)
     finally:
-        process.kill()
+        term.kill()
 
     [run] = runs(project)
     assert (run["ended_by"], run["signal"], run["error"]) == ("stop", 15, None)

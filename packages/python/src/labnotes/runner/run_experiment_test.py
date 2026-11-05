@@ -551,7 +551,7 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
     ]
     events = [c.args[0]["event"] for c in report.call_args_list]
     assert events[1] == "setting up"
-    assert events[-1] == "tearing down"
+    assert events[-2:] == ["tearing down", "idle"]
 
 
 def test_checks_the_hooks_and_runs_them_unfilled(

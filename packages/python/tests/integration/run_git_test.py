@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from labnotes.cli import main
+from conftest import run_tui_command
 
 
 def git(root: Path, *args: str) -> str:
@@ -26,9 +26,7 @@ def git(root: Path, *args: str) -> str:
 
 
 def run(root: Path) -> list[dict[str, Any]]:
-    with pytest.raises(SystemExit) as exited:
-        main(["-c", str(root / ".labnotes.toml"), "experiments", "exp", "run"])
-    assert exited.value.code == 0
+    assert run_tui_command(root, ["experiments", "exp", "run"]) == 0
     records = [json.loads(p.read_text()) for p in root.glob("exp/runs/**/run.json")]
     assert all(record["exit_code"] == 0 for record in records)
     return records

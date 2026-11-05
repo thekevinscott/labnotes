@@ -1,4 +1,4 @@
-import os
+from conftest import run_uvx_tui
 import subprocess
 from pathlib import Path
 
@@ -42,22 +42,7 @@ def test_uvx_run_from_repo_subfolder_uses_subfolder_snapshot(
     )
     (project / "dirty.txt").write_text("untracked\n")
     expected = subprocess.check_output(["git", "status", "--porcelain"], cwd=project)
-    result = subprocess.run(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(project / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=project,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    result = run_uvx_tui(project, uvx, "experiments", "exp", "run")
     assert result.returncode == 0, result.stdout + result.stderr
     [run] = list((project / "runs/exp").iterdir())
     snapshot_root = Path((run / "cwd.txt").read_text())

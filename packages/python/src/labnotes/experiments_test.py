@@ -887,3 +887,21 @@ def test_rejects_negative_retries(
 ) -> None:
     assert run(["a", "run", "--retries", "-1"]) == 2
     drivers["start_experiment"].assert_not_called()
+
+
+def test_run_without_a_terminal_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    assert run(["a", "run"]) == 2
+    assert "requires a terminal" in capsys.readouterr().err
+    drivers["ensure_daemon"].assert_not_awaited()
+    drivers["daemon_command"].assert_not_called()
+
+
+def test_run_help_does_not_offer_headless(
+    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+) -> None:
+    assert run(["--help"]) == 0
+    assert "--headless" not in capsys.readouterr().out

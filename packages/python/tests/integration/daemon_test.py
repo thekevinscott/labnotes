@@ -367,3 +367,35 @@ def test_headless_flag_keeps_sighup_shutdown_in_foreground(tmp_path: Path) -> No
         if process.poll() is None:
             process.kill()
         process.wait()
+
+
+def test_two_starts_do_not_exceed_repeats_on_one_daemon(
+    tmp_path: Path, runtime: Path
+) -> None:
+    root = tmp_path / "project"
+    (root / "exp").mkdir(parents=True)
+    (root / ".labnotes.toml").write_text("")
+    (root / "exp/experiment.toml").write_text(
+        "continues = false\nrepeats = 3\nconcurrency = 2\n"
+        f"command = \"{sys.executable} -c 'import time; time.sleep(4)'\"\n"
+    )
+    env = {**os.environ, "XDG_RUNTIME_DIR": str(runtime)}
+    daemon = subprocess.Popen(
+        command(root, "daemon", "exp"), cwd=root, env=env, stdout=subprocess.PIPE
+    )
+    try:
+        path = wait_for_socket(runtime)
+        first = request(path, {"command": "start", "options": {}})
+        second = request(path, {"command": "start", "options": {}})
+        assert first["ok"] is True, first
+        assert second["ok"] is True, second
+        for _ in range(200):
+            records = list(root.glob("exp/runs/*/run.json"))
+            if records and all(json.loads(p.read_text()).get("ended") for p in records):
+                break
+            time.sleep(0.05)
+        assert len(records) == 3, records
+    finally:
+        if daemon.poll() is None:
+            daemon.terminate()
+        daemon.communicate(timeout=15)

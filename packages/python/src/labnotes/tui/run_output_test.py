@@ -15,7 +15,7 @@ def append(path: Path, text: str) -> None:
 def test_starts_empty() -> None:
     output = RunOutput(id="output")
     assert output.id == "output"
-    assert output.offsets == {"stdout": 0, "stderr": 0}
+    assert output.output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
     assert list(output.lines) == []
     assert output.auto_scroll
@@ -78,7 +78,7 @@ def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
     output = RunOutput()
     output.follow(tmp_path)
     assert list(output.lines) == []
-    assert output.offsets == {"stdout": 0, "stderr": 0}
+    assert output.output.offsets == {"stdout": 0, "stderr": 0}
 
 
 @pytest.mark.parametrize("stdout", [None, ""])
@@ -89,7 +89,7 @@ def test_follows_stderr_without_stdout(tmp_path: Path, stdout: str | None) -> No
     output = RunOutput()
     output.follow(tmp_path)
     assert list(output.lines) == ["oops"]
-    assert output.offsets == {"stdout": 0, "stderr": 5}
+    assert output.output.offsets == {"stdout": 0, "stderr": 5}
 
 
 def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
@@ -100,7 +100,7 @@ def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
     append(tmp_path / "stdout.log", "two\nthree\n")
     output.follow(tmp_path)
     assert list(output.lines) == ["one", "two", "three"]
-    assert output.offsets == {"stdout": 14, "stderr": 0}
+    assert output.output.offsets == {"stdout": 14, "stderr": 0}
 
 
 def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:
@@ -111,7 +111,7 @@ def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:
         file.write(b"\xa9 done\n")
     output.follow(tmp_path)
     assert list(output.lines) == ["café done"]
-    assert output.offsets == {"stdout": 11, "stderr": 0}
+    assert output.output.offsets == {"stdout": 11, "stderr": 0}
 
 
 def test_redraws_a_streams_own_unfinished_line(tmp_path: Path) -> None:
@@ -163,7 +163,7 @@ def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
     output = RunOutput()
     output.follow(tmp_path / "r1")
     output.reset()
-    assert output.offsets == {"stdout": 0, "stderr": 0}
+    assert output.output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
     assert list(output.lines) == []
     output.follow(tmp_path / "r2")
@@ -256,7 +256,7 @@ def test_moves_to_the_newest_invocation_log_from_its_start(tmp_path: Path) -> No
     output.follow(tmp_path)
     output.follow(tmp_path)
     assert list(output.lines) == ["first", "next"]
-    assert output.offsets == {"stdout": 5, "stderr": 0}
+    assert output.output.offsets == {"stdout": 5, "stderr": 0}
 
 
 def test_switches_to_a_log_path_that_sorts_before_the_previous_one(
@@ -268,7 +268,7 @@ def test_switches_to_a_log_path_that_sorts_before_the_previous_one(
     newer_name.write_text("new\n")
     output = RunOutput()
     with mock.patch(
-        "labnotes.tui.run_output.latest_log",
+        "labnotes.ordered_output.latest_log",
         side_effect=[
             older_name,
             tmp_path / "stderr.log",
@@ -279,7 +279,7 @@ def test_switches_to_a_log_path_that_sorts_before_the_previous_one(
         output.follow(tmp_path)
         output.follow(tmp_path)
     assert list(output.lines) == ["first line", "new"]
-    assert output.offsets["stdout"] == 4
+    assert output.output.offsets["stdout"] == 4
 
 
 def test_clearing_forgets_the_scrollable_size() -> None:
@@ -343,3 +343,41 @@ def test_renders_the_scrolled_row_cropped_to_the_visible_columns(
     cropped.assert_called_once_with(2, 12, style)
     cropped.return_value.apply_offsets.assert_called_once_with(2, 4)
     assert rendered is cropped.return_value.apply_offsets.return_value
+
+
+def write_indexed(folder: Path, stream: str, text: str) -> None:
+    (folder / "run.json").write_text('{"output": "output.jsonl"}')
+    log = folder / f"{stream}.log"
+    append(log, text)
+    end = log.stat().st_size
+    append(folder / "output.jsonl", f'{{"stream": "{stream}", "end": {end}}}\n')
+
+
+def test_shows_indexed_output_in_the_order_it_was_written(tmp_path: Path) -> None:
+    output = RunOutput()
+    for i in range(2):
+        write_indexed(tmp_path, "stdout", f"out {i}\n")
+        write_indexed(tmp_path, "stderr", f"err {i}\n")
+    output.follow(tmp_path)
+    write_indexed(tmp_path, "stderr", "err 2\n")
+    write_indexed(tmp_path, "stdout", "out 2\n")
+    output.follow(tmp_path)
+    assert list(output.lines) == [
+        "out 0",
+        "err 0",
+        "out 1",
+        "err 1",
+        "err 2",
+        "out 2",
+    ]
+
+
+def test_breaks_an_indexed_unfinished_line_before_the_other_stream(
+    tmp_path: Path,
+) -> None:
+    output = RunOutput()
+    write_indexed(tmp_path, "stdout", "loading")
+    write_indexed(tmp_path, "stderr", "warn\n")
+    write_indexed(tmp_path, "stdout", " done\n")
+    output.follow(tmp_path)
+    assert list(output.lines) == ["loading", "warn", " done"]

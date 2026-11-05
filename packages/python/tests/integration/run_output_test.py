@@ -36,7 +36,7 @@ def append(path: Path, data: bytes) -> None:
 def test_starts_empty() -> None:
     output = RunOutput(id="output")
     assert output.id == "output"
-    assert output.offsets == {"stdout": 0, "stderr": 0}
+    assert output.output.offsets == {"stdout": 0, "stderr": 0}
     assert (output.last_stream, output.mid_line) == (None, False)
 
 
@@ -44,7 +44,7 @@ def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert shown(output) == []
-        assert output.offsets == {"stdout": 0, "stderr": 0}
+        assert output.output.offsets == {"stdout": 0, "stderr": 0}
 
     mounted(check)
 
@@ -56,7 +56,7 @@ def test_follows_stderr_without_stdout(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert shown(output) == ["oops"]
-        assert output.offsets == {"stdout": 0, "stderr": 5}
+        assert output.output.offsets == {"stdout": 0, "stderr": 5}
 
     mounted(check)
 
@@ -70,7 +70,7 @@ def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
         append(tmp_path / "stdout.log", b"two\n")
         output.follow(tmp_path)
         assert shown(output) == ["one", "two"]
-        assert output.offsets == {"stdout": 8, "stderr": 0}
+        assert output.output.offsets == {"stdout": 8, "stderr": 0}
 
     mounted(check)
 
@@ -210,7 +210,7 @@ def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
         output.follow(tmp_path / "r1")
         output.reset()
         assert shown(output) == []
-        assert output.offsets == {"stdout": 0, "stderr": 0}
+        assert output.output.offsets == {"stdout": 0, "stderr": 0}
         assert (output.last_stream, output.mid_line) == (None, False)
         output.follow(tmp_path / "r2")
         assert shown(output) == ["hi", "warn"]

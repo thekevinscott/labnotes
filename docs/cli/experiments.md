@@ -91,7 +91,7 @@ Labnotes does not build an environment in the snapshot. If your command needs on
 
 Each run gets its own run folder in the project; `{run_dir}` in the command becomes that folder's absolute path, so the script knows where to write its output. `LABNOTES_RUN` is also an absolute project path. `{invocation_dir}` is the same folder as `{run_dir}`. Both placeholders are shell-quoted.
 
-Dynamic parameters get recorded for a particular run in a run.json file in the run folder, along with when it started, when it ended, and its exit code. `command` in run.json holds the exact shell command the run executed, with `{run_dir}`, `{invocation_dir}` and the params filled in. It is written before the run starts, so a run that was killed still has it, and editing `experiment.toml` later doesn't hide what an earlier run did. The script's stdout and stderr are saved alongside. labnotes sets `PYTHONUNBUFFERED=1` so Python output reaches the log as it's printed, unless you set it yourself; other runtimes may buffer stdout when it isn't a terminal (use `stdbuf -oL` or flush). For output too noisy to read raw, such as a model's thinking, the script can write structured blocks with [`log`](../api/sdk#log); they go to `log.jsonl` in the same folder. While the run goes, labnotes samples its memory every 5 seconds into `memory.jsonl`, one JSON line per sample; see [`memory_interval`](../api/config#memory-interval).
+Dynamic parameters get recorded for a particular run in a run.json file in the run folder, along with when it started, when it ended, and its exit code. `command` in run.json holds the exact shell command the run executed, with `{run_dir}`, `{invocation_dir}` and the params filled in. It is written before the run starts, so a run that was killed still has it, and editing `experiment.toml` later doesn't hide what an earlier run did. The script's stdout and stderr are saved alongside, in `stdout.log` and `stderr.log`, with their order in `output.jsonl` (see [Output order](#output-order)). labnotes sets `PYTHONUNBUFFERED=1` so Python output reaches the log as it's printed, unless you set it yourself; other runtimes may buffer stdout when it isn't a terminal (use `stdbuf -oL` or flush). For output too noisy to read raw, such as a model's thinking, the script can write structured blocks with [`log`](../api/sdk#log); they go to `log.jsonl` in the same folder. While the run goes, labnotes samples its memory every 5 seconds into `memory.jsonl`, one JSON line per sample; see [`memory_interval`](../api/config#memory-interval).
 
 Each run folder also contains `git-sha.txt` with the commit SHA and `git-diff.patch` with changes the snapshot ran with, taken at the start of the invocation: `git diff --submodule=diff HEAD` for tracked files (including modified files inside initialized submodules), then each untracked, non-ignored file in the parent repository as a new file. The patch contains Git's `Submodule <path> contains modified content` section followed by file diffs for a dirty submodule. To replay those diffs, check out the recorded SHA, initialize the submodules at their recorded commits (`git submodule update --init`), then apply the patch from the repository root. Untracked files inside submodules are not included in the patch. Untracked files that are binary or larger than 1 MiB appear by name only, as `Binary files ... differ`. Its `run.json` records `git`: `{"commit": "<full HEAD SHA>", "dirty": false}` from the same moment. `dirty` is true when that patch is not empty, so an untracked file counts. Ignored files don't. Add your run folders to `.gitignore`, or each run's output counts toward the next run's `dirty` and patch. `git` is `null` outside a Git repository or in one without a commit; a repository without a commit also runs from the live tree. Older records lack this key.
 
@@ -155,11 +155,25 @@ continues = true
 
 `run` takes each failed run in a combination that is short of `repeats` and invokes it again, with the same params and the same `{run_dir}`. A run that fails, is stopped, or was lost when labnotes died all count as failed. Excluded runs and runs that count are left alone and get new folders. A run that exits 75 retries in its folder too.
 
-The folder then holds every invocation. `run.json` lists them under `"invocations"`, each with its own times, exit code, commit, args, labnotes version, and labnotes command line, and each writes its own `stdout-<time>.txt` and `stderr-<time>.txt`. See [`continues`](../api/config#continues) for the fields.
+The folder then holds every invocation. `run.json` lists them under `"invocations"`, each with its own times, exit code, commit, args, labnotes version, and labnotes command line, and each writes its own `stdout-<time>.txt`, `stderr-<time>.txt` and `output-<time>.jsonl`. See [`continues`](../api/config#continues) for the fields.
 
 A failed run is invoked again at most `retries` times (3 by default), counting retries after exit 75 but not invocations you stopped. After that it is left alone and its combination stays short. `run --replace-capped` gives that combination a new run, and `run --run-id ID` invokes the capped run once more. See [`retries`](../api/config#retries-1).
 
-Your command finds what its last invocation left in `{run_dir}` and decides what to do with it. labnotes does nothing to those files. In return, your command must never delete `run.json`, `stdout-*`, `stderr-*`, or `run.lock`. labnotes holds a lock on `run.lock` while an invocation runs, and a second `run` skips any run that is locked.
+Your command finds what its last invocation left in `{run_dir}` and decides what to do with it. labnotes does nothing to those files. In return, your command must never delete `run.json`, `stdout-*`, `stderr-*`, `output-*`, or `run.lock`. labnotes holds a lock on `run.lock` while an invocation runs, and a second `run` skips any run that is locked.
+
+### Output order
+
+labnotes reads the script's stdout and stderr through pipes. It copies each chunk it reads to `stdout.log` or `stderr.log`, then appends one line for that chunk to `output.jsonl`:
+
+```json
+{"stream": "stderr", "end": 2048, "time": 1793232000.25}
+```
+
+`end` is the size of that stream's log after the chunk, and `time` is when labnotes read it. To rebuild the output as the script wrote it, read the index in order and, for each line, read its stream's log from where you last stopped up to `end`. The [TUI](../api/tui#output-keys) and the [frontend](../frontend) show output this way. `run.json` names the index in `output`; a run that [continues](../api/config#continues) names one per invocation, `output-<time>.jsonl`, matching that invocation's logs. Runs from labnotes versions without the index have no `output` key.
+
+The order is as fine as labnotes reads the pipes: a stdout write and a stderr write that land in the same instant can come out swapped. A script that buffers its own output writes in bursts, and the index records the bursts.
+
+A process the script starts in the background shares its pipes. Once the script exits, labnotes reads for up to 2 more seconds, then stops and records the run. Anything the leftover process writes after that fails with a broken pipe.
 
 ### Run folders
 

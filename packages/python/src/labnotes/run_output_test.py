@@ -520,3 +520,44 @@ def test_resets_offset_when_new_log_path_sorts_before_previous(
     )
 
     assert messages == [log("long previous output\n"), log("new\n"), end(0)]
+
+
+def write_indexed(folder: Path, stream: str, data: bytes) -> None:
+    (folder / "run.json").write_text('{"output": "output.jsonl"}')
+    log_path = folder / f"{stream}.log"
+    append(log_path, data)
+    entry = {"stream": stream, "end": log_path.stat().st_size}
+    append(folder / "output.jsonl", json.dumps(entry).encode() + b"\n")
+
+
+def test_streams_indexed_output_in_the_order_it_was_written(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    write_indexed(folder, "stdout", b"out 0\n")
+    write_indexed(folder, "stderr", b"err 0\n")
+    write_indexed(folder, "stdout", b"out 1\n")
+
+    def later() -> None:
+        write_indexed(folder, "stderr", b"err 1\n")
+        write_indexed(folder, "stdout", b"out 2\n")
+
+    messages = collect(
+        tmp_path,
+        [
+            (later, event("logs", experiment="alpha", run="r1", stream="stdout")),
+            (
+                lambda: write_indexed(folder, "stderr", b"err 2\n"),
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [
+        log("out 0\n"),
+        log("err 0\n", "stderr"),
+        log("out 1\n"),
+        log("err 1\n", "stderr"),
+        log("out 2\n"),
+        log("err 2\n", "stderr"),
+        end(0),
+    ]

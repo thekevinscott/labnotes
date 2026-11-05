@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 import re
 from collections.abc import Iterator
 from pathlib import Path
@@ -43,6 +44,13 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.runner.execute_run.record_memory", new=mock.AsyncMock()
         ) as record_memory,
+        mock.patch(
+            "labnotes.runner.execute_run.copy_output",
+            new=mock.AsyncMock(side_effect=lambda fd, *_: os.close(fd)),
+        ) as copy_output,
+        mock.patch(
+            "labnotes.runner.execute_run.drain_output", new=mock.AsyncMock()
+        ) as drain_output,
     ):
         psutil.Error = Gone
         psutil.Process.return_value.create_time.return_value = 1234.5
@@ -56,6 +64,8 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "psutil": psutil,
             "record_memory": record_memory,
             "version": version,
+            "copy_output": copy_output,
+            "drain_output": drain_output,
         }
 
 
@@ -114,8 +124,66 @@ def test_runs_the_command_from_the_root(
     kwargs = spawn.await_args.kwargs
     assert kwargs["cwd"] == tmp_path / "root"
     assert "start_new_session" not in kwargs
-    assert kwargs["stdout"].name == str(tmp_path / "stdout.log")
-    assert kwargs["stderr"].name == str(tmp_path / "stderr.log")
+
+
+def test_copies_each_stream_through_a_pipe_into_its_log_and_the_index(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path)
+
+    kwargs = collaborators["spawn"].await_args.kwargs
+    calls = collaborators["copy_output"].await_args_list
+    assert [call.args[1] for call in calls] == ["stdout", "stderr"]
+    stdout, stderr = (call.args[2] for call in calls)
+    assert (stdout.name, stderr.name) == (
+        str(tmp_path / "stdout.log"),
+        str(tmp_path / "stderr.log"),
+    )
+    assert calls[0].args[3] is calls[1].args[3]
+    assert calls[0].args[3].name == str(tmp_path / "output.jsonl")
+    read_ends = [call.args[0] for call in calls]
+    assert len({*read_ends, kwargs["stdout"], kwargs["stderr"]}) == 4
+    for write_end in (kwargs["stdout"], kwargs["stderr"]):
+        with pytest.raises(OSError):
+            os.fstat(write_end)
+
+
+def test_drains_the_output_before_recording_the_exit(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    order: list[str] = []
+    collaborators["drain_output"].side_effect = lambda copying: order.append(
+        f"drain {len(copying)}"
+    )
+    collaborators["write_run_json"].side_effect = lambda _, run: order.append(
+        f"write {run['ended']}"
+    )
+
+    run(tmp_path)
+
+    assert order == ["write None", "write None", "drain 2", "write end"]
+
+
+def test_closes_the_pipes_when_the_command_cannot_start(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    opened: list[tuple[int, int]] = []
+    real_pipe = os.pipe
+
+    def pipe() -> tuple[int, int]:
+        opened.append(real_pipe())
+        return opened[-1]
+
+    collaborators["spawn"].side_effect = OSError("no shell")
+    with mock.patch("labnotes.runner.execute_run.os.pipe", side_effect=pipe):
+        run(tmp_path)
+
+    assert len(opened) == 2
+    for fd in (fd for ends in opened for fd in ends):
+        with pytest.raises(OSError):
+            os.fstat(fd)
+    collaborators["copy_output"].assert_not_awaited()
+    collaborators["drain_output"].assert_not_awaited()
 
 
 def test_uses_the_invocation_git_info_instead_of_reading_the_live_tree(
@@ -162,6 +230,7 @@ def test_records_the_run_before_and_after(
         "git": {"commit": "abc", "dirty": False},
         "labnotes_version": "9.9.9",
         "labnotes_command": None,
+        "output": "output.jsonl",
     }
     spawned = {**started, "pid": 42, "pid_created": 1234.5}
     assert snapshots == [started, spawned, {**spawned, "ended": "end", "exit_code": 3}]
@@ -666,11 +735,19 @@ def test_a_run_that_continues_logs_each_invocation_apart(
         command_line="labnotes experiments exp run",
     )
 
-    kwargs = collaborators["spawn"].await_args.kwargs
-    stdout, stderr = Path(kwargs["stdout"].name), Path(kwargs["stderr"].name)
-    assert stdout.parent == stderr.parent == tmp_path
+    calls = collaborators["copy_output"].await_args_list
+    stdout, stderr, index = (
+        Path(calls[0].args[2].name),
+        Path(calls[1].args[2].name),
+        Path(calls[0].args[3].name),
+    )
+    assert stdout.parent == stderr.parent == index.parent == tmp_path
     assert re.fullmatch(r"stdout-\d{8}-\d{6}-\d{6}\.txt", stdout.name)
     assert stderr.name == stdout.name.replace("stdout", "stderr")
+    assert index.name == stdout.name.replace("stdout", "output").replace(
+        ".txt", ".jsonl"
+    )
+    assert result["output"] == index.name
     assert result["invocations"] == [
         {
             "started": "start",
@@ -684,6 +761,7 @@ def test_a_run_that_continues_logs_each_invocation_apart(
             "labnotes_command": "labnotes experiments exp run",
             "stdout": stdout.name,
             "stderr": stderr.name,
+            "output": index.name,
         }
     ]
 

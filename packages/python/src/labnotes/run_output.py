@@ -5,8 +5,8 @@ from pathlib import Path
 
 from dirsql import DirSQL
 
-from labnotes.latest_log import latest_log
 from labnotes.load_run import load_run
+from labnotes.ordered_output import OrderedOutput
 from labnotes.tables.read_log import STREAMS
 
 
@@ -19,8 +19,7 @@ async def run_output(
     if run is None:
         return
     folder = root / str(run["folder"])
-    offsets = dict.fromkeys(STREAMS, 0)
-    paths: dict[str, Path] = {}
+    output = OrderedOutput()
     decoders = {
         stream: codecs.getincrementaldecoder("utf-8")("replace") for stream in STREAMS
     }
@@ -29,17 +28,7 @@ async def run_output(
 
     def read(streams: Iterable[str]) -> Iterator[str]:
         nonlocal last, mid_line
-        for stream in streams:
-            path = latest_log(folder, stream)
-            if not path.exists():
-                continue
-            if paths.setdefault(stream, path) != path:
-                paths[stream] = path
-                offsets[stream] = 0
-            with path.open("rb") as log:
-                log.seek(offsets[stream])
-                data = log.read()
-            offsets[stream] += len(data)
+        for stream, data in output.read(folder, streams):
             text = decoders[stream].decode(data)
             if not text:
                 continue

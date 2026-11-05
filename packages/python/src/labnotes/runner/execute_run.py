@@ -12,6 +12,8 @@ import psutil
 
 from labnotes.log_path import LOG_ENV, RUN_ENV
 from labnotes.runner.continue_run import continue_run
+from labnotes.runner.copy_output import copy_output
+from labnotes.runner.drain_output import drain_output
 from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.record_memory import record_memory
 from labnotes.runner.run_git import run_git
@@ -68,10 +70,12 @@ async def execute_run(
     if meta is not None:
         run["meta"] = meta
     logs = {stream: f"{stream}.log" for stream in ("stdout", "stderr")}
+    run["output"] = "output.jsonl"
     invocation: dict[str, object] | None = None
     if continues:
         stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
         logs = {stream: f"{stream}-{stamp}.txt" for stream in logs}
+        run["output"] = f"output-{stamp}.jsonl"
         invocation = {
             "started": run["created"],
             "ended": None,
@@ -83,6 +87,7 @@ async def execute_run(
             "labnotes_version": run["labnotes_version"],
             "labnotes_command": command_line,
             **logs,
+            "output": run["output"],
         }
         record = folder / "run.json"
         previous = json.loads(record.read_text()) if record.exists() else {}
@@ -95,31 +100,46 @@ async def execute_run(
     with (
         (folder / logs["stdout"]).open("wb") as stdout,
         (folder / logs["stderr"]).open("wb") as stderr,
+        (folder / str(run["output"])).open("wb") as index,
     ):
+        # Own pipes, not PIPE: asyncio's wait() would also wait for every
+        # process holding PIPE open, so a leftover helper would hang the run.
+        stdout_read, stdout_write = os.pipe()
+        stderr_read, stderr_write = os.pipe()
         try:
-            process = await asyncio.create_subprocess_shell(
-                resolved,
-                cwd=root,
-                env={
-                    "FORCE_COLOR": "1",
-                    "CLICOLOR_FORCE": "1",
-                    "PYTHONUNBUFFERED": "1",
-                    **{
-                        key: value
-                        for key, value in run_environment.items()
-                        if not key.startswith("LABNOTES_")
+            try:
+                process = await asyncio.create_subprocess_shell(
+                    resolved,
+                    cwd=root,
+                    env={
+                        "FORCE_COLOR": "1",
+                        "CLICOLOR_FORCE": "1",
+                        "PYTHONUNBUFFERED": "1",
+                        **{
+                            key: value
+                            for key, value in run_environment.items()
+                            if not key.startswith("LABNOTES_")
+                        },
+                        LOG_ENV: str(folder / "log.jsonl"),
+                        RUN_ENV: str(folder.resolve()),
+                        "BOTBOX_LABELS": botbox_labels,
+                        RUN_STATE_ENV: str(state_file),
                     },
-                    LOG_ENV: str(folder / "log.jsonl"),
-                    RUN_ENV: str(folder.resolve()),
-                    "BOTBOX_LABELS": botbox_labels,
-                    RUN_STATE_ENV: str(state_file),
-                },
-                stdout=stdout,
-                stderr=stderr,
-            )
+                    stdout=stdout_write,
+                    stderr=stderr_write,
+                )
+            finally:
+                os.close(stdout_write)
+                os.close(stderr_write)
         except OSError as error:
             run["error"] = str(error)
+            os.close(stdout_read)
+            os.close(stderr_read)
         else:
+            copying = [
+                asyncio.create_task(copy_output(stdout_read, "stdout", stdout, index)),
+                asyncio.create_task(copy_output(stderr_read, "stderr", stderr, index)),
+            ]
             running.add(process)
             run["pid"] = process.pid
             created = None
@@ -164,6 +184,7 @@ async def execute_run(
                 if sampler is not None:
                     sampler.cancel()
                     await asyncio.wait({sampler})
+                await drain_output(copying)
                 running.discard(process)
     run["ended"] = iso_time(time.time())
     if invocation is not None:

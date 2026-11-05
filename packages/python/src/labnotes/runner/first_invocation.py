@@ -12,4 +12,5 @@ def first_invocation(run: dict[str, object]) -> dict[str, object]:
         "labnotes_command": run.get("labnotes_command"),
         "stdout": "stdout.log",
         "stderr": "stderr.log",
+        **({"output": run["output"]} if "output" in run else {}),
     }

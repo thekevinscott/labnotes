@@ -314,7 +314,7 @@ Whether `run` invokes a failed run again in its own folder instead of starting a
 
 For each combination short of `repeats`, `run` first takes that combination's runs that ended badly (a nonzero exit, stopped, or lost), aren't excluded, don't count, and aren't locked by another `run`. It invokes each of them again in its own folder, with the same params and `{run_dir}`. Any repeats still missing get new folders. labnotes never moves, copies, or deletes the files your command left there, so it can pick up from its own checkpoints.
 
-Each invocation adds an entry to `"invocations"` in `run.json`: `started`, `ended`, `exit_code`, `ended_by`, `error`, `git` (the commit), `args` (what followed `--`), `labnotes_version`, `labnotes_command`, and the names of its logs. The top-level fields mirror the latest invocation. Each invocation writes its own `stdout-<time>.txt` and `stderr-<time>.txt`, so earlier logs are kept.
+Each invocation adds an entry to `"invocations"` in `run.json`: `started`, `ended`, `exit_code`, `ended_by`, `error`, `git` (the commit), `args` (what followed `--`), `labnotes_version`, `labnotes_command`, the names of its logs, and `output`, the name of its [output order index](../cli/experiments#output-order). The top-level fields mirror the latest invocation. Each invocation writes its own `stdout-<time>.txt`, `stderr-<time>.txt` and `output-<time>.jsonl`, so earlier logs are kept.
 
 While an invocation runs, labnotes holds a lock on `run.lock` in the run folder. A run marked running whose lock nobody holds died with its `run`, for example in a reboot. The next look marks it `"ended_by": "lost"`, and the next `run` invokes it again.
 

@@ -10,7 +10,7 @@ from textual.geometry import Size
 from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
-from labnotes.latest_log import latest_log
+from labnotes.ordered_output import OrderedOutput
 
 STREAMS = ("stdout", "stderr")
 
@@ -48,8 +48,7 @@ class RunOutput(ScrollView):
         return self
 
     def reset(self) -> None:
-        self.offsets = dict.fromkeys(STREAMS, 0)
-        self.paths: dict[str, Path] = {}
+        self.output = OrderedOutput()
         self.decoders = {
             stream: codecs.getincrementaldecoder("utf-8")(errors="replace")
             for stream in STREAMS
@@ -63,17 +62,7 @@ class RunOutput(ScrollView):
         return bool(self.unfinished)
 
     def follow(self, folder: Path) -> None:
-        for stream in STREAMS:
-            path = latest_log(folder, stream)
-            if not path.exists():
-                continue
-            if self.paths.setdefault(stream, path) != path:
-                self.paths[stream] = path
-                self.offsets[stream] = 0
-            with path.open("rb") as log:
-                log.seek(self.offsets[stream])
-                data = log.read()
-            self.offsets[stream] += len(data)
+        for stream, data in self.output.read(folder):
             text = self.decoders[stream].decode(data)
             if not text:
                 continue

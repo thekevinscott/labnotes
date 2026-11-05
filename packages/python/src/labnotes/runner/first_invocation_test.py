@@ -35,3 +35,13 @@ def test_records_no_commit_or_args_when_there_were_none() -> None:
 
     assert (first["git"], first["args"], first["ended_by"]) == (None, [], None)
     assert (first["labnotes_version"], first["labnotes_command"]) == (None, None)
+
+
+def test_keeps_the_output_index_of_a_run_that_wrote_one() -> None:
+    first = first_invocation({"created": "x", "output": "output.jsonl"})
+
+    assert first["output"] == "output.jsonl"
+
+
+def test_names_no_output_index_for_a_run_that_wrote_none() -> None:
+    assert "output" not in first_invocation({"created": "x"})

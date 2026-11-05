@@ -104,3 +104,13 @@ def test_surfaces_a_damaged_run_record(tmp_path: Path, contents: str) -> None:
     assert row["folder"] == "exp/runs/broken"
     assert "run.json" in str(row["error"])
     assert row["exit_code"] is None
+
+
+def test_names_the_one_experiment_for_a_damaged_record(tmp_path: Path) -> None:
+    path = tmp_path / "runs/broken/run.json"
+    path.parent.mkdir(parents=True)
+    path.write_text("", encoding="utf-8")
+
+    [row] = read_run(tmp_path, "runs/{run}", str(path), experiment="study")
+
+    assert row["experiment"] == "study"

@@ -1,0 +1,1 @@
+Fixed: `experiments NAME runs` now shows a run folder when its `run.json` is malformed or empty. The row retains the run ID and folder and reports the JSON error in its `error` field, so a damaged record is visible in both table and JSON output.

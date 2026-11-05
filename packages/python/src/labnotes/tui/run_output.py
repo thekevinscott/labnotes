@@ -64,8 +64,9 @@ class RunOutput(ScrollView):
 
     def shrunk(self, logs: dict[str, Path]) -> bool:
         for stream, path in logs.items():
-            size = path.stat().st_size if path.exists() else 0
-            if size < self.offsets[stream] and self.paths.get(stream) == path:
+            if self.paths.get(stream) != path:
+                continue
+            if not path.exists() or path.stat().st_size < self.offsets[stream]:
                 return True
         return False
 

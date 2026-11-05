@@ -2042,3 +2042,21 @@ def test_keeps_the_summary_after_teardown(tmp_path: Path) -> None:
         assert status(app) == "0 passed, 0 failed. Ctrl-C to quit."
 
     drive_hooks(steps)
+
+
+def test_ticks_only_the_running_hook(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        setup = app.query_one("#setup-stage")
+        teardown = app.query_one("#teardown-stage")
+        with (
+            mock.patch.object(setup, "tick") as setup_tick,
+            mock.patch.object(teardown, "tick") as teardown_tick,
+        ):
+            app.body.tick()
+        setup_tick.assert_called_once_with()
+        teardown_tick.assert_not_called()
+
+    drive_hooks(steps)

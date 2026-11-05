@@ -538,6 +538,15 @@ def test_records_a_run_labnotes_stopped(
     assert (result["ended_by"], result["signal"]) == ("stop", 15)
 
 
+def test_stopping_a_run_kills_its_labeled_containers(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["process"].wait = mock.AsyncMock(return_value=-15)
+    with mock.patch("labnotes.runner.execute_run.stop_containers") as containers:
+        run(tmp_path, stopped=True)
+    containers.assert_called_once_with(str(tmp_path.resolve()))
+
+
 def test_records_a_stopped_run_that_exits_on_its_own_terms(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

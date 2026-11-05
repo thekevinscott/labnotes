@@ -190,6 +190,8 @@ def experiments(
             click.echo(f"Created {path / 'experiment.toml'}")
             return
         case str(), "run":
+            if experiment_config is not None:
+                experiment_config = experiment_config.resolve()
             if run_id is not None and (ctx.args or passthrough is not None):
                 raise click.UsageError(
                     "--run-id uses the run's recorded params and -- ARGS."

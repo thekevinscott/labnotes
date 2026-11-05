@@ -1,0 +1,1 @@
+Fixed: When a run times out or is stopped, labnotes now kills Docker containers carrying that run's `labnotes.run` label. This also works when the Docker client has already exited but its container is still running.

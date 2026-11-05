@@ -2,10 +2,43 @@ import shlex
 import shutil
 import subprocess
 import sys
+import os
 from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
+
+
+@pytest.fixture
+def fake_docker(tmp_path: Path) -> Iterator[dict[str, str]]:
+    """A Docker CLI whose container survives when the client is signalled."""
+    binary = tmp_path / "fake-docker-bin"
+    binary.mkdir()
+    (binary / "docker").write_text(
+        "#!/usr/bin/env python3\n"
+        "import os, pathlib, sys, time\n"
+        "args = sys.argv[1:]\n"
+        "state = pathlib.Path(os.environ['FAKE_DOCKER_STATE'])\n"
+        "if args[0] == 'run':\n"
+        "    label = args[args.index('--label') + 1]\n"
+        "    state.write_text(label)\n"
+        "    time.sleep(30)\n"
+        "elif args[0] == 'ps':\n"
+        "    wanted = args[args.index('--filter') + 1][6:]\n"
+        "    if state.exists() and state.read_text() == wanted: print('fake-container')\n"
+        "elif args[0] == 'kill':\n"
+        "    if state.exists(): state.unlink()\n"
+        "    print(args[1])\n"
+    )
+    (binary / "docker").chmod(0o755)
+    environment = {
+        "PATH": f"{binary}{os.pathsep}{os.environ['PATH']}",
+        "FAKE_DOCKER_STATE": str(tmp_path / "container.state"),
+    }
+    with mock.patch.dict(os.environ, environment):
+        yield environment
+
 
 BOTBOX_CONTAINER = """
 import os

@@ -420,6 +420,13 @@ def test_merges_environment_keys_with_the_experiment_winning() -> None:
     assert config.env == {"BASE": "first", "BOTH": "own", "OWN": "second"}
 
 
+def test_accepts_a_leading_underscore_environment_key() -> None:
+    config = read_experiment_config(
+        PATH, 'command = "run"\ncontinues = false\n[env]\n_ok1 = "x"\n', 1, 2
+    )
+    assert config.env == {"_ok1": "x"}
+
+
 @pytest.mark.parametrize(
     ("source", "message"),
     [
@@ -435,6 +442,14 @@ def test_merges_environment_keys_with_the_experiment_winning() -> None:
         (
             'command = "run"\ncontinues = false\n[env]\nLABNOTES_RUN = "wrong"\n',
             "env.LABNOTES_RUN is reserved",
+        ),
+        (
+            'command = "run"\ncontinues = false\n[env]\n"with-dash" = "x"\n',
+            "env.with-dash must be a shell identifier",
+        ),
+        (
+            'command = "run"\ncontinues = false\n[env]\n"1abc" = "x"\n',
+            "env.1abc must be a shell identifier",
         ),
     ],
 )

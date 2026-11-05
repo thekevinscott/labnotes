@@ -1,4 +1,5 @@
 import json
+import re
 import tomllib
 from pathlib import Path
 from typing import Any
@@ -13,6 +14,7 @@ from labnotes.is_positive_int import is_positive_int
 from labnotes.config_migration import MISSING_CONTINUES, REMOVED_MODE
 from labnotes.retries import RETRY_SECONDS
 
+SHELL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 SETTINGS = {
     "name",
     "command",
@@ -103,6 +105,11 @@ def read_experiment_config(
     for key, value in env.items():
         if key.startswith("LABNOTES_"):
             raise ValueError(f"{path}: env.{key} is reserved for labnotes")
+        if not SHELL_IDENTIFIER.match(key):
+            raise ValueError(
+                f"{path}: env.{key} must be a shell identifier"
+                " (letters, digits, underscore; not starting with a digit)"
+            )
         if not isinstance(value, str):
             raise ValueError(f"{path}: env.{key} must be a string")
     if "continues" not in values:

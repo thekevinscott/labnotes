@@ -1,0 +1,1 @@
+Fixed: **BREAKING** `[env]` keys that are not shell identifiers are now rejected at config load instead of silently dropped (#318). See the [migration note](../migrations.d/2026-11-05-labnotes-env-key-identifiers.md).

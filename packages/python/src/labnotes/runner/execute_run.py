@@ -146,6 +146,8 @@ async def execute_run(
                         GRACE_SECONDS, stop
                     )
                 run["exit_code"] = code = await exited
+                if kill_later is not None:
+                    kill_later.cancel()
                 run["signal"] = exit_signal(code)
                 if kill_later is not None:
                     run["ended_by"] = "timeout"

@@ -11,8 +11,27 @@ def read_run(
     found = path_pattern(f"{template}/run.json").fullmatch(relative)
     if found is None:
         return []
-    run = json.loads(Path(path).read_text(encoding="utf-8"))
     folder = relative.removesuffix("/run.json")
+    try:
+        run = json.loads(Path(path).read_text(encoding="utf-8"))
+    except (json.JSONDecodeError, UnicodeDecodeError) as error:
+        return [
+            {
+                "experiment": experiment or found["experiment"],
+                "id": found["run"],
+                "folder": folder,
+                "created": None,
+                "ended": None,
+                "exit_code": None,
+                "error": f"Invalid {relative}: {error}",
+                "stdout": f"{folder}/stdout.log",
+                "stderr": f"{folder}/stderr.log",
+                "params": "{}",
+                "meta": None,
+                "command": None,
+                "run": None,
+            }
+        ]
     logs = {"stdout": "stdout.log", "stderr": "stderr.log"}
     match run.get("invocations"):
         case [*_, {"stdout": str() as stdout, "stderr": str() as stderr}]:

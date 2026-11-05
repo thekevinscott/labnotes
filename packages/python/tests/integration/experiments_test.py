@@ -88,6 +88,20 @@ def test_lists_an_experiments_runs(
     assert json.loads(run["params"]) == {"m": "a"}
 
 
+@pytest.mark.parametrize("contents", ["{not json", ""])
+def test_lists_a_damaged_run_record(
+    project: Path, capsys: pytest.CaptureFixture[str], contents: str
+) -> None:
+    write(project / "data/alpha/broken/run.json", contents)
+
+    rows = labnotes(project, ["experiments", "alpha", "runs"], capsys)
+
+    assert {row["id"] for row in rows} == {"brave-fox", "broken"}
+    [broken] = [row for row in rows if row["id"] == "broken"]
+    assert broken["folder"] == "data/alpha/broken"
+    assert "run.json" in broken["error"]
+
+
 def test_creates_a_new_experiment(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:

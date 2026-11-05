@@ -163,6 +163,8 @@ These placeholders are filled in, each shell-quoted:
 
 Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
 
+Keys must be shell identifiers: letters, digits and underscores, not starting with a digit. The command runs through `sh`, which drops any other name.
+
 Values may use `{run_dir}` and `{invocation_dir}`. They are replaced as raw text, without shell quoting. `setup`, `teardown`, and `meta` get neither placeholder, so a variable whose value uses one is left out of their environment; runs still get it. To pass a value from setup to runs and teardown, use [`set_state`](sdk#set-state-and-get-state).
 
 Names beginning with `LABNOTES_` are reserved for labnotes and cannot be set in the table. The caller's `LABNOTES_*` variables do not override labnotes' own run variables.

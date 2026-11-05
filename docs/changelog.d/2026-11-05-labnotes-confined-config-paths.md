@@ -1,0 +1,1 @@
+Fixed: **BREAKING** `[experiments]`, `[files]`, and `[runs]` paths that resolve outside the project root now raise a config error. This prevents runs and files from being written outside the project or from sharing records through an escaping path. See the [migration note](../migrations.d/2026-11-05-labnotes-confined-config-paths.md).

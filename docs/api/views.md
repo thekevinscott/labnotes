@@ -88,8 +88,8 @@ from pathlib import Path
 from labnotes import view
 
 
-def last_line(folder):
-    path = Path(folder) / "stderr.log"
+def last_line(path):
+    path = Path(path)
     text = path.read_text(errors="replace") if path.exists() else ""
     lines = [line for line in text.splitlines() if line.strip()]
     return lines[-1] if lines else ""
@@ -99,12 +99,12 @@ def last_line(folder):
 def runs(columns):
     def row(run):
         failed = run["status"] == "failed"
-        return {**run, "reason": last_line(run["folder"]) if failed else ""}
+        return {**run, "reason": last_line(run["stderr"]) if failed else ""}
 
     return [*columns, {"key": "reason", "label": "last stderr"}], row
 ```
 
-`folder` is relative to the project root, which is where the script runs. When a run's files change, labnotes asks again for that run, so the column fills in as runs fail.
+`stderr` is the path to the run's latest stderr log, relative to the project root, which is where the script runs. When a run's files change, labnotes asks again for that run, so the column fills in as runs fail.
 
 ## Columns
 
@@ -132,7 +132,7 @@ A row is one run, keyed by column. labnotes sends:
 | `folder` | The run folder, relative to the project root. |
 | `created`, `ended` | From `run.json`, as written. |
 | `exit_code`, `error` | From `run.json`. |
-| `stdout`, `stderr` | From `run.json`, when it holds them. |
+| `stdout`, `stderr` | Path to the latest invocation's log, relative to the project root. |
 | `params` | The run's params, as an object. |
 | `command` | The shell command the run ran, from `run.json`. |
 | `meta` | The run's [`meta`](config#meta), as written to `run.json`, or `null`. |

@@ -10,7 +10,7 @@ CHUNK_BYTES = 1 << 16
 async def copy_output(fd: int, stream: str, log: BinaryIO, index: BinaryIO) -> None:
     reader = asyncio.StreamReader()
     transport, _ = await asyncio.get_running_loop().connect_read_pipe(
-        lambda: asyncio.StreamReaderProtocol(reader), os.fdopen(fd, "rb", buffering=0)
+        lambda: asyncio.StreamReaderProtocol(reader), os.fdopen(fd, "rb")
     )
     end = 0
     try:

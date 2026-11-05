@@ -34,6 +34,7 @@ def test_copies_each_chunk_and_records_where_it_ends(tmp_path: Path) -> None:
             copying = asyncio.create_task(copy_output(read, "stdout", log, index))
             os.write(write, b"first\n")
             await asyncio.sleep(0.05)
+            assert len(entries(tmp_path / "output.jsonl")) == 1
             os.write(write, b"second")
             await asyncio.sleep(0.05)
             os.close(write)
@@ -113,3 +114,7 @@ def test_closes_the_pipe_when_cancelled(tmp_path: Path) -> None:
     with pytest.raises(BrokenPipeError):
         os.write(write, b"late")
     os.close(write)
+
+
+def test_reads_up_to_64_kib_at_a_time() -> None:
+    assert CHUNK_BYTES == 65536

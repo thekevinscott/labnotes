@@ -1,11 +1,12 @@
 from pathlib import Path
+from types import SimpleNamespace
+from typing import Any
 
-from labnotes.models import LabnotesConfig
 from labnotes.runner.hook_folder import hook_folder
 
 
-def config(root: Path, experiments: str) -> LabnotesConfig:
-    return LabnotesConfig(root / ".labnotes.toml", root, experiments, "files/", "runs")
+def config(root: Path, experiments: str) -> Any:
+    return SimpleNamespace(root=root, experiments=experiments)
 
 
 def test_puts_hook_logs_under_the_experiments_labnotes_folder(tmp_path: Path) -> None:

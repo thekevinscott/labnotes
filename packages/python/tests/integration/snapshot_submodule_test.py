@@ -59,3 +59,9 @@ def test_snapshot_submodule_has_working_git_metadata(tmp_path: Path) -> None:
         assert b" M version.txt" in subprocess.check_output(
             ["git", "status", "--porcelain"], cwd=dependency
         )
+        assert snapshot.diff is not None
+        assert (
+            b"diff --git a/dependency/version.txt b/dependency/version.txt"
+            in snapshot.diff
+        )
+        assert b"+dirty" in snapshot.diff

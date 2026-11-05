@@ -82,6 +82,19 @@ def test_git_command_reads_bytes_from_project_root(tmp_path: Path) -> None:
     )
 
 
+def test_patch_requests_submodule_file_diffs(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    commands = [b"true\n", b"abc\n", str(root).encode(), b"", b"", b""]
+    with (
+        mock.patch("labnotes.runner.project_snapshot.git", side_effect=commands) as git,
+        mock.patch("labnotes.runner.project_snapshot.subprocess.run"),
+    ):
+        with project_snapshot(root):
+            pass
+    assert mock.call(root, "diff", "--submodule=diff", "HEAD") in git.call_args_list
+
+
 def test_skips_missing_files_and_preserves_directory_symlink(tmp_path: Path) -> None:
     root = tmp_path / "project"
     root.mkdir()

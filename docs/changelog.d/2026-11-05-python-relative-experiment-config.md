@@ -1,0 +1,1 @@
+Fixed: `experiments NAME run -e FILE` now resolves a relative override against the working folder before reading it, including when the run starts through the TUI daemon. Missing files produce a CLI usage error instead of a SQLite traceback.

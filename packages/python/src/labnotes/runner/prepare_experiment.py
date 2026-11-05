@@ -28,6 +28,8 @@ async def prepare_experiment(
     if experiment_config is None:
         folder = config.experiments.replace("{experiment}", name)
         experiment_config = config.root / folder / "experiment.toml"
+    elif not experiment_config.is_absolute():
+        experiment_config = config.root / experiment_config
     source = await file_text(config.root, experiment_config)
     if source is None and not config.defaults:
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")

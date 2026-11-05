@@ -5,12 +5,13 @@ import sys
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from unittest import mock
 
 import pytest
 
 
 @pytest.fixture
-def fake_docker(tmp_path: Path) -> dict[str, str]:
+def fake_docker(tmp_path: Path) -> Iterator[dict[str, str]]:
     """A Docker CLI whose container survives when the client is signalled."""
     binary = tmp_path / "fake-docker-bin"
     binary.mkdir()
@@ -31,10 +32,12 @@ def fake_docker(tmp_path: Path) -> dict[str, str]:
         "    print(args[1])\n"
     )
     (binary / "docker").chmod(0o755)
-    return {
+    environment = {
         "PATH": f"{binary}{os.pathsep}{os.environ['PATH']}",
         "FAKE_DOCKER_STATE": str(tmp_path / "container.state"),
     }
+    with mock.patch.dict(os.environ, environment):
+        yield environment
 
 
 BOTBOX_CONTAINER = """

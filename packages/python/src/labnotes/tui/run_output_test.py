@@ -372,3 +372,25 @@ def test_rereads_a_log_that_was_deleted_and_recreated(tmp_path: Path) -> None:
     log.write_text("again\n")
     output.follow(tmp_path)
     assert output.lines == ["again"]
+
+
+def test_a_missing_log_does_not_reset_the_view(tmp_path: Path) -> None:
+    output = RunOutput()
+    (tmp_path / "stdout.log").write_text("one\n")
+    output.follow(tmp_path)
+    output.follow(tmp_path)
+    assert output.lines == ["one"]
+
+
+def test_a_deleted_log_clears_the_view(tmp_path: Path) -> None:
+    output = RunOutput()
+    log = tmp_path / "stdout.log"
+    log.write_text("a")
+    output.follow(tmp_path)
+    assert output.offsets["stdout"] == 1
+
+    log.unlink()
+    output.follow(tmp_path)
+
+    assert output.lines == []
+    assert output.offsets["stdout"] == 0

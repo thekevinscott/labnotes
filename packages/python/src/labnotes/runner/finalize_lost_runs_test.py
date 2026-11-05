@@ -8,8 +8,13 @@ import pytest
 
 from labnotes.runner.finalize_lost_runs import finalize_lost_runs
 
-CONFIG = mock.Mock(root=Path("/lab"))
-GOING = {"params": {"n": 1}, "ended": None, "exit_code": None, "error": None}
+GOING: dict[str, object] = {
+    "params": {"n": 1},
+    "ended": None,
+    "exit_code": None,
+    "error": None,
+}
+DONE: dict[str, object] = {**GOING, "ended": "2026-01-01T00:00:00Z", "exit_code": 0}
 LOST = {"ended": "1970-01-01T00:01:40Z", "ended_by": "lost"}
 
 
@@ -19,27 +24,51 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch("labnotes.runner.finalize_lost_runs.open_tables") as open_tables,
         mock.patch("labnotes.runner.finalize_lost_runs.process_alive") as alive,
         mock.patch("labnotes.runner.finalize_lost_runs.write_run_json") as write,
+        mock.patch("labnotes.runner.finalize_lost_runs.claim_run") as claim,
+        mock.patch("labnotes.runner.finalize_lost_runs.os.close") as close,
         mock.patch("labnotes.runner.finalize_lost_runs.time") as time,
         mock.patch("labnotes.runner.finalize_lost_runs.UNFINISHED", "unfinished"),
     ):
         time.time.return_value = 100
         open_tables.return_value.query = mock.AsyncMock(return_value=[])
-        yield {"open_tables": open_tables, "alive": alive, "write": write}
+        claim.return_value = 9
+        yield {
+            "open_tables": open_tables,
+            "alive": alive,
+            "write": write,
+            "claim": claim,
+            "close": close,
+        }
 
 
 def finalize(
-    collaborators: dict[str, mock.MagicMock], *runs: dict[str, object]
-) -> None:
+    collaborators: dict[str, mock.MagicMock],
+    root: Path,
+    scanned: dict[str, object],
+    on_disk: object = None,
+    *,
+    lock: bool = False,
+) -> Path:
+    folder = root / "a/runs/r0"
+    folder.mkdir(parents=True)
+    disk = scanned if on_disk is None else on_disk
+    text = disk if isinstance(disk, str) else json.dumps(disk)
+    (folder / "run.json").write_text(text, encoding="utf-8")
+    if lock:
+        (folder / "run.lock").write_text("")
     collaborators["open_tables"].return_value.query.return_value = [
-        {"folder": f"a/runs/r{n}", "run": json.dumps(run)} for n, run in enumerate(runs)
+        {"folder": "a/runs/r0", "run": json.dumps(scanned)}
     ]
-    asyncio.run(finalize_lost_runs(CONFIG))
+    asyncio.run(finalize_lost_runs(mock.Mock(root=root)))
+    return folder
 
 
 def test_reads_only_unfinished_runs(collaborators: dict[str, mock.MagicMock]) -> None:
-    finalize(collaborators)
+    config = mock.Mock()
 
-    collaborators["open_tables"].assert_called_once_with(CONFIG)
+    asyncio.run(finalize_lost_runs(config))
+
+    collaborators["open_tables"].assert_called_once_with(config)
     collaborators["open_tables"].return_value.query.assert_awaited_once_with(
         "SELECT folder, run FROM runs WHERE unfinished"
     )
@@ -47,25 +76,24 @@ def test_reads_only_unfinished_runs(collaborators: dict[str, mock.MagicMock]) ->
 
 
 def test_ends_a_run_whose_process_is_gone(
-    collaborators: dict[str, mock.MagicMock],
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
 ) -> None:
     collaborators["alive"].return_value = False
     run: dict[str, object] = {**GOING, "pid": 7, "pid_created": 12.5, "note": "kept"}
 
-    finalize(collaborators, run)
+    folder = finalize(collaborators, tmp_path, run)
 
     collaborators["alive"].assert_called_once_with(7, 12.5)
-    collaborators["write"].assert_called_once_with(
-        Path("/lab/a/runs/r0"), {**run, **LOST}
-    )
+    collaborators["claim"].assert_not_called()
+    collaborators["write"].assert_called_once_with(folder, {**run, **LOST})
 
 
 def test_leaves_a_run_whose_process_still_runs(
-    collaborators: dict[str, mock.MagicMock],
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
 ) -> None:
     collaborators["alive"].return_value = True
 
-    finalize(collaborators, {**GOING, "pid": 7, "pid_created": 12})
+    finalize(collaborators, tmp_path, {**GOING, "pid": 7, "pid_created": 12})
 
     collaborators["alive"].assert_called_once_with(7, 12)
     collaborators["write"].assert_not_called()
@@ -73,75 +101,108 @@ def test_leaves_a_run_whose_process_still_runs(
 
 @pytest.mark.parametrize("created", [{}, {"pid_created": None}, {"pid_created": "x"}])
 def test_checks_a_pid_without_a_usable_start_time(
-    collaborators: dict[str, mock.MagicMock], created: dict[str, object]
+    collaborators: dict[str, mock.MagicMock],
+    tmp_path: Path,
+    created: dict[str, object],
 ) -> None:
     collaborators["alive"].return_value = True
 
-    finalize(collaborators, {**GOING, "pid": 7, **created})
+    finalize(collaborators, tmp_path, {**GOING, "pid": 7, **created})
 
     collaborators["alive"].assert_called_once_with(7, None)
 
 
 @pytest.mark.parametrize("pid", [{}, {"pid": None}, {"pid": "7"}])
 def test_ends_a_run_that_never_launched(
-    collaborators: dict[str, mock.MagicMock], pid: dict[str, object]
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path, pid: dict[str, object]
 ) -> None:
     run = {**GOING, **pid}
 
-    finalize(collaborators, run)
+    folder = finalize(collaborators, tmp_path, run)
 
     collaborators["alive"].assert_not_called()
-    collaborators["write"].assert_called_once_with(
-        Path("/lab/a/runs/r0"), {**run, **LOST}
-    )
+    collaborators["write"].assert_called_once_with(folder, {**run, **LOST})
 
 
-def test_checks_every_unfinished_run(
-    collaborators: dict[str, mock.MagicMock],
+def test_skips_a_locked_run(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
 ) -> None:
-    collaborators["alive"].side_effect = [True, False]
+    collaborators["claim"].return_value = None
 
-    finalize(collaborators, {**GOING, "pid": 1}, {**GOING, "pid": 2})
+    folder = finalize(collaborators, tmp_path, GOING, lock=True)
 
-    [(folder, _)] = [c.args for c in collaborators["write"].call_args_list]
-    assert folder == Path("/lab/a/runs/r1")
+    collaborators["claim"].assert_called_once_with(folder)
+    collaborators["alive"].assert_not_called()
+    collaborators["write"].assert_not_called()
+    collaborators["close"].assert_not_called()
 
 
-@pytest.mark.parametrize("locked", [True, False])
-def test_reads_a_run_with_a_lock_file_by_its_lock(
-    collaborators: dict[str, mock.MagicMock], tmp_path: Path, locked: bool
+def test_marks_an_unlocked_run_lost_from_disk_not_from_the_scanned_row(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
 ) -> None:
-    folder = tmp_path / "a/runs/r0"
-    folder.mkdir(parents=True)
-    (folder / "run.lock").write_text("")
-    invocations = [{"exit_code": 1}, {"started": "s", "ended": None}]
-    run = {**GOING, "pid": 7, "invocations": invocations}
+    on_disk = {**GOING, "note": "newer"}
+
+    folder = finalize(collaborators, tmp_path, GOING, on_disk, lock=True)
+
+    collaborators["alive"].assert_not_called()
+    collaborators["write"].assert_called_once_with(folder, {**on_disk, **LOST})
+    collaborators["close"].assert_called_once_with(9)
+
+
+def test_leaves_a_run_that_finished_after_the_scan(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    finalize(collaborators, tmp_path, GOING, DONE, lock=True)
+
+    collaborators["write"].assert_not_called()
+    collaborators["close"].assert_called_once_with(9)
+
+
+def test_leaves_a_run_with_an_exit_code_but_no_end(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    finalize(collaborators, tmp_path, GOING, {**GOING, "exit_code": 1}, lock=True)
+
+    collaborators["write"].assert_not_called()
+
+
+@pytest.mark.parametrize("disk", ["{not json", "[]"])
+def test_leaves_an_unreadable_run_json(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path, disk: str
+) -> None:
+    finalize(collaborators, tmp_path, GOING, disk, lock=True)
+
+    collaborators["write"].assert_not_called()
+    collaborators["close"].assert_called_once_with(9)
+
+
+def test_leaves_a_run_whose_run_json_is_missing(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    (tmp_path / "a/runs/r0").mkdir(parents=True)
+    (tmp_path / "a/runs/r0/run.lock").write_text("")
     collaborators["open_tables"].return_value.query.return_value = [
-        {"folder": "a/runs/r0", "run": json.dumps(run)}
+        {"folder": "a/runs/r0", "run": json.dumps(GOING)}
     ]
 
-    with mock.patch(
-        "labnotes.runner.finalize_lost_runs.run_locked", return_value=locked
-    ) as run_locked:
-        asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
+    asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
 
-    run_locked.assert_called_once_with(folder)
-    collaborators["alive"].assert_not_called()
-    if locked:
-        collaborators["write"].assert_not_called()
-    else:
-        collaborators["write"].assert_called_once_with(
-            folder,
-            {
-                **run,
-                **LOST,
-                "invocations": [{"exit_code": 1}, {"started": "s", **LOST}],
-            },
-        )
+    collaborators["write"].assert_not_called()
+
+
+def test_closes_the_lock_even_if_the_write_raises(
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
+) -> None:
+    collaborators["write"].side_effect = OSError("disk full")
+
+    with pytest.raises(OSError, match="disk full"):
+        finalize(collaborators, tmp_path, GOING, lock=True)
+
+    collaborators["close"].assert_called_once_with(9)
 
 
 def test_marks_only_the_last_of_several_invocations_lost(
-    collaborators: dict[str, mock.MagicMock],
+    collaborators: dict[str, mock.MagicMock], tmp_path: Path
 ) -> None:
     run: dict[str, object] = {
         **GOING,
@@ -151,9 +212,11 @@ def test_marks_only_the_last_of_several_invocations_lost(
             {"started": "s", "ended": None},
         ],
     }
-    finalize(collaborators, run)
+
+    folder = finalize(collaborators, tmp_path, run, lock=True)
+
     collaborators["write"].assert_called_once_with(
-        Path("/lab/a/runs/r0"),
+        folder,
         {
             **run,
             **LOST,
@@ -169,15 +232,19 @@ def test_marks_only_the_last_of_several_invocations_lost(
 def test_continues_after_a_locked_run_to_finalize_a_later_lost_run(
     collaborators: dict[str, mock.MagicMock], tmp_path: Path
 ) -> None:
-    first = tmp_path / "a/runs/r0"
-    first.mkdir(parents=True)
-    (first / "run.lock").write_text("")
+    for name in ("r0", "r1"):
+        folder = tmp_path / "a/runs" / name
+        folder.mkdir(parents=True)
+        (folder / "run.json").write_text(json.dumps(GOING), encoding="utf-8")
+    (tmp_path / "a/runs/r0/run.lock").write_text("")
+    collaborators["claim"].return_value = None
     collaborators["open_tables"].return_value.query.return_value = [
         {"folder": "a/runs/r0", "run": json.dumps(GOING)},
         {"folder": "a/runs/r1", "run": json.dumps(GOING)},
     ]
-    with mock.patch("labnotes.runner.finalize_lost_runs.run_locked", return_value=True):
-        asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
+
+    asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
+
     collaborators["write"].assert_called_once_with(
         tmp_path / "a/runs/r1", {**GOING, **LOST}
     )

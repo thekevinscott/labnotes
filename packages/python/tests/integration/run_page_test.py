@@ -95,6 +95,25 @@ def test_shows_log_blocks_as_lines_that_open_on_click(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha/runs/run1", check)
 
 
+def test_keeps_showing_log_blocks_past_invalid_utf8(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
+    run(tmp_path, "run1", {})
+    folder = tmp_path / "alpha/runs/run1"
+    write(folder / "stdout.log", "printed\n")
+
+    async def check(page: Page) -> None:
+        (folder / "log.jsonl").write_bytes(
+            b'{"content":"ok"}\n{"content":"bad \xff"}\n{"content":"after"}\n'
+        )
+        await expect(page.locator(".run-blocks").get_by_role("button")).to_have_text(
+            ["ok", "bad \ufffd", "after"]
+        )
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha/runs/run1", check)
+
+
 def test_opens_a_nested_runs_page(tmp_path: Path) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')

@@ -62,8 +62,8 @@ async def run_output(
         blocks_read += len(whole)
         for line in whole.splitlines():
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
+                record = json.loads(line.decode("utf-8", errors="replace"))
+            except ValueError:
                 continue
             if isinstance(record, dict):
                 yield f"event: block\ndata: {json.dumps(record)}\n\n"

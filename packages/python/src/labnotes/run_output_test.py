@@ -382,6 +382,32 @@ def test_sends_each_whole_block_line_as_it_is_logged(
     ]
 
 
+def test_keeps_sending_blocks_past_invalid_utf8(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    blocks = folder / "log.jsonl"
+    blocks.write_bytes(
+        b'{"content":"ok"}\n{"content":"bad \xff"}\n{"content":"after"}\n'
+    )
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [
+        block({"content": "ok"}),
+        block({"content": "bad \ufffd"}),
+        block({"content": "after"}),
+        end(0),
+    ]
+
+
 def test_holds_a_first_block_line_until_it_ends(
     tmp_path: Path, folder: Path, loaded: mock.AsyncMock
 ) -> None:

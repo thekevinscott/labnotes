@@ -182,3 +182,13 @@ def test_reset_forgets_the_last_run(tmp_path: Path, blocks: LogBlocks) -> None:
     blocks.follow(other)
 
     assert bodies(blocks) == ["old", "new"]
+
+
+def test_keeps_reading_past_invalid_utf8(tmp_path: Path, blocks: LogBlocks) -> None:
+    (tmp_path / "log.jsonl").write_bytes(
+        b'{"content":"ok"}\n{"content":"bad \xff"}\n{"content":"after"}\n'
+    )
+
+    blocks.follow(tmp_path)
+
+    assert bodies(blocks) == ["ok", "bad �", "after"]

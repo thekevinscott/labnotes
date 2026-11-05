@@ -32,8 +32,8 @@ class LogBlocks(VerticalScroll):
         self.read_to += len(complete)
         for line in complete.splitlines():
             try:
-                record = json.loads(line)
-            except json.JSONDecodeError:
+                record = json.loads(line.decode("utf-8", errors="replace"))
+            except ValueError:
                 continue
             if isinstance(record, dict):
                 self.add(record)

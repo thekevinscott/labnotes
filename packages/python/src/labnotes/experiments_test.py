@@ -344,7 +344,8 @@ def test_resolves_named_config_from_the_invoking_folder(
 
     assert run(["a", "run", "-e", "alt/experiment.toml"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[2] == path
+    options = drivers["daemon_command"].call_args.args[2]["options"]
+    assert options["experiment_config"] == str(path)
 
 
 def test_passes_the_setup_and_teardown_flags(

@@ -376,6 +376,22 @@ def test_runs_an_experiment_from_a_named_config(
     assert drivers["start_experiment"].call_args.args[1:4] == ("a", path, None)
 
 
+def test_resolves_named_config_from_the_invoking_folder(
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    (tmp_path / "alt").mkdir()
+    path = tmp_path / "alt/experiment.toml"
+    path.touch()
+    monkeypatch.chdir(tmp_path)
+
+    assert run(["a", "run", "-e", "alt/experiment.toml"]) == 0
+
+    assert drivers["start_experiment"].call_args.args[2] == path
+
+
 def test_passes_the_setup_and_teardown_flags(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],

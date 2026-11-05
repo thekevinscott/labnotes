@@ -103,6 +103,7 @@ async def execute_run(
                 env={
                     "FORCE_COLOR": "1",
                     "CLICOLOR_FORCE": "1",
+                    "PYTHONUNBUFFERED": "1",
                     **{
                         key: value
                         for key, value in run_environment.items()

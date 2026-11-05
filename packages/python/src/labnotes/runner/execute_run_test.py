@@ -416,6 +416,29 @@ def test_keeps_color_settings_the_user_chose(
     assert env["CLICOLOR_FORCE"] == "0"
 
 
+def test_unbuffers_python_output_in_the_child(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.delenv("PYTHONUNBUFFERED", raising=False)
+
+    run(tmp_path)
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["PYTHONUNBUFFERED"] == "1"
+
+
+def test_keeps_unbuffered_setting_the_user_chose(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    run(tmp_path, environment={"PYTHONUNBUFFERED": "0"})
+
+    env = collaborators["spawn"].await_args.kwargs["env"]
+    assert env["PYTHONUNBUFFERED"] == "0"
+
+
 def exits_after(process: mock.Mock, stop: mock.Mock, calls: int) -> None:
     exited = asyncio.Event()
 

@@ -33,3 +33,18 @@ def test_does_nothing_without_docker(tmp_path: Path) -> None:
     ):
         stop_containers(str(tmp_path))
     docker.assert_not_called()
+
+
+def test_does_nothing_when_docker_is_unreachable(tmp_path: Path) -> None:
+    with (
+        mock.patch(
+            "labnotes.runner.stop_containers.shutil.which", return_value="docker"
+        ),
+        mock.patch(
+            "labnotes.runner.stop_containers.docker_output", return_value=None
+        ) as docker,
+    ):
+        stop_containers(str(tmp_path))
+    docker.assert_called_once_with(
+        "ps", "--quiet", "--no-trunc", "--filter", f"label=labnotes.run={tmp_path}"
+    )

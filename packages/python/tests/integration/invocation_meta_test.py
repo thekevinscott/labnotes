@@ -9,6 +9,7 @@ import pytest
 from conftest import write
 
 from labnotes.cli import main
+from conftest import run_tui_command
 from labnotes.read_config import read_config
 from labnotes.tables.open_tables import open_tables
 
@@ -32,6 +33,8 @@ sys.exit(2)
 
 
 def labnotes(root: Path, argv: list[str]) -> int | str | None:
+    if len(argv) >= 3 and argv[0] == "experiments" and argv[2] == "run":
+        return run_tui_command(root, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(root / ".labnotes.toml"), *argv])
     return exit_info.value.code

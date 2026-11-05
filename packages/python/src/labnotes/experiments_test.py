@@ -90,17 +90,6 @@ def test_stop_sends_command_and_reports_missing_daemon(
     assert "command failed" in capsys.readouterr().err
 
 
-def test_headless_needs_run(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
-) -> None:
-    assert run(["a", "--headless"]) == 2
-    assert "--headless needs run" in capsys.readouterr().err
-    assert run(["new", "a", "--headless"]) == 2
-    assert "--headless needs run" in capsys.readouterr().err
-    assert run(["a", "stop", "--headless"]) == 2
-    assert "--headless needs run" in capsys.readouterr().err
-
-
 @pytest.mark.parametrize(
     "option",
     [
@@ -291,10 +280,6 @@ def test_reports_an_experiment_the_browser_cannot_find(
 def drivers() -> Iterator[dict[str, mock.MagicMock]]:
     results = [{"exit_code": 0}, {"exit_code": 0}]
     with (
-        mock.patch(
-            "labnotes.experiments.run_headless", return_value=results
-        ) as run_headless,
-        mock.patch("labnotes.experiments.start_experiment") as start_experiment,
         mock.patch("labnotes.experiments.run_tui", return_value=results) as run_tui,
         mock.patch(
             "labnotes.experiments.ensure_daemon", new=mock.AsyncMock()
@@ -304,15 +289,14 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
             return_value={"ok": True, "journal": "/state/invocation.jsonl"},
         ) as daemon_command,
         mock.patch("labnotes.experiments.sys") as sys,
+        mock.patch("labnotes.experiments.os", mock.Mock(environ={"KEY": "value"})),
         mock.patch(
             "labnotes.experiments.parse_subset", return_value={}
         ) as parse_subset,
     ):
-        sys.stdout.isatty.return_value = False
+        sys.stdout.isatty.return_value = True
         sys.stderr.isatty.return_value = True
         yield {
-            "run_headless": run_headless,
-            "start_experiment": start_experiment,
             "run_tui": run_tui,
             "ensure_daemon": ensure_daemon,
             "daemon_command": daemon_command,
@@ -321,46 +305,15 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         }
 
 
-def test_runs_an_experiment_in_process(
-    capsys: pytest.CaptureFixture[str],
+def test_runs_an_experiment_through_daemon(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "--concurrency", "3"]) == 0
-
-    drivers["start_experiment"].assert_called_once_with(
-        collaborators["load_config"].return_value,
-        "a",
-        None,
-        3,
-        None,
-        {},
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        False,
-    )
-    drivers["run_headless"].assert_called_once_with(
-        drivers["start_experiment"].return_value
-    )
-    drivers["run_tui"].assert_not_called()
-    assert capsys.readouterr().out == "2 passed, 0 failed.\n"
-    collaborators["experiment_rows"].assert_not_awaited()
-
-
-def test_headless_forces_foreground_even_in_a_terminal(
-    collaborators: dict[str, mock.MagicMock], drivers: dict[str, mock.MagicMock]
-) -> None:
-    drivers["sys"].stdout.isatty.return_value = True
-    drivers["sys"].stderr.isatty.return_value = True
-    # Real argv strings are not interned, so `is` checks would miss them.
-    assert run(["a", "".join(["r", "un"]), "--headless"]) == 0
-    drivers["run_headless"].assert_called_once()
-    drivers["run_tui"].assert_not_called()
+    options = drivers["daemon_command"].call_args.args[2]["options"]
+    assert options["concurrency"] == 3
+    drivers["run_tui"].assert_called_once()
+    drivers["ensure_daemon"].assert_awaited_once()
 
 
 def test_runs_an_experiment_from_a_named_config(
@@ -373,7 +326,9 @@ def test_runs_an_experiment_from_a_named_config(
 
     assert run(["a", "run", "-e", str(path)]) == 0
 
-    assert drivers["start_experiment"].call_args.args[1:4] == ("a", path, None)
+    assert drivers["daemon_command"].call_args.args[2]["options"][
+        "experiment_config"
+    ] == str(path)
 
 
 def test_resolves_named_config_from_the_invoking_folder(
@@ -389,7 +344,8 @@ def test_resolves_named_config_from_the_invoking_folder(
 
     assert run(["a", "run", "-e", "alt/experiment.toml"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[2] == path
+    options = drivers["daemon_command"].call_args.args[2]["options"]
+    assert options["experiment_config"] == str(path)
 
 
 def test_passes_the_setup_and_teardown_flags(
@@ -398,7 +354,10 @@ def test_passes_the_setup_and_teardown_flags(
 ) -> None:
     assert run(["a", "run", "--setup", "up", "--teardown", "down"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[7:9] == ("up", "down")
+    assert (
+        drivers["daemon_command"].call_args.args[2]["options"]["setup"],
+        drivers["daemon_command"].call_args.args[2]["options"]["teardown"],
+    ) == ("up", "down")
 
 
 def test_passes_the_labnotes_command_line(
@@ -411,7 +370,7 @@ def test_passes_the_labnotes_command_line(
     with ctx:
         experiments.invoke(ctx)
 
-    assert drivers["start_experiment"].call_args.args[9] == (
+    assert drivers["daemon_command"].call_args.args[2]["options"]["command_line"] == (
         "labnotes experiments a run"
     )
 
@@ -423,22 +382,9 @@ def test_runs_the_subset_given_as_params(
     assert run(["a", "run", "--model=small", "--timeout", "5", "--lang=en"]) == 0
 
     drivers["parse_subset"].assert_called_once_with(["--model=small", "--lang=en"])
-    drivers["start_experiment"].assert_called_once_with(
-        collaborators["load_config"].return_value,
-        "a",
-        None,
-        None,
-        5,
-        drivers["parse_subset"].return_value,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        None,
-        False,
-    )
+    options = drivers["daemon_command"].call_args.args[2]["options"]
+    assert options["only"] == drivers["parse_subset"].return_value
+    assert options["timeout"] == 5
 
 
 def test_passes_args_after_the_double_dash_through(
@@ -450,7 +396,12 @@ def test_passes_args_after_the_double_dash_through(
     assert run(argv) == 0
 
     drivers["parse_subset"].assert_called_once_with(["--model=small"])
-    assert drivers["start_experiment"].call_args.args[6] == ["--auth", "api", "--", "x"]
+    assert drivers["daemon_command"].call_args.args[2]["options"]["args"] == [
+        "--auth",
+        "api",
+        "--",
+        "x",
+    ]
 
 
 def test_sends_no_args_for_a_bare_double_dash(
@@ -459,7 +410,7 @@ def test_sends_no_args_for_a_bare_double_dash(
 ) -> None:
     assert run(["a", "run", "--"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[6] is None
+    assert drivers["daemon_command"].call_args.args[2]["options"]["args"] is None
 
 
 @pytest.mark.parametrize("argv", [["a", "--", "--auth"], ["a", "runs", "--"]])
@@ -472,7 +423,6 @@ def test_rejects_args_without_run(
     assert run(argv) == 2
 
     assert "Error: -- ARGS needs run." in capsys.readouterr().err
-    drivers["start_experiment"].assert_not_called()
 
 
 def test_rejects_a_malformed_param(
@@ -485,7 +435,6 @@ def test_rejects_a_malformed_param(
     assert run(["a", "run", "--model"]) == 2
 
     assert "Error: Unexpected --model." in capsys.readouterr().err
-    drivers["start_experiment"].assert_not_called()
 
 
 def test_help_says_params_pick_a_subset(
@@ -501,51 +450,15 @@ def test_help_says_params_pick_a_subset(
     assert "(repeat it for several values)" in help_text
 
 
-def test_exits_zero_when_a_run_fails(
-    capsys: pytest.CaptureFixture[str],
-    collaborators: dict[str, mock.MagicMock],
-    drivers: dict[str, mock.MagicMock],
-) -> None:
-    drivers["run_headless"].return_value = [
-        {"exit_code": 0},
-        {"exit_code": 2},
-        {"exit_code": None},
-    ]
-
-    assert run(["a", "run"]) == 0
-
-    assert capsys.readouterr().out == "1 passed, 2 failed.\n"
-
-
-def test_counts_a_retried_run_once(
-    capsys: pytest.CaptureFixture[str],
-    collaborators: dict[str, mock.MagicMock],
-    drivers: dict[str, mock.MagicMock],
-) -> None:
-    drivers["run_headless"].return_value = [
-        {"run": "r1", "exit_code": 75},
-        {"run": "r2", "exit_code": 1},
-        {"run": "r3", "exit_code": 0, "retry_of": "r1"},
-        {"run": "r4", "exit_code": 0},
-        {"run": "r5", "exit_code": 75},
-        {"run": "r6", "exit_code": 0, "retry_of": "r5"},
-    ]
-
-    assert run(["a", "run"]) == 0
-
-    assert capsys.readouterr().out == "3 passed, 1 failed. 2 retried.\n"
-
-
-@pytest.mark.parametrize("terminal", [True, False])
 def test_reports_an_experiment_that_cannot_run(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    terminal: bool,
 ) -> None:
-    drivers["sys"].stdout.isatty.return_value = terminal
-    drivers["run_headless"].side_effect = ValueError("a is already running")
-    drivers["run_tui"].side_effect = ValueError("a is already running")
+    drivers["daemon_command"].return_value = {
+        "ok": False,
+        "error": "a is already running",
+    }
 
     assert run(["a", "run"]) == 1
 
@@ -565,8 +478,6 @@ def test_needs_a_concurrency_of_at_least_one(
 ) -> None:
     assert run(["a", "run", "--concurrency", "0"]) == 2
 
-    drivers["start_experiment"].assert_not_called()
-
 
 @pytest.mark.parametrize("path", ["missing.toml", "."])
 def test_needs_an_experiment_config_file(
@@ -576,21 +487,6 @@ def test_needs_an_experiment_config_file(
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "-e", str(tmp_path / path)]) == 2
-
-    drivers["start_experiment"].assert_not_called()
-
-
-def test_prints_events_when_stderr_is_not_a_terminal(
-    collaborators: dict[str, mock.MagicMock],
-    drivers: dict[str, mock.MagicMock],
-) -> None:
-    drivers["sys"].stdout.isatty.return_value = True
-    drivers["sys"].stderr.isatty.return_value = False
-
-    run(["a", "run"])
-
-    drivers["run_headless"].assert_called_once()
-    drivers["run_tui"].assert_not_called()
 
 
 def test_shows_the_live_view_in_a_terminal(
@@ -602,7 +498,6 @@ def test_shows_the_live_view_in_a_terminal(
 
     assert run(["a", "run", "--concurrency", "3"]) == 0
 
-    drivers["start_experiment"].assert_not_called()
     drivers["run_tui"].assert_called_once_with(
         None,
         "a",
@@ -617,7 +512,6 @@ def test_shows_the_live_view_in_a_terminal(
         collaborators["load_config"].return_value, "a"
     )
     drivers["daemon_command"].assert_called_once()
-    drivers["run_headless"].assert_not_called()
     assert capsys.readouterr().out == ""
 
 
@@ -648,6 +542,7 @@ def test_terminal_restart_sends_options_to_daemon(
                 "retries": None,
                 "retry_wait": None,
                 "replace_capped": False,
+                "environment": {"KEY": "value"},
             },
         },
     )
@@ -743,7 +638,6 @@ def test_new_flags_need_new(
     assert run([*argv, *flags]) == 2
 
     assert f"{flag} needs new." in capsys.readouterr().err
-    drivers["start_experiment"].assert_not_called()
     collaborators["experiment_rows"].assert_not_called()
 
 
@@ -775,7 +669,7 @@ def test_sends_the_timeout_in_seconds(
 ) -> None:
     assert run(["a", "run", "--timeout", "90"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[4] == 90
+    assert drivers["daemon_command"].call_args.args[2]["options"]["timeout"] == 90
 
 
 @pytest.mark.parametrize("given", ["0", "-5"])
@@ -788,7 +682,6 @@ def test_needs_a_timeout_over_zero(
     assert run(["a", "run", "--timeout", given]) == 2
 
     assert "is not in the range x>=1" in capsys.readouterr().err
-    drivers["start_experiment"].assert_not_called()
 
 
 def test_help_says_runs_have_no_timeout_by_default(
@@ -837,7 +730,11 @@ def test_passes_retries_and_replace_capped_to_the_run(
 ) -> None:
     assert run(["a", "run", "--retries", "0", "--replace-capped"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[11:] == (0, None, True)
+    assert (
+        drivers["daemon_command"].call_args.args[2]["options"]["retries"],
+        drivers["daemon_command"].call_args.args[2]["options"]["retry_wait"],
+        drivers["daemon_command"].call_args.args[2]["options"]["replace_capped"],
+    ) == (0, None, True)
 
 
 def test_passes_retry_wait_to_the_run(
@@ -846,7 +743,7 @@ def test_passes_retry_wait_to_the_run(
 ) -> None:
     assert run(["a", "run", "--retry-wait", "0.5"]) == 0
 
-    assert drivers["start_experiment"].call_args.args[12] == 0.5
+    assert drivers["daemon_command"].call_args.args[2]["options"]["retry_wait"] == 0.5
 
 
 def test_terminal_run_sends_retry_wait_to_daemon(
@@ -866,7 +763,6 @@ def test_rejects_a_negative_retry_wait(
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "--retry-wait", "-1"]) == 2
-    drivers["start_experiment"].assert_not_called()
 
 
 def test_terminal_run_sends_retries_and_replace_capped_to_daemon(
@@ -886,4 +782,15 @@ def test_rejects_negative_retries(
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "--retries", "-1"]) == 2
-    drivers["start_experiment"].assert_not_called()
+
+
+def test_run_without_a_terminal_is_a_usage_error(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = False
+    assert run(["a", "run"]) == 2
+    assert "requires a terminal" in capsys.readouterr().err
+    drivers["ensure_daemon"].assert_not_awaited()
+    drivers["daemon_command"].assert_not_called()

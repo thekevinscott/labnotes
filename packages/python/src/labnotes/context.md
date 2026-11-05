@@ -187,7 +187,7 @@ running run under the cursor; `x` again kills it. `+` and
 finish. Enter on a run follows its `stdout.log` and `stderr.log` together, as
 they're written, and Escape returns to the table. A `run` that
 plans a single run opens straight on its output. `q` quits and leaves the runs
-going. Elsewhere, it prints a line per event instead.
+going. `run` requires a terminal.
 
 - `--concurrency N` runs N at a time to start with. Without it, `concurrency`
   in `experiment.toml` sets it, then `concurrency` under `[experiments]` in
@@ -208,17 +208,14 @@ going. Elsewhere, it prints a line per event instead.
   `run.json` gets `"error": "timed out after ..."` and `"ended_by": "timeout"`
   next to its exit code.
   Unset, runs have no time limit.
-- `run` owns its runs in the foreground. In a terminal it shows a live table;
-  outside a terminal it prints events until every run ends. A free concurrency
-  slot starts the next planned run. Agents should start it in a dedicated tmux
-  window so it can keep running between turns.
-- Ctrl-C, SIGTERM, SIGHUP, or quitting the live view stops running scripts:
-  SIGTERM first, then SIGKILL after 5 seconds if needed. Runs are recorded
-  as stopped before labnotes exits. The next start marks unfinished records
-  whose processes are gone as lost.
+- `run` requires a terminal and opens the live table. The experiment daemon
+  owns the runs and starts the next planned run when a concurrency slot is free.
+  Agents should start the TUI in a dedicated tmux window.
+- Ctrl-C opens a prompt: `s` stops runs, Enter or `l` leaves them running,
+  and Escape returns to the table. Closing the terminal leaves runs going.
+  Stopped runs receive SIGTERM, then SIGKILL after 5 seconds if needed.
 - A second invocation starts its own run session and reads the current config.
-- It exits 0 even if runs fail; the summary line counts failures. A run that
-  was retried counts as retried, not failed. If it can't
-  start a run, it prints the cause on one line and exits 1.
+- The TUI summary counts passed, failed and retried runs. If `run` cannot
+  start, it prints the cause and exits nonzero. Without a terminal it exits 2.
 
 `uvx labnotes server` serves the experiments, their markdown files and their runs as a local site, read from the same `.labnotes.toml`. An experiment's page shows its `experiment.toml` on one line, then a Runs tab with a table of its runs and a Notebooks tab with one tab per markdown file. The Runs tab also has a grid (`?view=grid`): one cell per combination of the params that vary, with how many runs count toward `repeats`. Clicking a run opens its `stdout.log` and `stderr.log` together, followed as they're written until the run ends.

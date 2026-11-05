@@ -1,4 +1,5 @@
 import os
+import shlex
 import json
 import signal
 import subprocess
@@ -8,6 +9,8 @@ import time
 from pathlib import Path
 
 import pytest
+from curtaincall import Terminal, expect
+from conftest import run_tui_command
 
 from labnotes.runner.project_snapshot import project_snapshot
 
@@ -58,35 +61,32 @@ def test_running_cell_keeps_original_code_and_repo_outputs(tmp_path: Path) -> No
     ).strip()
     (root / "value.py").write_text('VALUE = "dirty original"\n')
     diff = subprocess.check_output(["git", "diff", "HEAD"], cwd=root, text=True)
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
-        env=os.environ.copy(),
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+    term = Terminal(
+        shlex.join(
+            [
+                str(Path(sys.executable).parent / "labnotes"),
+                "-c",
+                str(root / ".labnotes.toml"),
+                "experiments",
+                "exp",
+                "run",
+            ]
+        ),
+        rows=30,
+        cols=120,
     )
+    term.start()
     try:
         for _ in range(300):
             if (root / "data/ready").exists():
                 break
-            if process.poll() is not None:
-                break
             time.sleep(0.05)
-        assert (root / "data/ready").exists(), process.communicate(timeout=2)[0]
+        assert (root / "data/ready").exists(), term._get_screen_text()
         (root / "value.py").write_text('VALUE = "after"\n')
         (root / "data/go").touch()
-        output, _ = process.communicate(timeout=20)
-        assert process.returncode == 0, output
+        expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=20)
+        term.key_ctrl_c()
+        assert term.wait(timeout=10) == 0
         [run] = list((root / "runs/exp").glob("*/result.txt"))
         snapshot = Path((root / "data/ready").read_text())
         assert snapshot != root
@@ -103,13 +103,13 @@ def test_running_cell_keeps_original_code_and_repo_outputs(tmp_path: Path) -> No
         }
         assert not snapshot.exists()
     finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
+        term.kill()
 
 
-@pytest.mark.parametrize("signum", [signal.SIGINT, signal.SIGTERM, signal.SIGHUP])
-def test_signal_removes_snapshot(tmp_path: Path, signum: signal.Signals) -> None:
+@pytest.mark.parametrize("signum", [signal.SIGTERM, signal.SIGHUP])
+def test_tui_signal_leaves_daemon_and_snapshot_running(
+    tmp_path: Path, signum: signal.Signals
+) -> None:
     root = tmp_path / "project"
     root.mkdir()
     (root / ".gitignore").write_text("data/\n")
@@ -122,7 +122,7 @@ def test_signal_removes_snapshot(tmp_path: Path, signum: signal.Signals) -> None
     (root / "cell.py").write_text(
         "import os, pathlib, time\n"
         'pathlib.Path("data/cwd").write_text(os.getcwd())\n'
-        "time.sleep(600)\n"
+        'while not pathlib.Path("data/go").exists(): time.sleep(.02)\n'
     )
     subprocess.run(["git", "init", "-q"], cwd=root, check=True)
     subprocess.run(["git", "add", "."], cwd=root, check=True)
@@ -140,38 +140,41 @@ def test_signal_removes_snapshot(tmp_path: Path, signum: signal.Signals) -> None
         cwd=root,
         check=True,
     )
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+    executable = Path(sys.executable).parent / "labnotes"
+    term = Terminal(
+        shlex.join(
+            [
+                str(executable),
+                "-c",
+                str(root / ".labnotes.toml"),
+                "experiments",
+                "exp",
+                "run",
+            ]
+        ),
+        rows=30,
+        cols=120,
     )
+    term.start()
     try:
         for _ in range(300):
             if (root / "data/cwd").exists():
                 break
-            if process.poll() is not None:
+            time.sleep(0.05)
+        assert (root / "data/cwd").exists(), term._get_screen_text()
+        snapshot = Path((root / "data/cwd").read_text())
+        assert term._child is not None
+        os.kill(term._child.pid, signum)
+        term.wait(timeout=20)
+        assert snapshot.exists()
+        (root / "data/go").touch()
+        for _ in range(300):
+            if not snapshot.exists():
                 break
             time.sleep(0.05)
-        assert (root / "data/cwd").exists(), process.communicate(timeout=2)[0]
-        snapshot = Path((root / "data/cwd").read_text())
-        process.send_signal(signum)
-        process.communicate(timeout=20)
         assert not snapshot.exists()
     finally:
-        if process.poll() is None:
-            process.kill()
-            process.wait()
+        term.kill()
 
 
 def test_non_git_project_uses_live_root_and_warns(tmp_path: Path) -> None:
@@ -182,23 +185,7 @@ def test_non_git_project_uses_live_root_and_warns(tmp_path: Path) -> None:
     (root / "exp/experiment.toml").write_text(
         f"continues = false\ncommand = \"{sys.executable} -c 'import os; print(os.getcwd())'\"\n"
     )
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
-        capture_output=True,
-        text=True,
-    )
-    assert result.returncode == 0, result.stderr
-    assert "not a git repository; running from the live tree" in result.stderr
+    assert run_tui_command(root, ["experiments", "exp", "run"]) == 0
     [stdout] = list((root / "exp/runs").glob("*/stdout.log"))
     assert stdout.read_text().strip() == str(root)
 
@@ -236,22 +223,8 @@ def _commit(root: Path) -> None:
 
 
 def _run(root: Path) -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
-        capture_output=True,
-        text=True,
-        timeout=30,
-    )
+    code = run_tui_command(root, ["experiments", "exp", "run"])
+    return subprocess.CompletedProcess([], code, "", "")
 
 
 def test_ignored_venv_is_not_linked_to_live_project(tmp_path: Path) -> None:

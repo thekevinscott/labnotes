@@ -9,6 +9,8 @@ from typing import Any
 import pytest
 
 from labnotes.cli import main
+from curtaincall import Terminal, expect
+from conftest import run_tui_command
 
 # Writes 2 MB into its folder and holds 80 MB, then waits while hold exists.
 SCRIPT = """
@@ -35,6 +37,8 @@ def make_project(root: Path) -> Path:
 
 
 def labnotes(root: Path, argv: list[str]) -> int | str | None:
+    if len(argv) >= 3 and argv[0] == "experiments" and argv[2] == "run":
+        return run_tui_command(root, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(root / ".labnotes.toml"), *argv])
     return exit_info.value.code
@@ -71,16 +75,20 @@ def test_lists_a_finished_runs_size_and_no_memory(
 def running(tmp_path: Path) -> Iterator[Path]:
     root = make_project(tmp_path)
     (root / "hold").touch()
-    process = subprocess.Popen(
-        [LABNOTES, "-c", root / ".labnotes.toml", "experiments", "exp", "run"],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
+    term = Terminal(
+        f"{LABNOTES} -c {root / '.labnotes.toml'} experiments exp run",
+        rows=30,
+        cols=120,
     )
+    term.start()
     try:
         yield root
     finally:
         (root / "hold").unlink()
-        process.wait(timeout=30)
+        expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=30)
+        term.key_ctrl_c()
+        term.wait(timeout=10)
+        term.kill()
 
 
 def wait_for[T](check: Any) -> T:

@@ -1,6 +1,9 @@
+from conftest import run_uvx_tui
+from curtaincall import Terminal, expect
 import json
 import fcntl
 import os
+import shlex
 import subprocess
 import sys
 import time
@@ -36,6 +39,8 @@ def make_project(root: Path, settings: str) -> Path:
 def labnotes(
     root: Path, uvx: dict[str, str], *argv: str
 ) -> subprocess.CompletedProcess[str]:
+    if len(argv) >= 2 and argv[1] == "run":
+        return run_uvx_tui(root, uvx, "experiments", *argv)
     return subprocess.run(
         ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), "experiments", *argv],
         cwd=root,
@@ -67,7 +72,7 @@ def test_uvx_run_plans_what_failed_then_nothing(
     third = labnotes(root, uvx, "exp", "run")
 
     assert third.returncode == 0, third.stdout
-    assert "Nothing to run" in third.stdout
+    assert "0 passed, 0 failed." in third.stdout
     recorded = records(root)
     assert len(recorded) == 3
     assert all("/" not in run for run in recorded)
@@ -93,7 +98,7 @@ def test_uvx_run_respects_a_held_slot(tmp_path: Path, uvx: dict[str, str]) -> No
         result = labnotes(root, uvx, "exp", "run")
 
     assert result.returncode == 0, result.stdout
-    assert "held by another run" in result.stdout
+    assert "1 passed, 0 failed." in result.stdout
     assert [r["params"] for r in records(root).values()].count({"m": "a"}) == 1
 
 
@@ -106,37 +111,40 @@ def test_second_uvx_run_does_not_duplicate_an_active_run(
         '[params]\nm = ["a"]\n'
     )
     (root / "script.py").write_text("import time\ntime.sleep(6)\n")
-    first = subprocess.Popen(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
+    first = Terminal(
+        shlex.join(
+            [
+                "uvx",
+                "labnotes",
+                "-c",
+                str(root / ".labnotes.toml"),
+                "experiments",
+                "exp",
+                "run",
+            ]
+        ),
+        rows=30,
+        cols=120,
         env={**os.environ, **uvx},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
     )
+    first.start()
     try:
         deadline = time.monotonic() + 20
         while not records(root) and time.monotonic() < deadline:
             time.sleep(0.05)
         assert records(root), "first run never started"
-        assert first.poll() is None
+        assert first.is_alive
 
         second = labnotes(root, uvx, "exp", "run")
 
         assert second.returncode == 0, second.stdout
-        assert "held by another run" in second.stdout
+        assert "0 passed, 0 failed." in second.stdout
         assert len(records(root)) == 1
     finally:
-        first.terminate()
-        first.communicate(timeout=15)
+        expect(first.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=15)
+        first.key_ctrl_c()
+        first.wait(timeout=10)
+        first.kill()
 
 
 def test_uvx_run_continues_a_failed_run_without_a_mode(

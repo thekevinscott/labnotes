@@ -1,6 +1,6 @@
+from conftest import run_uvx_tui
 import json
 import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -24,22 +24,7 @@ def test_uvx_run_gives_run_dir_env_to_the_run_but_not_to_setup(
     )
     env = {key: value for key, value in os.environ.items() if key != "LABEL"}
 
-    result = subprocess.run(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=root,
-        env={**env, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    result = run_uvx_tui(root, uvx, "experiments", "exp", "run", env=env)
 
     assert result.returncode == 0, result.stdout + result.stderr
     [folder] = (root / "exp/runs").iterdir()

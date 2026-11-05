@@ -1,5 +1,7 @@
 import os
-import subprocess
+import shlex
+
+from curtaincall import Terminal
 from pathlib import Path
 
 
@@ -15,7 +17,7 @@ def test_uvx_run_rejects_an_escaping_runs_path_before_writing(
         'command = "python3 -c pass"\ncontinues = false\n'
     )
 
-    result = subprocess.run(
+    command = shlex.join(
         [
             "uvx",
             "labnotes",
@@ -24,15 +26,13 @@ def test_uvx_run_rejects_an_escaping_runs_path_before_writing(
             "experiments",
             "alpha",
             "run",
-            "--headless",
-        ],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
+        ]
     )
-
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert "[runs] path must be relative" in result.stderr
-    assert not (tmp_path / "escaped-alpha").exists()
+    term = Terminal(command, rows=30, cols=160, env={**os.environ, **uvx})
+    term.start()
+    try:
+        assert term.wait(timeout=30) != 0
+        assert "[runs] path must be relative" in term._get_screen_text()
+        assert not (tmp_path / "escaped-alpha").exists()
+    finally:
+        term.kill()

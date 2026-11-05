@@ -9,7 +9,7 @@ from unittest import mock
 import pytest
 from conftest import write
 
-from labnotes.cli import main
+from conftest import run_tui_command
 
 CAPTURE = """
 import json
@@ -48,9 +48,7 @@ def labeled_project(
         f'teardown = "{command} teardown"\n' + configured,
     )
     with mock.patch.dict(os.environ, inherited, clear=True):
-        with pytest.raises(SystemExit) as exit_info:
-            main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
-        assert exit_info.value.code == 0
+        assert run_tui_command(tmp_path, ["experiments", "exp", "run"]) == 0
         yield tmp_path, None if request.param == "unset" else LABELS
 
 

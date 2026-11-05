@@ -1,5 +1,4 @@
-import os
-import subprocess
+from conftest import run_uvx_tui
 import sys
 from pathlib import Path
 
@@ -15,14 +14,8 @@ def test_uvx_args_override_a_flag_in_the_command(
         f'continues = false\ncommand = "{sys.executable} script.py --memory 8g --output {{run_dir}}"\n'
     )
 
-    result = subprocess.run(
-        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml")]
-        + ["experiments", "exp", "run", "--", "--memory", "24g", "--auth", "api"],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
+    result = run_uvx_tui(
+        root, uvx, "experiments", "exp", "run", "--", "--memory", "24g", "--auth", "api"
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

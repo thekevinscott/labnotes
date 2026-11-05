@@ -1,11 +1,13 @@
 import asyncio
 import json
+import shlex
 import os
-import subprocess
 import sys
 import time
 from pathlib import Path
 from unittest import mock
+
+from curtaincall import Terminal, expect
 
 from labnotes.runner.run_state import RunState
 from labnotes.runner.start_experiment import ExperimentStart
@@ -20,20 +22,21 @@ def test_running_invocation_can_be_reconstructed_from_disk(tmp_path: Path) -> No
         f"command = \"{sys.executable} -c 'import time; time.sleep(2)'\"\n"
         "repeats = 2\nconcurrency = 1\n"
     )
-    process = subprocess.Popen(
-        [
-            str(Path(sys.executable).parent / "labnotes"),
-            "-c",
-            str(tmp_path / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        cwd=tmp_path,
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
+    term = Terminal(
+        shlex.join(
+            [
+                str(Path(sys.executable).parent / "labnotes"),
+                "-c",
+                str(tmp_path / ".labnotes.toml"),
+                "experiments",
+                "exp",
+                "run",
+            ]
+        ),
+        rows=30,
+        cols=120,
     )
+    term.start()
     state_dir = Path(os.environ["XDG_STATE_HOME"]) / "labnotes" / "run-state"
     state = None
     try:
@@ -53,15 +56,15 @@ def test_running_invocation_can_be_reconstructed_from_disk(tmp_path: Path) -> No
         started = next(e for e in events if e["event"] == "started")
         assert started["at"] <= time.time()
         assert started["run"] in {r["run"] for r in planned["runs"]}
-        assert process.wait(timeout=15) == 0
+        expect(term.get_by_text("2 passed, 0 failed.")).to_be_visible(timeout=15)
+        term.key_ctrl_c()
+        assert term.wait(timeout=10) == 0
         assert state is not None
         finished = [json.loads(line) for line in state.read_text().splitlines()]
         assert len([e for e in finished if e["event"] == "ended"]) == 2
         assert finished[-1]["event"] == "idle"
     finally:
-        if process.poll() is None:
-            process.kill()
-        process.wait()
+        term.kill()
 
 
 def test_concurrent_invocations_keep_separate_journals(tmp_path: Path) -> None:
@@ -81,15 +84,11 @@ def test_concurrent_invocations_keep_separate_journals(tmp_path: Path) -> None:
         "run",
     ]
     processes = [
-        subprocess.Popen(
-            [*command, f"--m={value}"],
-            cwd=tmp_path,
-            stdout=subprocess.PIPE,
-            stderr=subprocess.STDOUT,
-            text=True,
-        )
+        Terminal(shlex.join([*command, f"--m={value}"]), rows=30, cols=120)
         for value in ("a", "b")
     ]
+    for process in processes:
+        process.start()
     try:
         journals = []
         for _ in range(100):
@@ -131,13 +130,14 @@ def test_concurrent_invocations_keep_separate_journals(tmp_path: Path) -> None:
         for path, plan in zip(journals, plans, strict=True):
             assert asyncio.run(shown_ids(path)) == {plan["runs"][0]["run"]}
 
-        assert all(process.wait(timeout=10) == 0 for process in processes)
+        for process in processes:
+            expect(process.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=15)
+            process.key_ctrl_c()
+            assert process.wait(timeout=10) == 0
         for path in journals:
             events = [json.loads(line) for line in path.read_text().splitlines()]
             assert len([event for event in events if event["event"] == "started"]) == 1
             assert len([event for event in events if event["event"] == "ended"]) == 1
     finally:
         for process in processes:
-            if process.poll() is None:
-                process.kill()
-            process.wait()
+            process.kill()

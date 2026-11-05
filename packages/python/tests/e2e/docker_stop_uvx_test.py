@@ -1,7 +1,8 @@
 import json
 import os
-import subprocess
 from pathlib import Path
+
+from conftest import run_uvx_tui
 
 
 def test_installed_timeout_removes_the_labeled_container(
@@ -13,25 +14,15 @@ def test_installed_timeout_removes_the_labeled_container(
     (root / "exp/experiment.toml").write_text(
         'continues = false\ncommand = "docker run --rm --label labnotes.run=$LABNOTES_RUN alpine sleep 30"\n'
     )
-    result = subprocess.run(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-            "--headless",
-            "--timeout",
-            "2",
-        ],
-        cwd=root,
-        env={**os.environ, **uvx, **fake_docker},
-        capture_output=True,
-        text=True,
-        timeout=30,
-        check=False,
+    result = run_uvx_tui(
+        root,
+        uvx,
+        "experiments",
+        "exp",
+        "run",
+        "--timeout",
+        "2",
+        env={**os.environ, **fake_docker},
     )
     [record] = root.glob("exp/runs/*/run.json")
     assert json.loads(record.read_text())["ended_by"] == "timeout", result.stdout

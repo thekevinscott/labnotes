@@ -1,7 +1,6 @@
+from conftest import run_uvx_tui
 import json
-import os
 import shlex
-import subprocess
 import sys
 from importlib.metadata import version
 from pathlib import Path
@@ -19,13 +18,8 @@ def test_uvx_run_records_the_labnotes_version_and_command_line(
     argv = ["-c", str(root / ".labnotes.toml"), "experiments", "exp", "run"]
     argv += ["--m=b", "--", "--auth", "api key"]
 
-    result = subprocess.run(
-        ["uvx", "labnotes", *argv],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
+    result = run_uvx_tui(
+        root, uvx, "experiments", "exp", "run", "--m=b", "--", "--auth", "api key"
     )
 
     assert result.returncode == 0, result.stdout + result.stderr

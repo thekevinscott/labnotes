@@ -1,4 +1,5 @@
 import asyncio
+import os
 import sys
 from pathlib import Path
 
@@ -8,7 +9,6 @@ from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
 from labnotes.daemon.command import command as daemon_command
 from labnotes.daemon.ensure import ensure_daemon
-from labnotes.runner.start_experiment import start_experiment
 from labnotes.runner.run_state import RunState
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
@@ -16,7 +16,6 @@ from labnotes.parse_params import parse_params
 from labnotes.parse_subset import parse_subset
 from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
-from labnotes.runner.run_headless import run_headless
 from labnotes.tables.experiment_rows import experiment_rows
 from labnotes.tui.browse_tui import browse_tui
 from labnotes.tui.run_tui import run_tui
@@ -86,11 +85,6 @@ class PassthroughCommand(click.Command):
     " Unset, that cell stays short.",
 )
 @click.option(
-    "--headless",
-    is_flag=True,
-    help="With run: keep the scheduler in this foreground process.",
-)
-@click.option(
     "-e",
     "--experiment-config",
     type=click.Path(exists=True, dir_okay=False, path_type=Path),
@@ -151,7 +145,6 @@ def experiments(
     retries: int | None,
     retry_wait: float | None,
     replace_capped: bool,
-    headless: bool,
     experiment_config: Path | None,
     timeout: int | None,
     setup: str | None,
@@ -177,8 +170,6 @@ def experiments(
         for flag, value in given.items():
             if value is not None:
                 raise click.UsageError(f"{flag} needs new.")
-    if headless and action != "run":
-        raise click.UsageError("--headless needs run.")
     match name, action:
         case "new", _:
             try:
@@ -200,74 +191,45 @@ def experiments(
                 only = parse_subset(ctx.args)
             except ValueError as error:
                 raise click.UsageError(str(error)) from error
+            if not sys.stdout.isatty() or not sys.stderr.isatty():
+                raise click.UsageError("run requires a terminal.")
             try:
-                if not headless and sys.stdout.isatty() and sys.stderr.isatty():
-                    asyncio.run(ensure_daemon(config, name))
-                    reply = daemon_command(
-                        config,
-                        name,
-                        {
-                            "command": "restart" if run_id else "start",
-                            "options": {
-                                "experiment_config": str(experiment_config)
-                                if experiment_config
-                                else None,
-                                "concurrency": concurrency,
-                                "timeout": timeout,
-                                "only": only,
-                                "args": passthrough or None,
-                                "setup": setup,
-                                "teardown": teardown,
-                                "command_line": ctx.meta.get(COMMAND_LINE),
-                                "run_id": run_id,
-                                "retries": retries,
-                                "retry_wait": retry_wait,
-                                "replace_capped": replace_capped,
-                            },
+                asyncio.run(ensure_daemon(config, name))
+                reply = daemon_command(
+                    config,
+                    name,
+                    {
+                        "command": "restart" if run_id else "start",
+                        "options": {
+                            "experiment_config": str(experiment_config)
+                            if experiment_config
+                            else None,
+                            "concurrency": concurrency,
+                            "timeout": timeout,
+                            "only": only,
+                            "args": passthrough or None,
+                            "setup": setup,
+                            "teardown": teardown,
+                            "command_line": ctx.meta.get(COMMAND_LINE),
+                            "run_id": run_id,
+                            "retries": retries,
+                            "retry_wait": retry_wait,
+                            "replace_capped": replace_capped,
+                            "environment": dict(os.environ),
                         },
-                    )
-                    if not reply.get("ok"):
-                        raise ValueError(
-                            str(reply.get("error", "Daemon rejected start"))
-                        )
-                    run_tui(
-                        None,
-                        name,
-                        config,
-                        experiment_config,
-                        daemon_journal=RunState(Path(str(reply["journal"]))),
-                    )
-                    return
-                else:
-                    results = run_headless(
-                        start_experiment(
-                            config,
-                            name,
-                            experiment_config,
-                            concurrency,
-                            timeout,
-                            only,
-                            passthrough or None,
-                            setup,
-                            teardown,
-                            ctx.meta.get(COMMAND_LINE),
-                            run_id,
-                            retries,
-                            retry_wait,
-                            replace_capped,
-                        )
-                    )
+                    },
+                )
+                if not reply.get("ok"):
+                    raise ValueError(str(reply.get("error", "Daemon rejected start")))
+                run_tui(
+                    None,
+                    name,
+                    config,
+                    experiment_config,
+                    daemon_journal=RunState(Path(str(reply["journal"]))),
+                )
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
-            superseded = {r["retry_of"] for r in results if "retry_of" in r}
-            retried = sum(result.get("run") in superseded for result in results)
-            failed = sum(
-                result["exit_code"] != 0 and result.get("run") not in superseded
-                for result in results
-            )
-            again = f" {retried} retried." if retried else ""
-            passed = len(results) - failed - retried
-            click.echo(f"{passed} passed, {failed} failed.{again}")
             return
         case str(), "stop":
             if (

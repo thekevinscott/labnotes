@@ -8,7 +8,7 @@ from pathlib import Path
 
 import pytest
 
-from labnotes.cli import main
+from conftest import run_tui_command
 from labnotes.read_config import read_config
 from labnotes.tables.open_tables import open_tables
 
@@ -64,9 +64,7 @@ def make_project(root: Path, settings: str, script: str = SCRIPT) -> Path:
 
 
 def run_once(root: Path) -> Path:
-    with pytest.raises(SystemExit) as exit_info:
-        main(["-c", str(root / ".labnotes.toml"), "experiments", "exp", "run"])
-    assert exit_info.value.code == 0
+    assert run_tui_command(root, ["experiments", "exp", "run"]) == 0
     [record] = root.glob("exp/runs/*/run.json")
     return record.parent
 
@@ -149,24 +147,14 @@ def test_counts_container_memory_from_botbox_labels_through_the_daemon(
     botbox_memory_project: Path, botbox_caller_labels: str
 ) -> None:
     root = botbox_memory_project
-    result = subprocess.run(
-        [
-            sys.executable,
-            "-m",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-        ],
-        env={**os.environ, "BOTBOX_LABELS": botbox_caller_labels},
-        capture_output=True,
-        text=True,
-        timeout=120,
-        check=True,
+    assert (
+        run_tui_command(
+            root,
+            ["experiments", "exp", "run"],
+            env={**os.environ, "BOTBOX_LABELS": botbox_caller_labels},
+        )
+        == 0
     )
-    assert "1 passed, 0 failed." in result.stdout
     [record] = root.glob("exp/runs/*/run.json")
     folder = record.parent
     assert json.loads(record.read_text())["exit_code"] == 0

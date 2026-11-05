@@ -6,9 +6,11 @@ from pathlib import Path
 from unittest import mock
 
 import pytest
+from curtaincall import expect
 from conftest import write
 
 from labnotes.cli import main
+from conftest import run_tui_command
 
 MANY = '[params]\nm = ["a", "b"]\n'
 COMMAND = """continues = false
@@ -19,9 +21,23 @@ m = ["a", "b"]
 
 
 def labnotes(root: Path, argv: list[str]) -> int | str | None:
+    if len(argv) >= 3 and argv[0] == "experiments" and argv[2] == "run":
+        return run_tui_command(root, argv)
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(root / ".labnotes.toml"), *argv])
     return exit_info.value.code
+
+
+def show_failure(terminal, root: Path, text: str) -> None:
+    labnotes = Path(sys.executable).parent / "labnotes"
+    term = terminal(
+        f"{labnotes} -c {root / '.labnotes.toml'} experiments exp run",
+        rows=30,
+        cols=200,
+    )
+    expect(term.get_by_text(text)).to_be_visible(timeout=60)
+    term.key_ctrl_c()
+    term.wait(timeout=10)
 
 
 def make_project(root: Path, shared: str = "", own: str = "") -> Path:
@@ -79,7 +95,7 @@ def test_prefers_the_experiments_setup_and_then_the_flags(tmp_path: Path) -> Non
 
 
 def test_runs_nothing_but_still_tears_down_when_setup_fails(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+    tmp_path: Path, terminal
 ) -> None:
     root = make_project(
         tmp_path,
@@ -87,22 +103,16 @@ def test_runs_nothing_but_still_tears_down_when_setup_fails(
         'teardown = "echo down >> journal.txt"\n',
     )
 
-    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+    show_failure(terminal, root, "setup command echo no db >&2; exit 4 exited 4: no db")
 
-    assert "setup command echo no db >&2; exit 4 exited 4: no db" in (
-        capsys.readouterr().err
-    )
     assert journal(root) == ["down"]
 
 
-def test_fails_the_invocation_when_teardown_fails(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_fails_the_invocation_when_teardown_fails(tmp_path: Path, terminal) -> None:
     root = make_project(tmp_path, own='teardown = "exit 5"\n')
 
-    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+    show_failure(terminal, root, "teardown command exit 5 exited 5")
 
-    assert "teardown command exit 5 exited 5" in capsys.readouterr().err
     assert journal(root) == ["run a", "run b"]
 
 
@@ -247,10 +257,12 @@ def test_runs_read_setup_state_without_changing_teardown_or_outer_state(
     assert outer_state.read_text() == '{"outer": true}'
 
 
-def test_gives_teardown_the_state_set_before_setup_failed(tmp_path: Path) -> None:
+def test_gives_teardown_the_state_set_before_setup_failed(
+    tmp_path: Path, terminal
+) -> None:
     root = make_state_project(tmp_path, MANY, setup_exit=3)
 
-    assert labnotes(root, ["experiments", "exp", "run"]) not in (0, None)
+    show_failure(terminal, root, "exited 3")
 
     assert json.loads((root / "received.json").read_text()) == {
         "resource": "two",

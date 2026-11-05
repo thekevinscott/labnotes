@@ -1,7 +1,8 @@
 import os
-import subprocess
 import sys
 from pathlib import Path
+
+from conftest import run_uvx_tui
 
 SCRIPT = (
     "import time\n"
@@ -24,15 +25,7 @@ def test_uvx_timeout_keeps_unflushed_python_stdout(
     env = {**os.environ, **uvx}
     env.pop("PYTHONUNBUFFERED", None)
 
-    subprocess.run(
-        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml")]
-        + ["experiments", "exp", "run", "--headless", "--timeout", "2"],
-        cwd=root,
-        env=env,
-        capture_output=True,
-        text=True,
-        timeout=60,
-    )
+    run_uvx_tui(root, uvx, "experiments", "exp", "run", "--timeout", "2", env=env)
 
     logs = list(root.glob("exp/runs/*/stdout.log"))
     assert logs, "no run folder"

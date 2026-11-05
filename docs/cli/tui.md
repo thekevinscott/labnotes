@@ -12,7 +12,7 @@ From the table you can change how many run at once, stop a run, filter runs by p
 
 Experiments with `[views]` also show custom views in the run TUI. Press `1` for the live runs table and `2`–`9` for custom views; `0` returns to the table. The same views and keys are available while browsing.
 
-Runs belong to the experiment's daemon, not the terminal. Press Ctrl-C to quit: `s` stops the runs, Enter or `l` leaves them running, and Escape returns to the table. A TUI crash or lost terminal leaves the daemon running. Run the experiment again to open a new TUI. Outside a terminal, `run` prints a line per event in the foreground; `--headless` explicitly chooses this mode in a terminal. Ctrl-C or SIGHUP stops a foreground run cleanly.
+Runs belong to the experiment's daemon, not the terminal. Press Ctrl-C to quit: `s` stops the runs, Enter or `l` leaves them running, and Escape returns to the table. A TUI crash or lost terminal leaves the daemon running. Run the experiment again to open a new TUI. `run` requires stdout and stderr to be terminals.
 
 A `run` that plans a single run opens straight on its output.
 

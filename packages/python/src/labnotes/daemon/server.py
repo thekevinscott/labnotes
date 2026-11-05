@@ -37,6 +37,7 @@ class ExperimentDaemon:
         self.clients = 0
         self.closing = False
         self.last_busy = time.monotonic()
+        self.start_lock = asyncio.Lock()
 
     def stop_all(self) -> None:
         """Ask every invocation to stop, including one still preparing."""
@@ -46,7 +47,30 @@ class ExperimentDaemon:
                 invocation.controls.interrupt()
 
     async def start(self, options: dict[str, object]) -> dict[str, object]:
-        """Start one independent invocation and return its journal path."""
+        """Start one invocation after earlier plans are visible."""
+        async with self.start_lock:
+            return await self._start(options)
+
+    async def _start(self, options: dict[str, object]) -> dict[str, object]:
+        reserved: dict[str, dict[str, object]] = {}
+        for path in self.active:
+            try:
+                events = [
+                    json.loads(line) for line in Path(path).read_text().splitlines()
+                ]
+            except FileNotFoundError:
+                continue
+            if any(event.get("event") == "stopping" for event in events):
+                continue
+            for event in events:
+                if event.get("event") == "planned":
+                    reserved.update(
+                        {
+                            str(run["run"]): cast(dict[str, object], run["params"])
+                            for run in event["runs"]
+                        }
+                    )
+                    break
         selected = start_experiment(
             self.config,
             self.name,
@@ -64,6 +88,8 @@ class ExperimentDaemon:
             cast(int | None, options.get("retries")),
             cast(float | None, options.get("retry_wait")),
             bool(options.get("replace_capped")),
+            reserved,
+            cast(dict[str, str] | None, options.get("environment")),
         )
         path = str(selected.run_state.path)
         invocation = Invocation()

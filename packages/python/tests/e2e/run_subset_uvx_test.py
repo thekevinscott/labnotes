@@ -1,6 +1,5 @@
+from conftest import run_uvx_tui
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 
@@ -16,25 +15,15 @@ def test_uvx_run_takes_several_values_of_one_param(
         '[params]\nmodel = ["opus", "sonnet", "haiku"]\neffort = ["low", "xhigh"]\n'
     )
 
-    result = subprocess.run(
-        [
-            "uvx",
-            "labnotes",
-            "-c",
-            str(root / ".labnotes.toml"),
-            "experiments",
-            "exp",
-            "run",
-            "--effort=xhigh",
-            "--model=opus",
-            "--model=haiku",
-        ],
-        cwd=root,
-        env={**os.environ, **uvx},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=120,
+    result = run_uvx_tui(
+        root,
+        uvx,
+        "experiments",
+        "exp",
+        "run",
+        "--effort=xhigh",
+        "--model=opus",
+        "--model=haiku",
     )
 
     assert result.returncode == 0, result.stdout

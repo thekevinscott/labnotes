@@ -1,3 +1,4 @@
+from conftest import run_uvx_tui
 import json
 import os
 import subprocess
@@ -31,15 +32,7 @@ def project(root: Path, experiment: str, env: str = "") -> Path:
 
 def labnotes(root: Path, uvx: dict[str, str]) -> subprocess.CompletedProcess[str]:
     env = {key: value for key, value in os.environ.items() if key != "LABEL"}
-    return subprocess.run(
-        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml")]
-        + ["experiments", "exp", "run"],
-        cwd=root,
-        env={**env, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    return run_uvx_tui(root, uvx, "experiments", "exp", "run", env=env)
 
 
 def journal(root: Path) -> list[object]:

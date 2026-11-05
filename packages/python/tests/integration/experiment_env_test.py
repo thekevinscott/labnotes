@@ -9,7 +9,7 @@ from unittest import mock
 import pytest
 from conftest import write
 
-from labnotes.cli import main
+from conftest import run_tui_command
 
 
 CAPTURE = """
@@ -58,9 +58,7 @@ def test_configured_environment_reaches_every_stage_from_each_cli_invocation(
 
     for caller in ("first", "second"):
         caller_environment["BOTH"] = caller
-        with pytest.raises(SystemExit) as exit_info:
-            main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
-        assert exit_info.value.code == 0
+        assert run_tui_command(tmp_path, ["experiments", "exp", "run"]) == 0
 
     rows = [
         json.loads(line)
@@ -119,10 +117,7 @@ def test_folder_env_values_are_left_out_of_hooks_and_given_to_the_runs(
         f'teardown = "{command} teardown"\n' + params,
     )
 
-    with pytest.raises(SystemExit) as exit_info:
-        main(["-c", str(tmp_path / ".labnotes.toml"), "experiments", "exp", "run"])
-
-    assert exit_info.value.code == 0
+    assert run_tui_command(tmp_path, ["experiments", "exp", "run"]) == 0
     runs = tmp_path / "exp" / "runs"
     folders = sorted(path.parent.resolve() for path in runs.rglob("run.json"))
     rows = [

@@ -3,10 +3,12 @@
 import asyncio
 import subprocess
 import sys
+import time
 
 from labnotes.daemon.client import daemon_socket
 from labnotes.daemon.socket_path import discovery_folder
 from labnotes.models import LabnotesConfig
+from labnotes.tables.iso_time import iso_time
 
 START_SECONDS = 10
 
@@ -20,6 +22,11 @@ async def ensure_daemon(config: LabnotesConfig, name: str) -> None:
     errors = folder / "daemon.stderr"
     errors.touch(mode=0o600, exist_ok=True)
     with errors.open("ab") as stream:
+        stream.write(
+            f"--- {iso_time(time.time())} starting daemon for {name}\n".encode()
+        )
+        stream.flush()
+        start = stream.tell()
         process = subprocess.Popen(
             [
                 sys.executable,
@@ -40,7 +47,9 @@ async def ensure_daemon(config: LabnotesConfig, name: str) -> None:
         if daemon_socket(config, name) is not None:
             return
         if (status := process.poll()) is not None and status != 0:
-            detail = errors.read_text().strip()
+            with errors.open("rb") as log:
+                log.seek(start)
+                detail = log.read().decode("utf-8", errors="replace").strip()
             raise ValueError(detail or f"Daemon for {name} exited during startup.")
         await asyncio.sleep(0.1)
     raise ValueError(f"Daemon for {name} did not start in {START_SECONDS}s.")

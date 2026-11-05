@@ -35,7 +35,13 @@ def read_path(config: Path, table: str, section: object, single: bool = False) -
     template = section.get("path", defaults[table])
     if not isinstance(template, str):
         raise ValueError(f"{config}: [{table}] path must be a string")
-    if PurePosixPath(template).is_absolute() or template.startswith("~"):
+    root = config.resolve().parent
+    example = PLACEHOLDER.sub("_placeholder_", template)
+    if (
+        PurePosixPath(template).is_absolute()
+        or template.startswith("~")
+        or not (root / example).resolve().is_relative_to(root)
+    ):
         raise ValueError(
             f"{config}: [{table}] path must be relative to the config's folder"
         )

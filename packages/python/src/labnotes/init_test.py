@@ -1,3 +1,4 @@
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -38,6 +39,24 @@ def test_refuses_to_overwrite_a_config(
 
     assert (folder / ".labnotes.toml").read_text(encoding="utf-8") == "mine\n"
     assert "already exists" in capsys.readouterr().err
+
+
+def test_reports_an_unwritable_folder(
+    folder: Path,
+    capsys: pytest.CaptureFixture[str],
+    request: pytest.FixtureRequest,
+) -> None:
+    if os.geteuid() == 0:
+        pytest.skip("root ignores directory permissions")
+    folder.chmod(0o555)
+    request.addfinalizer(lambda: folder.chmod(0o755))
+
+    assert run() == 1
+
+    err = capsys.readouterr().err
+    assert str(folder / ".labnotes.toml") in err
+    assert "Permission denied" in err
+    assert "Traceback" not in err
 
 
 @pytest.mark.parametrize("single", [False, True])

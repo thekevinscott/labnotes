@@ -68,6 +68,39 @@ def test_rejects_a_bad_path(table: str, section: object, message: str) -> None:
     assert message in str(error.value)
 
 
+@pytest.mark.parametrize(
+    ("table", "template"),
+    [
+        ("experiments", "../outside/{experiment}"),
+        ("files", "{experiment}/../../outside/"),
+        ("runs", "../outside-{experiment}/{run}"),
+    ],
+)
+def test_rejects_a_path_resolving_outside_the_config_root(
+    table: str, template: str
+) -> None:
+    with pytest.raises(ValueError, match=f"\\[{table}\\] path must be relative"):
+        read_path(CONFIG, table, {"path": template})
+
+
+def test_accepts_parent_components_that_resolve_inside_the_root() -> None:
+    template = "subdir/../{experiment}/runs/{run}"
+    assert read_path(CONFIG, "runs", {"path": template}) == template
+
+
+def test_rejects_a_path_through_an_outside_symlink(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    root.mkdir()
+    (root / "linked").symlink_to(tmp_path, target_is_directory=True)
+
+    with pytest.raises(ValueError, match=r"\[runs\] path must be relative"):
+        read_path(
+            root / ".labnotes.toml",
+            "runs",
+            {"path": "linked/{experiment}/runs/{run}"},
+        )
+
+
 @pytest.mark.parametrize("table", SINGLE_PATHS)
 def test_one_experiment_drops_the_experiment_prefix(table: str) -> None:
     assert read_path(CONFIG, table, {}, single=True) == SINGLE_PATHS[table]

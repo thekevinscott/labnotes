@@ -1,0 +1,1 @@
+Fixed: a run that finishes while `labnotes` is sweeping for lost runs is no longer overwritten as lost. The sweep re-reads `run.json` under the run lock before marking it, and concurrent writers use separate temp files.

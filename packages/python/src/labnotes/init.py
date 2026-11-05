@@ -15,4 +15,6 @@ def init() -> None:
             file.write(default_config_text(single=single))
     except FileExistsError as error:
         raise click.ClickException(f"{path} already exists.") from error
+    except OSError as error:
+        raise click.ClickException(f"Cannot write {path}: {error.strerror}") from error
     click.echo(f"Wrote {path}")

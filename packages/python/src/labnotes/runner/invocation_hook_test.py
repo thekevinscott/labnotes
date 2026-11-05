@@ -82,3 +82,26 @@ def test_records_the_hooks_metadata(tmp_path: Path) -> None:
     assert metadata["exit_code"] == 2
     assert metadata["error"] == "setup command exit 2 exited 2"
     assert metadata["started"] <= metadata["ended"]
+
+
+def test_reuses_an_existing_log_folder(tmp_path: Path) -> None:
+    folder = tmp_path / "logs"
+    folder.mkdir()
+
+    asyncio.run(invocation_hook(tmp_path, "setup", "true", None, folder))
+
+    assert (folder / "metadata.json").exists()
+
+
+def test_writes_metadata_as_indented_json_before_and_after(tmp_path: Path) -> None:
+    folder = tmp_path / "logs"
+
+    asyncio.run(
+        invocation_hook(
+            tmp_path, "setup", "cp logs/metadata.json during.json", None, folder
+        )
+    )
+
+    for written in (tmp_path / "during.json", folder / "metadata.json"):
+        text = written.read_text()
+        assert text == json.dumps(json.loads(text), indent=2) + "\n"

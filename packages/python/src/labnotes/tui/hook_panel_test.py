@@ -1,4 +1,5 @@
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -36,9 +37,9 @@ def test_shows_the_elapsed_time_and_outcome(
 ) -> None:
     panel.start(tmp_path, 100.0)
     assert panel.state == "running"
-    panel.end(None, 165.0)
+    panel.end(None, 250.0)
     assert panel.state == "passed"
-    assert shown(parts["header"]) == "setup: ✓  1m 05s"
+    assert shown(parts["header"]) == "setup: ✓  2m 30s"
 
 
 def test_shows_the_error_of_a_failed_hook(
@@ -54,9 +55,9 @@ def test_shows_the_error_of_a_failed_hook(
 def test_shows_running_time_while_the_hook_runs(
     panel: HookPanel, parts: dict[str, mock.Mock], tmp_path: Path
 ) -> None:
-    with mock.patch("labnotes.tui.hook_panel.time.monotonic", return_value=107.0):
+    with mock.patch("labnotes.tui.hook_panel.time.monotonic", return_value=250.0):
         panel.start(tmp_path, 100.0)
-    assert shown(parts["header"]) == "setup: running  7s"
+    assert shown(parts["header"]) == "setup: running  2m 30s"
 
 
 def test_follows_the_hooks_log_folder(
@@ -72,3 +73,10 @@ def test_follows_the_hooks_log_folder(
 def test_end_before_start_leaves_no_elapsed_time(panel: HookPanel) -> None:
     panel.end(None, 5.0)
     assert (panel.took, panel.state) == (None, "waiting")
+
+
+def test_shows_the_waiting_header_without_markup() -> None:
+    header: Any
+    header, _ = HookPanel("setup").compose()
+    header.update("[b]setup")
+    assert str(header.render()) == "[b]setup"

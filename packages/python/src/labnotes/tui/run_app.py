@@ -264,10 +264,12 @@ class RunLiveView(Widget):
         self.stage = stage
         for name in ("setup", "runs", "teardown"):
             self.query_one(f"#{name}-stage").display = name == stage
-        if stage == "runs" and self.viewing is None:
+        if stage != "runs":
+            self.panel(stage).query_one(RunOutput).focus()
+        elif self.viewing is None:
             self.query_one(DataTable).focus()
         else:
-            self.panel(stage).query_one(RunOutput).focus()
+            self.query_one("#output", RunOutput).focus()
         self.draw_stages()
         self.refresh_bindings()
 

@@ -20,3 +20,11 @@ def test_highlights_the_current_stage() -> None:
 
     assert str(line.spans[0].style) == "bold reverse"
     assert line.plain[line.spans[0].start : line.spans[0].end] == " setup | "
+
+
+def test_highlights_only_the_stage_equal_to_the_current_one() -> None:
+    current = "".join(["set", "up"])
+
+    line = stage_line([("runs", "waiting"), ("setup", "running")], current, "|")
+
+    assert [str(span.style) for span in line.spans] == ["dim", "dim", "bold reverse"]

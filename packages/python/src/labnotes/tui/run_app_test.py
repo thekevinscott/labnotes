@@ -1,5 +1,5 @@
 import asyncio
-from collections.abc import Callable, Iterator
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 from unittest import mock
@@ -1926,3 +1926,119 @@ def test_replayed_wall_times_keep_elapsed_and_retry_countdown(
             await pilot.press("ctrl+c")
 
     asyncio.run(drive())
+
+
+def hooked(*hooks: str) -> dict[str, object]:
+    return {**planned("r1", "r2"), "hooks": list(hooks)}
+
+
+def stage(app: RunApp) -> str:
+    return app.query_one(RunLiveView).stage
+
+
+def shown_stages(app: RunApp) -> str:
+    widget: Any = app.query_one("#stages")
+    return str(widget.content) if widget.display else ""
+
+
+def drive_hooks(steps: Callable[[RunApp, Any, Report], Awaitable[None]]) -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await steps(app, pilot, reports[0])
+
+    asyncio.run(drive())
+
+
+def test_shows_no_stages_without_hooks() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(planned("r1", "r2"))
+        await pilot.pause()
+        assert shown_stages(app) == ""
+        assert stage(app) == "runs"
+        await pilot.press("left_square_bracket")
+        assert stage(app) == "runs"
+
+    drive_hooks(steps)
+
+
+def test_opens_on_setup_then_advances_to_runs_and_teardown(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        await pilot.pause()
+        assert stage(app) == "setup"
+        assert "setup" in shown_stages(app) and "teardown" in shown_stages(app)
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        assert stage(app) == "runs"
+        assert "setup ✓" in shown_stages(app)
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert stage(app) == "teardown"
+
+    drive_hooks(steps)
+
+
+def test_stays_on_a_failed_setup(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": "up broke"})
+        await pilot.pause()
+        assert stage(app) == "setup"
+        assert "setup ✗" in shown_stages(app)
+
+    drive_hooks(steps)
+
+
+def test_moving_by_hand_stops_auto_advance(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        await pilot.press("right_square_bracket", "right_square_bracket")
+        assert stage(app) == "teardown"
+        await pilot.press("left_square_bracket", "left_square_bracket")
+        assert stage(app) == "setup"
+        await pilot.press("left_square_bracket")
+        assert stage(app) == "setup"
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert stage(app) == "setup"
+
+    drive_hooks(steps)
+
+
+def test_run_keys_do_nothing_off_the_runs_stage(tmp_path: Path) -> None:
+    kill = mock.Mock()
+
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        app.query_one(RunLiveView).controls = mock.Mock(kill=kill)
+        report(hooked("setup"))
+        await pilot.pause()
+        await pilot.press("x", "slash")
+        kill.assert_not_called()
+        assert not app.query_one("#filter").display
+
+    drive_hooks(steps)
+
+
+def test_keeps_the_summary_after_teardown(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("teardown"))
+        report({"event": "idle"})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "teardown", "error": None})
+        await pilot.pause()
+        assert status(app) == "0 passed, 0 failed. Ctrl-C to quit."
+
+    drive_hooks(steps)

@@ -56,8 +56,11 @@ def run_tui(terminal, tmp_path: Path, hooks: str, command: str = QUICK) -> Termi
     )
 
 
-def quit_tui(term: Terminal) -> None:
+def quit_tui(term: Terminal, running: bool = False) -> None:
     term.key_ctrl_c()
+    if running:
+        expect(term.get_by_text("still going")).to_be_visible()
+        term.write("l")
     term.wait()
 
 
@@ -73,8 +76,9 @@ def test_setup_shows_its_logs_then_advances_to_the_runs(
         "    time.sleep(0.5)\n",
     )
     teardown = script(tmp_path, "teardown", "time.sleep(30)\n")
+    hooks = f"setup = '''{setup}'''\nteardown = '''{teardown}'''\n"
     term = run_tui(
-        terminal, tmp_path, f"setup = '''{setup}'''\nteardown = '''{teardown}'''\n"
+        terminal, tmp_path, hooks, f"{PYTHON} -c 'import time; time.sleep(20)'"
     )
 
     expect(term.get_by_text(BREADCRUMBS)).to_be_visible(timeout=15)
@@ -89,7 +93,7 @@ def test_setup_shows_its_logs_then_advances_to_the_runs(
     expect(term.get_by_text("setup out 3")).to_be_visible()
     expect(term.get_by_text(re.compile("setup ✓"))).to_be_visible()
 
-    quit_tui(term)
+    quit_tui(term, running=True)
 
 
 def test_teardown_shows_its_logs_once_the_runs_finish(terminal, tmp_path: Path) -> None:

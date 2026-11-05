@@ -195,7 +195,11 @@ Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every
 
 Shell command that labnotes runs once per `run`, from the project root, after [`meta`](#meta) and before the first run starts. While it runs, the TUI shows `Setting up.`
 
-A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr. Its stdout is discarded.
+A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown) still runs, so it can clean up whatever setup got done before failing. Write teardown to cope with a setup that only got partway. The error names the command and shows its stderr.
+
+Each hook's output is saved in the experiment folder, under `.labnotes/logs/setup/<stamp>/` and `.labnotes/logs/teardown/<stamp>/`. Each folder holds `stdout.log`, `stderr.log`, and `metadata.json` with the command, start and end times, exit code, error, and the run IDs the invocation planned. Setup and teardown from the same invocation share a stamp.
+
+When an experiment has setup or teardown, the TUI shows a row of stages across the top: setup, runs, teardown, each with its state. Setup and teardown each get a screen with their status, elapsed time, and live logs. The TUI opens on setup and moves to the next stage as each one finishes. Press `[` and `]` to move between stages yourself; after that, the TUI stays where you put it.
 
 Setup gets no folder placeholders. `{run_dir}` or `{invocation_dir}` in the command fails the invocation before setup or any run starts. To hand values to runs and teardown, such as a container ID, call [`set_state`](sdk#set-state-and-get-state) in setup; they read it with `get_state`. An [`[env]`](#env) value that uses a placeholder is left out of the hook's environment instead.
 

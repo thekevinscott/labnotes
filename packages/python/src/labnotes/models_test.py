@@ -45,6 +45,13 @@ def test_configs_default_to_the_default_retries() -> None:
     assert (project.retries, experiment.retries) == (3, 3)
 
 
+def test_configs_wait_thirty_seconds_before_a_retry_by_default() -> None:
+    project = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
+    experiment = ExperimentConfig("run", 1, {})
+
+    assert (project.retry_wait, experiment.retry_wait) == (30.0, 30.0)
+
+
 def test_an_experiment_has_no_meta_command_by_default() -> None:
     assert ExperimentConfig("run", 1, {}).meta is None
 

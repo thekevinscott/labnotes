@@ -1,5 +1,4 @@
 import asyncio
-import inspect
 import os
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
@@ -158,6 +157,7 @@ def run(
     hear = mock.Mock() if listen is None else listen
     configured = experiment(retries, continues, replace_capped)
     configured.env = env or {}
+    configured.retry_wait = retry_seconds
 
     def listening(controls: object) -> None:
         hear(controls)
@@ -171,7 +171,6 @@ def run(
             concurrency,
             report,
             listening,
-            retry_seconds=retry_seconds,
             only=only,
             args=args,
             run_id=run_id,
@@ -1278,12 +1277,6 @@ def retry_parents(collaborators: dict[str, mock.MagicMock]) -> list[object]:
     return [c.args[7] for c in collaborators["execute_run"].await_args_list]
 
 
-def test_waits_thirty_seconds_before_a_retry_by_default() -> None:
-    default = inspect.signature(run_experiment).parameters["retry_seconds"].default
-
-    assert default == 30.0
-
-
 def test_retries_a_tempfail_with_the_same_params(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -1659,15 +1652,9 @@ def test_releases_a_continuing_run_whose_retry_is_cancelled(
             asyncio.get_running_loop().call_later(0.05, controls.interrupt)  # type: ignore[attr-defined]
             controls.finish()  # type: ignore[attr-defined]
 
-        await run_experiment(
-            config,
-            "exp",
-            experiment(continues=True),
-            1,
-            mock.Mock(),
-            listening,
-            retry_seconds=60,
-        )
+        configured = experiment(continues=True)
+        configured.retry_wait = 60
+        await run_experiment(config, "exp", configured, 1, mock.Mock(), listening)
 
     settle(go())
 
@@ -1788,3 +1775,23 @@ def test_a_resumed_run_spends_its_earlier_tries_from_its_retries(
     retrying = [e for e in reported(report) if e["event"] == "retrying"]
     assert [(e["attempt"], e["seconds"]) for e in retrying] == [(3, 0.01)]
     assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+
+
+def test_a_resumed_run_doubles_its_wait_from_this_session_only(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "old", "params": '{"m": "a"}', "invocations": 1},
+    ]
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75, 75, 75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=4, retry_seconds=0.01, continues=True)
+
+    retrying = [e for e in reported(report) if e["event"] == "retrying"]
+    assert [(e["attempt"], e["seconds"]) for e in retrying] == [
+        (2, 0.01),
+        (3, 0.02),
+        (4, 0.04),
+    ]

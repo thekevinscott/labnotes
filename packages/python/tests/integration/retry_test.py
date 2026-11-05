@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 from typing import Any
@@ -64,7 +65,9 @@ def run_now(root: Path) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
 
     async def go() -> list[dict[str, object]]:
-        experiment, concurrency = await prepare_experiment(config, "exp", None, None)
+        experiment, concurrency = await prepare_experiment(
+            config, "exp", None, None, retry_wait=0.01
+        )
 
         def listen(controls: Controls) -> None:
             controls.finish()
@@ -76,11 +79,16 @@ def run_now(root: Path) -> list[dict[str, object]]:
             concurrency,
             events.append,
             listen,
-            retry_seconds=0.01,
         )
 
     asyncio.run(go())
     return events
+
+
+def timed_run(root: Path, *flags: str) -> float:
+    started = time.monotonic()
+    assert labnotes(root, ["experiments", "exp", "run", *flags]) == 0
+    return time.monotonic() - started
 
 
 def labnotes(root: Path, argv: list[str]) -> int | str | None:
@@ -208,3 +216,22 @@ def test_runs_once_without_a_retry_to_make(
     [only] = runs(root)
     assert only["exit_code"] == int(codes)
     assert capsys.readouterr().out.endswith(summary)
+
+
+def test_a_project_retry_wait_retries_sooner(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "75")
+    write(root / ".labnotes.toml", "[experiments]\nretry_wait = 1\n")
+
+    elapsed = timed_run(root)
+
+    assert [run["exit_code"] for run in chain(root)] == [75, 0]
+    assert 1 <= elapsed < 20
+
+
+def test_the_retry_wait_flag_overrides_the_config(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "75", "retry_wait = 60\n")
+
+    elapsed = timed_run(root, "--retry-wait", "1")
+
+    assert [run["exit_code"] for run in chain(root)] == [75, 0]
+    assert 1 <= elapsed < 20

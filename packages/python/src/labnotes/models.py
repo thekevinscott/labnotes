@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
-from labnotes.retries import DEFAULT_RETRIES
+from labnotes.retries import DEFAULT_RETRIES, RETRY_SECONDS
 
 Report = Callable[[dict[str, object]], None]
 
@@ -44,6 +44,7 @@ class LabnotesConfig:
     runs: str
     concurrency: int = 1
     retries: int = DEFAULT_RETRIES
+    retry_wait: float = RETRY_SECONDS
     # Set when the config's folder is itself the one experiment.
     experiment: str | None = None
     # [experiment] in .labnotes.toml, under each experiment.toml.
@@ -59,6 +60,7 @@ class ExperimentConfig:
     counts: str = DEFAULT_COUNTS
     concurrency: int = 1
     retries: int = DEFAULT_RETRIES
+    retry_wait: float = RETRY_SECONDS
     meta: str | None = None
     memory_interval: float = DEFAULT_MEMORY_INTERVAL
     setup: str | None = None

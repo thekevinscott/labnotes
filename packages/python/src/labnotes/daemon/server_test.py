@@ -112,10 +112,16 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
 
 @pytest.mark.parametrize(
     ("options", "expected"),
-    [({}, (None, False)), ({"retries": 2, "replace_capped": True}, (2, True))],
+    [
+        ({}, (None, None, False)),
+        (
+            {"retries": 2, "retry_wait": 1.5, "replace_capped": True},
+            (2, 1.5, True),
+        ),
+    ],
 )
-def test_start_passes_retries_and_replace_capped(
-    tmp_path: Path, options: dict[str, object], expected: tuple[object, bool]
+def test_start_passes_retries_retry_wait_and_replace_capped(
+    tmp_path: Path, options: dict[str, object], expected: tuple[object, ...]
 ) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")

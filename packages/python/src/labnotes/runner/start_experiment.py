@@ -33,6 +33,7 @@ def start_experiment(
     command_line: str | None = None,
     run_id: str | None = None,
     retries: int | None = None,
+    retry_wait: float | None = None,
     replace_capped: bool = False,
 ) -> ExperimentStart:
     state = RunState.create(config, name)
@@ -48,6 +49,7 @@ def start_experiment(
             setup,
             teardown,
             retries,
+            retry_wait,
             replace_capped,
         )
         await finalize_lost_runs(config)

@@ -46,6 +46,7 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
             "labnotes experiments exp run",
             None,
             2,
+            1.5,
             True,
         )
         assert asyncio.run(start(report, listen)) == results
@@ -60,6 +61,7 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         "setup",
         "teardown",
         2,
+        1.5,
         True,
     )
     finalize.assert_awaited_once_with(config)

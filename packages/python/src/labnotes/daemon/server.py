@@ -62,6 +62,7 @@ class ExperimentDaemon:
             cast(str | None, options.get("command_line")),
             cast(str | None, options.get("run_id")),
             cast(int | None, options.get("retries")),
+            cast(float | None, options.get("retry_wait")),
             bool(options.get("replace_capped")),
         )
         path = str(selected.run_state.path)

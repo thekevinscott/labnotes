@@ -1,0 +1,1 @@
+Added: a `retry_wait` config key, in `[experiments]` and `experiment.toml`, sets the seconds before the first retry of an exit 75. The default stays 30, and each later retry still waits twice as long. `run --retry-wait SECONDS` overrides it for one run.

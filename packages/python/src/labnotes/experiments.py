@@ -72,6 +72,14 @@ class PassthroughCommand(click.Command):
     " .labnotes.toml; 3 if none sets it.",
 )
 @click.option(
+    "--retry-wait",
+    type=click.FloatRange(min=0),
+    metavar="SECONDS",
+    help="With run: seconds before the first retry of an exit 75; each later"
+    " retry waits twice as long. Overrides experiment.toml and .labnotes.toml;"
+    " 30 if none sets it.",
+)
+@click.option(
     "--replace-capped",
     is_flag=True,
     help="With run: start a fresh run for a cell whose run is out of retries."
@@ -141,6 +149,7 @@ def experiments(
     concurrency: int | None,
     run_id: str | None,
     retries: int | None,
+    retry_wait: float | None,
     replace_capped: bool,
     headless: bool,
     experiment_config: Path | None,
@@ -210,6 +219,7 @@ def experiments(
                                 "command_line": ctx.meta.get(COMMAND_LINE),
                                 "run_id": run_id,
                                 "retries": retries,
+                                "retry_wait": retry_wait,
                                 "replace_capped": replace_capped,
                             },
                         },
@@ -241,6 +251,7 @@ def experiments(
                             ctx.meta.get(COMMAND_LINE),
                             run_id,
                             retries,
+                            retry_wait,
                             replace_capped,
                         )
                     )
@@ -262,6 +273,7 @@ def experiments(
                 or concurrency is not None
                 or run_id is not None
                 or retries is not None
+                or retry_wait is not None
                 or replace_capped
                 or experiment_config is not None
                 or timeout is not None
@@ -287,6 +299,8 @@ def experiments(
         raise click.UsageError("--run-id needs run.")
     if retries is not None:
         raise click.UsageError("--retries needs run.")
+    if retry_wait is not None:
+        raise click.UsageError("--retry-wait needs run.")
     if replace_capped:
         raise click.UsageError("--replace-capped needs run.")
     if ctx.args:

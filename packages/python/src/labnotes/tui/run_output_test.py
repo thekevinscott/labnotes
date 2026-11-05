@@ -394,3 +394,17 @@ def test_a_deleted_log_clears_the_view(tmp_path: Path) -> None:
 
     assert output.lines == []
     assert output.offsets["stdout"] == 0
+
+
+def test_a_truncated_stderr_resets_when_stdout_is_absent(tmp_path: Path) -> None:
+    output = RunOutput()
+    log = tmp_path / "stderr.log"
+    log.write_text("first line\nsecond\n")
+    output.follow(tmp_path)
+    assert output.lines == ["first line", "second"]
+
+    log.write_text("new\n")
+    output.follow(tmp_path)
+
+    assert output.lines == ["new"]
+    assert output.offsets["stderr"] == 4

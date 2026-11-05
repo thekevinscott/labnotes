@@ -1,33 +1,11 @@
 import json
 import os
-import time
-from pathlib import Path
-
 from labnotes.list_runs import UNFINISHED
 from labnotes.models import LabnotesConfig
 from labnotes.runner.claim_run import LOCK_FILE, claim_run
-from labnotes.runner.write_run_json import write_run_json
-from labnotes.tables.iso_time import iso_time
+from labnotes.runner.mark_lost import mark_lost
 from labnotes.tables.open_tables import open_tables
 from labnotes.utils.process_alive import process_alive
-
-
-def mark_lost(folder: Path) -> None:
-    try:
-        run = json.loads((folder / "run.json").read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return
-    if (
-        not isinstance(run, dict)
-        or run.get("ended") is not None
-        or run.get("exit_code") is not None
-    ):
-        return
-    lost = {"ended": iso_time(time.time()), "ended_by": "lost"}
-    run |= lost
-    if invocations := run.get("invocations"):
-        invocations[-1] |= lost
-    write_run_json(folder, run)
 
 
 async def finalize_lost_runs(config: LabnotesConfig) -> None:

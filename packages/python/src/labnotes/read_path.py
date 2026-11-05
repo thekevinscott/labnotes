@@ -36,7 +36,7 @@ def read_path(config: Path, table: str, section: object, single: bool = False) -
     if not isinstance(template, str):
         raise ValueError(f"{config}: [{table}] path must be a string")
     root = config.resolve().parent
-    example = PLACEHOLDER.sub(lambda match: f"_{match.group(1)}_", template)
+    example = PLACEHOLDER.sub("_placeholder_", template)
     if (
         PurePosixPath(template).is_absolute()
         or template.startswith("~")

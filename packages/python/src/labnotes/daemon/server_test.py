@@ -577,7 +577,11 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
     planned = {"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]}
     later = {"event": "planned", "runs": [{"run": "r9", "params": {"m": "z"}}]}
     live = tmp_path / "live.jsonl"
-    live.write_text(json.dumps(planned) + "\n" + json.dumps(later) + "\n")
+    live.write_text(
+        "\n".join(json.dumps(e) for e in ({"event": "meta"}, planned, later)) + "\n"
+    )
+    unplanned = tmp_path / "unplanned.jsonl"
+    unplanned.write_text(json.dumps({"event": "setting up"}) + "\n")
     stopping = tmp_path / "stopping.jsonl"
     stopping.write_text(
         json.dumps({**planned, "runs": [{"run": "r2", "params": {"m": "b"}}]})
@@ -588,7 +592,7 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
 
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        for path in (live, stopping, tmp_path / "gone.jsonl"):
+        for path in (live, unplanned, stopping, tmp_path / "gone.jsonl"):
             daemon.active[str(path)] = Invocation()
         selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
 

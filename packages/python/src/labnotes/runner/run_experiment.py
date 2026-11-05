@@ -27,6 +27,7 @@ from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.placeholders import PLACEHOLDERS
 from labnotes.runner.plan_runs import plan_runs
+from labnotes.runner.planning_lock import planning_lock
 from labnotes.runner.project_snapshot import ProjectSnapshot
 from labnotes.runner.run_folder import run_folder
 from labnotes.runner.run_locked import run_locked
@@ -37,6 +38,9 @@ from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.list_resumable_runs import list_resumable_runs
 from labnotes.tables.open_tables import open_tables
+from labnotes.tables.iso_time import iso_time
+from labnotes.runner.write_run_json import write_run_json
+import time
 
 Entry = tuple[str, dict[str, object]]
 
@@ -66,99 +70,121 @@ async def run_experiment(
 
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
-    tables = open_tables(config)
-    existing = await experiment_run_ids(tables, name)
-    counted = await list_experiment_runs(tables, name, experiment.counts)
-    held = [
-        r
-        for r in counted
-        if not r["counted"]
-        and r.get("folder") is not None
-        and (config.root / str(r["folder"]) / LOCK_FILE).exists()
-        and run_locked(config.root / str(r["folder"]))
-    ]
-    held_ids = {str(r["id"]) for r in held}
-    finished = [
-        json.loads(str(r["params"]))
-        for r in counted
-        if r["counted"] or str(r.get("id")) in held_ids
-    ]
-    resumable: list[Entry] = []
-    capped: list[Entry] = []
-    tries: dict[str, int] = {}
-    if experiment.continues:
-        for row in await list_resumable_runs(tables, name, experiment.counts):
-            entry = (str(row["id"]), json.loads(str(row["params"])))
-            tries[entry[0]] = int(str(row["invocations"]))
-            over = tries[entry[0]] > experiment.retries
-            (capped if over else resumable).append(entry)
-    if not experiment.replace_capped:
-        finished += [params for _, params in capped]
-    planned: set[str] = set()
-
-    def taken(run: str) -> bool:
-        return run in planned or run in existing
-
-    if run_id is None:
-        grid = [
-            cell
-            for cell in param_grid(experiment.params)
-            if in_subset(cell, only or {})
+    async with planning_lock(config.root):
+        tables = open_tables(config)
+        existing = await experiment_run_ids(tables, name)
+        counted = await list_experiment_runs(tables, name, experiment.counts)
+        held = [
+            r
+            for r in counted
+            if not r["counted"]
+            and r.get("folder") is not None
+            and (config.root / str(r["folder"]) / LOCK_FILE).exists()
+            and run_locked(config.root / str(r["folder"]))
         ]
-        cells = plan_runs(grid, experiment.repeats, finished)
-    else:
-        cells = []
-
-    locks: dict[str, int] = {}
-
-    def claim(run: str) -> bool:
-        if run not in locks:
-            lock = claim_run(run_folder(config.root, config.runs, name, run))
-            if lock is None:
-                return False
-            locks[run] = lock
-        return True
-
-    def release(run: str) -> None:
-        os.close(locks.pop(run))
-
-    plan: list[Entry] = []
-    target_folder: Path | None = None
-    if run_id is not None:
-        selected = next((row for row in counted if row["id"] == run_id), None)
-        if selected is None:
-            raise ValueError(f"No run {run_id} in {name}.")
-        if selected["ended"] is None or (
-            selected["exit_code"] == 0 and not selected["error"]
-        ):
-            raise ValueError(f"Run {run_id} has not failed.")
-        source = config.root / str(selected["folder"])
-        record = json.loads((source / "run.json").read_text())
-        args = record.get("args", [])
-        params = json.loads(str(selected["params"]))
-        lock = claim_run(source)
-        if lock is None:
-            raise ValueError(f"Run {run_id} is held by another run.")
-        locks[run_id] = lock
+        held_ids = {str(r["id"]) for r in held}
+        finished = [
+            json.loads(str(r["params"]))
+            for r in counted
+            if r["counted"] or str(r.get("id")) in held_ids
+        ]
+        resumable: list[Entry] = []
+        capped: list[Entry] = []
+        tries: dict[str, int] = {}
         if experiment.continues:
-            target_folder = source
-            plan.append((run_id, params))
+            for row in await list_resumable_runs(tables, name, experiment.counts):
+                entry = (str(row["id"]), json.loads(str(row["params"])))
+                tries[entry[0]] = int(str(row["invocations"]))
+                over = tries[entry[0]] > experiment.retries
+                (capped if over else resumable).append(entry)
+        if not experiment.replace_capped:
+            finished += [params for _, params in capped]
+        planned: set[str] = set()
+
+        def taken(run: str) -> bool:
+            return run in planned or run in existing
+
+        if run_id is None:
+            grid = [
+                cell
+                for cell in param_grid(experiment.params)
+                if in_subset(cell, only or {})
+            ]
+            cells = plan_runs(grid, experiment.repeats, finished)
         else:
-            new_id = new_stamped_run_id(taken)
-            planned.add(new_id)
-            plan.append((new_id, params))
-    for params in cells:
-        resumed = next(
-            (
-                entry
-                for entry in resumable
-                if entry[1] == params and entry[0] not in planned and claim(entry[0])
-            ),
-            None,
-        )
-        run = new_stamped_run_id(taken) if resumed is None else resumed[0]
-        planned.add(run)
-        plan.append((run, params))
+            cells = []
+
+        locks: dict[str, int] = {}
+
+        def claim(run: str) -> bool:
+            if run not in locks:
+                lock = claim_run(run_folder(config.root, config.runs, name, run))
+                if lock is None:
+                    return False
+                locks[run] = lock
+            return True
+
+        def release(run: str) -> None:
+            os.close(locks.pop(run))
+
+        plan: list[Entry] = []
+        target_folder: Path | None = None
+        if run_id is not None:
+            selected = next((row for row in counted if row["id"] == run_id), None)
+            if selected is None:
+                raise ValueError(f"No run {run_id} in {name}.")
+            if selected["ended"] is None or (
+                selected["exit_code"] == 0 and not selected["error"]
+            ):
+                raise ValueError(f"Run {run_id} has not failed.")
+            source = config.root / str(selected["folder"])
+            record = json.loads((source / "run.json").read_text())
+            args = record.get("args", [])
+            params = json.loads(str(selected["params"]))
+            lock = claim_run(source)
+            if lock is None:
+                raise ValueError(f"Run {run_id} is held by another run.")
+            locks[run_id] = lock
+            if experiment.continues:
+                target_folder = source
+                plan.append((run_id, params))
+            else:
+                new_id = new_stamped_run_id(taken)
+                planned.add(new_id)
+                plan.append((new_id, params))
+        for params in cells:
+            resumed = next(
+                (
+                    entry
+                    for entry in resumable
+                    if entry[1] == params
+                    and entry[0] not in planned
+                    and claim(entry[0])
+                ),
+                None,
+            )
+            run = new_stamped_run_id(taken) if resumed is None else resumed[0]
+            planned.add(run)
+            plan.append((run, params))
+        reserved: set[str] = set()
+        for run, params in plan:
+            if run in locks:
+                continue
+            folder = run_folder(config.root, config.runs, name, run)
+            folder.mkdir(parents=True, exist_ok=True)
+            if not claim(run):
+                continue
+            write_run_json(
+                folder,
+                {
+                    "params": params,
+                    "created": iso_time(time.time()),
+                    "ended": None,
+                    "exit_code": None,
+                    "error": None,
+                },
+            )
+            reserved.add(run)
     # A resumed run's earlier invocations spend the same retries as exit 75 does.
     earlier = {run: tries[run] for run, _ in plan if run in tries and run != run_id}
     hooks = {
@@ -354,6 +380,7 @@ async def run_experiment(
             continues=experiment.continues,
             command_line=command_line,
         )
+        reserved.discard(run)
         del running[run], trees[run]
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
@@ -401,6 +428,9 @@ async def run_experiment(
                 emit({"event": "teardown failed", "error": str(failure)})
             raise
         finally:
+            for run in reserved:
+                folder = run_folder(config.root, config.runs, name, run)
+                (folder / "run.json").unlink(missing_ok=True)
             for run in list(locks):
                 release(run)
         await teardown()

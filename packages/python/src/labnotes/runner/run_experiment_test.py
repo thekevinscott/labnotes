@@ -433,6 +433,7 @@ def test_claims_queued_repeats_before_another_client_plans(tmp_path: Path) -> No
                 await asyncio.wait_for(asyncio.gather(one, two), 5)
 
     settle(go())
+    assert isinstance(first_planned[0]["runs"], list)
     assert len(first_planned[0]["runs"]) == 3
     assert second_planned[0]["runs"] == []
 

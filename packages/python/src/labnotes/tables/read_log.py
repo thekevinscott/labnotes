@@ -4,7 +4,7 @@ from pathlib import Path
 from labnotes.tables.path_pattern import path_pattern
 
 STREAMS = ("stdout", "stderr")
-LOG_NAME = re.compile(r"(?P<stream>[^/.-]+)(?:\.log|-[^/]+\.txt)")
+LOG_NAME = re.compile(r"(?P<stream>[^/.-]+)(?:\.log|-\d{8}-\d{6}-\d{6}\.txt)")
 
 
 def read_log(

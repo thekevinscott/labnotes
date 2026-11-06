@@ -1,3 +1,4 @@
+import json
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -251,8 +252,14 @@ def test_selection_is_applied_to_a_visible_line(
 def test_moves_to_the_newest_invocation_log_from_its_start(tmp_path: Path) -> None:
     output = RunOutput()
     (tmp_path / "stdout-20261102-090000-000000.txt").write_text("first\n")
+    (tmp_path / "run.json").write_text(
+        json.dumps({"invocations": [{"stdout": "stdout-20261102-090000-000000.txt"}]})
+    )
     output.follow(tmp_path)
     (tmp_path / "stdout-20261102-100000-000000.txt").write_text("next\n")
+    (tmp_path / "run.json").write_text(
+        json.dumps({"invocations": [{"stdout": "stdout-20261102-100000-000000.txt"}]})
+    )
     output.follow(tmp_path)
     output.follow(tmp_path)
     assert list(output.lines) == ["first", "next"]

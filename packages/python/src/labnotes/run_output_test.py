@@ -480,11 +480,21 @@ def test_moves_to_the_newest_invocation_log_from_its_start(
     (folder / "stdout-20261102-090000-000000.txt").write_text("first\n")
     later = folder / "stdout-20261102-100000-000000.txt"
 
+    def switch() -> None:
+        later.write_text("second\n")
+        (folder / "run.json").write_text(
+            json.dumps({"invocations": [{"stdout": later.name}]})
+        )
+
+    (folder / "run.json").write_text(
+        json.dumps({"invocations": [{"stdout": "stdout-20261102-090000-000000.txt"}]})
+    )
+
     messages = collect(
         tmp_path,
         [
             (
-                lambda: later.write_text("second\n"),
+                switch,
                 event("logs", experiment="alpha", run="r1", stream="stdout"),
             ),
             (
@@ -505,11 +515,17 @@ def test_resets_offset_when_new_log_path_sorts_before_previous(
     current = folder / "stdout-20261103-120000-000000.txt"
     assert current < previous
 
+    def switch() -> None:
+        current.write_text("new\n")
+        (folder / "run.json").write_text(
+            json.dumps({"invocations": [{"stdout": current.name}]})
+        )
+
     messages = collect(
         tmp_path,
         [
             (
-                lambda: current.write_text("new\n"),
+                switch,
                 event("logs", experiment="alpha", run="r1", stream="stdout"),
             ),
             (

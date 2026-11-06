@@ -67,7 +67,14 @@ def test_reads_one_invocation_log_of_a_run_that_continues(tmp_path: Path) -> Non
 
 
 def test_skips_text_files_that_are_not_invocation_logs(tmp_path: Path) -> None:
-    for name in ("stdout.txt", "stdout-.txt", "notes-1.txt", "stdout-1.log"):
+    for name in (
+        "stdout.txt",
+        "stdout-.txt",
+        "notes-1.txt",
+        "stdout-1.log",
+        "stdout-summary.txt",
+        "stdout-20261102-150000-00000.txt",
+    ):
         path = write_log(tmp_path / f"exp/runs/r1/{name}", "x")
 
         assert read_log(tmp_path, "{experiment}/runs/{run}", path) == []

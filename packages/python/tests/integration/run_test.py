@@ -227,8 +227,7 @@ def test_kills_a_timed_out_run_that_ignores_sigterm(tmp_path: Path) -> None:
     [run] = runs(project)
     assert run["error"] == "timed out after 1s"
     assert run["ended_by"] == "timeout"
-    # The shell around the script can die on SIGTERM before SIGKILL lands.
-    assert run["signal"] in (signal.SIGTERM, signal.SIGKILL)
+    assert run["signal"] == signal.SIGKILL
     stubborn = int((project / "pid.txt").read_text())
     assert not psutil.pid_exists(stubborn)
 
@@ -242,18 +241,17 @@ def test_records_a_signal_labnotes_did_not_send(tmp_path: Path) -> None:
     assert (run["ended_by"], run["signal"], run["error"]) == ("signal", 9, None)
 
 
-def test_records_runs_stopped_by_stopping_labnotes(tmp_path: Path) -> None:
-    project = sleeper(tmp_path, [30])
+def stop_once_started(project: Path, marker: str) -> None:
     command = Path(sys.executable).parent / "labnotes"
     config = project / ".labnotes.toml"
     term = Terminal(f"{command} -c {config} experiments exp run", rows=30, cols=120)
     term.start()
     try:
         for _ in range(100):
-            if any(project.glob("started-*.txt")):
+            if any(project.glob(marker)):
                 break
             time.sleep(0.1)
-        assert any(project.glob("started-*.txt"))
+        assert any(project.glob(marker))
         result = subprocess.run(
             [command, "-c", config, "experiments", "exp", "stop"],
             capture_output=True,
@@ -268,5 +266,66 @@ def test_records_runs_stopped_by_stopping_labnotes(tmp_path: Path) -> None:
     finally:
         term.kill()
 
+
+def test_records_runs_stopped_by_stopping_labnotes(tmp_path: Path) -> None:
+    project = sleeper(tmp_path, [30])
+
+    stop_once_started(project, "started-*.txt")
+
     [run] = runs(project)
     assert (run["ended_by"], run["signal"], run["error"]) == ("stop", 15, None)
+
+
+# Takes a second to shut down on SIGTERM, then exits with its own code.
+TRAPPER = """
+import signal
+import sys
+import time
+from pathlib import Path
+
+
+def shut_down(*_):
+    Path("term.txt").write_text(str(time.time()))
+    time.sleep(1)
+    sys.exit(3)
+
+
+signal.signal(signal.SIGTERM, shut_down)
+Path("started.txt").write_text("")
+time.sleep(30)
+"""
+
+
+def trapper(root: Path) -> Path:
+    write(root / ".labnotes.toml", "")
+    write(root / "trap.py", TRAPPER)
+    write(
+        root / "exp" / "experiment.toml",
+        f'continues = false\ncommand = "{sys.executable} trap.py"\n'
+        "memory_interval = 0.1\n",
+    )
+    return root
+
+
+def assert_the_script_shut_down(project: Path, ended_by: str) -> None:
+    [run] = runs(project)
+    assert (run["exit_code"], run["signal"], run["ended_by"]) == (3, None, ended_by)
+    term = float((project / "term.txt").read_text())
+    samples = (run["folder"] / "memory.jsonl").read_text().splitlines()
+    assert json.loads(samples[-1])["time"] > term + 0.8
+
+
+def test_records_the_scripts_own_exit_code_after_a_timeout(tmp_path: Path) -> None:
+    project = trapper(tmp_path)
+
+    assert labnotes(project, ["experiments", "exp", "run", "--timeout", "1"]) == 0
+
+    assert_the_script_shut_down(project, "timeout")
+
+
+def test_records_the_scripts_own_exit_code_after_a_stop(tmp_path: Path) -> None:
+    project = trapper(tmp_path)
+
+    stop_once_started(project, "started.txt")
+
+    assert_the_script_shut_down(project, "stop")

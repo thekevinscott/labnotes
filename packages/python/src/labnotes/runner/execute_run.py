@@ -98,8 +98,10 @@ async def execute_run(
         (folder / logs["stderr"]).open("wb") as stderr,
     ):
         try:
+            # dash doesn't exec the command, so without the trap the shell
+            # dies on SIGTERM and its -15 replaces the script's own exit code.
             process = await asyncio.create_subprocess_shell(
-                resolved,
+                f"trap : TERM; {resolved}",
                 cwd=root,
                 env={
                     "FORCE_COLOR": "1",
@@ -156,9 +158,9 @@ async def execute_run(
                     run["ended_by"] = "stop"
                 elif run["signal"] is not None:
                     run["ended_by"] = "signal"
-                # The shell can exit on SIGTERM before what it started. Once
-                # stopping, the run stays killable until everything signalled
-                # is gone. A normal exit ends the run even if helpers linger.
+                # Background jobs can outlive the shell. Once stopping, the run
+                # stays killable until everything signalled is gone. A normal
+                # exit ends the run even if helpers linger.
                 if stopping.is_set() or kill_later is not None:
                     await wait_for_tree(tree)
                 if stopping.is_set() or kill_later is not None or stopped():

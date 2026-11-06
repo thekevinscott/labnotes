@@ -62,9 +62,19 @@ class RunOutput(ScrollView):
     def mid_line(self) -> bool:
         return bool(self.unfinished)
 
+    def shrunk(self, logs: dict[str, Path]) -> bool:
+        for stream, path in logs.items():
+            if self.paths.get(stream) != path:
+                continue
+            if not path.exists() or path.stat().st_size < self.offsets[stream]:
+                return True
+        return False
+
     def follow(self, folder: Path) -> None:
-        for stream in STREAMS:
-            path = latest_log(folder, stream)
+        logs = {stream: latest_log(folder, stream) for stream in STREAMS}
+        if self.shrunk(logs):
+            self.reset()
+        for stream, path in logs.items():
             if not path.exists():
                 continue
             if self.paths.setdefault(stream, path) != path:

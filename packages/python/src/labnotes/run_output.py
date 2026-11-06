@@ -36,6 +36,9 @@ async def run_output(
             if paths.setdefault(stream, path) != path:
                 paths[stream] = path
                 offsets[stream] = 0
+            if path.stat().st_size < offsets[stream]:
+                offsets[stream] = 0
+                decoders[stream] = codecs.getincrementaldecoder("utf-8")("replace")
             with path.open("rb") as log:
                 log.seek(offsets[stream])
                 data = log.read()

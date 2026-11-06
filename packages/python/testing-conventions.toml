@@ -1,7 +1,7 @@
 [[python.exempt]]
 path = "src/labnotes/tui/run_output.py"
 rules = ["mutation"]
-lines = [82]
+lines = [92]
 reason = "last_stream is always the same str object taken from STREAMS, so is equals =="
 
 [[python.exempt]]
@@ -55,13 +55,13 @@ reason = "LOCK_EX and LOCK_NB are disjoint bits, so | equals + and ^"
 [[python.exempt]]
 path = "src/labnotes/tui/run_output.py"
 rules = ["mutation"]
-lines = [136]
+lines = [146]
 reason = "a selection span ends at -1 or a non-negative offset, so <= equals ==; -1 is a CPython cached small int, so is equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_output.py"
 rules = ["mutation"]
-lines = [34, 99, 116]
+lines = [34, 109, 126]
 reason = "reset() clears _width right after __init__ sets it; rsplit()[-1] is the text after the last \\r for any maxsplit of 1 or more; no line is wider than _width, so >= equals == and <= only adds rescans that find the same max; when is fails, another line holds the same max"
 
 [[python.exempt]]

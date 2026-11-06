@@ -520,3 +520,26 @@ def test_resets_offset_when_new_log_path_sorts_before_previous(
     )
 
     assert messages == [log("long previous output\n"), log("new\n"), end(0)]
+
+
+def test_rereads_a_log_that_shrinks(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+) -> None:
+    log_file = folder / "stdout.log"
+    log_file.write_text("long previous output\n")
+
+    messages = collect(
+        tmp_path,
+        [
+            (
+                lambda: log_file.write_text("new\n"),
+                event("logs", experiment="alpha", run="r1", stream="stdout"),
+            ),
+            (
+                lambda: None,
+                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
+            ),
+        ],
+    )
+
+    assert messages == [log("long previous output\n"), log("new\n"), end(0)]

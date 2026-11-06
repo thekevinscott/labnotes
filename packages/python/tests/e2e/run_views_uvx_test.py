@@ -55,7 +55,7 @@ def test_uvx_run_tui_switches_to_configured_view(
         cols=120,
         env={**os.environ, **uvx},
     )
-    expect(term.get_by_text("progress")).to_be_visible(timeout=60)
+    expect(term.get_by_text("2 progress")).to_be_visible(timeout=60)
     term.write("2")
     expect(term.get_by_text("run view: alpha")).to_be_visible()
     term.write("1")

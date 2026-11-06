@@ -3,11 +3,12 @@ from typing import Any
 
 from dirsql import DirSQL
 
+from labnotes.matching_rows import matching_rows
 
-async def watch_rows(
+
+def watch_rows(
     tables: DirSQL, names: Collection[str], experiment: str | None = None
 ) -> AsyncIterator[dict[str, Any]]:
-    async for event in tables.watch():
-        row = event.row or event.old_row
-        if event.table in names and row and experiment in (None, row["experiment"]):
-            yield row
+    # Not a generator: dirsql arms its watcher inside watch(), and callers
+    # rely on that happening before their first query.
+    return matching_rows(tables.watch(), names, experiment)

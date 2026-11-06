@@ -160,3 +160,30 @@ def test_uvx_caps_failed_retries_and_can_replace_the_run(
     run(root, uvx, "--replace-capped")
     assert len(records(root)) == 2
     assert (folder / "run.json").read_bytes() == before
+
+
+def test_uvx_resume_honors_repeated_param_values(
+    tmp_path: Path, uvx: dict[str, str]
+) -> None:
+    root = project(tmp_path / "project", "fail", "")
+    (root / "exp/experiment.toml").write_text(
+        f'command = "{sys.executable} -c pass"\ncontinues = true\n[params]\nm = [1, 1, 2]\n'
+    )
+    done = root / "exp/runs/done"
+    done.mkdir(parents=True)
+    (done / "run.json").write_text(
+        json.dumps(
+            {
+                "params": {"m": 1},
+                "created": "2026-10-17T00:00:00Z",
+                "ended": "2026-10-17T01:00:00Z",
+                "exit_code": 0,
+                "error": None,
+            }
+        )
+    )
+
+    run(root, uvx)
+
+    found = sorted(r["params"]["m"] for r in records(root).values())  # type: ignore[index]
+    assert found == [1, 1, 2]

@@ -14,3 +14,15 @@ def test_counts_finished_runs_toward_repeats() -> None:
 
 def test_ignores_extra_finished_runs() -> None:
     assert plan_runs([A, B], 1, [A, A]) == [B]
+
+
+def test_a_repeated_cell_weights_its_target() -> None:
+    assert plan_runs([A, A, B], 1, []) == [A, B, A]
+
+
+def test_a_repeated_cell_plans_the_missing_run_after_a_resume() -> None:
+    assert plan_runs([A, A, B], 1, [A]) == [A, B]
+
+
+def test_a_repeated_cell_multiplies_repeats_on_resume() -> None:
+    assert plan_runs([A, A, B], 3, [A, A, B, B, B]) == [A, A, A, A]

@@ -17,8 +17,8 @@ def test_visible_line_keeps_ansi_color_and_scrolls_sideways(tmp_path: Path) -> N
     async def drive() -> None:
         app = OutputApp()
         async with app.run_test(size=(40, 8)) as pilot:
-            output = app.query_one(RunOutput)
-            output.follow(tmp_path)
+            app.query_one(RunOutput).follow(tmp_path)
+            output = app.query_one(RunOutput).logs["stdout"]
             await pilot.pause()
             strip = output.render_line(0)
             assert "".join(segment.text for segment in strip._segments).startswith(

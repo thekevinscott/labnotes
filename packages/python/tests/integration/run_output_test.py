@@ -3,6 +3,7 @@ from collections.abc import Callable
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+from textual.widgets import Tab
 
 from labnotes.tui.run_output import RunOutput
 
@@ -13,7 +14,11 @@ class Host(App[None]):
 
 
 def shown(output: RunOutput) -> list[str]:
-    return [line.rstrip() for line in output.lines]
+    return [line.rstrip() for line in output.logs[output.current].lines]
+
+
+def tabs(output: RunOutput) -> list[str]:
+    return [tab.label_text for tab in output.query(Tab)]
 
 
 def mounted(
@@ -33,18 +38,20 @@ def append(path: Path, data: bytes) -> None:
         file.write(data)
 
 
-def test_starts_empty() -> None:
-    output = RunOutput(id="output")
-    assert output.id == "output"
-    assert output.offsets == {"stdout": 0, "stderr": 0}
-    assert (output.last_stream, output.mid_line) == (None, False)
+def test_starts_on_an_empty_stdout_tab() -> None:
+    def check(output: RunOutput) -> None:
+        assert output.current == "stdout"
+        assert tabs(output) == ["stdout (0)", "stderr (0)"]
+        assert shown(output) == []
+
+    mounted(check)
 
 
 def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert shown(output) == []
-        assert output.offsets == {"stdout": 0, "stderr": 0}
+        assert tabs(output) == ["stdout (0)", "stderr (0)"]
 
     mounted(check)
 
@@ -55,8 +62,10 @@ def test_follows_stderr_without_stdout(tmp_path: Path) -> None:
 
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
+        assert shown(output) == []
+        assert tabs(output) == ["stdout (0)", "stderr (1)"]
+        output.show("stderr")
         assert shown(output) == ["oops"]
-        assert output.offsets == {"stdout": 0, "stderr": 5}
 
     mounted(check)
 
@@ -70,7 +79,7 @@ def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
         append(tmp_path / "stdout.log", b"two\n")
         output.follow(tmp_path)
         assert shown(output) == ["one", "two"]
-        assert output.offsets == {"stdout": 8, "stderr": 0}
+        assert output.logs["stdout"].read_to == 8
 
     mounted(check)
 
@@ -93,35 +102,38 @@ def test_shows_an_unfinished_line_and_continues_it(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert shown(output) == ["par"]
-        assert output.mid_line
+        assert output.logs["stdout"].mid_line
         append(tmp_path / "stdout.log", b"tial\nnext")
         output.follow(tmp_path)
         assert shown(output) == ["partial", "next"]
         append(tmp_path / "stdout.log", b"\n")
         output.follow(tmp_path)
         assert shown(output) == ["partial", "next"]
-        assert not output.mid_line
-        assert output.virtual_size.height == 2
+        assert not output.logs["stdout"].mid_line
+        assert output.logs["stdout"].virtual_size.height == 2
 
     mounted(check)
 
 
-def test_breaks_an_unfinished_line_before_the_other_stream(tmp_path: Path) -> None:
+def test_each_tab_shows_only_its_stream_with_live_counts(tmp_path: Path) -> None:
     stdout, stderr = tmp_path / "stdout.log", tmp_path / "stderr.log"
     stdout.write_text("next")
     stderr.write_text("oops\n")
 
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
-        assert (output.last_stream, output.mid_line) == ("stderr", False)
-        append(stdout, b"more\n")
-        output.follow(tmp_path)
+        assert tabs(output) == ["stdout (0)", "stderr (1)"]
+        append(stdout, b"\nmore\n")
         append(stderr, b"warn")
         output.follow(tmp_path)
-        assert (output.last_stream, output.mid_line) == ("stderr", True)
+        assert tabs(output) == ["stdout (2)", "stderr (1)"]
         append(stdout, b"end\n")
+        append(stderr, b"ing\n")
         output.follow(tmp_path)
-        assert shown(output) == ["next", "oops", "more", "warn", "end"]
+        assert tabs(output) == ["stdout (3)", "stderr (2)"]
+        assert shown(output) == ["next", "more", "end"]
+        output.show("stderr")
+        assert shown(output) == ["oops", "warning"]
 
     mounted(check)
 
@@ -134,7 +146,7 @@ def test_renders_ansi_color(tmp_path: Path) -> None:
         append(tmp_path / "stdout.log", b"ld\x1b[0m\n")
         output.follow(tmp_path)
         assert shown(output) == ["\x1b[31mred\x1b[0m plain", "\x1b[1mbold\x1b[0m"]
-        lines = [output.render_line(y) for y in range(2)]
+        lines = [output.logs["stdout"].render_line(y) for y in range(2)]
         colors = {
             s.text.strip(): s.style.color.name if s.style and s.style.color else None
             for line in lines
@@ -156,7 +168,9 @@ def test_drops_escapes_other_than_color(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert (
-            "".join(s.text for s in output.render_line(0)._segments).strip()
+            "".join(
+                s.text for s in output.logs["stdout"].render_line(0)._segments
+            ).strip()
             == "20% done"
         )
 
@@ -169,8 +183,11 @@ def test_long_lines_scroll_sideways_without_wrapping(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert shown(output) == [("word " * 12).rstrip()]
-        assert output.virtual_size.height == 1
-        assert output.virtual_size.width > output.scrollable_content_region.width
+        assert output.logs["stdout"].virtual_size.height == 1
+        assert (
+            output.logs["stdout"].virtual_size.width
+            > output.logs["stdout"].scrollable_content_region.width
+        )
 
     mounted(check, size=(30, 10))
 
@@ -210,10 +227,11 @@ def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
         output.follow(tmp_path / "r1")
         output.reset()
         assert shown(output) == []
-        assert output.offsets == {"stdout": 0, "stderr": 0}
-        assert (output.last_stream, output.mid_line) == (None, False)
+        assert tabs(output) == ["stdout (0)", "stderr (0)"]
+        assert not output.logs["stdout"].mid_line
         output.follow(tmp_path / "r2")
-        assert shown(output) == ["hi", "warn"]
+        assert shown(output) == ["hi"]
+        assert tabs(output) == ["stdout (1)", "stderr (1)"]
 
     mounted(check)
 
@@ -231,3 +249,32 @@ def test_reset_forgets_an_unfinished_line(tmp_path: Path) -> None:
         assert shown(output) == ["more"]
 
     mounted(check)
+
+
+def test_t_and_a_click_switch_between_the_stream_tabs(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("out\n")
+    (tmp_path / "stderr.log").write_text("err\n")
+
+    async def drive() -> None:
+        app = Host()
+        async with app.run_test() as pilot:
+            output = app.query_one(RunOutput)
+            output.follow(tmp_path)
+            output.focus()
+            await pilot.pause()
+            assert app.focused is output.logs["stdout"]
+            assert (output.logs["stdout"].display, output.logs["stderr"].display) == (
+                True,
+                False,
+            )
+            await pilot.press("t")
+            await pilot.pause()
+            assert (output.current, shown(output)) == ("stderr", ["err"])
+            assert app.focused is output.logs["stderr"]
+            assert not output.logs["stdout"].display
+            await pilot.click("#stdout-tab")
+            await pilot.pause()
+            assert (output.current, shown(output)) == ("stdout", ["out"])
+            assert output.logs["stdout"].display
+
+    asyncio.run(drive())

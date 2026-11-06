@@ -13,9 +13,13 @@
 
 <section class="run-blocks" hidden></section>
 
-<section class="run-log">
-  <header><span class="stdout">stdout</span><span class="stderr">stderr</span></header>
-  <pre class="run-output" data-url="{{ url_for('output', name=run.experiment, run=run.id) }}"></pre>
+<section class="run-log" data-url="{{ url_for('output', name=run.experiment, run=run.id) }}">
+  <header role="tablist">
+    <button type="button" role="tab" class="stdout" data-stream="stdout" aria-selected="true" aria-controls="run-stdout">stdout (<span class="count">0</span>)</button>
+    <button type="button" role="tab" class="stderr" data-stream="stderr" aria-selected="false" aria-controls="run-stderr">stderr (<span class="count">0</span>)</button>
+  </header>
+  <pre class="run-output" id="run-stdout" role="tabpanel" data-stream="stdout"></pre>
+  <pre class="run-output" id="run-stderr" role="tabpanel" data-stream="stderr" hidden></pre>
 </section>
 <script type="module" src="{{ asset('run-output.js') }}"></script>
 {% endblock %}

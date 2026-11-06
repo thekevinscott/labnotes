@@ -18,15 +18,23 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
         await row.get_by_role("cell").last.click()
         await expect(page).to_have_url(f"{site}/experiments/alpha/runs/run1")
         await expect(page.locator(".run-state")).to_have_text("running")
-        output = page.locator(".run-output")
-        await expect(output).to_have_text("starting\n")
+        stdout, stderr = page.locator("#run-stdout"), page.locator("#run-stderr")
+        await expect(stdout).to_have_text("starting\n")
+        await expect(page.get_by_role("tab")).to_have_text(["stdout (1)", "stderr (0)"])
 
         with (folder / "stdout.log").open("a") as log:
-            log.write("step 1\n")
+            log.write("step 1\nstep")
         with (folder / "stderr.log").open("a") as log:
             log.write("warning\n")
-        await expect(output).to_have_text("starting\nstep 1\nwarning\n")
-        await expect(output.locator(".stderr")).to_have_text("warning\n")
+        await expect(stdout).to_have_text("starting\nstep 1\nstep")
+        await expect(page.get_by_role("tab")).to_have_text(["stdout (2)", "stderr (1)"])
+        await expect(stderr).to_be_hidden()
+        await page.get_by_role("tab", name="stderr").click()
+        await expect(stderr).to_have_text("warning\n")
+        await expect(stdout).to_be_hidden()
+        await expect(page.get_by_role("tab", name="stderr")).to_have_attribute(
+            "aria-selected", "true"
+        )
 
         write(
             folder / "run.json",
@@ -40,7 +48,7 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
             ),
         )
         await expect(page.locator(".run-state")).to_have_text("exit 0")
-        await expect(output).to_have_attribute("data-ended", "")
+        await expect(page.locator(".run-log")).to_have_attribute("data-ended", "")
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
@@ -60,7 +68,7 @@ def test_shows_log_blocks_as_lines_that_open_on_click(tmp_path: Path) -> None:
 
     async def check(page: Page) -> None:
         blocks = page.locator(".run-blocks")
-        await expect(page.locator(".run-output")).to_have_text("printed\n")
+        await expect(page.locator("#run-stdout")).to_have_text("printed\n")
         await expect(blocks).to_be_hidden()
 
         logged(
@@ -126,7 +134,9 @@ def test_opens_a_nested_runs_page(tmp_path: Path) -> None:
         await page.get_by_role("link", name="run1").click()
         await expect(page.get_by_role("heading", name="g1/run1")).to_be_visible()
         await expect(page.locator(".run-state")).to_have_text("exit 1")
-        await expect(page.locator(".run-output .stderr")).to_have_text("boom\n")
+        await expect(page.get_by_role("tab")).to_have_text(["stdout (0)", "stderr (1)"])
+        await page.get_by_role("tab", name="stderr").click()
+        await expect(page.locator("#run-stderr")).to_have_text("boom\n")
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
@@ -141,12 +151,14 @@ def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
     write(folder / "stderr.log", "\x1b[1mbo\x1b[2Kld\x1b[0m\n")
 
     async def check(page: Page) -> None:
-        output = page.locator(".run-output")
-        await expect(output).to_have_text("red <b>plain</b>\nbold\n")
+        output = page.locator(".run-log")
+        await expect(page.locator("#run-stdout")).to_have_text("red <b>plain</b>\n")
+        await expect(page.locator("#run-stderr")).to_have_text("bold\n")
         red = output.locator(".stdout span", has_text="red")
         await expect(red).to_have_css("color", "rgb(187, 0, 0)")
         await expect(output.locator("b")).to_have_count(0)
-        bold = output.locator(".stderr span")
+        await page.get_by_role("tab", name="stderr").click()
+        bold = page.locator("#run-stderr .stderr span")
         await expect(bold).to_have_text(["bo", "ld"])
         await expect(bold.last).to_have_css("font-weight", "700")
 

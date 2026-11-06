@@ -1,0 +1,1 @@
+Changed: The TUI and web run views show stdout and stderr in two tabs, each with its line count, such as `stdout (33) | stderr (5)`. They no longer merge the two streams, which put all of stdout above all of stderr and made old output look new. In the TUI, press `t` or click a tab to switch.

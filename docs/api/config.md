@@ -161,7 +161,7 @@ These placeholders are filled in, each shell-quoted:
 - Type: table of string values
 - Default: none
 
-Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run` take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
+Environment variables for `command`, `meta`, `setup`, and `teardown`. Put shared values under `[experiment.env]` in `.labnotes.toml`; values in `experiment.toml` replace them key by key. Variables already present in the environment that starts `labnotes experiments NAME run`, or that restarts a run from the TUI, take precedence over both, whether exported or supplied inline (`FOO=x labnotes ...`).
 
 Keys must be shell identifiers: letters, digits and underscores, not starting with a digit. The command runs through `sh`, which drops any other name.
 

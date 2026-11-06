@@ -1,0 +1,1 @@
+Fixed: The log viewer now takes each run's log path from `run.json`, so a file your script writes such as `stdout-summary.txt` no longer replaces the real log. The `logs` table only lists timestamped invocation logs labnotes wrote.

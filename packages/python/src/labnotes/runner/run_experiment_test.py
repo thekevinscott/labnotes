@@ -210,6 +210,7 @@ def test_targets_one_failed_run_with_recorded_arguments(
     collaborators["claim_run"].assert_any_call(folder)
     if not continues:
         collaborators["claim_run"].assert_any_call(tmp_path / "exp" / "r1")
+    assert executed.args[7] == (None if continues else "target")
     assert collaborators["close"].called
 
 

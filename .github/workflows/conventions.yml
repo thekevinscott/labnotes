@@ -29,4 +29,6 @@ jobs:
     with:
       languages: '["python"]'
       source: packages/python
-
+      # The CLI from 0.0.156 passes --lines, which PyPI's adapter (stuck at
+      # 0.0.145) rejects. Unpin once testing-conventions publishes to PyPI again.
+      version: 0.0.155

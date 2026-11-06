@@ -47,6 +47,10 @@ def describe_event(event: dict[str, object]) -> str:
             return "Setting up."
         case "tearing down":
             return "Tearing down."
+        case "hook ended" if event["error"]:
+            return str(event["error"])
+        case "hook ended":
+            return f"{str(event['hook']).capitalize()} finished."
         case "teardown failed":
             return str(event["error"])
         case "daemon error":

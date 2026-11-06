@@ -1,5 +1,6 @@
 import asyncio
-from collections.abc import Callable, Iterator
+import json
+from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any, cast
 from unittest import mock
@@ -1926,3 +1927,262 @@ def test_replayed_wall_times_keep_elapsed_and_retry_countdown(
             await pilot.press("ctrl+c")
 
     asyncio.run(drive())
+
+
+def hooked(*hooks: str) -> dict[str, object]:
+    return {**planned("r1", "r2"), "hooks": list(hooks)}
+
+
+def stage(app: RunApp) -> str:
+    return app.query_one(RunLiveView).stage
+
+
+def shown_stages(app: RunApp) -> str:
+    widget: Any = app.query_one("#stages")
+    return str(widget.content) if widget.display else ""
+
+
+def drive_hooks(steps: Callable[[RunApp, Any, Report], Awaitable[None]]) -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await steps(app, pilot, reports[0])
+
+    asyncio.run(drive())
+
+
+def test_shows_no_stages_without_hooks() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(planned("r1", "r2"))
+        await pilot.pause()
+        assert shown_stages(app) == ""
+        assert stage(app) == "runs"
+        await pilot.press("left_square_bracket")
+        assert stage(app) == "runs"
+
+    drive_hooks(steps)
+
+
+def test_opens_on_setup_then_advances_to_runs_and_teardown(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        await pilot.pause()
+        assert stage(app) == "setup"
+        assert "setup" in shown_stages(app) and "teardown" in shown_stages(app)
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        assert stage(app) == "runs"
+        assert "setup ✓" in shown_stages(app)
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert stage(app) == "teardown"
+        report({"event": "hook ended", "hook": "teardown", "error": None})
+        await pilot.pause()
+        assert stage(app) == "teardown"
+
+    drive_hooks(steps)
+
+
+def test_stays_on_a_failed_setup(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": "up broke"})
+        await pilot.pause()
+        assert stage(app) == "setup"
+        assert "setup ✗" in shown_stages(app)
+
+    drive_hooks(steps)
+
+
+def test_moving_by_hand_stops_auto_advance(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        await pilot.press("right_square_bracket", "right_square_bracket")
+        assert stage(app) == "teardown"
+        await pilot.press("left_square_bracket", "left_square_bracket")
+        assert stage(app) == "setup"
+        await pilot.press("left_square_bracket")
+        assert stage(app) == "setup"
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert stage(app) == "setup"
+
+    drive_hooks(steps)
+
+
+def test_run_keys_do_nothing_off_the_runs_stage(tmp_path: Path) -> None:
+    kill = mock.Mock()
+
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        app.query_one(RunLiveView).controls = mock.Mock(kill=kill)
+        report(hooked("setup"))
+        await pilot.pause()
+        await pilot.press("x", "slash")
+        kill.assert_not_called()
+        assert not app.query_one("#filter").display
+
+    drive_hooks(steps)
+
+
+def test_keeps_the_summary_after_teardown(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("teardown"))
+        report({"event": "idle"})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "teardown", "error": None})
+        await pilot.pause()
+        assert status(app) == "0 passed, 0 failed. Ctrl-C to quit."
+
+    drive_hooks(steps)
+
+
+def hook_calls(app: RunApp, method: str) -> dict[str, bool]:
+    view = app.query_one(RunLiveView)
+    panels = {hook: app.query_one(f"#{hook}-stage") for hook in ("setup", "teardown")}
+    with (
+        mock.patch.object(panels["setup"], method) as setup,
+        mock.patch.object(panels["teardown"], method) as teardown,
+    ):
+        getattr(view, method)()
+    return {"setup": setup.called, "teardown": teardown.called}
+
+
+def test_ticks_and_follows_only_the_running_hook(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        running = {"setup": True, "teardown": False}
+        assert hook_calls(app, "tick") == running
+        assert hook_calls(app, "follow") == running
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        running = {"setup": False, "teardown": True}
+        assert hook_calls(app, "tick") == running
+        assert hook_calls(app, "follow") == running
+
+    drive_hooks(steps)
+
+
+def displayed(app: RunApp) -> list[str]:
+    names = ("setup", "runs", "teardown")
+    return [name for name in names if app.query_one(f"#{name}-stage").display]
+
+
+def test_shows_only_the_current_stage_for_decoded_hooks(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report({**planned("r1", "r2"), "hooks": json.loads('["setup", "teardown"]')})
+        await pilot.pause()
+        assert displayed(app) == ["setup"]
+        await pilot.press("right_square_bracket")
+        assert displayed(app) == ["runs"]
+        await pilot.press("right_square_bracket")
+        assert displayed(app) == ["teardown"]
+
+    drive_hooks(steps)
+
+
+def test_a_single_run_opens_its_output_once_setup_passes(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report({**planned("r1"), "hooks": ["setup"]})
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        assert app.focused is app.query_one("#setup-output")
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        assert displayed(app) == ["runs"]
+        assert app.focused is app.query_one("#output")
+
+    drive_hooks(steps)
+
+
+def test_stops_at_the_last_stage() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup"))
+        await pilot.pause()
+        await pilot.press("right_square_bracket", "right_square_bracket")
+        assert stage(app) == "runs"
+
+    drive_hooks(steps)
+
+
+def test_stage_keys_are_bound_only_with_hooks() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(planned("r1", "r2"))
+        await pilot.pause()
+        assert "left_square_bracket" not in app.screen.active_bindings
+        report(hooked("setup"))
+        await pilot.pause()
+        assert "left_square_bracket" in app.screen.active_bindings
+
+    drive_hooks(steps)
+
+
+def test_shows_a_finished_setup_while_runs_continue(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        assert status(app) == "said hook ended"
+
+    drive_hooks(steps)
+
+
+def test_a_hook_that_never_started_does_not_advance() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup"))
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        assert stage(app) == "setup"
+
+    drive_hooks(steps)
+
+
+@pytest.mark.parametrize(
+    ("idle", "started", "ended", "failed", "retried", "state"),
+    [
+        (False, {}, set(), set(), set(), "waiting"),
+        (False, {"r1": 0.0}, set(), set(), set(), "running"),
+        (False, {}, {"r1"}, set(), set(), "running"),
+        (True, {}, {"r1"}, {"r1"}, set(), "failed"),
+        (True, {}, {"r1", "r2"}, {"r1"}, {"r1"}, "passed"),
+        (True, {}, {"r1", "r2"}, set(), {"r1"}, "passed"),
+        (True, {}, {"r1"}, set(), set(), "passed"),
+    ],
+    ids=[
+        "nothing-started",
+        "one-running",
+        "one-ended",
+        "a-failure",
+        "a-failure-retried",
+        "a-retried-run-restarted-and-passed",
+        "all-passed",
+    ],
+)
+def test_runs_stage_state(
+    idle: bool,
+    started: dict[str, float],
+    ended: set[str],
+    failed: set[str],
+    retried: set[str],
+    state: str,
+) -> None:
+    view = RunLiveView()
+    view.idle, view.started, view.ended = idle, started, ended
+    view.failed, view.retried = failed, retried
+
+    assert view.stage_state("runs") == state

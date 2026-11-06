@@ -15,6 +15,7 @@ from textual import work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.css.query import NoMatches
+from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
 
@@ -33,12 +34,14 @@ from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
+from labnotes.tui.hook_panel import HookPanel
 from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
 from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.native_rows import native_rows
 from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
+from labnotes.tui.stage_line import stage_line
 from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
@@ -51,13 +54,16 @@ PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED = "–"
 VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette"}
+RUNS_ACTIONS = {"kill_run", "restart_run", "filter", "leave"}
 BUILT_IN = "labnotes.tui.run_app:RunLiveView"
 
 
 class RunLiveView(Widget):
     DEFAULT_CSS = """
     RunLiveView { height: 1fr; }
+    RunLiveView #runs-stage { height: 1fr; }
     RunLiveView RunsTable { height: 1fr; }
+    RunLiveView #stages { padding: 0 1; display: none; }
     """
     BINDINGS = [
         Binding("x", "kill_run", "Stop run"),
@@ -66,6 +72,8 @@ class RunLiveView(Widget):
         Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
+        Binding("left_square_bracket", "stage(-1)", "Previous stage", key_display="["),
+        Binding("right_square_bracket", "stage(1)", "Next stage", key_display="]"),
     ]
 
     def __init__(self, columns: Sequence[str] = ()) -> None:
@@ -89,12 +97,19 @@ class RunLiveView(Widget):
         self.viewing: str | None = None
         self.sampling = False
         self.unmeasured: dict[str, None] = {}
+        self.hooks: tuple[str, ...] = ()
+        self.stage = "runs"
+        self.moved = False
 
     def compose(self) -> ComposeResult:
-        yield RunsTable(id="runs", cursor_type="row")
-        yield LogBlocks(id="blocks")
-        yield RunOutput(id="output")
-        yield Input(id="filter", placeholder="Filter params")
+        yield Static(id="stages")
+        yield HookPanel("setup", id="setup-stage")
+        with Vertical(id="runs-stage"):
+            yield RunsTable(id="runs", cursor_type="row")
+            yield LogBlocks(id="blocks")
+            yield RunOutput(id="output")
+            yield Input(id="filter", placeholder="Filter params")
+        yield HookPanel("teardown", id="teardown-stage")
         yield Static(id="status")
 
     def on_mount(self) -> None:
@@ -102,7 +117,8 @@ class RunLiveView(Widget):
         for column in self.columns:
             table.add_column(column, key=column)
         self.query_one(Input).display = False
-        self.query_one(RunOutput).display = False
+        self.query_one("#output", RunOutput).display = False
+        table.focus()
         table.set_interval(0.1, self.spin)
         self.set_interval(1, self.tick)
         self.set_interval(0.25, self.follow)
@@ -121,17 +137,17 @@ class RunLiveView(Widget):
                     self.pending.add(planned["run"])
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
+                self.hooks = tuple(cast(list[str], event.get("hooks", [])))
+                if self.hooks:
+                    self.query_one("#stages").display = True
+                    self.go(self.stage_names()[0])
                 match event["runs"]:
                     case [only]:
                         self.view(only["run"])  # type: ignore[index]
             case "started":
                 self.idle = False
                 self.pending.discard(run)
-                self.started[run] = (
-                    time.monotonic() - max(0.0, time.time() - float(str(event["at"])))
-                    if "at" in event
-                    else time.monotonic()
-                )
+                self.started[run] = self.since(event)
                 self.folders[run] = Path(str(event["folder"]))
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
                 shown = {
@@ -189,8 +205,25 @@ class RunLiveView(Widget):
                 self.pending.add(again)
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
+            case "setting up" | "tearing down" if "folder" in event:
+                panel = self.panel(str(event["hook"]))
+                panel.start(Path(str(event["folder"])), self.since(event))
+                self.advance(panel.hook)
+                self.show(describe_event(event))
+            case "hook ended":
+                panel = self.panel(str(event["hook"]))
+                error = event["error"]
+                panel.end(None if error is None else str(error), self.since(event))
+                if panel.hook == "setup" and panel.state == "passed":
+                    self.advance("runs")
+                self.draw_stages()
+                if self.idle and error is None:
+                    self.show_summary()
+                else:
+                    self.show(describe_event(event))
             case "idle":
                 self.idle = True
+                self.draw_stages()
                 self.show_summary()
             case "concurrency":
                 self.show_concurrency(event)
@@ -200,6 +233,55 @@ class RunLiveView(Widget):
                 self.show(describe_event(event))
             case _:
                 self.show(describe_event(event))
+
+    def since(self, event: dict[str, object]) -> float:
+        if "at" not in event:
+            return time.monotonic()
+        return time.monotonic() - max(0.0, time.time() - float(str(event["at"])))
+
+    def panel(self, hook: str) -> HookPanel:
+        return self.query_one(f"#{hook}-stage", HookPanel)
+
+    def stage_names(self) -> list[str]:
+        before = [hook for hook in self.hooks if hook == "setup"]
+        after = [hook for hook in self.hooks if hook == "teardown"]
+        return [*before, "runs", *after]
+
+    def stage_state(self, stage: str) -> str:
+        if stage != "runs":
+            return self.panel(stage).state
+        if self.idle:
+            return "failed" if self.failed - self.retried else "passed"
+        return "running" if self.started or self.ended else "waiting"
+
+    def draw_stages(self) -> None:
+        if self.hooks:
+            stages = [(name, self.stage_state(name)) for name in self.stage_names()]
+            line = stage_line(stages, self.stage, SPINNER[self.frame])
+            self.query_one("#stages", Static).update(line)
+
+    def go(self, stage: str) -> None:
+        self.stage = stage
+        for name in ("setup", "runs", "teardown"):
+            self.query_one(f"#{name}-stage").display = name == stage
+        if stage != "runs":
+            self.panel(stage).query_one(RunOutput).focus()
+        elif self.viewing is None:
+            self.query_one(DataTable).focus()
+        else:
+            self.query_one("#output", RunOutput).focus()
+        self.draw_stages()
+        self.refresh_bindings()
+
+    def advance(self, stage: str) -> None:
+        if not self.moved and stage in self.stage_names():
+            self.go(stage)
+
+    def action_stage(self, step: int) -> None:
+        names = self.stage_names()
+        index = min(max(names.index(self.stage) + step, 0), len(names) - 1)
+        self.moved = True
+        self.go(names[index])
 
     def show_summary(self) -> None:
         retried = len(self.retried)
@@ -235,6 +317,10 @@ class RunLiveView(Widget):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         if isinstance(self.app.screen, LeavePrompt):
             return False
+        if action == "stage":
+            return bool(self.hooks)
+        if self.stage != "runs" and action in RUNS_ACTIONS:
+            return False
         if action == "leave" and self.viewing is None:
             return self.query_one(Input).display
         return self.viewing is None or action in VIEWING_ACTIONS
@@ -255,6 +341,9 @@ class RunLiveView(Widget):
             self.set_cell(run, "status", Text(outcome, style="yellow"))
         if self.started:
             self.measure()
+        for panel in self.query(HookPanel):
+            if panel.state == "running":
+                panel.tick()
 
     def measure(self) -> None:
         if not self.sampling:
@@ -283,6 +372,7 @@ class RunLiveView(Widget):
         self.frame = (self.frame + 1) % len(SPINNER)
         for run in self.started:
             self.set_cell(run, "status", SPINNER[self.frame])
+        self.draw_stages()
 
     def show(self, text: str) -> None:
         self.query_one("#status", Static).update(text)
@@ -317,24 +407,27 @@ class RunLiveView(Widget):
     def view(self, run: str) -> None:
         self.viewing = run
         self.query_one(LogBlocks).reset()
-        self.query_one(RunOutput).reset()
+        self.query_one("#output", RunOutput).reset()
         self.query_one(DataTable).display = False
-        self.query_one(RunOutput).display = True
+        self.query_one("#output", RunOutput).display = True
         self.app.sub_title = run
         self.show("")
         self.refresh_bindings()
         self.follow()
 
     def follow(self) -> None:
+        for panel in self.query(HookPanel):
+            if panel.state == "running":
+                panel.follow()
         if self.viewing in self.folders:
             self.query_one(LogBlocks).follow(self.folders[self.viewing])
-            self.query_one(RunOutput).follow(self.folders[self.viewing])
+            self.query_one("#output", RunOutput).follow(self.folders[self.viewing])
 
     def action_leave(self) -> None:
         if self.viewing is not None:
             self.viewing = None
             self.query_one(LogBlocks).display = False
-            self.query_one(RunOutput).display = False
+            self.query_one("#output", RunOutput).display = False
             self.query_one(DataTable).display = True
             self.app.sub_title = ""
             self.refresh_bindings()

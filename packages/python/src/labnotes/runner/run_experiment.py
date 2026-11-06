@@ -128,6 +128,7 @@ async def run_experiment(
         os.close(locks.pop(run))
 
     plan: list[Entry] = []
+    parents: dict[str, str] = {}
     target_folder: Path | None = None
     if run_id is not None:
         selected = next((row for row in counted if row["id"] == run_id), None)
@@ -151,6 +152,7 @@ async def run_experiment(
         else:
             new_id = new_stamped_run_id(taken)
             planned.add(new_id)
+            parents[new_id] = run_id
             plan.append((new_id, params))
     for params in cells:
         resumed = next(
@@ -239,7 +241,6 @@ async def run_experiment(
             signal_run(run, signal.SIGTERM)
 
     ended: dict[str, dict[str, object]] = {}
-    parents: dict[str, str] = {}
     attempts: dict[str, int] = {}
     waiting: dict[str, asyncio.TimerHandle] = {}
 

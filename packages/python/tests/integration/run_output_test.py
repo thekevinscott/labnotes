@@ -6,6 +6,7 @@ from textual.app import App, ComposeResult
 from textual.widgets import Tab
 
 from labnotes.tui.run_output import RunOutput
+from labnotes.tui.stream_log import StreamLog
 
 
 class Host(App[None]):
@@ -16,6 +17,13 @@ class Host(App[None]):
 def shown(output: RunOutput) -> list[str]:
     log = output.logs[output.current]
     return [line.rstrip() for line in log.read(0, log.rows)]
+
+
+def screen(log: StreamLog) -> list[str]:
+    return [
+        log.render_line(y).text.rstrip()
+        for y in range(log.scrollable_content_region.height)
+    ]
 
 
 def tabs(output: RunOutput) -> list[str]:
@@ -111,7 +119,7 @@ def test_shows_an_unfinished_line_and_continues_it(tmp_path: Path) -> None:
         output.follow(tmp_path)
         assert shown(output) == ["partial", "next"]
         assert output.logs["stdout"].count == output.logs["stdout"].rows
-        assert output.logs["stdout"].virtual_size.height == 2
+        assert screen(output.logs["stdout"])[:3] == ["partial", "next", ""]
 
     mounted(check)
 
@@ -178,8 +186,8 @@ def test_drops_escapes_other_than_color(tmp_path: Path) -> None:
     mounted(check)
 
 
-def test_long_lines_scroll_sideways_without_wrapping(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_text("word " * 12 + "\n")
+def test_wraps_long_lines_with_one_vertical_scrollbar(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("x" * 50 + "\nshort\n")
 
     async def drive() -> None:
         app = Host()
@@ -187,9 +195,48 @@ def test_long_lines_scroll_sideways_without_wrapping(tmp_path: Path) -> None:
             log = app.query_one(RunOutput).logs["stdout"]
             log.follow(tmp_path)
             await pilot.pause()
-            assert shown(app.query_one(RunOutput)) == [("word " * 12).rstrip()]
-            assert log.virtual_size.height == 1
-            assert log.virtual_size.width > log.scrollable_content_region.width
+            width = log.scrollable_content_region.width
+            assert screen(log)[:4] == ["x" * width, "x" * (50 - width), "short", ""]
+            assert (log.show_vertical_scrollbar, log.show_horizontal_scrollbar) == (
+                True,
+                False,
+            )
+
+    asyncio.run(drive())
+
+
+def test_sticks_to_the_bottom_until_scrolled_up(tmp_path: Path) -> None:
+    path = tmp_path / "stdout.log"
+    path.write_text("".join(f"line {number}\n" for number in range(40)))
+
+    async def drive() -> None:
+        app = Host()
+        async with app.run_test(size=(30, 10)) as pilot:
+            log = app.query_one(RunOutput).logs["stdout"]
+            log.follow(tmp_path)
+            await pilot.pause()
+            assert screen(log)[-1] == "line 39"
+            append(path, b"line 40\n" + b"y" * 70 + b"\n")
+            log.follow(tmp_path)
+            await pilot.pause()
+            assert log.pinned
+            assert screen(log)[-4:] == ["line 40", "y" * 28, "y" * 28, "y" * 14]
+            log.focus()
+            await pilot.press("up")
+            await pilot.pause()
+            assert not log.pinned
+            top = screen(log)[0]
+            append(path, b"line 42\n")
+            log.follow(tmp_path)
+            await pilot.pause()
+            assert screen(log)[0] == top
+            log.scroll_end(animate=False, immediate=True)
+            await pilot.pause()
+            assert log.pinned
+            append(path, b"line 43\n")
+            log.follow(tmp_path)
+            await pilot.pause()
+            assert screen(log)[-2:] == ["line 42", "line 43"]
 
     asyncio.run(drive())
 

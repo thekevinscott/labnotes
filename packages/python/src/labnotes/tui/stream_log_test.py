@@ -5,6 +5,10 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from rich.console import Console
+from rich.style import Style
+from textual.geometry import Size
+from textual.strip import Strip
 
 from labnotes.tui.stream_log import StreamLog
 
@@ -21,20 +25,36 @@ def shown(output: StreamLog) -> list[str]:
 @pytest.fixture
 def sized() -> Iterator[mock.Mock]:
     with (
-        mock.patch.object(StreamLog, "size", new_callable=mock.PropertyMock) as size,
         mock.patch.object(
-            StreamLog, "call_after_refresh", side_effect=lambda call: call()
+            StreamLog, "view", new_callable=mock.PropertyMock, return_value=Size(4, 3)
         ),
+        mock.patch.object(StreamLog, "scroll_to") as scroll,
     ):
-        size.return_value = mock.Mock(width=10, height=5)
-        yield size
+        yield scroll
+
+
+@pytest.fixture
+def drawn() -> Iterator[None]:
+    app = mock.Mock(console=Console(width=200, color_system="truecolor"))
+    with mock.patch.multiple(
+        StreamLog,
+        app=mock.PropertyMock(return_value=app),
+        rich_style=mock.PropertyMock(return_value=Style()),
+        text_selection=mock.PropertyMock(return_value=None),
+        screen=mock.PropertyMock(),
+    ):
+        yield
+
+
+def texts(strips: list[Strip]) -> list[str]:
+    return [strip.text for strip in strips]
 
 
 def test_starts_empty() -> None:
     output = StreamLog("stdout", id="output")
     assert (output.id, output.stream, output.segments) == ("output", "stdout", [])
     assert (output.first, output.window, output.rows, output.count) == (0, [], 0, 0)
-    assert output.auto_scroll
+    assert (output.pinned, output.bottom, output.wrapped) == (True, 0, {})
 
 
 def test_follows_nothing_before_a_run_writes_output(tmp_path: Path) -> None:
@@ -100,12 +120,12 @@ def test_growth_forgets_only_rows_that_can_change(tmp_path: Path) -> None:
     output = StreamLog("stdout")
     output.follow(tmp_path)
     output.first, output.window = 1, ["two", "par"]
-    cached = {0: mock.Mock(), 1: mock.Mock(), 2: mock.Mock()}
-    output._line_cache.update(cached)
+    cached: dict[int, list[Strip]] = {0: [], 1: [], 2: []}
+    output.wrapped.update(cached)
     append(tmp_path / "stdout.log", "tial\n")
     output.follow(tmp_path)
     assert output.window == ["two"]
-    assert output._line_cache == {0: cached[0], 1: cached[1]}
+    assert output.wrapped == {0: [], 1: []}
     assert shown(output) == ["one", "two", "partial"]
 
 
@@ -119,42 +139,170 @@ def test_growth_before_the_window_forgets_all_of_it(tmp_path: Path) -> None:
     assert output.window == []
 
 
-@pytest.mark.parametrize(
-    ("auto_scroll", "at_end", "scrolls"),
-    [(True, True, True), (False, True, False), (True, False, False)],
-)
-def test_scrolls_to_the_newest_line_only_from_the_end(
-    tmp_path: Path, auto_scroll: bool, at_end: bool, scrolls: bool
-) -> None:
-    (tmp_path / "stdout.log").write_text("new\n")
+def test_an_unsized_view_scrolls_by_line(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("one\ntwo\n")
     output = StreamLog("stdout")
-    output.auto_scroll = auto_scroll
-    with (
-        mock.patch.object(
-            StreamLog, "is_mounted", new_callable=mock.PropertyMock, return_value=True
-        ),
-        mock.patch.object(
-            StreamLog,
-            "is_vertical_scroll_end",
-            new_callable=mock.PropertyMock,
-            return_value=at_end,
-        ),
-        mock.patch.object(StreamLog, "scroll_end") as scroll,
+    output.shown = ("key", [])
+    with mock.patch.object(StreamLog, "scroll_to") as scroll:
+        output.follow(tmp_path)
+    assert (output.bottom, output.virtual_size, output.shown) == (2, (0, 2), (None, []))
+    scroll.assert_not_called()
+
+
+@pytest.mark.parametrize(
+    ("rows", "bottom", "pinned"),
+    [([1, 1], 0, True), ([1, 1, 1, 1], 1, True), ([1, 1, 2, 2], 2, False)],
+)
+def test_the_scroll_range_lets_the_last_line_reach_the_bottom(
+    tmp_path: Path, sized: mock.Mock, rows: list[int], bottom: int, pinned: bool
+) -> None:
+    (tmp_path / "stdout.log").write_text("x\n" * len(rows))
+    output = StreamLog("stdout")
+    output.pinned = pinned
+    with mock.patch.object(
+        StreamLog, "wrap", side_effect=lambda line: [Strip([])] * rows[line]
     ):
         output.follow(tmp_path)
-        output.follow(tmp_path)
-    if scrolls:
-        scroll.assert_called_once_with(animate=False, immediate=True, x_axis=False)
+    assert (output.bottom, output.virtual_size) == (bottom, (0, bottom + 3))
+    if pinned:
+        sized.assert_called_once_with(y=bottom, animate=False, immediate=True)
     else:
-        scroll.assert_not_called()
+        sized.assert_not_called()
 
 
-def test_does_not_scroll_before_mounting(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_text("new\n")
+def test_a_resize_rewraps_every_line() -> None:
     output = StreamLog("stdout")
-    with mock.patch.object(StreamLog, "scroll_end") as scroll:
+    output.wrapped[0] = []
+    with mock.patch.object(StreamLog, "settle") as settle:
+        output.on_resize(mock.Mock())
+    assert output.wrapped == {}
+    settle.assert_called_once_with()
+
+
+@pytest.mark.parametrize(("y", "pinned"), [(4, False), (5, True), (6, True)])
+def test_scrolling_to_the_bottom_pins_the_view(y: int, pinned: bool) -> None:
+    output = StreamLog("stdout")
+    output.bottom = 5
+    output.pinned = not pinned
+    output.watch_scroll_y(0, y)
+    assert output.pinned is pinned
+
+
+def test_a_new_selection_redraws_every_line() -> None:
+    output = StreamLog("stdout")
+    output.wrapped[0], output.shown = [], ("key", [])
+    with mock.patch.object(StreamLog, "refresh") as refresh:
+        output.selection_updated(None)
+    assert (output.wrapped, output.shown) == ({}, (None, []))
+    refresh.assert_called_once_with()
+
+
+def test_loads_the_lines_around_one_outside_the_window(
+    tmp_path: Path, sized: mock.Mock
+) -> None:
+    (tmp_path / "stdout.log").write_text("".join(f"{n}\n" for n in range(500)))
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
         output.follow(tmp_path)
-    scroll.assert_not_called()
+    output.wrapped = {0: [], 150: [], 300: [], 497: [], 499: []}
+    assert output.line(250) == "250"
+    assert (output.first, len(output.window)) == (150, 203)
+    assert list(output.wrapped) == [150, 300, 497, 499]
+    assert output.line(0) == "0"
+    assert (output.first, len(output.window)) == (0, 203)
+    output.window = ["kept"]
+    assert output.line(0) == "kept"
+
+
+@pytest.mark.usefixtures("sized", "drawn")
+def test_wraps_a_line_at_the_view_width(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("abcdefghij\n\nabcd\n")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    wrapped = output.wrap(0)
+    assert texts(wrapped) == ["abcd", "efgh", "ij  "]
+    assert [
+        (strip._segments[0].style or Style()).meta["offset"] for strip in wrapped
+    ] == [
+        (0, 0),
+        (4, 0),
+        (8, 0),
+    ]
+    assert texts(output.wrap(1)) == ["    "]
+    assert texts(output.wrap(2)) == ["abcd"]
+    assert output.wrap(0) is wrapped
+
+
+@pytest.mark.usefixtures("sized", "drawn")
+def test_keeps_ansi_color_on_wrapped_rows(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("\x1b[31mredred\x1b[0m\n")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    colors = {
+        segment.text: segment.style.color.name
+        for strip in output.wrap(0)
+        for segment in strip._segments
+        if segment.style and segment.style.color and segment.text.strip()
+    }
+    assert colors == {"redr": "color(1)", "ed": "color(1)"}
+
+
+@pytest.mark.parametrize(
+    ("span", "selected"), [(None, ""), ((0, -1), "abcdef"), ((1, 5), "bcde")]
+)
+@pytest.mark.usefixtures("sized", "drawn")
+def test_highlights_the_selected_part_of_a_line(
+    tmp_path: Path, span: tuple[int, int] | None, selected: str
+) -> None:
+    (tmp_path / "stdout.log").write_text("abcdef\n")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    selection = mock.Mock()
+    selection.get_span.return_value = span
+    output.wrapped.clear()
+    highlight = Style(reverse=True)
+    screen: Any = mock.Mock()
+    screen.get_component_rich_style.return_value = highlight
+    with mock.patch.multiple(
+        StreamLog,
+        text_selection=mock.PropertyMock(return_value=selection),
+        screen=mock.PropertyMock(return_value=screen),
+    ):
+        wrapped = output.wrap(0)
+    selection.get_span.assert_called_once_with(0)
+    assert selected == "".join(
+        segment.text
+        for strip in wrapped
+        for segment in strip._segments
+        if segment.style and segment.style.reverse
+    )
+
+
+@pytest.mark.parametrize(
+    ("top", "bottom", "rows"),
+    [
+        (0, 3, ["0a", "0b", "1a"]),
+        (1, 3, ["1a", "2a", "2b"]),
+        (3, 3, ["4a", "4b", "5a"]),
+    ],
+)
+def test_fills_the_view_from_the_top_line_or_against_the_bottom(
+    tmp_path: Path, sized: mock.Mock, top: int, bottom: int, rows: list[str]
+) -> None:
+    (tmp_path / "stdout.log").write_text("x\n" * 6)
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    output.bottom = bottom
+    pieces = {line: [f"{line}a", f"{line}b"][: 2 - line % 2] for line in range(6)}
+    with (
+        mock.patch.object(
+            StreamLog, "scroll_y", new_callable=mock.PropertyMock, return_value=top
+        ),
+        mock.patch.object(StreamLog, "wrap", side_effect=lambda line: pieces[line]),
+    ):
+        assert output.screen_rows() == rows
+        assert output.screen_rows() is output.shown[1]
 
 
 def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
@@ -164,11 +312,13 @@ def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
     (tmp_path / "r2" / "stdout.log").write_text("hi\n")
     output = StreamLog("stdout")
     output.follow(tmp_path / "r1")
-    output.first, output.window, output._width = 1, ["partial"], 7
-    output._line_cache[0] = mock.Mock()
+    output.first, output.window, output.bottom = 1, ["partial"], 2
+    output.wrapped[0] = []
+    output.shown = ("key", [])
     output.reset()
     assert (output.segments, output.first, output.window) == ([], 0, [])
-    assert (output._line_cache, output._width, output.virtual_size) == ({}, 0, (0, 0))
+    assert (output.wrapped, output.shown, output.bottom) == ({}, (None, []), 0)
+    assert output.virtual_size == (0, 0)
     output.follow(tmp_path / "r2")
     assert shown(output) == ["hi"]
 
@@ -243,179 +393,18 @@ def test_a_rewritten_log_of_the_same_size_is_followed_on(tmp_path: Path) -> None
     assert len(output.segments) == 1
 
 
-def test_loads_the_rows_around_the_one_asked_for(
-    tmp_path: Path, sized: mock.Mock
-) -> None:
-    (tmp_path / "stdout.log").write_text("".join(f"{n}\n" for n in range(400)))
+@pytest.mark.usefixtures("sized")
+def test_renders_a_screen_row_or_a_blank_past_the_last() -> None:
     output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output.load(250)
-    assert output.first == 150
-    assert output.window == [str(n) for n in range(150, 355)]
-
-
-def test_loads_from_the_top_near_the_start(tmp_path: Path, sized: mock.Mock) -> None:
-    (tmp_path / "stdout.log").write_text("a\nb\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output._line_cache[0] = mock.Mock()
-    output.load(1)
-    assert (output.first, output.window, output._line_cache) == (0, ["a", "b"], {})
-
-
-def test_loading_wider_rows_widens_the_scrollable_area(
-    tmp_path: Path, sized: mock.Mock
-) -> None:
-    (tmp_path / "stdout.log").write_text(
-        "\x1b[31mred\x1b[0m\n界\n\x1b[31mxx\rfirst\r\x1b[32mabcd\x1b[0m\n"
-    )
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output.load(0)
-    assert output.virtual_size == (4, 3)
-
-
-def test_loading_narrower_rows_keeps_the_width(
-    tmp_path: Path, sized: mock.Mock
-) -> None:
-    (tmp_path / "stdout.log").write_text("ab\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output._width = 9
-    with mock.patch.object(StreamLog, "widen") as widen:
-        output.load(0)
-    assert output._width == 9
-    widen.assert_not_called()
-
-
-def test_loading_nothing_keeps_the_width(sized: mock.Mock) -> None:
-    output = StreamLog("stdout")
-    output.load(0)
-    assert (output.window, output._width) == ([], 0)
-
-
-def test_keeps_ansi_raw_until_a_line_is_rendered(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_text("\x1b[31mred\x1b[0m plain\x1b[2K\n")
-    output = StreamLog("stdout")
-    with mock.patch("labnotes.tui.stream_log.Text.from_ansi") as parse:
-        output.follow(tmp_path)
-    parse.assert_not_called()
-    assert shown(output) == ["\x1b[31mred\x1b[0m plain\x1b[2K"]
-
-
-@pytest.fixture
-def rendered_line() -> Iterator[mock.Mock]:
-    line_text = mock.Mock(plain="red")
-    line_text.__len__ = mock.Mock(return_value=3)
-    line_text.render.return_value = []
+    row = Strip([])
     with (
-        mock.patch("labnotes.tui.stream_log.Text.from_ansi", return_value=line_text),
-        mock.patch("labnotes.tui.stream_log.Strip"),
+        mock.patch.object(StreamLog, "screen_rows", return_value=[row]),
+        mock.patch.object(
+            StreamLog,
+            "rich_style",
+            new_callable=mock.PropertyMock,
+            return_value=Style(),
+        ),
     ):
-        yield line_text
-
-
-def rendering(
-    scroll: tuple[int, int] = (0, 0), selection: object = None
-) -> mock._patch:  # type: ignore[type-arg]
-    return mock.patch.multiple(
-        StreamLog,
-        scroll_offset=mock.PropertyMock(return_value=scroll),
-        size=mock.PropertyMock(return_value=mock.Mock(width=10, height=5)),
-        rich_style=mock.PropertyMock(),
-        text_selection=mock.PropertyMock(return_value=selection),
-        app=mock.PropertyMock(),
-        screen=mock.PropertyMock(),
-    )
-
-
-def test_renders_a_blank_row_past_the_end(tmp_path: Path) -> None:
-    output = StreamLog("stdout")
-    with (
-        rendering(),
-        mock.patch("labnotes.tui.stream_log.Strip") as strip,
-        mock.patch.object(StreamLog, "load") as load,
-    ):
-        assert output.render_line(0) is strip.blank.return_value
-    load.assert_not_called()
-
-
-def test_reuses_a_cached_visible_line(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_text("kept\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output.window = ["kept"]
-    cached = mock.Mock()
-    cached.crop_extend.return_value.apply_offsets.return_value = cached
-    output._line_cache[0] = cached
-    with rendering():
-        assert output.render_line(0) is cached
-
-
-def test_loads_a_row_outside_the_window_before_rendering(
-    tmp_path: Path, rendered_line: mock.Mock
-) -> None:
-    (tmp_path / "stdout.log").write_text("".join(f"{n}\n" for n in range(500)))
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    with rendering(scroll=(0, 400)), mock.patch.object(StreamLog, "call_after_refresh"):
-        output.render_line(2)
-    assert (output.first, len(output.window)) == (302, 198)
-
-
-@pytest.mark.parametrize(
-    ("first", "loads"), [(1, False), (4, False), (0, True), (5, True)]
-)
-def test_a_row_inside_the_window_renders_without_loading(
-    tmp_path: Path, rendered_line: mock.Mock, first: int, loads: bool
-) -> None:
-    (tmp_path / "stdout.log").write_text("".join(f"{n}\n" for n in range(10)))
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output.first, output.window = first, ["a", "b", "c", "d"]
-    with rendering(scroll=(0, 2)), mock.patch.object(StreamLog, "load") as load:
-        load.side_effect = lambda row: setattr(output, "first", row)
-        output.render_line(2)
-    assert load.called is loads
-
-
-@pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
-def test_selection_is_applied_to_a_visible_line(
-    tmp_path: Path, span: tuple[int, int] | None, rendered_line: mock.Mock
-) -> None:
-    (tmp_path / "stdout.log").write_text("red\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output.window = ["red"]
-    selection = mock.Mock()
-    selection.get_span.return_value = span
-    with rendering(selection=selection):
-        output.render_line(0)
-        screen: Any = output.screen
-    selection.get_span.assert_called_once_with(0)
-    if span is None:
-        rendered_line.stylize.assert_not_called()
-    else:
-        rendered_line.stylize.assert_called_once_with(
-            screen.get_component_rich_style.return_value,
-            span[0],
-            3 if span[1] == -1 else span[1],
-        )
-    assert 0 not in output._line_cache
-
-
-def test_renders_the_scrolled_row_cropped_to_the_visible_columns(
-    tmp_path: Path, rendered_line: mock.Mock
-) -> None:
-    (tmp_path / "stdout.log").write_text("zero\none\ntwo\nthree\nfour\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    output.window = ["zero", "one", "two", "three", "four"]
-    with rendering(scroll=(2, 3)):
-        style = output.rich_style
-        rendered = output.render_line(1)
-    assert list(output._line_cache) == [4]
-    cropped: mock.Mock = output._line_cache[4].crop_extend  # type: ignore[assignment]
-    cropped.assert_called_once_with(2, 12, style)
-    cropped.return_value.apply_offsets.assert_called_once_with(2, 4)
-    assert rendered is cropped.return_value.apply_offsets.return_value
+        assert output.render_line(0) is row
+        assert output.render_line(1).text == "    "

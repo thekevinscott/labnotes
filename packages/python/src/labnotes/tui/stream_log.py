@@ -1,10 +1,11 @@
 from pathlib import Path
 
-from rich.ansi import re_ansi
-from rich.text import Text
 from rich.cells import cell_len
+from rich.text import Text
+from textual import events
 from textual.geometry import Size
 from textual.scroll_view import ScrollView
+from textual.selection import Selection
 from textual.strip import Strip
 
 from labnotes.latest_log import latest_log
@@ -14,11 +15,19 @@ BUFFER = 100
 
 
 class StreamLog(ScrollView):
+    """Follow one stream's logs, reading only the lines on screen.
+
+    Long lines wrap, so a log line can take several screen rows. Scrolling
+    moves one log line at a time: `scroll_y` is the top line, except at the
+    end, where the last lines sit against the bottom edge.
+    """
+
     DEFAULT_CSS = """
     StreamLog {
         background: $surface;
         color: $text;
-        overflow: scroll;
+        overflow-x: hidden;
+        overflow-y: scroll;
         &:focus { background-tint: $foreground 5%; }
     }
     """
@@ -26,17 +35,22 @@ class StreamLog(ScrollView):
     def __init__(self, stream: str, id: str | None = None) -> None:
         super().__init__(id=id)
         self.stream = stream
-        self.auto_scroll = True
+        self.pinned = True
         self.reset()
 
     def reset(self) -> None:
         self.segments: list[LineIndex] = []
         self.first = 0
         self.window: list[str] = []
-        self._line_cache: dict[int, Strip] = {}
-        self._width = 0
+        self.wrapped: dict[int, list[Strip]] = {}
+        self.shown: tuple[object, list[Strip]] = (None, [])
+        self.bottom = 0
         self.virtual_size = Size(0, 0)
         self.refresh()
+
+    @property
+    def view(self) -> Size:
+        return self.scrollable_content_region.size
 
     @property
     def rows(self) -> int:
@@ -62,16 +76,43 @@ class StreamLog(ScrollView):
         if not self.segments or self.segments[-1].path != path:
             self.segments.append(LineIndex(path))
         settled = self.count
-        at_end = self.is_vertical_scroll_end
         if not self.segments[-1].extend():
             return
         del self.window[max(0, settled - self.first) :]
-        for row in [row for row in self._line_cache if row >= settled]:
-            del self._line_cache[row]
-        self.virtual_size = Size(self._width, self.rows)
+        for line in [line for line in self.wrapped if line >= settled]:
+            del self.wrapped[line]
+        self.settle()
+
+    def settle(self) -> None:
+        """Size the scroll range so the last line can reach the bottom edge."""
+        self.shown = (None, [])
+        height = self.view.height
+        if self.view.width <= 0 or height <= 0:
+            self.bottom = self.rows
+            self.virtual_size = Size(0, self.rows)
+            return
+        line, filled = self.rows, 0
+        while line > 0 and filled < height:
+            line -= 1
+            filled += len(self.wrap(line))
+        self.bottom = line
+        self.virtual_size = Size(0, line + height)
         self.refresh()
-        if self.is_mounted and self.auto_scroll and at_end:
-            self.scroll_end(animate=False, immediate=True, x_axis=False)
+        if self.pinned:
+            self.scroll_to(y=line, animate=False, immediate=True)
+
+    def on_resize(self, event: events.Resize) -> None:
+        self.wrapped.clear()
+        self.settle()
+
+    def watch_scroll_y(self, old_value: float, new_value: float) -> None:
+        super().watch_scroll_y(old_value, new_value)
+        self.pinned = round(new_value) >= self.bottom
+
+    def selection_updated(self, selection: Selection | None) -> None:
+        self.wrapped.clear()
+        self.shown = (None, [])
+        super().selection_updated(selection)
 
     def read(self, first: int, count: int) -> list[str]:
         found: list[str] = []
@@ -84,50 +125,66 @@ class StreamLog(ScrollView):
             first = 0
         return found
 
-    def load(self, row: int) -> None:
-        self.first = max(0, row - BUFFER)
-        self.window = self.read(self.first, self.size.height + 2 * BUFFER)
-        self._line_cache.clear()
-        width = max(
-            (
-                cell_len(re_ansi.sub("", line.rsplit("\r", 1)[-1]))
-                for line in self.window
-            ),
-            default=0,
-        )
-        if width > self._width:
-            self._width = width
-            self.call_after_refresh(self.widen)
+    def line(self, line: int) -> str:
+        if not self.first <= line < self.first + len(self.window):
+            self.first = max(0, line - BUFFER)
+            self.window = self.read(self.first, self.view.height + 2 * BUFFER)
+            # Keep the tail too: following the log wraps it on every write.
+            tail = self.rows - self.view.height
+            self.wrapped = {
+                kept: strips
+                for kept, strips in self.wrapped.items()
+                if kept >= tail or self.first <= kept < self.first + len(self.window)
+            }
+        return self.window[line - self.first]
 
-    def widen(self) -> None:
-        self.virtual_size = Size(self._width, self.rows)
+    def wrap(self, line: int) -> list[Strip]:
+        """Cut one log line into screen rows, keeping offsets for selection."""
+        if (strips := self.wrapped.get(line)) is not None:
+            return strips
+        width = self.view.width
+        text = Text.from_ansi(self.line(line), style=self.rich_style)
+        selection = self.text_selection
+        if selection is not None and (span := selection.get_span(line)) is not None:
+            start, end = span
+            text.stylize(
+                self.screen.get_component_rich_style("screen--selection"),
+                start,
+                len(text) if end == -1 else end,
+            )
+        strip = Strip(text.render(self.app.console), cell_len(text.plain))
+        length = strip.cell_length
+        pieces = (
+            strip.divide([*range(width, length, width), length]) if length else [strip]
+        )
+        strips, offset = [], 0
+        for piece in pieces:
+            strips.append(
+                piece.extend_cell_length(width, self.rich_style).apply_offsets(
+                    offset, line
+                )
+            )
+            offset += sum(len(segment.text) for segment in piece)
+        self.wrapped[line] = strips
+        return strips
+
+    def screen_rows(self) -> list[Strip]:
+        top = round(self.scroll_y)
+        key = (top, self.view, self.rows, self.bottom)
+        if self.shown[0] == key:
+            return self.shown[1]
+        height = self.view.height
+        found: list[Strip] = []
+        line = top
+        while line < self.rows and (top >= self.bottom or len(found) < height):
+            found.extend(self.wrap(line))
+            line += 1
+        found = found[-height:] if top >= self.bottom else found[:height]
+        self.shown = (key, found)
+        return found
 
     def render_line(self, y: int) -> Strip:
-        """Render only the visible line, keeping the uncropped result cached."""
-        scroll_x, scroll_y = self.scroll_offset
-        row = scroll_y + y
-        rich_style = self.rich_style
-        if row >= self.rows:
-            return Strip.blank(self.size.width, rich_style)
-        if not self.first <= row < self.first + len(self.window):
-            self.load(row)
-        selection = self.text_selection
-        if selection is None and row in self._line_cache:
-            line = self._line_cache[row]
-        else:
-            line_text = Text.from_ansi(self.window[row - self.first], style=rich_style)
-            if selection is not None and (span := selection.get_span(row)) is not None:
-                start, end = span
-                if end == -1:
-                    end = len(line_text)
-                line_text.stylize(
-                    self.screen.get_component_rich_style("screen--selection"),
-                    start,
-                    end,
-                )
-            line = Strip(line_text.render(self.app.console), cell_len(line_text.plain))
-            if selection is None:
-                self._line_cache[row] = line
-        return line.crop_extend(
-            scroll_x, scroll_x + self.size.width, rich_style
-        ).apply_offsets(scroll_x, row)
+        found = self.screen_rows()
+        if y < len(found):
+            return found[y]
+        return Strip.blank(self.view.width, self.rich_style)

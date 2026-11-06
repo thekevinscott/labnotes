@@ -58,7 +58,7 @@ def run_tui(
 
 def stop(term: Terminal) -> None:
     term.key_ctrl_c()
-    expect(term.get_by_text("still going")).to_be_visible()
+    expect(term.get_by_text("leave running")).to_be_visible()
     term.write("s")
 
 
@@ -168,6 +168,8 @@ def test_retry_wait_and_end_summary(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("retry in")).to_be_visible(timeout=15)
     expect(term.get_by_text("✗")).to_be_visible()
     term.key_ctrl_c()
+    expect(term.get_by_text("waiting to retry. Stop (s)")).to_be_visible()
+    term.write("s")
     term.wait()
 
 
@@ -184,12 +186,12 @@ def test_ctrl_c_prompt_can_cancel_then_stop(terminal, tmp_path: Path) -> None:
     term = run_tui(terminal, tmp_path, 2)
     expect(term.get_by_text("1 at a time")).to_be_visible()
     term.key_ctrl_c()
-    expect(term.get_by_text("still going")).to_be_visible()
-    expect(term.get_by_text("Stop them")).to_be_visible()
+    expect(term.get_by_text("leave running")).to_be_visible()
+    expect(term.get_by_text("Stop (s)")).to_be_visible()
     term.key_escape()
-    expect(term.get_by_text("still going")).not_to_be_visible()
+    expect(term.get_by_text("leave running")).not_to_be_visible()
     term.key_ctrl_c()
-    expect(term.get_by_text("still going")).to_be_visible()
+    expect(term.get_by_text("leave running")).to_be_visible()
     term.write("s")
     term.wait()
     records = [

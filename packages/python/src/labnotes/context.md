@@ -211,8 +211,10 @@ going. `run` requires a terminal.
 - `run` requires a terminal and opens the live table. The experiment daemon
   owns the runs and starts the next planned run when a concurrency slot is free.
   Agents should start the TUI in a dedicated tmux window.
-- Ctrl-C opens a prompt: `s` stops runs, Enter or `l` leaves them running,
-  and Escape returns to the table. Closing the terminal leaves runs going.
+- Ctrl-C opens a prompt while setup, runs, retries, or teardown are pending:
+  `s` stops the experiment like `stop`, Enter or `l` leaves it running and
+  prints the stop command, and Escape returns to the table. Once it is done,
+  Ctrl-C quits at once. Closing the terminal leaves runs going.
   Stopped runs receive SIGTERM, then SIGKILL after 5 seconds if needed.
 - A second invocation starts its own run session and reads the current config.
 - The TUI summary counts passed, failed and retried runs. If `run` cannot

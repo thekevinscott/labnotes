@@ -283,6 +283,25 @@ class RunLiveView(Widget):
         self.moved = True
         self.go(names[index])
 
+    def busy(self) -> str | None:
+        setup = self.panel("setup").state
+        if "teardown" in self.hooks:
+            if self.panel("teardown").state in ("passed", "failed"):
+                return None
+        elif self.idle or setup == "failed":
+            return None
+        if setup == "running":
+            return "Setting up."
+        if self.idle or setup == "failed" or self.panel("teardown").state == "running":
+            return "Tearing down."
+        if self.started:
+            runs = "run" if len(self.started) == 1 else "runs"
+            return f"{len(self.started)} {runs} still going."
+        if self.waiting:
+            runs = "run" if len(self.waiting) == 1 else "runs"
+            return f"{len(self.waiting)} {runs} waiting to retry."
+        return "Starting runs."
+
     def show_summary(self) -> None:
         retried = len(self.retried)
         failed = len(self.failed - self.retried)
@@ -488,6 +507,7 @@ class RunApp(ViewSwitcher, App[None]):
         )
         self.watching_state = False
         self.attached: socket.socket | None = None
+        self.farewell: str | None = None
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -686,12 +706,11 @@ class RunApp(ViewSwitcher, App[None]):
 
     def action_interrupt(self) -> None:
         if self.daemon_journal is not None:
-            if self.body_ready and self.body.started:
-                self.push_screen(
-                    DetachedLeavePrompt(len(self.body.started)), self.answer
-                )
-            else:
+            busy = self.body.busy() if self.body_ready else "Still running."
+            if busy is None:
                 self.exit()
+            else:
+                self.push_screen(DetachedLeavePrompt(busy), self.answer)
             return
         if self.body_ready and self.body.started:
             self.push_screen(LeavePrompt(len(self.body.started)), self.answer)
@@ -711,6 +730,11 @@ class RunApp(ViewSwitcher, App[None]):
             else:
                 self.run_worker(self.stop_daemon_and_exit(), exit_on_error=False)
         elif choice == "leave" and self.daemon_journal is not None:
+            name = self.experiment_name
+            self.farewell = (
+                f"{name} is still running. "
+                f"Stop it with: labnotes experiments {name} stop"
+            )
             self.exit()
 
     async def stop_daemon_and_exit(self) -> None:

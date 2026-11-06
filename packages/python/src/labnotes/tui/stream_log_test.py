@@ -5,10 +5,6 @@ from typing import Any
 from unittest import mock
 
 import pytest
-from rich.console import Console
-from rich.style import Style
-from textual.geometry import Size
-from textual.strip import Strip
 
 from labnotes.tui.stream_log import StreamLog
 
@@ -26,28 +22,14 @@ def shown(output: StreamLog) -> list[str]:
 def sized() -> Iterator[mock.Mock]:
     with (
         mock.patch.object(
-            StreamLog, "view", new_callable=mock.PropertyMock, return_value=Size(4, 3)
+            StreamLog,
+            "view",
+            new_callable=mock.PropertyMock,
+            return_value=mock.Mock(width=4, height=3),
         ),
         mock.patch.object(StreamLog, "scroll_to") as scroll,
     ):
         yield scroll
-
-
-@pytest.fixture
-def drawn() -> Iterator[None]:
-    app = mock.Mock(console=Console(width=200, color_system="truecolor"))
-    with mock.patch.multiple(
-        StreamLog,
-        app=mock.PropertyMock(return_value=app),
-        rich_style=mock.PropertyMock(return_value=Style()),
-        text_selection=mock.PropertyMock(return_value=None),
-        screen=mock.PropertyMock(),
-    ):
-        yield
-
-
-def texts(strips: list[Strip]) -> list[str]:
-    return [strip.text for strip in strips]
 
 
 def test_starts_empty() -> None:
@@ -120,7 +102,7 @@ def test_growth_forgets_only_rows_that_can_change(tmp_path: Path) -> None:
     output = StreamLog("stdout")
     output.follow(tmp_path)
     output.first, output.window = 1, ["two", "par"]
-    cached: dict[int, list[Strip]] = {0: [], 1: [], 2: []}
+    cached: dict[int, list[Any]] = {0: [], 1: [], 2: []}
     output.wrapped.update(cached)
     append(tmp_path / "stdout.log", "tial\n")
     output.follow(tmp_path)
@@ -160,7 +142,7 @@ def test_the_scroll_range_lets_the_last_line_reach_the_bottom(
     output = StreamLog("stdout")
     output.pinned = pinned
     with mock.patch.object(
-        StreamLog, "wrap", side_effect=lambda line: [Strip([])] * rows[line]
+        StreamLog, "wrap", side_effect=lambda line: [mock.Mock()] * rows[line]
     ):
         output.follow(tmp_path)
     assert (output.bottom, output.virtual_size) == (bottom, (0, bottom + 3))
@@ -214,68 +196,111 @@ def test_loads_the_lines_around_one_outside_the_window(
     assert output.line(0) == "kept"
 
 
-@pytest.mark.usefixtures("sized", "drawn")
-def test_wraps_a_line_at_the_view_width(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_text("abcdefghij\n\nabcd\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    wrapped = output.wrap(0)
-    assert texts(wrapped) == ["abcd", "efgh", "ij  "]
-    assert [
-        (strip._segments[0].style or Style()).meta["offset"] for strip in wrapped
-    ] == [
-        (0, 0),
-        (4, 0),
-        (8, 0),
-    ]
-    assert texts(output.wrap(1)) == ["    "]
-    assert texts(output.wrap(2)) == ["abcd"]
-    assert output.wrap(0) is wrapped
+@pytest.fixture
+def drawing() -> Iterator[dict[str, Any]]:
+    with mock.patch.multiple(
+        "labnotes.tui.stream_log",
+        Text=mock.DEFAULT,
+        Strip=mock.DEFAULT,
+        cell_len=mock.DEFAULT,
+    ) as patched:
+        with mock.patch.multiple(
+            StreamLog,
+            app=mock.PropertyMock(),
+            rich_style=mock.PropertyMock(),
+            text_selection=mock.PropertyMock(return_value=None),
+            screen=mock.PropertyMock(),
+        ):
+            yield patched
 
 
-@pytest.mark.usefixtures("sized", "drawn")
-def test_keeps_ansi_color_on_wrapped_rows(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_text("\x1b[31mredred\x1b[0m\n")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    colors = {
-        segment.text: segment.style.color.name
-        for strip in output.wrap(0)
-        for segment in strip._segments
-        if segment.style and segment.style.color and segment.text.strip()
-    }
-    assert colors == {"redr": "color(1)", "ed": "color(1)"}
+def piece(*texts: str) -> mock.MagicMock:
+    strip = mock.MagicMock()
+    strip.__iter__.return_value = [mock.Mock(text=text) for text in texts]
+    return strip
 
 
-@pytest.mark.parametrize(
-    ("span", "selected"), [(None, ""), ((0, -1), "abcdef"), ((1, 5), "bcde")]
-)
-@pytest.mark.usefixtures("sized", "drawn")
-def test_highlights_the_selected_part_of_a_line(
-    tmp_path: Path, span: tuple[int, int] | None, selected: str
+@pytest.mark.parametrize(("length", "cuts"), [(10, [4, 8, 10]), (4, [4]), (5, [4, 5])])
+@pytest.mark.usefixtures("sized")
+def test_cuts_a_line_into_rows_of_the_view_width(
+    tmp_path: Path, drawing: dict[str, Any], length: int, cuts: list[int]
 ) -> None:
-    (tmp_path / "stdout.log").write_text("abcdef\n")
+    (tmp_path / "stdout.log").write_text("line\n")
     output = StreamLog("stdout")
-    output.follow(tmp_path)
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    strip = drawing["Strip"].return_value
+    strip.cell_length = length
+    pieces = [piece("ab", "cd"), piece("e")]
+    strip.divide.return_value = pieces
+    wrapped = output.wrap(0)
+    text = drawing["Text"].from_ansi.return_value
+    drawing["Text"].from_ansi.assert_called_once_with("line", style=output.rich_style)
+    drawing["Strip"].assert_called_once_with(
+        text.render.return_value, drawing["cell_len"].return_value
+    )
+    strip.divide.assert_called_once_with(cuts)
+    for each in pieces:
+        each.extend_cell_length.assert_called_once_with(4, output.rich_style)
+    assert [
+        each.extend_cell_length.return_value.apply_offsets.call_args for each in pieces
+    ] == [
+        mock.call(0, 0),
+        mock.call(4, 0),
+    ]
+    assert wrapped == [
+        each.extend_cell_length.return_value.apply_offsets.return_value
+        for each in pieces
+    ]
+    assert output.wrap(0) is wrapped
+    assert output.wrapped == {0: wrapped}
+
+
+@pytest.mark.usefixtures("sized")
+def test_an_empty_line_takes_one_row(tmp_path: Path, drawing: dict[str, Any]) -> None:
+    (tmp_path / "stdout.log").write_text("\n")
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    strip = drawing["Strip"].return_value
+    strip.cell_length = 0
+    strip.__iter__.return_value = []
+    wrapped = output.wrap(0)
+    strip.divide.assert_not_called()
+    assert wrapped == [strip.extend_cell_length.return_value.apply_offsets.return_value]
+
+
+@pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
+@pytest.mark.usefixtures("sized")
+def test_highlights_the_selected_part_of_a_line(
+    tmp_path: Path, drawing: dict[str, Any], span: tuple[int, int] | None
+) -> None:
+    (tmp_path / "stdout.log").write_text("red\n")
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    drawing["Strip"].return_value.cell_length = 0
+    text = drawing["Text"].from_ansi.return_value
+    text.__len__ = mock.Mock(return_value=3)
     selection = mock.Mock()
     selection.get_span.return_value = span
-    output.wrapped.clear()
-    highlight = Style(reverse=True)
-    screen: Any = mock.Mock()
-    screen.get_component_rich_style.return_value = highlight
-    with mock.patch.multiple(
+    with mock.patch.object(
         StreamLog,
-        text_selection=mock.PropertyMock(return_value=selection),
-        screen=mock.PropertyMock(return_value=screen),
+        "text_selection",
+        new_callable=mock.PropertyMock,
+        return_value=selection,
     ):
-        wrapped = output.wrap(0)
+        output.wrap(0)
+        screen: Any = output.screen
     selection.get_span.assert_called_once_with(0)
-    assert selected == "".join(
-        segment.text
-        for strip in wrapped
-        for segment in strip._segments
-        if segment.style and segment.style.reverse
-    )
+    if span is None:
+        text.stylize.assert_not_called()
+    else:
+        text.stylize.assert_called_once_with(
+            screen.get_component_rich_style.return_value,
+            span[0],
+            3 if span[1] == -1 else span[1],
+        )
 
 
 @pytest.mark.parametrize(
@@ -396,15 +421,12 @@ def test_a_rewritten_log_of_the_same_size_is_followed_on(tmp_path: Path) -> None
 @pytest.mark.usefixtures("sized")
 def test_renders_a_screen_row_or_a_blank_past_the_last() -> None:
     output = StreamLog("stdout")
-    row = Strip([])
+    row = mock.Mock()
     with (
         mock.patch.object(StreamLog, "screen_rows", return_value=[row]),
-        mock.patch.object(
-            StreamLog,
-            "rich_style",
-            new_callable=mock.PropertyMock,
-            return_value=Style(),
-        ),
+        mock.patch.object(StreamLog, "rich_style", new_callable=mock.PropertyMock),
+        mock.patch("labnotes.tui.stream_log.Strip") as strip,
     ):
         assert output.render_line(0) is row
-        assert output.render_line(1).text == "    "
+        assert output.render_line(1) is strip.blank.return_value
+        strip.blank.assert_called_once_with(4, output.rich_style)

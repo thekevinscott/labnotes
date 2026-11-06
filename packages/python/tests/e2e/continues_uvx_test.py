@@ -187,3 +187,30 @@ def test_uvx_resume_honors_repeated_param_values(
 
     found = sorted(r["params"]["m"] for r in records(root).values())  # type: ignore[index]
     assert found == [1, 1, 2]
+
+
+def test_uvx_keeps_each_invocations_commit_and_patch(
+    tmp_path: Path, uvx: dict[str, str]
+) -> None:
+    root = project(tmp_path / "project", "fail", "continues = true\n")
+    (root / ".gitignore").write_text("exp/runs/\n")
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-qm", "i"],
+        cwd=root,
+        check=True,
+    )
+
+    (root / "notes.txt").write_text("first\n")
+    run(root, uvx)
+    (root / "notes.txt").unlink()
+    (root / "other.txt").write_text("second\n")
+    run(root, uvx)
+
+    [(folder, record)] = records(root).items()
+    first, second = record["invocations"]  # type: ignore[misc]
+    assert (first["dirty"], second["dirty"]) == (True, True)
+    assert "notes.txt" in (folder / first["patch"]).read_text()
+    assert "other.txt" in (folder / second["patch"]).read_text()
+    assert "notes.txt" not in (folder / second["patch"]).read_text()

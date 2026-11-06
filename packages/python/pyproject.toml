@@ -12,7 +12,7 @@ license = "MIT"
 authors = [{ name = "Kevin Scott", email = "me@thekevinscott.com" }]
 dependencies = [
     "click>=8.5.0",
-    "dirsql>=0.4.110",
+    "dirsql>=0.4.136",
     "haikunator>=2.1.0",
     "httpx2>=2.13.1",
     "ipykernel>=7.4.0",

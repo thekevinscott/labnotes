@@ -110,12 +110,20 @@ def test_runs_the_command_from_the_root(
         "uv run x.py", tmp_path, PARAMS, ()
     )
     spawn = collaborators["spawn"]
-    assert spawn.await_args.args == ("study",)
+    assert spawn.await_args.args == ("trap : TERM; study",)
     kwargs = spawn.await_args.kwargs
     assert kwargs["cwd"] == tmp_path / "root"
     assert "start_new_session" not in kwargs
     assert kwargs["stdout"].name == str(tmp_path / "stdout.log")
     assert kwargs["stderr"].name == str(tmp_path / "stderr.log")
+
+
+def test_records_the_command_without_the_shells_trap(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    result = run(tmp_path)
+
+    assert result["command"] == "study"
 
 
 def test_uses_the_invocation_git_info_instead_of_reading_the_live_tree(

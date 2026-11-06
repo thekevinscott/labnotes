@@ -275,18 +275,18 @@ wheels = [
 
 [[package]]
 name = "dirsql"
-version = "0.4.110"
+version = "0.4.154"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bin-shim" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/f7/c3/f7eb9b968d56dcf304397143bdfacd663d83049a602f12e64d4046209cb0/dirsql-0.4.110.tar.gz", hash = "sha256:e2f1f1c4e50a0e87b9f0e9998acd523b6fd4d4f5cb4b9ad4e9e4751ccf8e53be", size = 631753, upload-time = "2026-10-12T00:18:09.726Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/40/2c/c4e98a0bc5b216424496961042a021857d88f2e4d6668f27f7a1e2d6d798/dirsql-0.4.154.tar.gz", hash = "sha256:6f388798a2d16cb52b924654ce1b21c4068e7f38cfd3f99ede56b8a6e43f1984", size = 762025, upload-time = "2026-11-05T12:16:10.171Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/54/411dd9318c237aa3f47ba4d63e8b16e5f0d6816b7008183bb9ddc0da12f0/dirsql-0.4.110-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:ece09a7a01efc17dbbefbf1d28c6f4ee02531e9e4f471ec295d7c71e9c2108b4", size = 3383557, upload-time = "2026-10-12T00:17:58.935Z" },
-    { url = "https://files.pythonhosted.org/packages/bb/a1/4f644d7d0be2518ece529fb3823b56651d704e940fb93144327b6edc17d6/dirsql-0.4.110-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:5150ebdde0417a07ea1321661bb49881cd3e27839171bb90a4866664569e685a", size = 3201876, upload-time = "2026-10-12T00:18:01.002Z" },
-    { url = "https://files.pythonhosted.org/packages/00/c4/12ec3a423548e71baf41e0f8cc09af8cedb86fa5d81bebb2a5f9aab7a15e/dirsql-0.4.110-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:b90c67f3a12baf67be49a1e4350b0c270fe9205e402b61b1c2c9dd727d008904", size = 3446719, upload-time = "2026-10-12T00:18:02.729Z" },
-    { url = "https://files.pythonhosted.org/packages/f5/f0/238323109f3eda47b2ea1b04da919bfce2b47a643ef0a40bf1372b857f04/dirsql-0.4.110-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:5b17655cc50fc54ef40b49cafd7848adee49ad563fa99c8dbe525962441f5681", size = 3633435, upload-time = "2026-10-12T00:18:04.819Z" },
-    { url = "https://files.pythonhosted.org/packages/76/9e/bef62ace1e918c1c033c137e8bb45504aa26c4539ac6f0166727bd55bd4f/dirsql-0.4.110-cp310-abi3-win_amd64.whl", hash = "sha256:f018505dc63d36b5afa2ceacd484cd534db0acff1487e671830d08f5953f2d4a", size = 3578021, upload-time = "2026-10-12T00:18:07.383Z" },
+    { url = "https://files.pythonhosted.org/packages/59/09/2fbbadc1a9422873a62874025af1b06bb40a26b400fa03990afe792fc365/dirsql-0.4.154-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e86a130f7ad8b24462d272277d4fafc0bc85fa9bf3daa7cb7a65537f37ac35ed", size = 3661677, upload-time = "2026-11-05T12:16:01.335Z" },
+    { url = "https://files.pythonhosted.org/packages/64/77/54f81a30c3a18bb4b8e8e16c8618cea954e89c2e4e251cf0feebe9807841/dirsql-0.4.154-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9f1aeb0194a2dc1581382cd4b5d8c7eee4ea6ced0e93279f2c082a7bedd87162", size = 3455694, upload-time = "2026-11-05T12:16:03.52Z" },
+    { url = "https://files.pythonhosted.org/packages/1d/54/fc7477cce9637883053f6e8d76de4ca84dc2c32825308d5db583c2b86d4c/dirsql-0.4.154-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:1d65258135375f9a04fe3a309d167033173ef72ba7fc9a8add28141fbbc2e194", size = 3696286, upload-time = "2026-11-05T12:16:05.066Z" },
+    { url = "https://files.pythonhosted.org/packages/dc/87/06aa09ff5ef263aa4a830d3fb27722a461448babb6764cc63187b7c9bfd0/dirsql-0.4.154-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:c5887a5ade3ac2fdc6b828642ca8f77d53e3586e33604c3e3d0ee9fead0b7663", size = 3902993, upload-time = "2026-11-05T12:16:06.857Z" },
+    { url = "https://files.pythonhosted.org/packages/4c/90/fcf82847345136fc24cb9b750d0660a2db59339066f9c1b6e3eafe77caf7/dirsql-0.4.154-cp310-abi3-win_amd64.whl", hash = "sha256:12d3a355d3c53c48818f42e0a43c6f319ff86fc5c1404e7176ea364bb9bf7076", size = 3889211, upload-time = "2026-11-05T12:16:08.597Z" },
 ]
 
 [[package]]
@@ -585,7 +585,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.5.0" },
-    { name = "dirsql", specifier = ">=0.4.110" },
+    { name = "dirsql", specifier = ">=0.4.136" },
     { name = "haikunator", specifier = ">=2.1.0" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "ipykernel", specifier = ">=7.4.0" },

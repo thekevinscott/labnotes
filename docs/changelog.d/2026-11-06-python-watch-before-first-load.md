@@ -1,0 +1,1 @@
+Fixed: `labnotes experiments`, the experiment view and `labnotes run` now start watching for file changes before their first load, so an experiment or run that appears right after the screen opens is no longer missed until restart. Requires dirsql 0.4.136 or later.

@@ -243,6 +243,8 @@ Runs per combination of params. `run` plans only the combinations with fewer tha
 
 Every combination of values runs. Each value is passed as `--name value`, with the name as written. Booleans pass as 0 or 1, lists and tables as JSON. Dates and times are rejected.
 
+Repeating a value weights it: `n = [1, 1, 2]` with `repeats = 1` plans two `n = 1` runs and one `n = 2` run.
+
 Where runs are listed, each param gets a column of its own. A param named like a `runs` column, such as `id` or `command`, or like `started` or `duration`, doesn't: the run's own column keeps the name, labnotes warns once, and the value stays in `params`.
 
 ### `concurrency`

@@ -19,7 +19,7 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
         await expect(page).to_have_url(f"{site}/experiments/alpha/runs/run1")
         await expect(page.locator(".run-state")).to_have_text("running")
         stdout, stderr = page.locator("#run-stdout"), page.locator("#run-stderr")
-        await expect(stdout).to_have_text("starting\n")
+        await expect(stdout).to_have_text("starting")
         await expect(page.get_by_role("tab")).to_have_text(["stdout (1)", "stderr (0)"])
 
         with (folder / "stdout.log").open("a") as log:
@@ -30,7 +30,7 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
         await expect(page.get_by_role("tab")).to_have_text(["stdout (2)", "stderr (1)"])
         await expect(stderr).to_be_hidden()
         await page.get_by_role("tab", name="stderr").click()
-        await expect(stderr).to_have_text("warning\n")
+        await expect(stderr).to_have_text("warning")
         await expect(stdout).to_be_hidden()
         await expect(page.get_by_role("tab", name="stderr")).to_have_attribute(
             "aria-selected", "true"
@@ -68,7 +68,7 @@ def test_shows_log_blocks_as_lines_that_open_on_click(tmp_path: Path) -> None:
 
     async def check(page: Page) -> None:
         blocks = page.locator(".run-blocks")
-        await expect(page.locator("#run-stdout")).to_have_text("printed\n")
+        await expect(page.locator("#run-stdout")).to_have_text("printed")
         await expect(blocks).to_be_hidden()
 
         logged(
@@ -136,7 +136,7 @@ def test_opens_a_nested_runs_page(tmp_path: Path) -> None:
         await expect(page.locator(".run-state")).to_have_text("exit 1")
         await expect(page.get_by_role("tab")).to_have_text(["stdout (0)", "stderr (1)"])
         await page.get_by_role("tab", name="stderr").click()
-        await expect(page.locator("#run-stderr")).to_have_text("boom\n")
+        await expect(page.locator("#run-stderr")).to_have_text("boom")
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
@@ -152,13 +152,13 @@ def test_renders_ansi_color_and_escapes_html(tmp_path: Path) -> None:
 
     async def check(page: Page) -> None:
         output = page.locator(".run-log")
-        await expect(page.locator("#run-stdout")).to_have_text("red <b>plain</b>\n")
-        await expect(page.locator("#run-stderr")).to_have_text("bold\n")
-        red = output.locator(".stdout span", has_text="red")
+        await expect(page.locator("#run-stdout")).to_have_text("red <b>plain</b>")
+        red = output.locator("#run-stdout span", has_text="red")
         await expect(red).to_have_css("color", "rgb(187, 0, 0)")
         await expect(output.locator("b")).to_have_count(0)
         await page.get_by_role("tab", name="stderr").click()
-        bold = page.locator("#run-stderr .stderr span")
+        await expect(page.locator("#run-stderr")).to_have_text("bold")
+        bold = page.locator("#run-stderr .window span")
         await expect(bold).to_have_text(["bo", "ld"])
         await expect(bold.last).to_have_css("font-weight", "700")
 
@@ -184,3 +184,37 @@ def test_shows_why_a_run_failed(tmp_path: Path) -> None:
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
+
+
+def test_loads_only_the_visible_window_of_a_large_log(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
+    run(tmp_path, "run1", {})
+    folder = tmp_path / "alpha/runs/run1"
+    (folder / "stdout.log").write_bytes(
+        b"".join(b"line %d\n" % number for number in range(300_000))
+    )
+
+    async def check(page: Page) -> None:
+        stdout = page.locator("#run-stdout")
+        await expect(page.get_by_role("tab")).to_have_text(
+            ["stdout (300000)", "stderr (0)"]
+        )
+        window = stdout.locator(".window")
+        await expect(window).to_contain_text("line 299999")
+        held = await window.evaluate("node => node.textContent.split('\\n').length")
+        assert held < 300
+        await stdout.evaluate("pane => { pane.scrollTop = pane.scrollHeight / 2 }")
+        await expect(window).to_contain_text("line 150000")
+        await expect(window).not_to_contain_text("line 299999")
+        with (folder / "stdout.log").open("ab") as log:
+            log.write(b"line 300000\n")
+        await expect(page.get_by_role("tab")).to_have_text(
+            ["stdout (300001)", "stderr (0)"]
+        )
+        await expect(window).to_contain_text("line 150000")
+        await stdout.evaluate("pane => { pane.scrollTop = pane.scrollHeight }")
+        await expect(window).to_contain_text("line 300000")
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha/runs/run1", check)

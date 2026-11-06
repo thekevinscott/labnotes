@@ -1,0 +1,1 @@
+**Changed** — The TUI output view and the web run page read only the lines on screen, so a large log opens fast and uses little memory. The web page now fetches the lines it shows instead of receiving the whole log over its event stream. Web log lines no longer wrap; scroll sideways. A line longer than 64 KB shows its first 64 KB.

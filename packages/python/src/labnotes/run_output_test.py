@@ -21,8 +21,18 @@ def event(table: str, **row: object) -> mock.Mock:
     return mock.Mock(table=built(table), row=fields)
 
 
-def log(text: str, stream: str = "stdout") -> str:
-    return f"data: {json.dumps({'stream': stream, 'text': text})}\n\n"
+def log(
+    rows: int, lines: int, stream: str = "stdout", file: str = "", fresh: bool = False
+) -> str:
+    name = file or f"{stream}.log"
+    message = {
+        "stream": stream,
+        "file": name,
+        "fresh": fresh,
+        "rows": rows,
+        "lines": lines,
+    }
+    return f"data: {json.dumps(message)}\n\n"
 
 
 def end(code: object) -> str:
@@ -92,10 +102,10 @@ def test_streams_both_logs_then_follows_them_until_the_run_ends(
     )
 
     assert messages == [
-        log("one\n"),
-        log("warn\n", "stderr"),
-        log("two\n"),
-        log("three\n"),
+        log(1, 1, fresh=True),
+        log(1, 1, "stderr", fresh=True),
+        log(2, 2),
+        log(3, 3),
         end(3),
     ]
     loaded.assert_awaited_once_with(mock.ANY, "alpha", "r1")
@@ -142,7 +152,7 @@ def test_ignores_other_runs_and_experiments(
         ],
     )
 
-    assert messages == [log("a\n"), end(0)]
+    assert messages == [log(0, 0, fresh=True), log(1, 1), end(0)]
 
 
 def test_sends_a_finished_run_without_waiting(
@@ -151,7 +161,7 @@ def test_sends_a_finished_run_without_waiting(
     loaded.return_value = {**RUN, "ended": "t", "exit_code": 1}
     (folder / "stderr.log").write_text("boom")
 
-    assert collect(tmp_path, []) == [log("boom", "stderr"), end(1)]
+    assert collect(tmp_path, []) == [log(1, 0, "stderr", fresh=True), end(1)]
 
 
 def test_sends_nothing_for_an_unknown_run(
@@ -162,7 +172,7 @@ def test_sends_nothing_for_an_unknown_run(
     assert collect(tmp_path, []) == []
 
 
-def test_sends_each_stream_unchanged_when_the_other_writes_mid_line(
+def test_counts_each_stream_apart_while_one_is_mid_line(
     tmp_path: Path, folder: Path, loaded: mock.AsyncMock
 ) -> None:
     (folder / "stdout.log").write_text("50%")
@@ -188,45 +198,12 @@ def test_sends_each_stream_unchanged_when_the_other_writes_mid_line(
     )
 
     assert messages == [
-        log("50%"),
-        log(" 60%"),
-        log("oops\n", "stderr"),
-        log("done\n"),
+        log(1, 0, fresh=True),
+        log(1, 0),
+        log(1, 1, "stderr", fresh=True),
+        log(1, 1),
         end(0),
     ]
-
-
-def test_holds_a_character_split_across_writes(
-    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
-) -> None:
-    check = "✓".encode()
-    stdout = folder / "stdout.log"
-    stdout.write_bytes(check[:1])
-
-    messages = collect(
-        tmp_path,
-        [
-            (
-                lambda: append(stdout, b""),
-                event("logs", experiment="alpha", run="r1", stream="stdout"),
-            ),
-            (
-                lambda: append(stdout, check[1:]),
-                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
-            ),
-        ],
-    )
-
-    assert messages == [log("✓"), end(0)]
-
-
-def test_replaces_bytes_that_are_not_utf8(
-    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
-) -> None:
-    loaded.return_value = {**RUN, "ended": "t", "exit_code": 0}
-    (folder / "stdout.log").write_bytes(b"\xffok")
-
-    assert collect(tmp_path, [])[0] == log("�ok")
 
 
 def test_finishes_with_what_is_on_disk_if_the_watch_stops(
@@ -240,7 +217,7 @@ def test_finishes_with_what_is_on_disk_if_the_watch_stops(
         [(lambda: append(stdout, b"late\n"), mock.Mock(table="files", row=None))],
     )
 
-    assert messages == [log("late\n"), end(None)]
+    assert messages == [log(0, 0, fresh=True), log(1, 1), end(None)]
 
 
 def test_reads_only_on_its_own_runs_events(
@@ -283,34 +260,10 @@ def test_reads_only_on_its_own_runs_events(
         ],
     )
 
-    assert messages == [log("abcdef\n"), log("g\n"), end(0)]
+    assert messages == [log(0, 0, fresh=True), log(1, 1), log(2, 2), end(0)]
 
 
-def test_sends_stdout_unchanged_after_an_unfinished_stderr_line(
-    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
-) -> None:
-    stderr = folder / "stderr.log"
-    stdout = folder / "stdout.log"
-    stderr.write_text("")
-
-    messages = collect(
-        tmp_path,
-        [
-            (
-                lambda: append(stderr, b"50%"),
-                event("logs", experiment="alpha", run="r1", stream="stderr"),
-            ),
-            (
-                lambda: append(stdout, b"ok\n"),
-                event("runs", experiment="alpha", id="r1", ended="t", exit_code=0),
-            ),
-        ],
-    )
-
-    assert messages == [log("50%", "stderr"), log("ok\n"), end(0)]
-
-
-def test_keeps_one_streams_line_whole_across_reads(
+def test_counts_a_line_once_it_ends(
     tmp_path: Path, folder: Path, loaded: mock.AsyncMock
 ) -> None:
     stdout = folder / "stdout.log"
@@ -330,17 +283,7 @@ def test_keeps_one_streams_line_whole_across_reads(
         ],
     )
 
-    assert messages == [log("50%"), log(" 60%\n"), end(0)]
-
-
-def test_reads_stderr_when_stdout_holds_half_a_character(
-    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
-) -> None:
-    loaded.return_value = {**RUN, "ended": "t", "exit_code": 0}
-    (folder / "stdout.log").write_bytes("✓".encode()[:1])
-    (folder / "stderr.log").write_text("boom")
-
-    assert collect(tmp_path, []) == [log("boom", "stderr"), end(0)]
+    assert messages == [log(0, 0, fresh=True), log(1, 0), log(1, 1), end(0)]
 
 
 def block(record: dict[str, object]) -> str:
@@ -373,10 +316,11 @@ def test_sends_each_whole_block_line_as_it_is_logged(
     )
 
     assert messages == [
+        log(0, 0, fresh=True),
         block({"content": "a"}),
-        log("x\n"),
+        log(1, 1),
         block({"id": "t", "phase": "delta", "content": "✓"}),
-        log("y\n"),
+        log(2, 2),
         block({"content": "last"}),
         end(0),
     ]
@@ -467,9 +411,10 @@ def test_reads_the_block_log_only_on_its_own_runs_events(
     )
 
     assert messages == [
-        log("x\n"),
+        log(0, 0, fresh=True),
+        log(1, 1),
         *(block({"content": c}) for c in "abcde"),
-        log("y\n"),
+        log(2, 2),
         end(0),
     ]
 
@@ -504,7 +449,11 @@ def test_moves_to_the_newest_invocation_log_from_its_start(
         ],
     )
 
-    assert messages == [log("first\n"), log("second\n"), end(0)]
+    assert messages == [
+        log(1, 1, file="stdout-20261102-090000-000000.txt", fresh=True),
+        log(1, 1, file="stdout-20261102-100000-000000.txt", fresh=True),
+        end(0),
+    ]
 
 
 def test_resets_offset_when_new_log_path_sorts_before_previous(
@@ -535,7 +484,11 @@ def test_resets_offset_when_new_log_path_sorts_before_previous(
         ],
     )
 
-    assert messages == [log("long previous output\n"), log("new\n"), end(0)]
+    assert messages == [
+        log(1, 1, fresh=True),
+        log(1, 1, file=current.name, fresh=True),
+        end(0),
+    ]
 
 
 def test_rereads_a_log_that_shrinks(
@@ -558,4 +511,4 @@ def test_rereads_a_log_that_shrinks(
         ],
     )
 
-    assert messages == [log("long previous output\n"), log("new\n"), end(0)]
+    assert messages == [log(1, 1, fresh=True), log(1, 1, fresh=True), end(0)]

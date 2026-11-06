@@ -574,7 +574,11 @@ def test_run_page_loads_the_named_run(
 
 @pytest.mark.parametrize(
     "path",
-    ["/experiments/{name}/runs/{run:path}", "/experiments/{name}/output/{run:path}"],
+    [
+        "/experiments/{name}/runs/{run:path}",
+        "/experiments/{name}/output/{run:path}",
+        "/experiments/{name}/lines/{run:path}",
+    ],
 )
 def test_unknown_run_is_not_found(app: Any, path: str) -> None:
     with (
@@ -616,6 +620,67 @@ def test_streams_the_runs_output(app: Any) -> None:
     output.assert_called_once_with(
         app.state.tables, Path("/p/project"), "alpha", "g1/r1"
     )
+
+
+def window(app: Any, query: dict[str, str], exists: bool = True) -> Any:
+    [endpoint] = [
+        route.endpoint
+        for route in app.routes
+        if getattr(route, "path", None) == "/experiments/{name}/lines/{run:path}"
+    ]
+    request = mock.Mock(
+        path_params={"name": "alpha", "run": "g1/r1"}, query_params=query
+    )
+    request.app = app
+    with (
+        mock.patch(
+            "labnotes.create_app.load_run",
+            new_callable=mock.AsyncMock,
+            return_value={"folder": "alpha/runs/g1/r1"},
+        ),
+        mock.patch.object(Path, "is_file", return_value=exists),
+    ):
+        return asyncio.run(endpoint(request))
+
+
+def test_serves_a_window_of_a_runs_log(app: Any) -> None:
+    query = {"file": "stdout-20261106-090000-000000.txt", "first": "5", "count": "3"}
+    with mock.patch(
+        "labnotes.create_app.log_window", return_value=["a", "b"]
+    ) as log_window:
+        first = window(app, query)
+        window(app, {**query, "file": "stderr.log", "first": "-4", "count": "5000"})
+    assert json.loads(first.body) == {"lines": ["a", "b"]}
+    folder = Path("/p/project/alpha/runs/g1/r1")
+    assert log_window.call_args_list == [
+        mock.call({}, folder / "stdout-20261106-090000-000000.txt", 5, 3),
+        mock.call({}, folder / "stderr.log", 0, 1000),
+    ]
+    assert log_window.call_args_list[0].args[0] is log_window.call_args_list[1].args[0]
+
+
+@pytest.mark.parametrize(
+    ("query", "exists", "status"),
+    [
+        ({"file": "../secret.log", "first": "0", "count": "1"}, True, 404),
+        ({"file": "notes.txt", "first": "0", "count": "1"}, True, 404),
+        ({"file": "debug.log", "first": "0", "count": "1"}, True, 404),
+        ({"first": "0", "count": "1"}, True, 404),
+        ({"file": "stdout.log", "first": "0", "count": "1"}, False, 404),
+        ({"file": "stdout.log", "count": "1"}, True, 400),
+        ({"file": "stdout.log", "first": "x", "count": "1"}, True, 400),
+    ],
+)
+def test_refuses_a_window_it_cannot_serve(
+    app: Any, query: dict[str, str], exists: bool, status: int
+) -> None:
+    with (
+        mock.patch("labnotes.create_app.log_window") as log_window,
+        pytest.raises(Exception) as raised,
+    ):
+        window(app, query, exists)
+    assert getattr(raised.value, "status_code", None) == status
+    log_window.assert_not_called()
 
 
 def post_note(app: Any, content_type: str = "application/json") -> Any:

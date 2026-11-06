@@ -1,7 +1,4 @@
-import codecs
-from collections.abc import Iterable
 from pathlib import Path
-from typing import Self
 
 from rich.ansi import re_ansi
 from rich.text import Text
@@ -11,6 +8,9 @@ from textual.scroll_view import ScrollView
 from textual.strip import Strip
 
 from labnotes.latest_log import latest_log
+from labnotes.line_index import LineIndex
+
+BUFFER = 100
 
 
 class StreamLog(ScrollView):
@@ -27,106 +27,95 @@ class StreamLog(ScrollView):
         super().__init__(id=id)
         self.stream = stream
         self.auto_scroll = True
-        self._lines: list[str] = []
-        self._line_widths: list[int] = []
-        self._line_cache: dict[int, Strip] = {}
         self.reset()
 
-    @property
-    def lines(self) -> list[str]:
-        return self._lines
-
-    @property
-    def count(self) -> int:
-        return len(self._lines) - self.mid_line
-
-    def clear(self) -> Self:
-        self._lines.clear()
-        self._line_widths.clear()
-        self._line_cache.clear()
+    def reset(self) -> None:
+        self.segments: list[LineIndex] = []
+        self.first = 0
+        self.window: list[str] = []
+        self._line_cache: dict[int, Strip] = {}
         self._width = 0
         self.virtual_size = Size(0, 0)
         self.refresh()
-        return self
-
-    def reset(self) -> None:
-        self.read_to = 0
-        self.path: Path | None = None
-        self.decoder = codecs.getincrementaldecoder("utf-8")(errors="replace")
-        self.unfinished = ""
-        self.clear()
 
     @property
-    def mid_line(self) -> bool:
-        return bool(self.unfinished)
+    def rows(self) -> int:
+        return sum(segment.rows for segment in self.segments)
+
+    @property
+    def count(self) -> int:
+        if not self.segments:
+            return 0
+        last = self.segments[-1]
+        return self.rows - last.rows + last.lines
 
     def follow(self, folder: Path) -> None:
         path = latest_log(folder, self.stream)
-        if path == self.path and (
-            not path.exists() or path.stat().st_size < self.read_to
+        if (
+            self.segments
+            and self.segments[-1].path == path
+            and (not path.exists() or path.stat().st_size < self.segments[-1].scanned)
         ):
             self.reset()
         if not path.exists():
             return
-        if path != self.path:
-            self.path = path
-            self.read_to = 0
-        with path.open("rb") as log:
-            log.seek(self.read_to)
-            data = log.read()
-        self.read_to += len(data)
-        text = self.decoder.decode(data)
-        if not text:
-            return
-        if self.mid_line:
-            self.drop_unfinished()
-            text = self.unfinished + text
-        *complete, self.unfinished = text.split("\n")
-        if complete:
-            self.write_lines(complete)
-        if self.unfinished:
-            self.write_lines([self.unfinished])
-
-    def write_lines(self, lines: Iterable[str], scroll_end: bool | None = None) -> Self:
-        new_lines = list(lines)
-        if not new_lines:
-            return self
+        if not self.segments or self.segments[-1].path != path:
+            self.segments.append(LineIndex(path))
+        settled = self.count
         at_end = self.is_vertical_scroll_end
-        self._lines.extend(new_lines)
-        widths = [cell_len(re_ansi.sub("", line.split("\r")[-1])) for line in new_lines]
-        self._line_widths.extend(widths)
-        self._width = max(self._width, *widths)
-        self.virtual_size = Size(self._width, len(self._lines))
+        if not self.segments[-1].extend():
+            return
+        del self.window[max(0, settled - self.first) :]
+        for row in [row for row in self._line_cache if row >= settled]:
+            del self._line_cache[row]
+        self.virtual_size = Size(self._width, self.rows)
         self.refresh()
-        if (
-            self.is_mounted
-            and (self.auto_scroll if scroll_end is None else scroll_end)
-            and at_end
-        ):
+        if self.is_mounted and self.auto_scroll and at_end:
             self.scroll_end(animate=False, immediate=True, x_axis=False)
-        return self
 
-    def drop_unfinished(self) -> None:
-        self._lines.pop()
-        removed_width = self._line_widths.pop()
-        if removed_width == self._width:
-            self._width = max(self._line_widths, default=0)
-        self._line_cache.pop(len(self._lines), None)
-        self.virtual_size = Size(self._width, len(self._lines))
-        self.refresh()
+    def read(self, first: int, count: int) -> list[str]:
+        found: list[str] = []
+        for segment in self.segments:
+            if first >= segment.rows:
+                first -= segment.rows
+                continue
+            lines = segment.read(first, count - len(found))
+            found.extend(line.decode("utf-8", "replace") for line in lines)
+            first = 0
+        return found
+
+    def load(self, row: int) -> None:
+        self.first = max(0, row - BUFFER)
+        self.window = self.read(self.first, self.size.height + 2 * BUFFER)
+        self._line_cache.clear()
+        width = max(
+            (
+                cell_len(re_ansi.sub("", line.rsplit("\r", 1)[-1]))
+                for line in self.window
+            ),
+            default=0,
+        )
+        if width > self._width:
+            self._width = width
+            self.call_after_refresh(self.widen)
+
+    def widen(self) -> None:
+        self.virtual_size = Size(self._width, self.rows)
 
     def render_line(self, y: int) -> Strip:
         """Render only the visible line, keeping the uncropped result cached."""
         scroll_x, scroll_y = self.scroll_offset
         row = scroll_y + y
         rich_style = self.rich_style
-        if row >= len(self._lines):
+        if row >= self.rows:
             return Strip.blank(self.size.width, rich_style)
+        if not self.first <= row < self.first + len(self.window):
+            self.load(row)
         selection = self.text_selection
         if selection is None and row in self._line_cache:
             line = self._line_cache[row]
         else:
-            line_text = Text.from_ansi(self._lines[row], style=rich_style)
+            line_text = Text.from_ansi(self.window[row - self.first], style=rich_style)
             if selection is not None and (span := selection.get_span(row)) is not None:
                 start, end = span
                 if end == -1:

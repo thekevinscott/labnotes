@@ -26,9 +26,11 @@ from labnotes.file_changes import file_changes
 from labnotes.format_duration import format_duration
 from labnotes.format_started import format_started
 from labnotes.format_value import format_value
+from labnotes.line_index import LineIndex
 from labnotes.list_experiments import list_experiments
 from labnotes.load_experiment import load_experiment
 from labnotes.load_run import load_run
+from labnotes.log_window import log_window
 from labnotes.models import LabnotesConfig
 from labnotes.note_path import note_path
 from labnotes.notebook_kernel import NotebookKernel
@@ -39,6 +41,7 @@ from labnotes.save_conflict_copy import save_conflict_copy
 from labnotes.save_note import save_note
 from labnotes.saved_outputs import saved_outputs
 from labnotes.tables.open_tables import open_tables
+from labnotes.tables.read_log import LOG_NAME, STREAMS
 from labnotes.wait_for_note import wait_for_note
 
 HERE = Path(__file__).parent
@@ -51,6 +54,7 @@ templates.env.globals["asset"] = asset_url
 
 def create_app(config: LabnotesConfig) -> Starlette:
     kernels: dict[tuple[str, str], NotebookKernel] = {}
+    indexes: dict[Path, LineIndex] = {}
 
     @asynccontextmanager
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
@@ -110,6 +114,20 @@ def create_app(config: LabnotesConfig) -> Starlette:
             ),
             media_type="text/event-stream",
         )
+
+    async def lines(request: Request) -> Response:
+        found = await find_run(request)
+        query = request.query_params
+        name = LOG_NAME.fullmatch(query.get("file", ""))
+        path = config.root / str(found["folder"]) / query.get("file", "")
+        if name is None or name["stream"] not in STREAMS or not path.is_file():
+            raise HTTPException(404, "No such log")
+        try:
+            first, count = int(query["first"]), int(query["count"])
+        except (KeyError, ValueError):
+            raise HTTPException(400, "Send first and count") from None
+        window = log_window(indexes, path, max(first, 0), min(max(count, 0), 1000))
+        return JSONResponse({"lines": window})
 
     async def read_note(request: Request) -> dict[str, str]:
         name = request.path_params["name"]
@@ -220,6 +238,7 @@ def create_app(config: LabnotesConfig) -> Starlette:
             Route("/experiments/{name}/changes", changes),
             Route("/experiments/{name}/runs/{run:path}", run),
             Route("/experiments/{name}/output/{run:path}", output),
+            Route("/experiments/{name}/lines/{run:path}", lines),
             Route("/experiments/{name}/notes", post_note, methods=["POST"]),
             Route("/experiments/{name}/notes/{note:path}", get_note),
             Route("/experiments/{name}/notes/{note:path}", put_note, methods=["PUT"]),

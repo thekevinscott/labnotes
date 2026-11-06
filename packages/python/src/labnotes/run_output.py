@@ -1,4 +1,3 @@
-import codecs
 import json
 from collections.abc import AsyncIterator, Iterable, Iterator
 from pathlib import Path
@@ -6,6 +5,7 @@ from pathlib import Path
 from dirsql import DirSQL
 
 from labnotes.latest_log import latest_log
+from labnotes.line_index import LineIndex
 from labnotes.load_run import load_run
 from labnotes.tables.read_log import STREAMS
 
@@ -19,31 +19,32 @@ async def run_output(
     if run is None:
         return
     folder = root / str(run["folder"])
-    offsets = dict.fromkeys(STREAMS, 0)
-    paths: dict[str, Path] = {}
-    decoders = {
-        stream: codecs.getincrementaldecoder("utf-8")("replace") for stream in STREAMS
-    }
+    indexes: dict[str, LineIndex] = {}
 
     def read(streams: Iterable[str]) -> Iterator[str]:
         for stream in streams:
             path = latest_log(folder, stream)
             if not path.exists():
                 continue
-            if paths.setdefault(stream, path) != path:
-                paths[stream] = path
-                offsets[stream] = 0
-            if path.stat().st_size < offsets[stream]:
-                offsets[stream] = 0
-                decoders[stream] = codecs.getincrementaldecoder("utf-8")("replace")
-            with path.open("rb") as log:
-                log.seek(offsets[stream])
-                data = log.read()
-            offsets[stream] += len(data)
-            text = decoders[stream].decode(data)
-            if not text:
+            old = indexes.get(stream)
+            kept = (
+                old is not None
+                and old.path == path
+                and path.stat().st_size >= old.scanned
+            )
+            index = indexes[stream] = (
+                old if old is not None and kept else LineIndex(path)
+            )
+            if not index.extend() and kept:
                 continue
-            yield f"data: {json.dumps({'stream': stream, 'text': text})}\n\n"
+            message = {
+                "stream": stream,
+                "file": path.name,
+                "fresh": not kept,
+                "rows": index.rows,
+                "lines": index.lines,
+            }
+            yield f"data: {json.dumps(message)}\n\n"
 
     blocks_read = 0
 

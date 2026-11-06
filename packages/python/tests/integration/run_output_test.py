@@ -14,7 +14,8 @@ class Host(App[None]):
 
 
 def shown(output: RunOutput) -> list[str]:
-    return [line.rstrip() for line in output.logs[output.current].lines]
+    log = output.logs[output.current]
+    return [line.rstrip() for line in log.read(0, log.rows)]
 
 
 def tabs(output: RunOutput) -> list[str]:
@@ -79,7 +80,7 @@ def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
         append(tmp_path / "stdout.log", b"two\n")
         output.follow(tmp_path)
         assert shown(output) == ["one", "two"]
-        assert output.logs["stdout"].read_to == 8
+        assert output.logs["stdout"].segments[-1].scanned == 8
 
     mounted(check)
 
@@ -102,14 +103,14 @@ def test_shows_an_unfinished_line_and_continues_it(tmp_path: Path) -> None:
     def check(output: RunOutput) -> None:
         output.follow(tmp_path)
         assert shown(output) == ["par"]
-        assert output.logs["stdout"].mid_line
+        assert output.logs["stdout"].count < output.logs["stdout"].rows
         append(tmp_path / "stdout.log", b"tial\nnext")
         output.follow(tmp_path)
         assert shown(output) == ["partial", "next"]
         append(tmp_path / "stdout.log", b"\n")
         output.follow(tmp_path)
         assert shown(output) == ["partial", "next"]
-        assert not output.logs["stdout"].mid_line
+        assert output.logs["stdout"].count == output.logs["stdout"].rows
         assert output.logs["stdout"].virtual_size.height == 2
 
     mounted(check)
@@ -180,16 +181,17 @@ def test_drops_escapes_other_than_color(tmp_path: Path) -> None:
 def test_long_lines_scroll_sideways_without_wrapping(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("word " * 12 + "\n")
 
-    def check(output: RunOutput) -> None:
-        output.follow(tmp_path)
-        assert shown(output) == [("word " * 12).rstrip()]
-        assert output.logs["stdout"].virtual_size.height == 1
-        assert (
-            output.logs["stdout"].virtual_size.width
-            > output.logs["stdout"].scrollable_content_region.width
-        )
+    async def drive() -> None:
+        app = Host()
+        async with app.run_test(size=(30, 10)) as pilot:
+            log = app.query_one(RunOutput).logs["stdout"]
+            log.follow(tmp_path)
+            await pilot.pause()
+            assert shown(app.query_one(RunOutput)) == [("word " * 12).rstrip()]
+            assert log.virtual_size.height == 1
+            assert log.virtual_size.width > log.scrollable_content_region.width
 
-    mounted(check, size=(30, 10))
+    asyncio.run(drive())
 
 
 def test_redraws_an_unfinished_long_line(tmp_path: Path) -> None:
@@ -228,7 +230,7 @@ def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
         output.reset()
         assert shown(output) == []
         assert tabs(output) == ["stdout (0)", "stderr (0)"]
-        assert not output.logs["stdout"].mid_line
+        assert output.logs["stdout"].count == output.logs["stdout"].rows
         output.follow(tmp_path / "r2")
         assert shown(output) == ["hi"]
         assert tabs(output) == ["stdout (1)", "stderr (1)"]
@@ -276,5 +278,35 @@ def test_t_and_a_click_switch_between_the_stream_tabs(tmp_path: Path) -> None:
             await pilot.pause()
             assert (output.current, shown(output)) == ("stdout", ["out"])
             assert output.logs["stdout"].display
+
+    asyncio.run(drive())
+
+
+def test_holds_only_the_visible_window_of_a_large_log(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_bytes(
+        b"".join(b"line %d\n" % number for number in range(300_000))
+    )
+
+    async def drive() -> None:
+        app = Host()
+        async with app.run_test(size=(40, 12)) as pilot:
+            output = app.query_one(RunOutput)
+            log = output.logs["stdout"]
+            output.follow(tmp_path)
+            await pilot.pause()
+            assert tabs(output)[0] == "stdout (300000)"
+            assert log.scroll_offset.y == log.max_scroll_y > 299_000
+            assert log.window[-1] == "line 299999"
+            assert len(log.window) <= log.size.height + 200
+            log.scroll_to(y=150_000, animate=False, immediate=True)
+            await pilot.pause()
+            assert log.render_line(0).text.rstrip() == "line 150000"
+            assert len(log.window) <= log.size.height + 200
+            with (tmp_path / "stdout.log").open("ab") as file:
+                file.write(b"line 300000\n")
+            output.follow(tmp_path)
+            await pilot.pause()
+            assert tabs(output)[0] == "stdout (300001)"
+            assert log.render_line(0).text.rstrip() == "line 150000"
 
     asyncio.run(drive())

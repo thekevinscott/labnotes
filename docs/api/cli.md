@@ -38,7 +38,7 @@ labnotes experiments [NAME] [runs|run|stop]
 | `labnotes experiments NAME` | Shows one experiment, plus its config. |
 | `labnotes experiments NAME runs` | Lists the experiment's runs, oldest first, with each run's `memory` and `size`. |
 | `labnotes experiments NAME run` | Runs the experiment in the [TUI](tui). Requires stdout and stderr to be terminals. |
-| `labnotes experiments NAME stop` | Asks the live daemon to stop all its cells. Exits non-zero with a clear message if no daemon is live. |
+| `labnotes experiments NAME stop` | Asks the live daemon to stop all its cells. Exits non-zero with a clear message if no daemon is live. Daemons are keyed by the installed labnotes version, so after an upgrade or downgrade `stop` cannot see or stop a daemon started by the old version. |
 | `labnotes experiments new [NAME]` | Creates an experiment folder and writes its `experiment.toml`, from the starter or from `--from OTHER`, with any `--command`, `--param` and `--repeats` written in. Picks a random name if you give none. Refuses a folder that already exists. |
 
 With `--format` unset, the three listing forms open the [browser](tui#browsing) when stdout and stderr are both a terminal, starting on the experiment if you name one. Otherwise they print a table.
@@ -74,9 +74,11 @@ labnotes experiments new sanity-4 --from sanity-3 --param model=haiku
 
 `run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75 is retried on its own; see [`retries`](config#retries-1).
 
+Runs execute in a background daemon, not in your terminal. Each run's command, and `setup`, `meta` and `teardown`, get `/dev/null` as stdin, so a command that reads input sees end of file at once.
+
 In the runs listing, `memory` is the resident memory of a running run's command and everything it started, and `size` is what its run folder holds on disk, hidden files and folders aside. A symlink to a file counts as its target's size; symlinked folders aren't followed. A finished run has a size and no memory. The table shows them like `3.2 GB`; `--format json` gives bytes, with `null` where there's nothing to show. The command's process id is in the run's `run.json` as `pid`, with its start time as `pid_created`; memory is only read while that process is the same one and the record hasn't ended, so a reused pid after a crash shows no memory.
 
-Each run's `run.json` also records `git`: `{"commit": "<full HEAD SHA>", "dirty": false}`, captured from the command's working directory before it starts. `dirty` counts staged and unstaged changes to tracked files, plus untracked files that are not ignored. Every run, including a retry, gets a fresh lookup. `git` is `null` outside a Git repository, when Git is unavailable, or if the lookup fails (including a repository with no commits). Older records lack this key.
+Each run's `run.json` also records `git`: `{"commit": "<full HEAD SHA>", "dirty": false}`, taken from the invocation's snapshot when the invocation starts. `dirty` counts staged and unstaged changes to tracked files, plus untracked files that are not ignored. Every run in the invocation, including a queued run or a retry, records that start commit, even if the project's HEAD has moved since. `git` is `null` outside a Git repository, when Git is unavailable, or if the lookup fails (including a repository with no commits). Older records lack this key.
 
 Each run's `run.json` also records `labnotes_version`, the installed labnotes version that ran it, and `labnotes_command`, the labnotes command line that started it, like `"labnotes -c .labnotes.toml experiments exp run --model=small -- --auth api"`. The command line holds the `-- ARGS` too, so the same rule applies: never pass secrets. Older records lack these keys.
 

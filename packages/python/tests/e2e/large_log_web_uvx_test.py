@@ -54,10 +54,9 @@ def test_installed_server_pages_through_a_large_log(
             stdout = page.locator("#run-stdout")
             window = stdout.locator(".window")
             await expect(window).to_contain_text("line 499999")
-            held = await window.evaluate("node => node.textContent.split('\\n').length")
-            assert held < 300
+            assert await window.evaluate("node => node.children.length") < 100
             await stdout.evaluate("pane => { pane.scrollTop = 0 }")
-            await expect(window).to_contain_text("line 0\nline 1\n")
+            await expect(window.locator("div").first).to_have_text("line 0")
             await expect(window).not_to_contain_text("line 499999")
             await browser.close()
 

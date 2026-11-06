@@ -26,7 +26,7 @@ def test_follows_a_running_runs_output_until_it_ends(tmp_path: Path) -> None:
             log.write("step 1\nstep")
         with (folder / "stderr.log").open("a") as log:
             log.write("warning\n")
-        await expect(stdout).to_have_text("starting\nstep 1\nstep")
+        await expect(stdout).to_have_text("starting\nstep 1\nstep", use_inner_text=True)
         await expect(page.get_by_role("tab")).to_have_text(["stdout (2)", "stderr (1)"])
         await expect(stderr).to_be_hidden()
         await page.get_by_role("tab", name="stderr").click()
@@ -202,8 +202,7 @@ def test_loads_only_the_visible_window_of_a_large_log(tmp_path: Path) -> None:
         )
         window = stdout.locator(".window")
         await expect(window).to_contain_text("line 299999")
-        held = await window.evaluate("node => node.textContent.split('\\n').length")
-        assert held < 300
+        assert await window.evaluate("node => node.children.length") < 100
         await stdout.evaluate("pane => { pane.scrollTop = pane.scrollHeight / 2 }")
         await expect(window).to_contain_text("line 150000")
         await expect(window).not_to_contain_text("line 299999")
@@ -215,6 +214,42 @@ def test_loads_only_the_visible_window_of_a_large_log(tmp_path: Path) -> None:
         await expect(window).to_contain_text("line 150000")
         await stdout.evaluate("pane => { pane.scrollTop = pane.scrollHeight }")
         await expect(window).to_contain_text("line 300000")
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha/runs/run1", check)
+
+
+def test_wraps_long_lines_and_sticks_to_the_bottom(tmp_path: Path) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(tmp_path / "alpha/experiment.toml", 'continues = false\ncommand = "true"\n')
+    run(tmp_path, "run1", {})
+    path = tmp_path / "alpha/runs/run1/stdout.log"
+    write(
+        path, "".join(f"line {number}\n" for number in range(200)) + "x" * 3000 + "\n"
+    )
+
+    def append(text: str) -> None:
+        with path.open("a") as log:
+            log.write(text)
+
+    async def check(page: Page) -> None:
+        stdout = page.locator("#run-stdout")
+        window = stdout.locator(".window")
+        await expect(window.locator("div").last).to_have_text("x" * 3000)
+        assert await stdout.evaluate("pane => pane.scrollWidth <= pane.clientWidth")
+        long_row = await window.locator("div").last.evaluate("row => row.offsetHeight")
+        assert long_row > 40
+        append("line 201\n")
+        await expect(window.locator("div").last).to_have_text("line 201")
+        await stdout.evaluate("pane => { pane.scrollTop = 0 }")
+        await expect(window.locator("div").first).to_have_text("line 0")
+        append("line 202\n")
+        await expect(page.get_by_role("tab").first).to_have_text("stdout (203)")
+        await expect(window.locator("div").first).to_have_text("line 0")
+        await stdout.evaluate("pane => { pane.scrollTop = pane.scrollHeight }")
+        await expect(window.locator("div").last).to_have_text("line 202")
+        append("line 203\n")
+        await expect(window.locator("div").last).to_have_text("line 203")
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha/runs/run1", check)

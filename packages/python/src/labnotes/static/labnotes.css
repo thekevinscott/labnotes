@@ -330,11 +330,14 @@ h3 {
 .run-log header button { padding: 0.2rem 0; margin-bottom: -0.4rem; border: 0; border-bottom: 2px solid transparent; background: none; color: inherit; font: inherit; cursor: pointer; }
 .run-log header button[aria-selected="true"] { color: var(--ink); border-bottom-color: var(--accent); }
 .run-log header button::before { content: "■ "; }
-.run-output { position: relative; max-height: 70vh; overflow: auto; font-family: var(--mono); font-size: 0.82rem; }
+.run-output { position: relative; max-height: 70vh; overflow: hidden auto; font-family: var(--mono); font-size: 0.82rem; line-height: 1.25rem; }
 .run-output[hidden] { display: none; }
 .run-output[data-rows="0"]::before { content: "No output yet."; display: block; padding: 1rem 1.25rem; color: var(--ink-3); }
-.run-output .rows { position: relative; margin: 1rem 1.25rem; }
-.run-output .window { position: absolute; left: 0; min-width: 100%; margin: 0; line-height: 1.25rem; white-space: pre; }
+.run-output .window { position: sticky; top: 0; display: flex; flex-direction: column; overflow: hidden; }
+.run-output .window[data-end] { justify-content: flex-end; }
+.run-output .measure { position: absolute; inset: 0 0 auto; height: 0; overflow: hidden; visibility: hidden; }
+.run-output .window, .run-output .measure { padding: 0 1.25rem; }
+.run-output .window > div, .run-output .measure > div { flex: none; min-height: 1.25rem; white-space: pre-wrap; overflow-wrap: anywhere; }
 #run-stderr .window, .run-log header .stderr::before { color: var(--bad); }
 .run-log header .stdout::before { color: var(--ink-2); }
 

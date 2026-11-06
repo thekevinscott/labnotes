@@ -1,6 +1,6 @@
+from conftest import run_uvx_tui
 import json
 import os
-import subprocess
 import sys
 from collections.abc import Iterator
 from pathlib import Path
@@ -53,15 +53,7 @@ def test_uvx_run_keeps_setup_and_teardown_logs_with_the_experiment(
         tmp_path, "import sys\nprint('pod up')\nprint('warming', file=sys.stderr)\n"
     )
 
-    result = subprocess.run(
-        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), "experiments", "exp"]
-        + ["run"],
-        cwd=root,
-        env={**os.environ, **uvx},
-        capture_output=True,
-        text=True,
-        timeout=120,
-    )
+    result = run_uvx_tui(root, uvx, "experiments", "exp", "run")
 
     assert result.returncode == 0, result.stdout + result.stderr
     logs = root / "exp/.labnotes/logs"

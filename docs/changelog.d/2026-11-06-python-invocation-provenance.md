@@ -1,0 +1,1 @@
+Fixed: with `continues`, each invocation writes its own `git-sha-<time>.txt` and `git-diff-<time>.patch` instead of overwriting the last invocation's, and records `dirty` and `patch` in its `invocations` entry in `run.json`.

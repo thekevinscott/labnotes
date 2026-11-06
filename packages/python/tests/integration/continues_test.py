@@ -3,6 +3,7 @@ import fcntl
 import json
 import os
 import shlex
+import subprocess
 import sys
 from collections.abc import Iterator
 from importlib.metadata import version
@@ -392,3 +393,46 @@ def test_a_resumed_experiment_honors_repeated_param_values(tmp_path: Path) -> No
 
     counts = sorted(r["params"]["m"] for r in folders(root).values())
     assert counts == [1, 1, 2]
+
+
+def commit_project(root: Path) -> None:
+    write(root / ".gitignore", "exp/runs/\n")
+    write(
+        root / "script.py",
+        "import os, sys\nfrom pathlib import Path\n"
+        'state = Path(os.environ["LABNOTES_RUN"]) / "state.txt"\n'
+        "sys.exit(0 if state.exists() else state.write_text('x'))\n",
+    )
+    subprocess.run(["git", "init", "-q"], cwd=root, check=True)
+    subprocess.run(["git", "add", "."], cwd=root, check=True)
+    subprocess.run(
+        ["git", "-c", "user.name=T", "-c", "user.email=t@t", "commit", "-qm", "i"],
+        cwd=root,
+        check=True,
+    )
+
+
+def test_each_invocation_keeps_the_commit_and_patch_it_ran_with(
+    tmp_path: Path,
+) -> None:
+    root = make_project(tmp_path, "")
+    commit_project(root)
+    sha = subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True)
+
+    write(root / "notes.txt", "first\n")
+    run(root)
+    (root / "notes.txt").unlink()
+    write(root / "other.txt", "second\n")
+    run(root)
+
+    [(folder, record)] = folders(root).items()
+    first, second = record["invocations"]
+    assert [i["exit_code"] for i in (first, second)] == [1, 0]
+    assert [i["dirty"] for i in (first, second)] == [True, True]
+    assert "notes.txt" in (folder / first["patch"]).read_text()
+    assert "other.txt" in (folder / second["patch"]).read_text()
+    for invocation in (first, second):
+        stamp = invocation["stdout"].removeprefix("stdout-").removesuffix(".txt")
+        assert invocation["patch"] == f"git-diff-{stamp}.patch"
+        assert (folder / f"git-sha-{stamp}.txt").read_text() == sha
+    assert not (folder / "git-diff.patch").exists()

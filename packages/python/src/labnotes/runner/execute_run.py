@@ -44,6 +44,7 @@ async def execute_run(
     memory_interval: float,
     environment: dict[str, str] | None = None,
     git_info: dict[str, str | bool] | None = None,
+    git_diff: bytes | None = None,
     continues: bool = False,
     command_line: str | None = None,
 ) -> dict[str, object]:
@@ -69,10 +70,17 @@ async def execute_run(
     if meta is not None:
         run["meta"] = meta
     logs = {stream: f"{stream}.log" for stream in ("stdout", "stderr")}
+    suffix = ""
+    if continues:
+        suffix = "-" + datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
+        logs = {stream: f"{stream}{suffix}.txt" for stream in logs}
+    patch = None
+    if git is not None and git_diff is not None:
+        patch = f"git-diff{suffix}.patch"
+        (folder / f"git-sha{suffix}.txt").write_text(f"{git['commit']}\n")
+        (folder / patch).write_bytes(git_diff)
     invocation: dict[str, object] | None = None
     if continues:
-        stamp = datetime.now(UTC).strftime("%Y%m%d-%H%M%S-%f")
-        logs = {stream: f"{stream}-{stamp}.txt" for stream in logs}
         invocation = {
             "started": run["created"],
             "ended": None,
@@ -80,6 +88,8 @@ async def execute_run(
             "ended_by": None,
             "error": None,
             "git": None if git is None else git["commit"],
+            "dirty": None if git is None else git["dirty"],
+            "patch": patch,
             "args": list(args),
             "labnotes_version": run["labnotes_version"],
             "labnotes_command": command_line,

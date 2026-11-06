@@ -321,9 +321,6 @@ async def run_experiment(
         if not claim(run):
             emit({"event": "held", "run": run})
             return
-        if snapshot is not None and snapshot.sha is not None:
-            (folder / "git-sha.txt").write_text(snapshot.sha + "\n")
-            (folder / "git-diff.patch").write_bytes(snapshot.diff or b"")
         emit({"event": "started", "run": run, "params": params, "folder": folder})
         # {invocation_dir} stays for configs written before runs were flat.
         dirs = dict.fromkeys(PLACEHOLDERS, str(folder.resolve()))
@@ -355,6 +352,11 @@ async def run_experiment(
             ),
             git_info=(
                 {"commit": snapshot.sha, "dirty": bool(snapshot.diff)}
+                if snapshot is not None and snapshot.sha is not None
+                else None
+            ),
+            git_diff=(
+                snapshot.diff or b""
                 if snapshot is not None and snapshot.sha is not None
                 else None
             ),

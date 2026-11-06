@@ -7,6 +7,8 @@ def first_invocation(run: dict[str, object]) -> dict[str, object]:
         "ended_by": run.get("ended_by"),
         "error": run.get("error"),
         "git": git.get("commit") if isinstance(git, dict) else None,
+        "dirty": git.get("dirty") if isinstance(git, dict) else None,
+        "patch": "git-diff.patch" if isinstance(git, dict) else None,
         "args": run.get("args", []),
         "labnotes_version": run.get("labnotes_version"),
         "labnotes_command": run.get("labnotes_command"),

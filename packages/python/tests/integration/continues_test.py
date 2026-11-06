@@ -382,3 +382,13 @@ def test_without_continues_a_failed_run_is_redone_in_a_new_folder(
         assert (folder / "state.txt").read_text() == "x"
         assert (folder / "stdout.log").read_text() == "launch 1\n"
         assert (folder / "run.lock").exists()
+
+
+def test_a_resumed_experiment_honors_repeated_param_values(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "", cells="1, 1, 2")
+    add_run(root, "done", params={"m": 1}, exit_code=0)
+
+    run(root)
+
+    counts = sorted(r["params"]["m"] for r in folders(root).values())
+    assert counts == [1, 1, 2]

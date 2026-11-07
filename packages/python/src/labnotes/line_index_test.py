@@ -7,7 +7,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.line_index import LineIndex
+from labnotes.line_index import BLOCK, MAX_LINE, LineIndex
 
 
 @pytest.fixture
@@ -63,6 +63,17 @@ def test_extends_from_where_it_stopped(tmp_path: Path) -> None:
     assert index.extend()
     assert (index.lines, index.rows) == (3, 3)
     assert index.read(0, 5) == [b"one", b"two", b"three"]
+
+
+def test_unfinished_tail_keeps_its_start_across_newline_free_growth(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "out.log"
+    index = indexed(path, b"a\npar")
+    with path.open("ab") as file:
+        file.write(b"tial")
+    assert index.extend()
+    assert (index.tail_start, index.rows, index.read(1, 1)) == (2, 2, [b"partial"])
 
 
 def logs() -> list[bytes]:
@@ -138,3 +149,81 @@ def test_reading_a_window_does_not_scale_with_the_log(tmp_path: Path) -> None:
 def test_the_index_stays_small_for_a_large_log(tmp_path: Path) -> None:
     index = indexed(tmp_path / "out.log", b"x\n" * 2_000_000)
     assert len(index.breaks) == 4_000_000 // (64 * 1024) + 1
+
+
+def test_block_and_line_limits_are_exact(tmp_path: Path) -> None:
+    assert (BLOCK, MAX_LINE) == (65_536, 65_536)
+    index = indexed(tmp_path / "out.log", b"x" * (MAX_LINE + 1) + b"\nafter\n")
+    assert index.read(0, 2) == [b"x" * MAX_LINE, b"after"]
+
+
+def test_extending_from_a_partial_block_reads_to_the_boundary(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "out.log"
+    index = indexed(path, b"start")
+    with path.open("ab") as file:
+        file.write(b"\n" + b"x" * (BLOCK + 9))
+    with counting() as counted:
+        assert index.extend()
+    assert counted == [BLOCK - 5, 15, 0]
+    assert (index.scanned, index.breaks, index.rows) == (BLOCK + 15, [0, 1], 2)
+
+
+def test_start_and_read_do_not_consume_unindexed_bytes(tmp_path: Path) -> None:
+    path = tmp_path / "out.log"
+    index = indexed(path, b"x\n" * (BLOCK // 2) + b"ab\npartx")
+    with path.open("ab") as file:
+        file.write(b"ial\n" + b"z" * BLOCK)
+    with counting() as counted:
+        with path.open("rb") as file:
+            assert index.start(BLOCK // 2 + 1, file) == BLOCK + 3
+    assert counted == [8]
+    with counting() as counted:
+        assert index.read(BLOCK // 2 + 1, 1) == [b"partx"]
+    assert counted == [8, 5]
+
+
+def test_start_rejects_a_negative_line(tmp_path: Path) -> None:
+    index = indexed(tmp_path / "out.log", b"one\n")
+    with index.path.open("rb") as file, pytest.raises(OSError):
+        index.start(-1, file)
+
+
+def test_large_window_stops_at_the_requested_line(tmp_path: Path) -> None:
+    index = indexed(tmp_path / "out.log", b"x\n" * 300)
+    assert index.read(0, 300) == [b"x"] * 300
+
+
+@pytest.mark.usefixtures("small")
+def test_large_window_stops_after_its_final_truncated_line(tmp_path: Path) -> None:
+    index = indexed(tmp_path / "out.log", (b"x" * 9 + b"\n") * 300)
+    assert index.read(0, 300) == [b"x" * 6] * 300
+
+
+@pytest.mark.usefixtures("small")
+def test_a_long_line_stops_reading_at_the_limit(tmp_path: Path) -> None:
+    index = indexed(tmp_path / "out.log", b"x" * 30 + b"\nafter\n")
+    with counting() as counted:
+        assert index.read(0, 1) == [b"x" * 6]
+    assert counted == [8]
+
+
+def test_a_line_exactly_at_the_limit_stops_before_extra_bytes(
+    tmp_path: Path,
+) -> None:
+    index = indexed(tmp_path / "out.log", b"x" * (MAX_LINE + 20) + b"\n")
+    with counting() as counted:
+        assert index.read(0, 1) == [b"x" * MAX_LINE]
+    assert counted == [MAX_LINE]
+
+
+def test_read_stops_when_pending_reaches_the_limit_exactly(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("labnotes.line_index.BLOCK", 6)
+    monkeypatch.setattr("labnotes.line_index.MAX_LINE", 6)
+    index = indexed(tmp_path / "out.log", b"x" * 30 + b"\n")
+    with counting() as counted:
+        assert index.read(0, 1) == [b"x" * 6]
+    assert counted == [6]

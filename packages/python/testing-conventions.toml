@@ -122,3 +122,39 @@ path = "src/labnotes/tui/stream_log.py"
 rules = ["mutation"]
 lines = [153]
 reason = "textual's get_span ends at -1 or a non-negative column, so <= -1 equals == -1, and small ints are cached, so is equals =="
+
+[[python.exempt]]
+path = "src/labnotes/tui/stream_log.py"
+rules = ["mutation"]
+lines = [95]
+reason = "line starts at the non-negative row count and is decremented only while positive, so > 0 equals != 0"
+
+[[python.exempt]]
+path = "src/labnotes/line_index.py"
+rules = ["mutation"]
+lines = [22, 33]
+reason = "scanned never precedes tail_start, and a modulo result is never negative, so > and == each equal the corresponding != and <= mutations"
+
+[[python.exempt]]
+path = "src/labnotes/line_index.py"
+rules = ["mutation"]
+lines = [35]
+reason = "extend only increases scanned; with no bytes read it retains the same int object, so > and is not agree with !="
+
+[[python.exempt]]
+path = "src/labnotes/line_index.py"
+rules = ["mutation"]
+lines = [43]
+reason = "offset is block-aligned and never exceeds scanned; within one block, scanned ^ offset equals scanned - offset, and beyond one block both values are capped by min(BLOCK, ...)"
+
+[[python.exempt]]
+path = "src/labnotes/line_index.py"
+rules = ["mutation"]
+lines = [58]
+reason = "found grows by exactly one per loop and never passes last - first, so != is equivalent to <; a large-window test covers the non-equivalent identity mutation"
+
+[[python.exempt]]
+path = "src/labnotes/line_index.py"
+rules = ["mutation"]
+lines = [63, 66, 67]
+reason = "position never exceeds scanned, line grows by one and never passes last, and continue after reaching last exits the loop; equality and continue therefore match the original outcomes, while large-value and bounded-read tests cover identity and limit mutations"

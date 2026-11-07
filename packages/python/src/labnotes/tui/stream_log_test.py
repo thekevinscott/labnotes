@@ -115,10 +115,32 @@ def test_growth_before_the_window_forgets_all_of_it(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("par")
     output = StreamLog("stdout")
     output.follow(tmp_path)
-    output.first, output.window = 3, ["later"]
+    output.first, output.window = 3, ["later", "later still"]
     append(tmp_path / "stdout.log", "tial\n")
     output.follow(tmp_path)
     assert output.window == []
+
+
+def test_growth_retains_only_lines_before_the_changed_row(tmp_path: Path) -> None:
+    log = tmp_path / "stdout.log"
+    log.write_text("a\nb\nc\npartial")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    output.first, output.window = 2, ["c", "partial", "stale"]
+    append(log, " line\n")
+    output.follow(tmp_path)
+    assert output.window == ["c"]
+
+
+def test_growth_forgets_wrapped_rows_beyond_the_settled_count(tmp_path: Path) -> None:
+    log = tmp_path / "stdout.log"
+    log.write_text("x\n" * 300 + "partial")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    output.wrapped = {298: [], 299: [], int("300"): [], 301: []}
+    append(log, " line\n")
+    output.follow(tmp_path)
+    assert list(output.wrapped) == [298, 299]
 
 
 def test_an_unsized_view_scrolls_by_line(tmp_path: Path) -> None:
@@ -129,6 +151,33 @@ def test_an_unsized_view_scrolls_by_line(tmp_path: Path) -> None:
         output.follow(tmp_path)
     assert (output.bottom, output.virtual_size, output.shown) == (2, (0, 2), (None, []))
     scroll.assert_not_called()
+
+
+@pytest.mark.parametrize(("width", "height"), [(0, 3), (4, 0), (1, 3), (4, 1)])
+def test_settle_handles_each_view_dimension_at_its_boundary(
+    tmp_path: Path, width: int, height: int
+) -> None:
+    (tmp_path / "stdout.log").write_text("one\ntwo\n")
+    output = StreamLog("stdout")
+    with (
+        mock.patch.object(
+            StreamLog,
+            "view",
+            new_callable=mock.PropertyMock,
+            return_value=mock.Mock(width=width, height=height),
+        ),
+        mock.patch.object(StreamLog, "wrap", return_value=[mock.Mock()]) as wrap,
+        mock.patch.object(StreamLog, "scroll_to") as scroll,
+    ):
+        output.follow(tmp_path)
+    if width == 0 or height == 0:
+        assert (output.bottom, output.virtual_size) == (2, (0, 2))
+        wrap.assert_not_called()
+        scroll.assert_not_called()
+    else:
+        expected = (1, (0, 2)) if height == 1 else (0, (0, 3))
+        assert (output.bottom, output.virtual_size) == expected
+        scroll.assert_called_once()
 
 
 @pytest.mark.parametrize(
@@ -194,6 +243,112 @@ def test_loads_the_lines_around_one_outside_the_window(
     assert (output.first, len(output.window)) == (0, 203)
     output.window = ["kept"]
     assert output.line(0) == "kept"
+
+
+def test_a_line_inside_the_window_does_not_reload_it(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("".join(f"{n}\n" for n in range(500)))
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    with mock.patch.object(output, "read", wraps=output.read) as read:
+        assert output.line(250) == "250"
+        assert output.line(251) == "251"
+        assert output.line(250) == "250"
+    read.assert_called_once_with(150, 200)
+
+
+def test_window_boundary_and_tail_cache_do_not_use_bitwise_ranges(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "stdout.log").write_text("".join(f"{n}\n" for n in range(500)))
+    output = StreamLog("stdout")
+    with (
+        mock.patch.object(StreamLog, "settle"),
+        mock.patch.object(
+            StreamLog,
+            "view",
+            new_callable=mock.PropertyMock,
+            return_value=mock.Mock(width=4, height=8),
+        ),
+    ):
+        output.follow(tmp_path)
+        output.wrapped = {
+            149: [],
+            150: [],
+            300: [],
+            357: [],
+            358: [],
+            400: [],
+            491: [],
+            492: [],
+        }
+        assert output.line(250) == "250"
+        assert (output.first, len(output.window)) == (150, 208)
+        assert list(output.wrapped) == [150, 300, 357, 492]
+        assert output.line(358) == "358"
+        assert (output.first, len(output.window)) == (258, 208)
+
+
+def test_count_uses_the_newest_segment_lines(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.log"
+    first.write_text("x\n" * 3)
+    second.write_text("last\npartial")
+    with mock.patch("labnotes.tui.stream_log.latest_log", side_effect=[first, second]):
+        output.follow(tmp_path)
+        output.follow(tmp_path)
+    assert (output.rows, output.count) == (5, 4)
+
+
+def test_read_limits_the_second_segment_to_the_remaining_count(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.log"
+    first.write_text("a\nb\n")
+    second.write_text("c\nd\ne\nf\n")
+    with mock.patch("labnotes.tui.stream_log.latest_log", side_effect=[first, second]):
+        output.follow(tmp_path)
+        output.follow(tmp_path)
+    assert output.read(1, 2) == ["b", "c"]
+    assert output.read(1, 3) == ["b", "c", "d"]
+    assert output.read(3, 2) == ["d", "e"]
+
+
+def test_read_skips_a_large_completed_segment(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.log"
+    first.write_text("x\n" * 300)
+    second.write_text("a\nb\nc\n")
+    with mock.patch("labnotes.tui.stream_log.latest_log", side_effect=[first, second]):
+        output.follow(tmp_path)
+        output.follow(tmp_path)
+    assert output.read(301, 1) == ["b"]
+    with mock.patch.object(
+        output.segments[0], "read", wraps=output.segments[0].read
+    ) as read:
+        assert output.read(300, 1) == ["a"]
+    read.assert_not_called()
+
+
+def test_a_newer_segment_truncated_below_its_scanned_size_resets_all(
+    tmp_path: Path,
+) -> None:
+    output = StreamLog("stdout")
+    first = tmp_path / "first.log"
+    second = tmp_path / "second.log"
+    first.write_text("first\n")
+    second.write_text("long second line\n")
+    with mock.patch(
+        "labnotes.tui.stream_log.latest_log", side_effect=[first, second, second]
+    ):
+        output.follow(tmp_path)
+        output.follow(tmp_path)
+        second.write_text("new\n")
+        output.follow(tmp_path)
+    assert shown(output) == ["new"]
+    assert len(output.segments) == 1
 
 
 @pytest.fixture
@@ -324,10 +479,98 @@ def test_fills_the_view_from_the_top_line_or_against_the_bottom(
         mock.patch.object(
             StreamLog, "scroll_y", new_callable=mock.PropertyMock, return_value=top
         ),
-        mock.patch.object(StreamLog, "wrap", side_effect=lambda line: pieces[line]),
+        mock.patch.object(
+            StreamLog, "wrap", side_effect=lambda line: pieces[line]
+        ) as wrap,
     ):
-        assert output.screen_rows() == rows
-        assert output.screen_rows() is output.shown[1]
+        first = output.screen_rows()
+        assert first == rows
+        calls = wrap.call_count
+        assert output.screen_rows() is first
+        assert wrap.call_count == calls
+
+
+@pytest.mark.usefixtures("sized")
+def test_screen_rows_stop_reading_when_the_view_is_full(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("x\n" * 6)
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    output.bottom = 4
+    with (
+        mock.patch.object(
+            StreamLog, "scroll_y", new_callable=mock.PropertyMock, return_value=0
+        ),
+        mock.patch.object(StreamLog, "wrap", return_value=["row"]) as wrap,
+    ):
+        assert output.screen_rows() == ["row"] * 3
+    assert wrap.call_count == 3
+
+
+@pytest.mark.usefixtures("sized")
+def test_screen_rows_stop_after_a_wrapped_line_fills_the_view(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "stdout.log").write_text("x\n" * 6)
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    output.bottom = 4
+    with (
+        mock.patch.object(
+            StreamLog, "scroll_y", new_callable=mock.PropertyMock, return_value=0
+        ),
+        mock.patch.object(StreamLog, "wrap", return_value=["a", "b"]) as wrap,
+    ):
+        assert output.screen_rows() == ["a", "b", "a"]
+    assert wrap.call_count == 2
+
+
+@pytest.mark.parametrize("top", [6, 7])
+@pytest.mark.usefixtures("sized")
+def test_screen_rows_handle_scrolling_past_the_last_row(
+    tmp_path: Path, top: int
+) -> None:
+    (tmp_path / "stdout.log").write_text("x\n" * 6)
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    output.bottom = 3
+    with (
+        mock.patch.object(
+            StreamLog, "scroll_y", new_callable=mock.PropertyMock, return_value=top
+        ),
+        mock.patch.object(
+            StreamLog, "wrap", side_effect=AssertionError("read past end")
+        ) as wrap,
+    ):
+        assert output.screen_rows() == []
+    wrap.assert_not_called()
+
+
+@pytest.mark.parametrize(("top", "calls"), [(300.0, 10), (301.0, 9)])
+@pytest.mark.usefixtures("sized")
+def test_screen_rows_bottom_alignment_uses_value_equality_for_large_lines(
+    tmp_path: Path, top: float, calls: int
+) -> None:
+    (tmp_path / "stdout.log").write_text("x\n" * 310)
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    output.bottom = int("300")
+
+    def wraps(line: int) -> list[str]:
+        assert line < 310
+        return [str(line)] * 2
+
+    with (
+        mock.patch.object(
+            StreamLog, "scroll_y", new_callable=mock.PropertyMock, return_value=top
+        ),
+        mock.patch.object(StreamLog, "wrap", side_effect=wraps) as wrap,
+    ):
+        assert output.screen_rows() == ["308", "309", "309"]
+    assert wrap.call_count == calls
 
 
 def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:

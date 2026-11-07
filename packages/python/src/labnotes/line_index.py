@@ -2,8 +2,8 @@ from bisect import bisect_left
 from pathlib import Path
 from typing import BinaryIO
 
-BLOCK = 64 * 1024
-MAX_LINE = 64 * 1024
+BLOCK = 65_536
+MAX_LINE = 65_536
 
 
 class LineIndex:

@@ -660,6 +660,24 @@ def test_serves_a_window_of_a_runs_log(app: Any) -> None:
 
 
 @pytest.mark.parametrize(
+    ("first", "count", "expected_first", "expected_count"),
+    [
+        ("0", "0", 0, 0),
+        ("0", "-5", 0, 0),
+        ("1", "1", 1, 1),
+        ("0", "1000", 0, 1000),
+        ("0", "1001", 0, 1000),
+    ],
+)
+def test_window_bounds_include_zero_and_the_maximum(
+    app: Any, first: str, count: str, expected_first: int, expected_count: int
+) -> None:
+    with mock.patch("labnotes.create_app.log_window", return_value=[]) as log_window:
+        window(app, {"file": "stdout.log", "first": first, "count": count})
+    assert log_window.call_args.args[2:] == (expected_first, expected_count)
+
+
+@pytest.mark.parametrize(
     ("query", "exists", "status"),
     [
         ({"file": "../secret.log", "first": "0", "count": "1"}, True, 404),

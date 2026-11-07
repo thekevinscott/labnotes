@@ -460,12 +460,12 @@ def test_resets_offset_when_new_log_path_sorts_before_previous(
     tmp_path: Path, folder: Path, loaded: mock.AsyncMock
 ) -> None:
     previous = folder / "stdout.log"
-    previous.write_text("long previous output\n")
+    previous.write_text("old\n")
     current = folder / "stdout-20261103-120000-000000.txt"
     assert current < previous
 
     def switch() -> None:
-        current.write_text("new\n")
+        current.write_text("new and longer\n")
         (folder / "run.json").write_text(
             json.dumps({"invocations": [{"stdout": current.name}]})
         )

@@ -411,6 +411,7 @@ class RunLiveView(Widget):
         self.query_one("#output", RunOutput).reset()
         self.query_one(DataTable).display = False
         self.query_one("#output", RunOutput).display = True
+        self.query_one("#output", RunOutput).focus()
         self.app.sub_title = run
         self.show("")
         self.refresh_bindings()
@@ -430,6 +431,7 @@ class RunLiveView(Widget):
             self.query_one(LogBlocks).display = False
             self.query_one("#output", RunOutput).display = False
             self.query_one(DataTable).display = True
+            self.query_one(DataTable).focus()
             self.app.sub_title = ""
             self.refresh_bindings()
             if self.idle:

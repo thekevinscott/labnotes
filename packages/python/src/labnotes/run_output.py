@@ -24,11 +24,8 @@ async def run_output(
     decoders = {
         stream: codecs.getincrementaldecoder("utf-8")("replace") for stream in STREAMS
     }
-    last: str | None = None
-    mid_line = False
 
     def read(streams: Iterable[str]) -> Iterator[str]:
-        nonlocal last, mid_line
         for stream in streams:
             path = latest_log(folder, stream)
             if not path.exists():
@@ -46,9 +43,6 @@ async def run_output(
             text = decoders[stream].decode(data)
             if not text:
                 continue
-            if mid_line and stream != last:
-                text = "\n" + text
-            last, mid_line = stream, not text.endswith("\n")
             yield f"data: {json.dumps({'stream': stream, 'text': text})}\n\n"
 
     blocks_read = 0

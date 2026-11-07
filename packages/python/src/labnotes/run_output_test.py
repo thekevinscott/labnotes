@@ -162,7 +162,7 @@ def test_sends_nothing_for_an_unknown_run(
     assert collect(tmp_path, []) == []
 
 
-def test_breaks_an_unfinished_line_when_the_other_stream_writes(
+def test_sends_each_stream_unchanged_when_the_other_writes_mid_line(
     tmp_path: Path, folder: Path, loaded: mock.AsyncMock
 ) -> None:
     (folder / "stdout.log").write_text("50%")
@@ -190,7 +190,7 @@ def test_breaks_an_unfinished_line_when_the_other_stream_writes(
     assert messages == [
         log("50%"),
         log(" 60%"),
-        log("\noops\n", "stderr"),
+        log("oops\n", "stderr"),
         log("done\n"),
         end(0),
     ]
@@ -286,7 +286,7 @@ def test_reads_only_on_its_own_runs_events(
     assert messages == [log("abcdef\n"), log("g\n"), end(0)]
 
 
-def test_breaks_an_unfinished_stderr_line_when_stdout_writes(
+def test_sends_stdout_unchanged_after_an_unfinished_stderr_line(
     tmp_path: Path, folder: Path, loaded: mock.AsyncMock
 ) -> None:
     stderr = folder / "stderr.log"
@@ -307,7 +307,7 @@ def test_breaks_an_unfinished_stderr_line_when_stdout_writes(
         ],
     )
 
-    assert messages == [log("50%", "stderr"), log("\nok\n"), end(0)]
+    assert messages == [log("50%", "stderr"), log("ok\n"), end(0)]
 
 
 def test_keeps_one_streams_line_whole_across_reads(

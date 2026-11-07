@@ -102,6 +102,17 @@ def test_appends_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
     assert output.read_to == 14
 
 
+def test_appending_keeps_already_rendered_lines(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "stdout.log").write_text("one\n")
+    output.follow(tmp_path)
+    rendered = mock.Mock()
+    output._line_cache[0] = rendered
+    append(tmp_path / "stdout.log", "two\n")
+    output.follow(tmp_path)
+    assert output._line_cache == {0: rendered}
+
+
 def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:
     output = StreamLog("stdout")
     (tmp_path / "stdout.log").write_bytes(b"caf\xc3")
@@ -129,7 +140,8 @@ def test_redraws_a_streams_own_unfinished_line(tmp_path: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    ("text", "count"), [("", 0), ("one", 0), ("one\n", 1), ("one\ntwo", 1)]
+    ("text", "count"),
+    [("", 0), ("one", 0), ("one\n", 1), ("one\ntwo", 1), ("one\ntwo\nthree", 2)],
 )
 def test_counts_only_complete_lines(tmp_path: Path, text: str, count: int) -> None:
     (tmp_path / "stdout.log").write_text(text)

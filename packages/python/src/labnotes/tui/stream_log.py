@@ -30,7 +30,6 @@ class StreamLog(ScrollView):
         self._lines: list[str] = []
         self._line_widths: list[int] = []
         self._line_cache: dict[int, Strip] = {}
-        self._width = 0
         self.reset()
 
     @property
@@ -94,9 +93,7 @@ class StreamLog(ScrollView):
             return self
         at_end = self.is_vertical_scroll_end
         self._lines.extend(new_lines)
-        widths = [
-            cell_len(re_ansi.sub("", line.rsplit("\r", 1)[-1])) for line in new_lines
-        ]
+        widths = [cell_len(re_ansi.sub("", line.split("\r")[-1])) for line in new_lines]
         self._line_widths.extend(widths)
         self._width = max(self._width, *widths)
         self.virtual_size = Size(self._width, len(self._lines))

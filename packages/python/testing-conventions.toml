@@ -110,3 +110,15 @@ path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
 lines = [368, 443]
 reason = "HookPanel.state returns string literals, which CPython interns, so is equals =="
+
+[[python.exempt]]
+path = "src/labnotes/tui/run_output.py"
+rules = ["mutation"]
+lines = [58, 62]
+reason = "Tab widgets define no __eq__, so == equals is; the stream index is only 0 or 1, where 1 - i, 1 >> i and 1 ^ i agree"
+
+[[python.exempt]]
+path = "src/labnotes/tui/stream_log.py"
+rules = ["mutation"]
+lines = [112, 132]
+reason = "_width is the max of _line_widths and holds that same int object, so a removed width is never above it and == equals <=, >= and is; textual's get_span ends at -1 or a non-negative column, so <= -1 equals == -1, and small ints are cached, so is equals =="

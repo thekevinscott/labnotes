@@ -83,6 +83,14 @@ def test_leaves_an_unchanged_label_alone() -> None:
     assert stdout.label == "kept"
 
 
+def test_relabels_a_tab_whose_old_label_sorts_after_the_new_one() -> None:
+    output = RunOutput()
+    logs(output)["stdout"].count = 33
+    tabs(output)["stdout"].label_text = "stdout (5)"
+    output.relabel()
+    assert tabs(output)["stdout"].label == "stdout (33)"
+
+
 def test_reset_clears_both_streams_and_their_counts() -> None:
     output = RunOutput()
     logs(output)["stderr"].count = 0
@@ -121,9 +129,20 @@ def test_show_before_mounting_only_remembers_the_stream() -> None:
     query.assert_not_called()
 
 
-@pytest.mark.parametrize(("clicked", "shown"), [("stderr", ["stderr"]), ("stdout", [])])
-def test_a_clicked_tab_shows_its_stream(clicked: str, shown: list[str]) -> None:
+@pytest.mark.parametrize(
+    ("current", "clicked", "shown"),
+    [
+        ("stdout", "stderr", ["stderr"]),
+        ("stdout", "stdout", []),
+        ("stderr", "stdout", ["stdout"]),
+        ("".join(["std", "out"]), "stdout", []),
+    ],
+)
+def test_a_clicked_tab_shows_its_stream(
+    current: str, clicked: str, shown: list[str]
+) -> None:
     output = RunOutput()
+    output.current = current
     event = mock.Mock(tab=tabs(output)[clicked])
     with mock.patch.object(output, "show") as show:
         output.on_tabs_tab_activated(event)

@@ -70,10 +70,10 @@ def test_appending_keeps_already_rendered_lines(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("one\n")
     output.follow(tmp_path)
     rendered = mock.Mock()
-    output._line_cache[0] = rendered
+    output.wrapped[0] = rendered
     append(tmp_path / "stdout.log", "two\n")
     output.follow(tmp_path)
-    assert output._line_cache == {0: rendered}
+    assert output.wrapped == {0: rendered}
 
 
 def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:

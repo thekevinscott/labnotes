@@ -120,5 +120,5 @@ reason = "Tab widgets define no __eq__, so == equals is; the stream index is onl
 [[python.exempt]]
 path = "src/labnotes/tui/stream_log.py"
 rules = ["mutation"]
-lines = [112, 132]
-reason = "_width is the max of _line_widths and holds that same int object, so a removed width is never above it and == equals <=, >= and is; textual's get_span ends at -1 or a non-negative column, so <= -1 equals == -1, and small ints are cached, so is equals =="
+lines = [153]
+reason = "textual's get_span ends at -1 or a non-negative column, so <= -1 equals == -1, and small ints are cached, so is equals =="

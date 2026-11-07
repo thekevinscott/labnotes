@@ -1,0 +1,1 @@
+Fixed: Ctrl-C in the `run` TUI now asks whether to stop or leave the experiment whenever it is still busy, including during setup, before the first run starts, while runs wait to retry, and during teardown. Before, it quit silently and left the daemon to finish setup and start the runs. Leaving prints the `labnotes experiments NAME stop` command.

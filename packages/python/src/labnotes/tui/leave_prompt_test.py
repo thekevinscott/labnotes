@@ -43,9 +43,11 @@ def test_answers_leave_by_default_stop_on_s_and_nothing_on_escape() -> None:
 
 
 def test_detached_prompt_offers_stop_leave_and_cancel(static: mock.MagicMock) -> None:
-    assert list(DetachedLeavePrompt(2).compose()) == ["prompt"]
+    prompt = DetachedLeavePrompt("Setting up.")
+    assert list(prompt.compose()) == ["prompt"]
+    assert isinstance(prompt, LeavePrompt)
     static.assert_called_once_with(
-        "2 runs still going. Stop them (s) / leave running (enter or l) / cancel (esc).",
+        "Setting up. Stop (s) / leave running (enter or l) / cancel (esc).",
         id="prompt",
     )
     assert [

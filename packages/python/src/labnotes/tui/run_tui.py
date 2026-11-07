@@ -22,6 +22,8 @@ def run_tui(
         daemon_journal=daemon_journal,
     )
     app.run()
+    if app.farewell is not None:
+        print(app.farewell)
     if app.error is not None:
         raise app.error
     return app.results

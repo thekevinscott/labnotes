@@ -31,15 +31,17 @@ class DetachedLeavePrompt(LeavePrompt):
     """Choose explicitly whether a detached daemon should keep its cells."""
 
     BINDINGS = [
-        Binding("s", "dismiss('stop')", "Stop runs"),
+        Binding("s", "dismiss('stop')", "Stop"),
         Binding("enter,l", "dismiss('leave')", "Leave running"),
         Binding("escape", "dismiss", "Cancel"),
     ]
 
+    def __init__(self, busy: str) -> None:
+        ModalScreen.__init__(self)
+        self.busy = busy
+
     def compose(self) -> ComposeResult:
-        runs = "run" if self.count == 1 else "runs"
         yield Static(
-            f"{self.count} {runs} still going. "
-            "Stop them (s) / leave running (enter or l) / cancel (esc).",
+            f"{self.busy} Stop (s) / leave running (enter or l) / cancel (esc).",
             id="prompt",
         )

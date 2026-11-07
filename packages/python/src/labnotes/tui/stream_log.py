@@ -87,7 +87,7 @@ class StreamLog(ScrollView):
         """Size the scroll range so the last line can reach the bottom edge."""
         self.shown = (None, [])
         height = self.view.height
-        if self.view.width <= 0 or height <= 0:
+        if not self.view.width or not height:
             self.bottom = self.rows
             self.virtual_size = Size(0, self.rows)
             return

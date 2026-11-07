@@ -989,7 +989,7 @@ def test_detached_startup_error_is_reported(tmp_path: Path) -> None:
     asyncio.run(drive())
 
 
-def test_detached_idle_and_unavailable_view_quit_without_stopping(
+def test_detached_ctrl_c_quits_quietly_only_once_the_invocation_is_done(
     tmp_path: Path,
 ) -> None:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
@@ -999,16 +999,51 @@ def test_detached_idle_and_unavailable_view_quit_without_stopping(
     with (
         mock.patch.object(app, "exit") as exit_app,
         mock.patch.object(app, "push_screen") as prompt_screen,
+        mock.patch.object(app.body, "busy", return_value=None),
     ):
         app.action_interrupt()
         exit_app.assert_called_once_with()
         prompt_screen.assert_not_called()
-        exit_app.reset_mock()
-        app.body.started["r1"] = 0.0
-        app.body_ready = False
+
+
+@pytest.mark.parametrize(
+    ("ready", "busy", "shown"),
+    [
+        (True, "Setting up.", "Setting up."),
+        (False, None, "Still running."),
+    ],
+)
+def test_detached_ctrl_c_asks_while_the_invocation_is_busy(
+    tmp_path: Path, ready: bool, busy: str | None, shown: str
+) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    app.body_ready = ready
+    with (
+        mock.patch.object(app, "exit") as exit_app,
+        mock.patch.object(app, "push_screen") as prompt_screen,
+        mock.patch.object(app.body, "busy", return_value=busy),
+    ):
         app.action_interrupt()
+        exit_app.assert_not_called()
+        [(screen, answer)] = [call.args for call in prompt_screen.call_args_list]
+        assert screen.busy == shown
+        assert answer == app.answer
+
+
+def test_detached_leave_names_the_stop_command(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(
+        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+    )
+    with mock.patch.object(app, "exit") as exit_app:
+        app.answer("leave")
         exit_app.assert_called_once_with()
-        prompt_screen.assert_not_called()
+    assert app.farewell == (
+        "exp is still running. Stop it with: labnotes experiments exp stop"
+    )
 
 
 def test_detached_restart_binding_selects_row(tmp_path: Path) -> None:
@@ -2053,6 +2088,65 @@ def test_keeps_the_summary_after_teardown(tmp_path: Path) -> None:
         report({"event": "hook ended", "hook": "teardown", "error": None})
         await pilot.pause()
         assert status(app) == "0 passed, 0 failed. Ctrl-C to quit."
+
+    drive_hooks(steps)
+
+
+def test_busy_names_the_phase_until_runs_end_without_hooks() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        busy = app.query_one(RunLiveView).busy
+        assert busy() == "Starting runs."
+        report(planned("r1", "r2"))
+        assert busy() == "Starting runs."
+        report(started("r1")[0])
+        assert busy() == "1 run still going."
+        report(started("r2")[0])
+        assert busy() == "2 runs still going."
+        for run in ("r1", "r2"):
+            report({"event": "ended", "run": run, "error": None, "exit_code": 75})
+            report({"event": "retrying", "run": run, "seconds": 60})
+        assert busy() == "2 runs waiting to retry."
+        report({"event": "retry cancelled", "run": "r1"})
+        assert busy() == "1 run waiting to retry."
+        report({"event": "idle"})
+        assert busy() is None
+
+    drive_hooks(steps)
+
+
+@pytest.mark.parametrize("error", [None, "down broke"])
+def test_busy_names_the_phase_until_teardown_ends(
+    tmp_path: Path, error: str | None
+) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        busy = app.query_one(RunLiveView).busy
+        report(hooked("setup", "teardown"))
+        assert busy() == "Starting runs."
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        assert busy() == "Setting up."
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        assert busy() == "Starting runs."
+        report({"event": "idle"})
+        assert busy() == "Tearing down."
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        assert busy() == "Tearing down."
+        report({"event": "hook ended", "hook": "teardown", "error": error})
+        assert busy() is None
+
+    drive_hooks(steps)
+
+
+@pytest.mark.parametrize(
+    ("hooks", "busy"), [(("setup",), None), (("setup", "teardown"), "Tearing down.")]
+)
+def test_busy_after_a_failed_setup_waits_only_for_teardown(
+    tmp_path: Path, hooks: tuple[str, ...], busy: str | None
+) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked(*hooks))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": "up broke"})
+        assert app.query_one(RunLiveView).busy() == busy
 
     drive_hooks(steps)
 

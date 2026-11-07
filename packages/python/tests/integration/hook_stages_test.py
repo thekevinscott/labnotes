@@ -59,7 +59,7 @@ def run_tui(terminal, tmp_path: Path, hooks: str, command: str = QUICK) -> Termi
 def quit_tui(term: Terminal, running: bool = False) -> None:
     term.key_ctrl_c()
     if running:
-        expect(term.get_by_text("still going")).to_be_visible()
+        expect(term.get_by_text("leave running")).to_be_visible()
         term.write("l")
     term.wait()
 
@@ -108,7 +108,7 @@ def test_teardown_shows_its_logs_once_the_runs_finish(terminal, tmp_path: Path) 
     expect(term.get_by_text("params")).not_to_be_visible()
     expect(term.get_by_text(re.compile(r"runs ✓.*›.* teardown"))).to_be_visible()
 
-    quit_tui(term)
+    quit_tui(term, running=True)
 
 
 def test_moving_between_stages_by_hand_stops_auto_advance(
@@ -131,6 +131,58 @@ def test_moving_between_stages_by_hand_stops_auto_advance(
     expect(term.get_by_text("params")).not_to_be_visible()
 
     quit_tui(term)
+
+
+def daemons(tmp_path: Path) -> list[psutil.Process]:
+    config = str(tmp_path / ".labnotes.toml")
+    return [
+        process
+        for process in psutil.process_iter(["cmdline"])
+        if config in (process.info["cmdline"] or [])
+        and "daemon" in (process.info["cmdline"] or [])
+    ]
+
+
+def setting_up(terminal, tmp_path: Path) -> Terminal:
+    setup = script(
+        tmp_path, "setup", "print('setup begun', flush=True)\ntime.sleep(3)\n"
+    )
+    teardown = script(
+        tmp_path, "teardown", f"open({str(tmp_path / 'down')!r}, 'w').close()\n"
+    )
+    hooks = f"setup = '''{setup}'''\nteardown = '''{teardown}'''\n"
+    term = run_tui(terminal, tmp_path, hooks)
+    expect(term.get_by_text("setup begun")).to_be_visible(timeout=15)
+    term.key_ctrl_c()
+    expect(term.get_by_text("Setting up. Stop (s)")).to_be_visible()
+    return term
+
+
+def test_ctrl_c_during_setup_can_stop_the_invocation(terminal, tmp_path: Path) -> None:
+    term = setting_up(terminal, tmp_path)
+    assert daemons(tmp_path)
+
+    term.write("s")
+    term.wait(timeout=10)
+
+    _, alive = psutil.wait_procs(daemons(tmp_path), timeout=30)
+    assert not alive
+    assert (tmp_path / "down").exists()
+    assert not list(tmp_path.glob("exp/runs/*/run.json"))
+
+
+def test_leaving_during_setup_names_the_stop_command(terminal, tmp_path: Path) -> None:
+    term = setting_up(terminal, tmp_path)
+
+    term.write("l")
+    term.wait(timeout=10)
+
+    expect(
+        term.get_by_text(
+            "exp is still running. Stop it with: labnotes experiments exp stop"
+        )
+    ).to_be_visible()
+    assert daemons(tmp_path)
 
 
 def test_a_failed_setup_shows_as_failed_with_its_logs(terminal, tmp_path: Path) -> None:

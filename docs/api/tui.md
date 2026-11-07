@@ -32,7 +32,7 @@ The `memory` column shows how much memory a running run's processes hold: the re
 | `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
 | Enter | Open the run's output. |
 | Ctrl-p | Open the command palette. |
-| Ctrl-C | Quit. With runs going, it asks first. |
+| Ctrl-C | Quit. While the experiment is still busy, it asks first. |
 
 ## Output keys
 
@@ -47,15 +47,15 @@ Blocks the script writes with [`log`](sdk#log) show above the raw output, one li
 
 ## Quitting
 
-Ctrl-C with nothing running quits. With runs going, it asks what to do with them:
+Ctrl-C quits at once only when the experiment is done. While it is setting up, running, waiting to retry, or tearing down, it asks first, and the prompt says which:
 
 | Key | Action |
 | --- | --- |
-| Enter or Ctrl-C | Quit and leave the runs going. |
-| `s` | Stop every running script and record its end. Any still going 5 seconds later are killed. |
+| Enter or `l` | Quit and leave the experiment going. The TUI prints the `labnotes experiments NAME stop` command as it exits. |
+| `s` | Stop the experiment, the same as `labnotes experiments NAME stop`. No more runs start, running scripts are stopped and any still going 5 seconds later are killed, and teardown still runs. A setup hook that has begun finishes first. |
 | Escape | Back to the table. |
 
-So two Ctrl-Cs always quit without losing work. To stop one run, use `x` on its row.
+To stop one run, use `x` on its row.
 
 The daemon owns the runs. Quitting the TUI can stop or leave them running.
 

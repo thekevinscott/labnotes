@@ -90,3 +90,37 @@ def test_uvx_run_tui_shows_setup_logs_then_the_runs(
     expect(term.get_by_text("pod up")).to_be_visible()
     term.key_ctrl_c()
     term.wait()
+
+
+def test_uvx_ctrl_c_during_setup_stops_the_invocation(
+    terminal, tmp_path: Path, uvx: dict[str, str]
+) -> None:
+    root = project(
+        tmp_path, "import time\nprint('pod up', flush=True)\ntime.sleep(4)\n"
+    )
+    config = str(root / ".labnotes.toml")
+
+    term = terminal(
+        f"uvx labnotes -c {config} experiments exp run",
+        rows=30,
+        cols=120,
+        env={**os.environ, **uvx},
+    )
+    expect(term.get_by_text("pod up")).to_be_visible(timeout=60)
+    term.key_ctrl_c()
+    expect(term.get_by_text("Setting up. Stop (s)")).to_be_visible()
+    term.write("s")
+    term.wait(timeout=10)
+
+    daemons = [
+        process
+        for process in psutil.process_iter(["cmdline"])
+        if config in (process.info["cmdline"] or [])
+        and "daemon" in (process.info["cmdline"] or [])
+    ]
+    assert daemons
+    _, alive = psutil.wait_procs(daemons, timeout=30)
+    assert not alive
+    assert not list(root.glob("exp/runs/*/run.json"))
+    [teardown] = (root / "exp/.labnotes/logs/teardown").iterdir()
+    assert (teardown / "stdout.log").read_text() == "down\n"

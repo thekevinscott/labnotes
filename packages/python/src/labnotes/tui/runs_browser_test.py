@@ -236,14 +236,17 @@ def test_restart_worker_reports_daemon_reply(
         mock.patch(
             "labnotes.tui.runs_browser.daemon_command", return_value=reply
         ) as command,
+        mock.patch(
+            "labnotes.tui.runs_browser.restart_request",
+            return_value=mock.sentinel.request,
+        ) as request,
     ):
         asyncio.run(browser.restart("lone"))
     assert expected in browser.restart_status
     status.update.assert_called_with(browser.restart_status)
     ensure.assert_awaited_once_with(app.config, "alpha")
-    command.assert_called_once_with(
-        app.config, "alpha", {"command": "restart", "options": {"run_id": "lone"}}
-    )
+    request.assert_called_once_with("lone", None)
+    command.assert_called_once_with(app.config, "alpha", mock.sentinel.request)
 
 
 def test_lists_every_run_flat(

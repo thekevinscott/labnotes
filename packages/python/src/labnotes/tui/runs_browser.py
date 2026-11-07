@@ -15,6 +15,7 @@ from labnotes.daemon.ensure import ensure_daemon
 from labnotes.models import LabnotesConfig
 from labnotes.runner.claim_run import claim_run
 from labnotes.tui.fill_table import fill_table
+from labnotes.tui.restart_request import restart_request
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.run_panel import RunPanel
 from labnotes.tui.runs_table import RunsTable
@@ -151,7 +152,7 @@ class RunsBrowser(Widget):
                 daemon_command,
                 config,
                 self.experiment.name,
-                {"command": "restart", "options": {"run_id": run_id}},
+                restart_request(run_id, None),
             )
             if not reply.get("ok"):
                 raise ValueError(str(reply.get("error", "Daemon rejected restart")))

@@ -32,6 +32,7 @@ from labnotes.runner.run_state import RunState
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
+from labnotes.tui.count_runs import count_runs
 from labnotes.tui.dim import dim
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.hook_panel import HookPanel
@@ -284,22 +285,24 @@ class RunLiveView(Widget):
         self.go(names[index])
 
     def busy(self) -> str | None:
-        setup = self.panel("setup").state
-        if "teardown" in self.hooks:
-            if self.panel("teardown").state in ("passed", "failed"):
+        torn = "teardown" in self.hooks
+        match self.panel("setup").state, self.panel("teardown").state:
+            case _, "passed" | "failed" if torn:
                 return None
-        elif self.idle or setup == "failed":
-            return None
-        if setup == "running":
-            return "Setting up."
-        if self.idle or setup == "failed" or self.panel("teardown").state == "running":
+            case "failed", _ if not torn:
+                return None
+            case _ if self.idle and not torn:
+                return None
+            case "running", _:
+                return "Setting up."
+            case ("failed", _) | (_, "running"):
+                return "Tearing down."
+        if self.idle:
             return "Tearing down."
         if self.started:
-            runs = "run" if len(self.started) == 1 else "runs"
-            return f"{len(self.started)} {runs} still going."
+            return f"{count_runs(len(self.started))} still going."
         if self.waiting:
-            runs = "run" if len(self.waiting) == 1 else "runs"
-            return f"{len(self.waiting)} {runs} waiting to retry."
+            return f"{count_runs(len(self.waiting))} waiting to retry."
         return "Starting runs."
 
     def show_summary(self) -> None:

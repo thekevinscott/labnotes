@@ -114,17 +114,17 @@ reason = "hooks only ever hold setup and teardown, so hook <= \"setup\" and hook
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [251, 267, 322]
+lines = [251, 267, 344]
 reason = "a stage is setup, runs or teardown and both hooks sort above runs, so > equals !=; \"runs\" always comes from the literal in stage_names or advance, so is not equals !="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [320]
+lines = [342]
 reason = "every action bound on RunLiveView sorts at or below stage, so >= equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [345, 420]
+lines = [367, 442]
 reason = "HookPanel.state returns string literals, which CPython interns, so is equals =="

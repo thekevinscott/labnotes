@@ -40,6 +40,7 @@ from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
 from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.native_rows import native_rows
 from labnotes.tui.reload_on_change import reload_on_change
+from labnotes.tui.restart_request import restart_request
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 from labnotes.tui.stage_line import stage_line
@@ -624,7 +625,7 @@ class RunApp(ViewSwitcher, App[None]):
                 daemon_command,
                 self.config,
                 self.experiment_name,
-                {"command": "restart", "options": {"run_id": run}},
+                restart_request(run, self.experiment_config),
             )
             if not reply.get("ok"):
                 raise ValueError(str(reply.get("error", "Daemon rejected restart")))

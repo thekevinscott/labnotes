@@ -1,0 +1,1 @@
+Fixed: restarting a failed run from the TUI (`r`) now runs it with the environment of the shell that pressed `r`, like `run` does, instead of the environment of whichever shell started the daemon. Restarting from a live `run` TUI also keeps that invocation's `--experiment-config`.

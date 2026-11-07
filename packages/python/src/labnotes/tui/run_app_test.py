@@ -939,9 +939,19 @@ def test_detached_command_errors_are_visible(tmp_path: Path) -> None:
 def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(
-        None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
+        None,
+        "exp",
+        COLUMNS,
+        config,
+        tmp_path / "other.toml",
+        daemon_journal=mock.Mock(path=tmp_path / "j"),
     )
-    with mock.patch.object(app.body, "show") as show:
+    with (
+        mock.patch.object(app.body, "show") as show,
+        mock.patch(
+            "labnotes.tui.run_app.restart_request", return_value=mock.sentinel.request
+        ) as request,
+    ):
         app.restart_run("r1")
         show.assert_called_with("r1 has not failed.")
         app.body.failed.add("r1")
@@ -953,9 +963,8 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
             "labnotes.tui.run_app.daemon_command", return_value={"ok": True}
         ) as command:
             asyncio.run(app.restart_daemon_run("r1"))
-            command.assert_called_once_with(
-                config, "exp", {"command": "restart", "options": {"run_id": "r1"}}
-            )
+            request.assert_called_once_with("r1", tmp_path / "other.toml")
+            command.assert_called_once_with(config, "exp", mock.sentinel.request)
             show.assert_called_with("Restarted r1.")
         with mock.patch(
             "labnotes.tui.run_app.daemon_command",

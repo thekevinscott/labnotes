@@ -714,6 +714,8 @@ def test_a_run_that_continues_logs_each_invocation_apart(
             "ended_by": None,
             "error": None,
             "git": "abc",
+            "dirty": False,
+            "patch": None,
             "args": ["--memory", "8g"],
             "labnotes_version": "9.9.9",
             "labnotes_command": "labnotes experiments exp run",
@@ -721,6 +723,38 @@ def test_a_run_that_continues_logs_each_invocation_apart(
             "stderr": stderr.name,
         }
     ]
+
+
+def test_writes_the_commit_and_patch_it_ran_with(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path, git_info={"commit": "abc", "dirty": True}, git_diff=b"patch")
+
+    assert (tmp_path / "git-sha.txt").read_text() == "abc\n"
+    assert (tmp_path / "git-diff.patch").read_bytes() == b"patch"
+
+
+def test_writes_no_patch_without_a_snapshot_diff(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    run(tmp_path)
+
+    assert not list(tmp_path.glob("git-*"))
+
+
+def test_a_run_that_continues_keeps_each_invocations_commit_and_patch(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    git = {"commit": "abc", "dirty": True}
+    result = run(tmp_path, continues=True, git_info=git, git_diff=b"patch")
+
+    (invocation,) = cast(list[dict[str, object]], result["invocations"])
+    stamp = str(invocation["stdout"]).removeprefix("stdout-").removesuffix(".txt")
+    assert invocation["patch"] == f"git-diff-{stamp}.patch"
+    assert (invocation["git"], invocation["dirty"]) == ("abc", True)
+    assert (tmp_path / f"git-sha-{stamp}.txt").read_text() == "abc\n"
+    assert (tmp_path / f"git-diff-{stamp}.patch").read_bytes() == b"patch"
+    assert not (tmp_path / "git-diff.patch").exists()
 
 
 def test_a_run_that_continues_adds_to_its_run_json(
@@ -738,3 +772,4 @@ def test_a_run_that_continues_adds_to_its_run_json(
     kept, latest = cast(list[dict[str, object]], result["invocations"])
     assert kept == first
     assert (latest["started"], latest["git"], latest["args"]) == ("start", None, [])
+    assert (latest["dirty"], latest["patch"]) == (None, None)

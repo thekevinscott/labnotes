@@ -7,9 +7,8 @@ name: Testing Conventions
 # build on any violation.
 #   https://github.com/thekevinscott/testing-conventions
 #
-# Pinned to the upstream rolling `v0` tag (same convention as check.yml's
-# putitoutthere pin): v0 tracks the latest backwards-compatible release of the
-# reusable workflow.
+# Pinned to a main commit, not `v0`: upstream can't publish to PyPI, so v0 is
+# stuck on an adapter that rejects --lines. Return to @v0 once releases resume.
 
 on:
   pull_request:
@@ -25,10 +24,7 @@ permissions:
 jobs:
   python:
     name: Python
-    uses: thekevinscott/testing-conventions/.github/workflows/testing-conventions.yml@v0
+    uses: thekevinscott/testing-conventions/.github/workflows/testing-conventions.yml@b819f22c6bcd06fb0fdba35b294022a5c14b659c
     with:
       languages: '["python"]'
       source: packages/python
-      # The CLI from 0.0.156 passes --lines, which PyPI's adapter (stuck at
-      # 0.0.145) rejects. Unpin once testing-conventions publishes to PyPI again.
-      version: 0.0.155

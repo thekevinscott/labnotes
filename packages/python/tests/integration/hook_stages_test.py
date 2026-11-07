@@ -83,7 +83,10 @@ def test_setup_shows_its_logs_then_advances_to_the_runs(
 
     expect(term.get_by_text(BREADCRUMBS)).to_be_visible(timeout=15)
     expect(term.get_by_text("setup out 1")).to_be_visible()
+    term.write("t")
     expect(term.get_by_text("setup err 1")).to_be_visible()
+    term.write("t")
+    expect(term.get_by_text("setup out 1")).to_be_visible()
     expect(term.get_by_text("params")).not_to_be_visible()
 
     expect(term.get_by_text("params")).to_be_visible(timeout=15)

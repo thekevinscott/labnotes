@@ -101,7 +101,11 @@ def test_opens_a_run_and_follows_its_output(terminal, tmp_path: Path) -> None:
     term.key_enter()
     expect(term.get_by_text("20261017-000000/second")).to_be_visible()
     expect(term.get_by_text("hello from second")).to_be_visible()
+    expect(term.get_by_text("stderr (1)")).to_be_visible()
+    term.write("t")
     expect(term.get_by_text("warned on stderr")).to_be_visible()
+    term.write("t")
+    expect(term.get_by_text("hello from second")).to_be_visible()
 
     with (run / "stdout.log").open("a", encoding="utf-8") as log:
         log.write("appended later\n")

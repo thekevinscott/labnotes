@@ -1469,9 +1469,13 @@ def test_x_does_nothing_without_rows() -> None:
     asyncio.run(drive())
 
 
+def stdout_log(app: RunApp, selector: str) -> Any:
+    output: Any = app.query_one(selector)
+    return output.logs["stdout"]
+
+
 def output(app: RunApp) -> list[str]:
-    log: Any = app.query_one("#output")
-    return [line.rstrip() for line in log.lines]
+    return [line.rstrip() for line in stdout_log(app, "#output").lines]
 
 
 def test_enter_follows_the_output_of_the_run_under_the_cursor(
@@ -2203,11 +2207,11 @@ def test_a_single_run_opens_its_output_once_setup_passes(tmp_path: Path) -> None
         report({**planned("r1"), "hooks": ["setup"]})
         report({"event": "setting up", "hook": "setup", "folder": tmp_path})
         await pilot.pause()
-        assert app.focused is app.query_one("#setup-output")
+        assert app.focused is stdout_log(app, "#setup-output")
         report({"event": "hook ended", "hook": "setup", "error": None})
         await pilot.pause()
         assert displayed(app) == ["runs"]
-        assert app.focused is app.query_one("#output")
+        assert app.focused is stdout_log(app, "#output")
 
     drive_hooks(steps)
 

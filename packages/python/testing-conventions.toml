@@ -1,10 +1,4 @@
 [[python.exempt]]
-path = "src/labnotes/tui/run_output.py"
-rules = ["mutation"]
-lines = [92]
-reason = "last_stream is always the same str object taken from STREAMS, so is equals =="
-
-[[python.exempt]]
 path = "src/labnotes/tui/experiment_screen.py"
 rules = ["mutation"]
 lines = [64, 140]
@@ -51,18 +45,6 @@ path = "src/labnotes/runner/hold_experiment.py"
 rules = ["mutation"]
 lines = [18]
 reason = "LOCK_EX and LOCK_NB are disjoint bits, so | equals + and ^"
-
-[[python.exempt]]
-path = "src/labnotes/tui/run_output.py"
-rules = ["mutation"]
-lines = [146]
-reason = "a selection span ends at -1 or a non-negative offset, so <= equals ==; -1 is a CPython cached small int, so is equals =="
-
-[[python.exempt]]
-path = "src/labnotes/tui/run_output.py"
-rules = ["mutation"]
-lines = [34, 109, 126]
-reason = "reset() clears _width right after __init__ sets it; rsplit()[-1] is the text after the last \\r for any maxsplit of 1 or more; no line is wider than _width, so >= equals == and <= only adds rescans that find the same max; when is fails, another line holds the same max"
 
 [[python.exempt]]
 path = "src/labnotes/daemon/client.py"
@@ -128,3 +110,15 @@ path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
 lines = [368, 443]
 reason = "HookPanel.state returns string literals, which CPython interns, so is equals =="
+
+[[python.exempt]]
+path = "src/labnotes/tui/run_output.py"
+rules = ["mutation"]
+lines = [58, 62]
+reason = "Tab widgets define no __eq__, so == equals is; the stream index is only 0 or 1, where 1 - i, 1 >> i and 1 ^ i agree"
+
+[[python.exempt]]
+path = "src/labnotes/tui/stream_log.py"
+rules = ["mutation"]
+lines = [112, 132]
+reason = "_width is the max of _line_widths and holds that same int object, so a removed width is never above it and == equals <=, >= and is; textual's get_span ends at -1 or a non-negative column, so <= -1 equals == -1, and small ints are cached, so is equals =="

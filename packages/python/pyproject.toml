@@ -59,7 +59,7 @@ root = "../.."
 local_scheme = "no-local-version"
 
 [tool.hatch.build]
-exclude = ["*_test.py"]
+exclude = ["*_test.py", "*_test.js"]
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/labnotes"]

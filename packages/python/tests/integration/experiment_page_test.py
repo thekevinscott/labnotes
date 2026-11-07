@@ -1,10 +1,11 @@
+import asyncio
 import re
 
 import psutil
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-from playwright.async_api import Page, expect
+from playwright.async_api import Page, Route, expect
 from conftest import browse, run, serve, write
 
 
@@ -448,6 +449,38 @@ def test_restart_clears_the_notebook_state(tmp_path: Path) -> None:
         await runs.last.click()
 
         await expect(outputs.last).to_contain_text("NameError", timeout=30_000)
+
+    for site in serve(tmp_path):
+        browse(f"{site}/experiments/alpha", check)
+
+
+def test_fast_cell_clicks_execute_in_click_order_even_when_requests_reorder(
+    tmp_path: Path,
+) -> None:
+    write(tmp_path / ".labnotes.toml", "")
+    write(
+        tmp_path / "alpha/files/plan.md",
+        "```python\na = 1\n```\n\n```python\na\n```\n",
+    )
+
+    async def check(page: Page) -> None:
+        await page.get_by_role("link", name="Notebooks 1").click()
+        seen = 0
+
+        async def delay_first(route: Route) -> None:
+            nonlocal seen
+            seen += 1
+            if seen == 1:
+                await asyncio.sleep(1)
+            await route.continue_()
+
+        await page.route("**/notes/plan.md/run", delay_first)
+        runs = page.get_by_role("button", name="Run")
+        await runs.first.click()
+        await runs.last.click()
+        await expect(page.locator(".cell-output").last).to_have_text(
+            "1", timeout=30_000
+        )
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)

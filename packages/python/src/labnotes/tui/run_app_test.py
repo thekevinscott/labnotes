@@ -1135,13 +1135,14 @@ def test_s_at_the_prompt_stops_the_runs_then_kills_them() -> None:
 
     async def drive() -> None:
         app = RunApp(going(controls, "r1"), "exp", COLUMNS)
-        with mock.patch("labnotes.tui.run_app.GRACE_SECONDS", 0.3):
+        with mock.patch.object(app, "set_timer") as set_timer:
             async with app.run_test() as pilot:
                 await pilot.pause()
                 await pilot.press("ctrl+c", "s")
                 await pilot.pause()
-                assert controls.interrupt.call_count == 1
-                await asyncio.sleep(0.5)
+                controls.interrupt.assert_called_once_with()
+                set_timer.assert_called_once()
+                set_timer.call_args.args[1]()
                 await pilot.pause()
                 assert controls.interrupt.call_count == 2
                 assert app.is_running

@@ -36,7 +36,7 @@ The `memory` column shows how much memory a running run's processes hold: the re
 
 ## Output keys
 
-The output view follows the run's `stdout.log` and `stderr.log` as they're written, each in its own tab. A tab's label counts its complete lines, such as `stdout (33)` and `stderr (5)`, and updates while the run writes. The view opens on stdout. For a run that [continues](config#continues), it follows the latest invocation's logs. ANSI color and bold show as styled text; other escape codes are dropped. Long lines don't wrap; scroll sideways to read them.
+The output view follows the run's `stdout.log` and `stderr.log` as they're written, each in its own tab. A tab's label counts its complete lines, such as `stdout (33)` and `stderr (5)`, and updates while the run writes. The view opens on stdout. For a run that [continues](config#continues), it follows the latest invocation's logs. ANSI color and bold show as styled text; other escape codes are dropped. Long lines wrap. While you're scrolled to the bottom, the view follows new output; scroll up to read back, and scroll to the bottom again to follow. The view reads only the lines on screen, so a log of any size opens fast and uses little memory. Scrolling moves one log line at a time, however many rows it wraps to. A line longer than 64 KB shows its first 64 KB.
 
 Blocks the script writes with [`log`](sdk#log) show above the raw output, one line each, collapsed and cut off with an ellipsis (▸). Click a block to expand it to its full text (▾); click again to collapse it. A streaming block shows on `start` and grows in place as its deltas arrive. Without a `log.jsonl`, the raw output fills the view as before.
 

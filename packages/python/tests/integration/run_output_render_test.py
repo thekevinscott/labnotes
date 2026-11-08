@@ -11,7 +11,7 @@ class OutputApp(App[None]):
         yield RunOutput(id="output")
 
 
-def test_visible_line_keeps_ansi_color_and_scrolls_sideways(tmp_path: Path) -> None:
+def test_visible_line_keeps_ansi_color_and_wraps(tmp_path: Path) -> None:
     (tmp_path / "stdout.log").write_text("\x1b[31mred\x1b[0m plain" + "x" * 200 + "\n")
 
     async def drive() -> None:
@@ -25,13 +25,9 @@ def test_visible_line_keeps_ansi_color_and_scrolls_sideways(tmp_path: Path) -> N
                 "red plain"
             )
             assert "color(1)" in str(strip._segments[0].style)
-            assert output.virtual_size.height == 1
-            assert output.virtual_size.width > output.size.width
-            output.scroll_to(x=100, animate=False, immediate=True)
-            await pilot.pause()
-            assert output.scroll_offset.x > 0
-            assert "x" in "".join(
-                segment.text for segment in output.render_line(0)._segments
-            )
+            width = output.scrollable_content_region.width
+            assert len(output.wrap(0)) == -(-209 // width)
+            assert output.virtual_size.width <= width
+            assert not output.show_horizontal_scrollbar
 
     asyncio.run(drive())

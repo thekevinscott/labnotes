@@ -1476,7 +1476,8 @@ def stdout_log(app: RunApp, selector: str) -> Any:
 
 
 def output(app: RunApp) -> list[str]:
-    return [line.rstrip() for line in stdout_log(app, "#output").lines]
+    log = stdout_log(app, "#output")
+    return [line.rstrip() for line in log.read(0, log.rows)]
 
 
 def test_enter_follows_the_output_of_the_run_under_the_cursor(

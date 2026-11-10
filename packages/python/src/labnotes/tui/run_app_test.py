@@ -640,6 +640,63 @@ def test_skips_pending_runs_when_stopping() -> None:
     asyncio.run(drive())
 
 
+def test_drain_key_keeps_tui_open_and_skips_pending_runs() -> None:
+    drain = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(drain=drain))
+        report(planned("r1", "r2"))
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("d")
+            await pilot.pause()
+            drain.assert_called_once_with()
+            assert app.is_running
+            app.body.show_event({"event": "draining"})
+            assert [row[2] for row in rows(app)] == ["|", "–"]
+            assert status(app) == "said draining"
+
+    asyncio.run(drive())
+
+
+def test_in_process_tui_stays_open_after_drain_finishes() -> None:
+    drained = asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(drain=drained.set))
+        report(planned("r1", "r2"))
+        await drained.wait()
+        report({"event": "draining"})
+        report({"event": "idle"})
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("d")
+            await pilot.pause()
+            assert app.is_running
+            assert status(app).startswith("0 passed")
+            await pilot.press("ctrl+c")
+            await pilot.pause()
+            assert not app.is_running
+
+    asyncio.run(drive())
+
+
 def test_plus_and_minus_change_the_concurrency() -> None:
     set_concurrency = mock.Mock()
 
@@ -825,6 +882,7 @@ def test_detached_app_reads_journal_and_routes_controls(tmp_path: Path) -> None:
                 journal.read.assert_called()
                 app.controls.set_concurrency(3)
                 app.controls.kill("r1")
+                app.controls.drain()
                 assert queue.call_args_list == [
                     mock.call(
                         {
@@ -834,6 +892,7 @@ def test_detached_app_reads_journal_and_routes_controls(tmp_path: Path) -> None:
                         }
                     ),
                     mock.call({"command": "stop_one", "run": "r1"}),
+                    mock.call({"command": "drain"}),
                 ]
                 app.body.cells["r1"] = {"run": "r1"}
                 app.body.folders["r1"] = tmp_path
@@ -1526,7 +1585,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
     asyncio.run(drive())
 
 
-def test_only_back_and_quit_work_while_following_output() -> None:
+def test_back_quit_and_drain_work_while_following_output() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
@@ -1543,8 +1602,10 @@ def test_only_back_and_quit_work_while_following_output() -> None:
                     for action in ["interrupt", *actions]
                     if app.body.check_action(action, ())
                 ]
-                assert live == ["interrupt", "leave"]
+                assert live == ["interrupt", "drain", "leave"]
                 assert app.body.check_action("command_palette", ())
+                await pilot.press("d")
+                controls.drain.assert_called_once_with()
                 await pilot.press("x", "plus")
                 controls.kill.assert_not_called()
                 controls.set_concurrency.assert_not_called()

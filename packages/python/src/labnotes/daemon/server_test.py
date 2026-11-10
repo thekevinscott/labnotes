@@ -42,6 +42,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
         finish = mock.Mock()
         controls = mock.Mock(
             interrupt=done.set,
+            drain=mock.Mock(),
             set_concurrency=set_concurrency,
             kill=kill,
             finish=finish,
@@ -101,11 +102,76 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
                 mock.call(3),
             ]
             assert await daemon.dispatch({"command": "attach"}) == {"ok": True}
+            assert await daemon.dispatch({"command": "drain"}) == {"ok": True}
+            controls.drain.assert_called_once_with()
             assert (await daemon.dispatch({"command": "unknown"}))["ok"] is False
             assert await daemon.dispatch({"command": "stop_all"}) == {"ok": True}
             await asyncio.sleep(0)
             assert not daemon.active
             finish.assert_called_once_with()
+
+    asyncio.run(drive())
+
+
+def test_drained_journal_releases_planned_runs_from_reservations(
+    tmp_path: Path,
+) -> None:
+    journal = tmp_path / "drained.jsonl"
+    journal.write_text(
+        json.dumps({"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]})
+        + "\n"
+        + json.dumps({"event": "draining"})
+        + "\n"
+    )
+
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon.active[str(journal)] = Invocation()
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
+
+        async def fail_early(report, listen):
+            raise ValueError("stop here")
+
+        selected.side_effect = fail_early
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ) as start:
+            await daemon.start({})
+        assert start.call_args.args[14] == {}
+
+    asyncio.run(drive())
+
+
+def test_drain_requested_during_preparation_reaches_new_controls(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        preparing = asyncio.Event()
+        ready = asyncio.Event()
+        done = asyncio.Event()
+        controls = mock.Mock(drain=mock.Mock(side_effect=done.set))
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
+
+        async def run(report, listen):
+            preparing.set()
+            await ready.wait()
+            listen(controls)
+            await done.wait()
+            return []
+
+        selected.side_effect = run
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ):
+            starting = asyncio.create_task(daemon.start({}))
+            await preparing.wait()
+            assert await daemon.dispatch({"command": "drain"}) == {"ok": True}
+            ready.set()
+            assert (await starting)["ok"] is True
+            await asyncio.sleep(0)
+        controls.drain.assert_called_once_with()
+        controls.interrupt.assert_not_called()
 
     asyncio.run(drive())
 

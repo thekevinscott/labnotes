@@ -1,4 +1,3 @@
-import socket
 from pathlib import Path
 from unittest import mock
 
@@ -103,7 +102,7 @@ def test_reply_timeout_keeps_live_daemon_discoverable(tmp_path: Path) -> None:
     record.touch()
     client = mock.MagicMock()
     client.makefile.return_value.__enter__.return_value.readline.side_effect = (
-        socket.timeout("timed out")
+        TimeoutError("timed out")
     )
     with (
         mock.patch("labnotes.daemon.command.daemon_socket", return_value=path),
@@ -123,7 +122,7 @@ def test_connect_timeout_keeps_live_daemon_discoverable(tmp_path: Path) -> None:
     path.touch()
     record.touch()
     client = mock.MagicMock()
-    client.connect.side_effect = socket.timeout("timed out")
+    client.connect.side_effect = TimeoutError("timed out")
     with (
         mock.patch("labnotes.daemon.command.daemon_socket", return_value=path),
         mock.patch("labnotes.daemon.command.socket_record", return_value=record),

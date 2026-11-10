@@ -697,6 +697,24 @@ def test_in_process_tui_stays_open_after_drain_finishes() -> None:
     asyncio.run(drive())
 
 
+def test_earlier_event_does_not_mark_app_drained() -> None:
+    app = RunApp(None, "exp", COLUMNS)
+    app.body_ready = False
+
+    app.show_event({"event": "concurrency", "concurrency": 1})
+
+    assert not app.drained
+
+
+def test_drain_event_decoded_from_journal_marks_app_drained() -> None:
+    app = RunApp(None, "exp", COLUMNS)
+    app.body_ready = False
+
+    app.show_event(json.loads('{"event": "draining"}'))
+
+    assert app.drained
+
+
 def test_plus_and_minus_change_the_concurrency() -> None:
     set_concurrency = mock.Mock()
 

@@ -142,6 +142,19 @@ def test_drained_journal_releases_planned_runs_from_reservations(
     asyncio.run(drive())
 
 
+def test_drain_command_decoded_from_socket_json_reaches_controls(
+    tmp_path: Path,
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    controls = mock.Mock()
+    daemon.active[str(tmp_path / "active.jsonl")] = Invocation(controls=controls)
+
+    reply = asyncio.run(daemon.dispatch(json.loads('{"command": "drain"}')))
+
+    assert reply == {"ok": True}
+    controls.drain.assert_called_once_with()
+
+
 def test_drain_requested_during_preparation_reaches_new_controls(
     tmp_path: Path,
 ) -> None:

@@ -13,8 +13,9 @@ from labnotes.daemon.socket_path import lock_path, socket_path, socket_record
 from labnotes.read_config import read_config
 
 
+@pytest.mark.parametrize("action", ["start", "restart"])
 def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
-    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, action: str
 ) -> None:
     config_path = tmp_path / ".labnotes.toml"
     config_path.write_text("")
@@ -36,7 +37,7 @@ def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
                 connection, _ = server.accept()
                 with connection:
                     with connection.makefile("r") as requests:
-                        assert json.loads(requests.readline())["command"] == "start"
+                        assert json.loads(requests.readline())["command"] == action
                     time.sleep(10.5)
                     try:
                         connection.sendall(b'{"ok":true,"journal":"running.jsonl"}\n')
@@ -46,7 +47,7 @@ def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
             worker = threading.Thread(target=respond, daemon=True)
             worker.start()
             try:
-                assert command(config, "exp", {"command": "start"}) == {
+                assert command(config, "exp", {"command": action}) == {
                     "ok": True,
                     "journal": "running.jsonl",
                 }

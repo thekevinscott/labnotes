@@ -6,7 +6,6 @@ import os
 import shlex
 import subprocess
 import sys
-import time
 from pathlib import Path
 
 # Exits 1 the first time it runs a value listed in fail.txt, 0 otherwise.
@@ -37,10 +36,12 @@ def make_project(root: Path, settings: str) -> Path:
 
 
 def labnotes(
-    root: Path, uvx: dict[str, str], *argv: str
+    root: Path, uvx: dict[str, str], *argv: str, expected_error: str | None = None
 ) -> subprocess.CompletedProcess[str]:
     if len(argv) >= 2 and argv[1] == "run":
-        return run_uvx_tui(root, uvx, "experiments", *argv)
+        return run_uvx_tui(
+            root, uvx, "experiments", *argv, expected_error=expected_error
+        )
     return subprocess.run(
         ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), "experiments", *argv],
         cwd=root,
@@ -129,9 +130,7 @@ def test_second_uvx_run_does_not_duplicate_an_active_run(
     )
     first.start()
     try:
-        deadline = time.monotonic() + 20
-        while not records(root) and time.monotonic() < deadline:
-            time.sleep(0.05)
+        expect(first.get_by_text("1 at a time")).to_be_visible(timeout=30)
         assert records(root), "first run never started"
         assert first.is_alive
 
@@ -169,8 +168,14 @@ def test_uvx_run_names_the_migration_for_mode_and_missing_continues(
     with_mode = make_project(tmp_path / "mode", 'continues = false\nmode = "adhoc"\n')
     without_continues = make_project(tmp_path / "continues", "")
 
-    moded = labnotes(with_mode, uvx, "exp", "run")
-    bare = labnotes(without_continues, uvx, "exp", "run")
+    moded = labnotes(with_mode, uvx, "exp", "run", expected_error="mode was removed")
+    bare = labnotes(
+        without_continues,
+        uvx,
+        "exp",
+        "run",
+        expected_error="continues = true or continues = false",
+    )
 
     assert moded.returncode != 0
     assert "mode was removed" in moded.stdout

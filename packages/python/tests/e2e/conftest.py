@@ -34,13 +34,12 @@ def run_uvx_tui(
     *argv: str,
     timeout: float = 120,
     env: dict[str, str] | None = None,
+    expected_error: str | None = None,
 ) -> subprocess.CompletedProcess[str]:
     """Run an installed CLI command in its real TUI PTY and collect its outcome."""
     import re
     import shlex
-    import time
-
-    from curtaincall import Terminal
+    from curtaincall import Terminal, expect
 
     args = ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), *argv]
     command = "/bin/sh -c " + shlex.quote(
@@ -54,23 +53,25 @@ def run_uvx_tui(
     )
     term.start()
     summary = re.compile(r"\d+ passed, \d+ failed\.(?: \d+ retried\.)?")
-    deadline = time.monotonic() + timeout
     try:
-        while time.monotonic() < deadline:
-            screen = term._get_screen_text()
-            found = summary.search(screen)
-            if found:
-                term.key_ctrl_c()
-                code = term.wait(timeout=10)
-                return subprocess.CompletedProcess(
-                    args, code, screen + "\n" + found.group() + "\n", ""
-                )
-            if not term.is_alive:
-                code = term.wait(timeout=2)
-                return subprocess.CompletedProcess(args, code, screen, screen)
-            time.sleep(0.05)
-        raise TimeoutError(
-            f"TUI did not finish within {timeout}s: {term.to_snapshot()}"
+        if expected_error is not None:
+            expect(term.get_by_text(expected_error)).to_be_visible(timeout=timeout)
+            code = term.wait(timeout=10)
+            assert code != 0, term.to_snapshot()
+            screen = "\n".join(
+                "".join(row).rstrip() for row in term.get_viewable_buffer()
+            )
+            return subprocess.CompletedProcess(args, code, screen, screen)
+        expect(term.get_by_text(summary)).to_be_visible(timeout=timeout)
+        expect(term.get_by_text("Ctrl-C to quit.")).to_be_visible()
+        screen = "\n".join("".join(row).rstrip() for row in term.get_viewable_buffer())
+        found = summary.search(screen)
+        assert found is not None, term.to_snapshot()
+        term.key_ctrl_c()
+        code = term.wait(timeout=10)
+        assert code == 0, term.to_snapshot()
+        return subprocess.CompletedProcess(
+            args, code, screen + "\n" + found.group() + "\n", ""
         )
     finally:
         term.kill()

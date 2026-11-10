@@ -1,7 +1,7 @@
 import os
 import shlex
 
-from curtaincall import Terminal
+from curtaincall import Terminal, expect
 from pathlib import Path
 
 
@@ -31,8 +31,10 @@ def test_uvx_run_rejects_an_escaping_runs_path_before_writing(
     term = Terminal(command, rows=30, cols=160, env={**os.environ, **uvx})
     term.start()
     try:
-        assert term.wait(timeout=30) != 0
-        assert "[runs] path must be relative" in term._get_screen_text()
+        expect(term.get_by_text("[runs] path must be relative")).to_be_visible(
+            timeout=30
+        )
+        assert term.wait(timeout=10) != 0
         assert not (tmp_path / "escaped-alpha").exists()
     finally:
         term.kill()

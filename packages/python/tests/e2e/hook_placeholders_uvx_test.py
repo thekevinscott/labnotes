@@ -30,9 +30,13 @@ def project(root: Path, experiment: str, env: str = "") -> Path:
     return root
 
 
-def labnotes(root: Path, uvx: dict[str, str]) -> subprocess.CompletedProcess[str]:
+def labnotes(
+    root: Path, uvx: dict[str, str], expected_error: str | None = None
+) -> subprocess.CompletedProcess[str]:
     env = {key: value for key, value in os.environ.items() if key != "LABEL"}
-    return run_uvx_tui(root, uvx, "experiments", "exp", "run", env=env)
+    return run_uvx_tui(
+        root, uvx, "experiments", "exp", "run", env=env, expected_error=expected_error
+    )
 
 
 def journal(root: Path) -> list[object]:
@@ -49,7 +53,9 @@ def test_uvx_run_refuses_invocation_dir_in_setup_before_setup_runs(
         'setup = "echo up {invocation_dir} >> journal.txt"\n',
     )
 
-    result = labnotes(root, uvx)
+    result = labnotes(
+        root, uvx, expected_error="Share values with set_state() and get_state()."
+    )
 
     assert result.returncode != 0, result.stdout + result.stderr
     assert (

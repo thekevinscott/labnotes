@@ -6,7 +6,6 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
-from textual.widgets import DataTable
 
 from labnotes.tui.run_app import RunApp, RunLiveView
 
@@ -2437,7 +2436,7 @@ def test_startup_shows_each_step_then_follows_the_run(
                 await pilot.pause()
                 assert app.focused is not None
                 if body_ready:
-                    assert app.focused is app.body.query_one(DataTable)
+                    assert app.focused is app.body.query_one("DataTable")
                 else:
                     assert app.focused is app.screen.focus_chain[0]
 

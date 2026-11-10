@@ -454,9 +454,7 @@ def test_restart_clears_the_notebook_state(tmp_path: Path) -> None:
         browse(f"{site}/experiments/alpha", check)
 
 
-def test_fast_cell_clicks_execute_in_click_order_even_when_requests_reorder(
-    tmp_path: Path,
-) -> None:
+def check_cell_clicks_run_in_click_order(tmp_path: Path, editor: bool) -> None:
     write(tmp_path / ".labnotes.toml", "")
     write(
         tmp_path / "alpha/files/plan.md",
@@ -464,7 +462,11 @@ def test_fast_cell_clicks_execute_in_click_order_even_when_requests_reorder(
     )
 
     async def check(page: Page) -> None:
+        if not editor:
+            await page.route("**/static/note-editor.js*", lambda route: route.abort())
         await page.get_by_role("link", name="Notebooks 1").click()
+        if editor:
+            await expect(page.get_by_role("textbox", name="Note")).to_be_visible()
         seen = 0
 
         async def delay_first(route: Route) -> None:
@@ -481,9 +483,23 @@ def test_fast_cell_clicks_execute_in_click_order_even_when_requests_reorder(
         await expect(page.locator(".cell-output").last).to_have_text(
             "1", timeout=30_000
         )
+        if not editor:
+            await expect(page.get_by_role("textbox", name="Note")).to_have_count(0)
 
     for site in serve(tmp_path):
         browse(f"{site}/experiments/alpha", check)
+
+
+def test_fast_cell_clicks_execute_in_click_order_even_when_requests_reorder(
+    tmp_path: Path,
+) -> None:
+    check_cell_clicks_run_in_click_order(tmp_path, editor=False)
+
+
+def test_fast_editor_cell_clicks_execute_in_click_order_even_when_requests_reorder(
+    tmp_path: Path,
+) -> None:
+    check_cell_clicks_run_in_click_order(tmp_path, editor=True)
 
 
 def test_switches_runs_to_a_grid_and_back(site: str) -> None:

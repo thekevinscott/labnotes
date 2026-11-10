@@ -227,25 +227,31 @@ export function edit(note, prose, status) {
     outputs.set(Number(cell.dataset.block), cell.querySelector(".cell-output"));
   }
 
-  // The server runs the block from the file, so unsaved edits go first.
-  const runCell = async (block, button) => {
+  // Shares run-cell.js's queue, so runs clicked before the editor loaded
+  // still go first. The server runs the block from the file, so unsaved
+  // edits go first too.
+  const runCell = (block, button) => {
     button.disabled = true;
-    button.textContent = "Running";
-    try {
-      await save();
-      const response = await fetch(note.dataset.runUrl, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ block }),
-      });
-      outputs.get(block).innerHTML = response.ok
-        ? await response.text()
-        : `<pre class="error">${response.status} ${response.statusText}</pre>`;
-      view.requestMeasure();
-    } finally {
-      button.disabled = false;
-      button.textContent = "Run";
-    }
+    button.textContent = "Queued";
+    note.cellRuns = (note.cellRuns ?? Promise.resolve()).catch(() => {}).then(async () => {
+      button.textContent = "Running";
+      try {
+        await save();
+        const response = await fetch(note.dataset.runUrl, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ block }),
+        });
+        outputs.get(block).innerHTML = response.ok
+          ? await response.text()
+          : `<pre class="error">${response.status} ${response.statusText}</pre>`;
+        view.requestMeasure();
+      } finally {
+        button.disabled = false;
+        button.textContent = "Run";
+      }
+    });
+    return note.cellRuns;
   };
 
   const view = new EditorView({

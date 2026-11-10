@@ -1,12 +1,12 @@
 for (const note of document.querySelectorAll(".note[data-run-url]")) {
-  let pending = Promise.resolve();
+  note.cellRuns = Promise.resolve();
   for (const cell of note.querySelectorAll(".cell")) {
     const button = cell.querySelector(".run");
     const output = cell.querySelector(".cell-output");
     button.addEventListener("click", () => {
       button.disabled = true;
       button.textContent = "Queued";
-      pending = pending.catch(() => {}).then(async () => {
+      note.cellRuns = note.cellRuns.catch(() => {}).then(async () => {
         button.textContent = "Running";
         try {
           const response = await fetch(note.dataset.runUrl, {
@@ -22,7 +22,7 @@ for (const note of document.querySelectorAll(".note[data-run-url]")) {
           button.textContent = "Run";
         }
       });
-      return pending;
+      return note.cellRuns;
     });
   }
 }

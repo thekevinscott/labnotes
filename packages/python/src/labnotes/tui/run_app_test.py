@@ -1323,6 +1323,24 @@ def test_sighup_stops_the_runs() -> None:
     asyncio.run(drive())
 
 
+def test_signal_exits_an_idle_in_process_tui_after_drain() -> None:
+    controls = mock.Mock()
+
+    async def drive() -> None:
+        app = RunApp(going(controls), "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.show_event({"event": "draining"})
+            app.show_event({"event": "idle"})
+            with mock.patch.object(app, "exit") as exit_app:
+                app.stop_runs()
+            exit_app.assert_called_once_with()
+            controls.finish.assert_not_called()
+            controls.interrupt.assert_not_called()
+
+    asyncio.run(drive())
+
+
 def test_ticks_every_second_and_follows_output_often() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         return []

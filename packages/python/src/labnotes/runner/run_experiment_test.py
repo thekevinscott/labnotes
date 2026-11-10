@@ -1636,6 +1636,24 @@ def test_stop_during_drain_signals_running_process(
     collaborators["signal_tree"].assert_called_once()
 
 
+def test_drain_after_stop_does_not_emit_a_drain_event(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    listen, report = mock.Mock(), mock.Mock()
+
+    async def execute(*args: object, **_: object) -> dict[str, object]:
+        controls = listen.call_args.args[0]
+        controls.interrupt()
+        controls.drain()
+        return {"exit_code": -15, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+    run(tmp_path, report, listen=listen)
+
+    assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
+
+
 def calling(action: str, *args: object) -> tuple[mock.Mock, mock.Mock]:
     listen = mock.Mock()
 

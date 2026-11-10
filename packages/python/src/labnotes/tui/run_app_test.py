@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
+from textual.widgets import DataTable
 
 from labnotes.tui.run_app import RunApp, RunLiveView
 
@@ -2401,7 +2402,10 @@ def starting_app(tmp_path: Path) -> RunApp:
     return RunApp(None, "exp", COLUMNS, config, daemon_request={"command": "start"})
 
 
-def test_startup_shows_each_step_then_follows_the_run(tmp_path: Path) -> None:
+@pytest.mark.parametrize("body_ready", [True, False])
+def test_startup_shows_each_step_then_follows_the_run(
+    tmp_path: Path, body_ready: bool
+) -> None:
     app = starting_app(tmp_path)
     accept = asyncio.Event()
 
@@ -2422,6 +2426,7 @@ def test_startup_shows_each_step_then_follows_the_run(tmp_path: Path) -> None:
                 assert "✓ Starting daemon" in shown
                 assert "Snapshotting repo" in shown
                 assert app.query_one("#startup").display is True
+                app.body_ready = body_ready
                 accept.set()
                 await pilot.pause()
                 follow.assert_called_once_with()
@@ -2431,6 +2436,10 @@ def test_startup_shows_each_step_then_follows_the_run(tmp_path: Path) -> None:
                 assert app.query_one("#startup").display is False
                 await pilot.pause()
                 assert app.focused is not None
+                if body_ready:
+                    assert app.focused is app.body.query_one(DataTable)
+                else:
+                    assert app.focused is app.screen.focus_chain[0]
 
     asyncio.run(drive())
 

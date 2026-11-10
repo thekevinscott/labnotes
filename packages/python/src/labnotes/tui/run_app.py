@@ -606,8 +606,11 @@ class RunApp(ViewSwitcher, App[None]):
         self.startup_timer.stop()
         self.query_one("#startup").display = False
         self.query_one(ContentSwitcher).display = True
-        # Auto-focus ran while the views were hidden.
-        self.call_after_refresh(self.screen.focus_next)
+        # Focus requests made while the views were hidden were dropped.
+        if self.body_ready:
+            self.call_after_refresh(self.body.go, self.body.stage)
+        else:
+            self.call_after_refresh(self.screen.focus_next)
 
     def follow_daemon(self) -> None:
         assert self.daemon_journal is not None

@@ -1,0 +1,1 @@
+Fixed daemon start and restart commands timing out before the server's preparation deadline. A slow reply now reports that the command may still be running and preserves the daemon socket and discovery record, so the client does not mistake a live daemon for a missing one.

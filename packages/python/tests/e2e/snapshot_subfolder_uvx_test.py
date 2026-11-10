@@ -1,10 +1,13 @@
-from conftest import run_uvx_tui
 import subprocess
 from pathlib import Path
 
+from curtaincall import expect
+
+from conftest import Tui
+
 
 def test_uvx_run_from_repo_subfolder_uses_subfolder_snapshot(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     repo = tmp_path / "repo"
     project = repo / "sub"
@@ -42,8 +45,11 @@ def test_uvx_run_from_repo_subfolder_uses_subfolder_snapshot(
     )
     (project / "dirty.txt").write_text("untracked\n")
     expected = subprocess.check_output(["git", "status", "--porcelain"], cwd=project)
-    result = run_uvx_tui(project, uvx, "experiments", "exp", "run")
-    assert result.returncode == 0, result.stdout + result.stderr
+
+    term = tui(project, "experiments", "exp", "run")
+
+    expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=120)
+    tui.quit(term)
     [run] = list((project / "runs/exp").iterdir())
     snapshot_root = Path((run / "cwd.txt").read_text())
     assert snapshot_root != project

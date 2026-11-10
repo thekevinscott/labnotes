@@ -1,12 +1,13 @@
-from conftest import run_uvx_tui
 import json
 import sys
 from pathlib import Path
 
+from curtaincall import expect
 
-def test_uvx_run_takes_several_values_of_one_param(
-    tmp_path: Path, uvx: dict[str, str]
-) -> None:
+from conftest import Tui
+
+
+def test_uvx_run_takes_several_values_of_one_param(tmp_path: Path, tui: Tui) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
@@ -15,19 +16,18 @@ def test_uvx_run_takes_several_values_of_one_param(
         '[params]\nmodel = ["opus", "sonnet", "haiku"]\neffort = ["low", "xhigh"]\n'
     )
 
-    result = run_uvx_tui(
+    term = tui(
         root,
-        uvx,
-        "experiments",
-        "exp",
-        "run",
-        "--effort=xhigh",
-        "--model=opus",
-        "--model=haiku",
+        *["experiments", "exp", "run", "--effort=xhigh"],
+        *["--model=opus", "--model=haiku"],
     )
 
-    assert result.returncode == 0, result.stdout
-    assert result.stdout.endswith("2 passed, 0 failed.\n"), result.stdout
+    expect(term.get_by_text("2 passed, 0 failed.")).to_be_visible(timeout=120)
+    expect(term.get_by_text("--model opus")).to_be_visible()
+    expect(term.get_by_text("--model haiku")).to_be_visible()
+    expect(term.get_by_text("sonnet")).not_to_be_visible()
+    expect(term.get_by_text("--effort low")).not_to_be_visible()
+    tui.quit(term)
     cells = sorted(
         (
             json.loads(path.read_text())["params"]

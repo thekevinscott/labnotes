@@ -5,9 +5,9 @@ import sys
 import time
 from pathlib import Path
 
-from curtaincall import Terminal
+from curtaincall import expect
 
-from conftest import run_uvx_tui
+from conftest import Tui
 
 # Takes a second to shut down on SIGTERM, then exits with its own code.
 SCRIPT = """
@@ -25,6 +25,7 @@ def shut_down(*_):
 
 signal.signal(signal.SIGTERM, shut_down)
 Path("started.txt").write_text("")
+print("trap armed", flush=True)
 time.sleep(30)
 """
 
@@ -62,39 +63,34 @@ def assert_the_script_shut_down(root: Path, ended_by: str) -> None:
 
 
 def test_uvx_timeout_records_the_scripts_own_exit_code(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = make_project(tmp_path)
 
-    run_uvx_tui(root, uvx, "experiments", "exp", "run", "--timeout", "1")
+    term = tui(root, "experiments", "exp", "run", "--timeout", "1")
 
+    expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible(timeout=120)
+    tui.quit(term)
     assert_the_script_shut_down(root, "timeout")
 
 
 def test_uvx_stop_records_the_scripts_own_exit_code(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, uvx: dict[str, str], tui: Tui
 ) -> None:
     root = make_project(tmp_path)
-    env = {**os.environ, **uvx}
-    labnotes = ["uvx", "labnotes", "-c", str(root / ".labnotes.toml")]
-    term = Terminal(" ".join([*labnotes, "experiments", "exp", "run"]), env=env)
-    term.start()
-    try:
-        for _ in range(600):
-            if (root / "started.txt").exists():
-                break
-            time.sleep(0.1)
-        assert (root / "started.txt").exists()
-        result = subprocess.run(
-            [*labnotes, "experiments", "exp", "stop"],
-            capture_output=True,
-            text=True,
-            timeout=60,
-            env=env,
-        )
-        assert result.returncode == 0, result.stderr
-        ended_run(root)
-    finally:
-        term.kill()
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text("trap armed")).to_be_visible(timeout=120)
 
+    result = subprocess.run(
+        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml")]
+        + ["experiments", "exp", "stop"],
+        capture_output=True,
+        text=True,
+        timeout=60,
+        env={**os.environ, **uvx},
+    )
+
+    assert result.returncode == 0, result.stderr
+    expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible(timeout=60)
+    tui.quit(term)
     assert_the_script_shut_down(root, "stop")

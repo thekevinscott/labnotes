@@ -1,13 +1,11 @@
-from conftest import run_uvx_tui
-from curtaincall import Terminal, expect
-import json
 import fcntl
-import os
-import shlex
-import subprocess
+import json
 import sys
-import time
 from pathlib import Path
+
+from curtaincall import Terminal, expect
+
+from conftest import Tui
 
 # Exits 1 the first time it runs a value listed in fail.txt, 0 otherwise.
 SCRIPT = """
@@ -36,20 +34,16 @@ def make_project(root: Path, settings: str) -> Path:
     return root
 
 
-def labnotes(
-    root: Path, uvx: dict[str, str], *argv: str
-) -> subprocess.CompletedProcess[str]:
-    if len(argv) >= 2 and argv[1] == "run":
-        return run_uvx_tui(root, uvx, "experiments", *argv)
-    return subprocess.run(
-        ["uvx", "labnotes", "-c", str(root / ".labnotes.toml"), "experiments", *argv],
-        cwd=root,
-        env={**os.environ, **uvx},
-        stdout=subprocess.PIPE,
-        stderr=subprocess.STDOUT,
-        text=True,
-        timeout=120,
-    )
+def run(tui: Tui, root: Path, summary: str) -> None:
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text(summary)).to_be_visible(timeout=120)
+    tui.quit(term)
+
+
+def refused(tui: Tui, root: Path) -> Terminal:
+    term = tui(root, "experiments", "exp", "run")
+    assert tui.exited(term) != 0, term.to_snapshot()
+    return term
 
 
 def records(root: Path) -> dict[str, dict[str, object]]:
@@ -60,25 +54,19 @@ def records(root: Path) -> dict[str, dict[str, object]]:
     }
 
 
-def test_uvx_run_plans_what_failed_then_nothing(
-    tmp_path: Path, uvx: dict[str, str]
-) -> None:
+def test_uvx_run_plans_what_failed_then_nothing(tmp_path: Path, tui: Tui) -> None:
     root = make_project(tmp_path / "project", "continues = false\n")
 
-    first = labnotes(root, uvx, "exp", "run")
-    assert first.stdout.endswith("1 passed, 1 failed.\n"), first.stdout
-    second = labnotes(root, uvx, "exp", "run")
-    assert second.stdout.endswith("1 passed, 0 failed.\n"), second.stdout
-    third = labnotes(root, uvx, "exp", "run")
+    run(tui, root, "1 passed, 1 failed.")
+    run(tui, root, "1 passed, 0 failed.")
+    run(tui, root, "0 passed, 0 failed.")
 
-    assert third.returncode == 0, third.stdout
-    assert "0 passed, 0 failed." in third.stdout
     recorded = records(root)
     assert len(recorded) == 3
     assert all("/" not in run for run in recorded)
 
 
-def test_uvx_run_respects_a_held_slot(tmp_path: Path, uvx: dict[str, str]) -> None:
+def test_uvx_run_respects_a_held_slot(tmp_path: Path, tui: Tui) -> None:
     root = make_project(tmp_path / "project", "continues = false\nrepeats = 1\n")
     held = root / "exp/runs/held"
     held.mkdir(parents=True)
@@ -95,67 +83,40 @@ def test_uvx_run_respects_a_held_slot(tmp_path: Path, uvx: dict[str, str]) -> No
     )
     with (held / "run.lock").open("w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        result = labnotes(root, uvx, "exp", "run")
+        run(tui, root, "1 passed, 0 failed.")
 
-    assert result.returncode == 0, result.stdout
-    assert "1 passed, 0 failed." in result.stdout
     assert [r["params"] for r in records(root).values()].count({"m": "a"}) == 1
 
 
 def test_second_uvx_run_does_not_duplicate_an_active_run(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = make_project(tmp_path / "project", "continues = false\nrepeats = 1\n")
     (root / "exp/experiment.toml").write_text(
         f'command = "{sys.executable} script.py"\ncontinues = false\n'
         '[params]\nm = ["a"]\n'
     )
-    (root / "script.py").write_text("import time\ntime.sleep(6)\n")
-    first = Terminal(
-        shlex.join(
-            [
-                "uvx",
-                "labnotes",
-                "-c",
-                str(root / ".labnotes.toml"),
-                "experiments",
-                "exp",
-                "run",
-            ]
-        ),
-        rows=30,
-        cols=120,
-        env={**os.environ, **uvx},
+    (root / "script.py").write_text(
+        "import time\nprint('working', flush=True)\ntime.sleep(6)\n"
     )
-    first.start()
-    try:
-        deadline = time.monotonic() + 20
-        while not records(root) and time.monotonic() < deadline:
-            time.sleep(0.05)
-        assert records(root), "first run never started"
-        assert first.is_alive
+    first = tui(root, "experiments", "exp", "run")
+    expect(first.get_by_text("working")).to_be_visible(timeout=120)
 
-        second = labnotes(root, uvx, "exp", "run")
+    run(tui, root, "0 passed, 0 failed.")
 
-        assert second.returncode == 0, second.stdout
-        assert "0 passed, 0 failed." in second.stdout
-        assert len(records(root)) == 1
-    finally:
-        expect(first.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=15)
-        first.key_ctrl_c()
-        first.wait(timeout=10)
-        first.kill()
+    expect(first.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=15)
+    tui.quit(first)
+    assert len(records(root)) == 1
 
 
 def test_uvx_run_continues_a_failed_run_without_a_mode(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = make_project(tmp_path / "project", "continues = true\n")
 
-    labnotes(root, uvx, "exp", "run")
-    second = labnotes(root, uvx, "exp", "run")
+    run(tui, root, "1 passed, 1 failed.")
+    run(tui, root, "1 passed, 0 failed.")
 
-    assert second.stdout.endswith("1 passed, 0 failed.\n"), second.stdout
     recorded = records(root)
     assert len(recorded) == 2
     [resumed] = [r for r in recorded.values() if r["params"] == {"m": "a"}]
@@ -164,25 +125,21 @@ def test_uvx_run_continues_a_failed_run_without_a_mode(
 
 
 def test_uvx_run_names_the_migration_for_mode_and_missing_continues(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     with_mode = make_project(tmp_path / "mode", 'continues = false\nmode = "adhoc"\n')
     without_continues = make_project(tmp_path / "continues", "")
 
-    moded = labnotes(with_mode, uvx, "exp", "run")
-    bare = labnotes(without_continues, uvx, "exp", "run")
+    moded = refused(tui, with_mode)
+    bare = refused(tui, without_continues)
 
-    assert moded.returncode != 0
-    assert "mode was removed" in moded.stdout
-    assert bare.returncode != 0
-    assert "continues = true or continues = false" in bare.stdout
+    expect(moded.get_by_text("mode was removed")).to_be_visible()
+    expect(bare.get_by_text("continues = true or continues = false")).to_be_visible()
     assert not (with_mode / "exp/runs").exists()
     assert not (without_continues / "exp/runs").exists()
 
 
-def test_uvx_lists_old_runs_nested_in_group_folders(
-    tmp_path: Path, uvx: dict[str, str]
-) -> None:
+def test_uvx_lists_old_runs_nested_in_group_folders(tmp_path: Path, tui: Tui) -> None:
     root = make_project(tmp_path / "project", "continues = false\n")
     for name, m in (("a-1a2b", "a"), ("b-3c4d", "b")):
         folder = root / "exp/runs/20261020-065052-still-lake" / name
@@ -193,10 +150,9 @@ def test_uvx_lists_old_runs_nested_in_group_folders(
             )
         )
 
-    listed = labnotes(root, uvx, "exp", "runs", "--format", "json")
+    term = tui(root, "experiments", "exp")
 
-    assert listed.returncode == 0, listed.stdout
-    assert sorted(row["id"] for row in json.loads(listed.stdout)) == [
-        "20261020-065052-still-lake/a-1a2b",
-        "20261020-065052-still-lake/b-3c4d",
-    ]
+    for run_id in ("a-1a2b", "b-3c4d"):
+        shown = f"20261020-065052-still-lake/{run_id}"
+        expect(term.get_by_text(shown)).to_be_visible(timeout=60)
+    tui.quit(term)

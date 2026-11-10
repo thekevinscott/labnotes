@@ -1,11 +1,11 @@
-from conftest import run_uvx_tui
 import json
-import os
-import subprocess
 import sys
 from pathlib import Path
 
 import pytest
+from curtaincall import Terminal, expect
+
+from conftest import Tui
 
 MANY = '[params]\nm = ["a", "b"]\n'
 CAPTURE = (
@@ -30,9 +30,14 @@ def project(root: Path, experiment: str, env: str = "") -> Path:
     return root
 
 
-def labnotes(root: Path, uvx: dict[str, str]) -> subprocess.CompletedProcess[str]:
-    env = {key: value for key, value in os.environ.items() if key != "LABEL"}
-    return run_uvx_tui(root, uvx, "experiments", "exp", "run", env=env)
+def labnotes(tui: Tui, root: Path) -> Terminal:
+    return tui(root, "experiments", "exp", "run", unset=("LABEL",), cols=300)
+
+
+def run(tui: Tui, root: Path, summary: str) -> None:
+    term = labnotes(tui, root)
+    expect(term.get_by_text(summary)).to_be_visible(timeout=120)
+    tui.quit(term)
 
 
 def journal(root: Path) -> list[object]:
@@ -41,7 +46,7 @@ def journal(root: Path) -> list[object]:
 
 
 def test_uvx_run_refuses_invocation_dir_in_setup_before_setup_runs(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = project(
         tmp_path / "project",
@@ -49,19 +54,20 @@ def test_uvx_run_refuses_invocation_dir_in_setup_before_setup_runs(
         'setup = "echo up {invocation_dir} >> journal.txt"\n',
     )
 
-    result = labnotes(root, uvx)
+    term = labnotes(tui, root)
 
-    assert result.returncode != 0, result.stdout + result.stderr
-    assert (
+    assert tui.exited(term) != 0, term.to_snapshot()
+    shown = (
         "setup command echo up {invocation_dir} >> journal.txt uses "
         "{invocation_dir}; setup, teardown, and meta get no folder placeholders. "
         "Share values with set_state() and get_state()."
-    ) in result.stderr
+    )
+    expect(term.get_by_text(shown)).to_be_visible()
     assert not (root / "journal.txt").exists()
 
 
 def test_uvx_matrix_run_gives_invocation_dir_env_to_runs_but_not_setup(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = project(
         tmp_path / "project",
@@ -71,9 +77,8 @@ def test_uvx_matrix_run_gives_invocation_dir_env_to_runs_but_not_setup(
     )
     (root / "capture.py").write_text(CAPTURE)
 
-    result = labnotes(root, uvx)
+    run(tui, root, "2 passed, 0 failed.")
 
-    assert result.returncode == 0, result.stdout + result.stderr
     folders = sorted(str(p.resolve()) for p in (root / "exp/runs").iterdir())
     rows = journal(root)
     assert rows[0] == ["setup", None]
@@ -82,7 +87,7 @@ def test_uvx_matrix_run_gives_invocation_dir_env_to_runs_but_not_setup(
 
 @pytest.mark.parametrize("params", ["", MANY])
 def test_uvx_setup_state_reaches_runs_and_teardown(
-    tmp_path: Path, uvx: dict[str, str], params: str
+    tmp_path: Path, tui: Tui, params: str
 ) -> None:
     root = project(
         tmp_path / "project",
@@ -93,9 +98,8 @@ def test_uvx_setup_state_reaches_runs_and_teardown(
     (root / "set.py").write_text(SET_STATE)
     (root / "get.py").write_text(GET_STATE)
 
-    result = labnotes(root, uvx)
-
-    assert result.returncode == 0, result.stdout + result.stderr
     runs = 2 if params else 1
+    run(tui, root, f"{runs} passed, 0 failed.")
+
     state = {"resource": "up"}
     assert journal(root) == [["run", state]] * runs + [["teardown", state]]

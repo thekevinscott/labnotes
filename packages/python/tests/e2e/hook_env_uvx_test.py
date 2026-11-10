@@ -1,12 +1,14 @@
-from conftest import run_uvx_tui
 import json
-import os
 import sys
 from pathlib import Path
 
+from curtaincall import expect
+
+from conftest import Tui
+
 
 def test_uvx_run_gives_run_dir_env_to_the_run_but_not_to_setup(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
@@ -15,6 +17,7 @@ def test_uvx_run_gives_run_dir_env_to_the_run_but_not_to_setup(
     )
     (root / "capture.py").write_text(
         "import json, os, sys\n"
+        'print("LABEL", os.environ.get("LABEL"))\n'
         'with open("journal.jsonl", "a") as journal:\n'
         '    journal.write(json.dumps([sys.argv[1], os.environ.get("LABEL")]) + "\\n")\n'
     )
@@ -22,12 +25,13 @@ def test_uvx_run_gives_run_dir_env_to_the_run_but_not_to_setup(
         f'continues = false\ncommand = "{sys.executable} capture.py run"\n'
         f'setup = "{sys.executable} capture.py setup"\n'
     )
-    env = {key: value for key, value in os.environ.items() if key != "LABEL"}
 
-    result = run_uvx_tui(root, uvx, "experiments", "exp", "run", env=env)
-
-    assert result.returncode == 0, result.stdout + result.stderr
+    term = tui(root, "experiments", "exp", "run", unset=("LABEL",), cols=300)
+    expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=120)
     [folder] = (root / "exp/runs").iterdir()
+    expect(term.get_by_text(f"LABEL {folder.resolve()}")).to_be_visible()
+    tui.quit(term)
+
     assert [
         json.loads(line) for line in (root / "journal.jsonl").read_text().splitlines()
     ] == [["setup", None], ["run", str(folder.resolve())]]

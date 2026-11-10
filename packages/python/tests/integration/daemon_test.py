@@ -373,12 +373,20 @@ def test_two_starts_do_not_exceed_repeats_on_one_daemon(
         second = request(path, {"command": "start", "options": {}})
         assert first["ok"] is True, first
         assert second["ok"] is True, second
+        journals = [Path(str(first["journal"])), Path(str(second["journal"]))]
         for _ in range(200):
-            records = list(root.glob("exp/runs/*/run.json"))
-            if records and all(json.loads(p.read_text()).get("ended") for p in records):
+            if all(
+                any(
+                    json.loads(line)["event"] == "idle"
+                    for line in journal.read_text().splitlines()
+                )
+                for journal in journals
+            ):
                 break
             time.sleep(0.05)
+        records = list(root.glob("exp/runs/*/run.json"))
         assert len(records) == 3, records
+        assert all(json.loads(p.read_text()).get("ended") for p in records), records
     finally:
         if daemon.poll() is None:
             daemon.terminate()

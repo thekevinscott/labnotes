@@ -1,10 +1,12 @@
-from conftest import run_uvx_tui
 import json
 import sys
 from datetime import datetime
 from pathlib import Path
 
 import pytest
+from curtaincall import expect
+
+from conftest import Tui
 
 # Exits 75 on the first launch, then 0.
 SCRIPT = """
@@ -36,7 +38,7 @@ def seconds(stamp: str) -> float:
 )
 def test_uvx_a_short_retry_wait_retries_sooner(
     tmp_path: Path,
-    uvx: dict[str, str],
+    tui: Tui,
     project: str,
     experiment: str,
     flags: list[str],
@@ -49,10 +51,12 @@ def test_uvx_a_short_retry_wait_retries_sooner(
         f'continues = false\ncommand = "{sys.executable} script.py"\n{experiment}'
     )
 
-    result = run_uvx_tui(root, uvx, "experiments", "exp", "run", *flags)
+    term = tui(root, "experiments", "exp", "run", *flags)
 
-    assert result.returncode == 0, result.stdout + result.stderr
-    assert "1 passed, 0 failed. 1 retried." in result.stdout
+    expect(term.get_by_text("1 passed, 0 failed. 1 retried.")).to_be_visible(
+        timeout=120
+    )
+    tui.quit(term)
     recorded = [
         json.loads(path.read_text()) for path in root.glob("exp/runs/**/run.json")
     ]

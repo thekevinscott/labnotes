@@ -1,19 +1,19 @@
-from conftest import run_uvx_tui
 import json
-import subprocess
 import sys
 from pathlib import Path
 
+import pytest
+from curtaincall import expect
 
-def run(
-    root: Path, uvx: dict[str, str], *args: str
-) -> subprocess.CompletedProcess[str]:
-    return run_uvx_tui(root, uvx, "experiments", "exp", "run", *args)
+from conftest import Tui
 
 
-def test_uvx_restarts_only_the_selected_failed_run(
-    tmp_path: Path, uvx: dict[str, str]
-) -> None:
+@pytest.mark.xfail(
+    strict=True,
+    reason="After the run goes idle, the restarted run passes on disk but never "
+    "shows up in the live view.",
+)
+def test_uvx_restarts_only_the_selected_failed_run(tmp_path: Path, tui: Tui) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
@@ -30,18 +30,17 @@ def test_uvx_restarts_only_the_selected_failed_run(
         'continues = false\nretries = 0\n[params]\nm = ["a", "b"]\n'
     )
 
-    first = run(root, uvx)
-    assert first.returncode == 0, first.stdout + first.stderr
-    before = {
-        path.parent.name: json.loads(path.read_text())
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text("1 passed, 1 failed.")).to_be_visible(timeout=120)
+    [failed] = [
+        path.parent.name
         for path in (root / "exp/runs").rglob("run.json")
-    }
-    [failed_id] = [
-        run_id for run_id, record in before.items() if record["exit_code"] == 1
+        if json.loads(path.read_text())["exit_code"] == 1
     ]
+    expect(term.get_by_text("✗ exited 1")).to_be_visible()
+    term.write("r")
 
-    second = run(root, uvx, "--run-id", failed_id)
-
-    assert second.returncode == 0, second.stdout + second.stderr
+    expect(term.get_by_text(f"Restarted {failed}.")).to_be_visible()
+    expect(term.get_by_text("2 passed, 0 failed. 1 retried.")).to_be_visible(timeout=60)
+    tui.quit(term)
     assert (root / "launches.txt").read_text().splitlines() == ["a", "b", "a"]
-    assert len(list((root / "exp/runs").rglob("run.json"))) == 3

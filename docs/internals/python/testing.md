@@ -63,3 +63,24 @@ def mock_external_api(mocker):
 For mocking a streaming external service (LLM client, network stream), build a fixture that exposes `set_response`, `set_error`, `set_responses` so each test configures the mock declaratively.
 
 **Coverage** with `pytest-cov`, `branch=true`, `fail_under` set per project — 85 is a reasonable floor; aiming for 100 forces tests for trivia.
+
+## TUI end-to-end tests
+
+E2e tests reach labnotes only through the installed `uvx labnotes` command and
+its TUI. They never import labnotes or call its Python API from the test
+process. Project files the test writes to disk, such as a workload script that
+calls `labnotes.set_state`, are user code and may use the public API.
+
+Open the TUI with the `tui` fixture in `packages/python/tests/e2e/conftest.py`.
+Drive it with curtaincall keys and assert on what the screen shows with
+`curtaincall.expect`. Disk and process checks may add to a screen assertion but
+never replace it.
+
+The fixture fails the test, with a screen snapshot, if the TUI prints a
+traceback or exits before the test quits it. End each test with `tui.quit`
+(Ctrl-C when idle), `tui.stop` (Ctrl-C, then stop the runs), or `tui.exited`
+for commands that should exit by themselves. Use `tui.signal` only for tests
+that crash or freeze the TUI on purpose.
+
+Commands with no TUI (`init`, `daemon`, `experiments --format json`, the
+refusal to run without a terminal) and browser tests use their own interface.

@@ -1,36 +1,11 @@
-from conftest import run_uvx_tui
 import json
-import os
 import sys
-from collections.abc import Iterator
 from pathlib import Path
 
-from curtaincall import expect
 import psutil
-import pytest
+from curtaincall import expect
 
-
-@pytest.fixture(autouse=True)
-def cleanup_daemon(tmp_path: Path) -> Iterator[None]:
-    yield
-    config = str(tmp_path / "project" / ".labnotes.toml")
-    owners = [
-        process
-        for process in psutil.process_iter(["cmdline"])
-        if config in (process.info["cmdline"] or [])
-        and "daemon" in (process.info["cmdline"] or [])
-    ]
-    for process in owners:
-        try:
-            process.terminate()
-        except psutil.NoSuchProcess:
-            pass
-    _, alive = psutil.wait_procs(owners, timeout=15)
-    for process in alive:
-        try:
-            process.kill()
-        except psutil.NoSuchProcess:
-            pass
+from conftest import Tui
 
 
 def project(tmp_path: Path, setup: str) -> Path:
@@ -47,15 +22,19 @@ def project(tmp_path: Path, setup: str) -> Path:
 
 
 def test_uvx_run_keeps_setup_and_teardown_logs_with_the_experiment(
-    tmp_path: Path, uvx: dict[str, str]
+    tmp_path: Path, tui: Tui
 ) -> None:
     root = project(
         tmp_path, "import sys\nprint('pod up')\nprint('warming', file=sys.stderr)\n"
     )
 
-    result = run_uvx_tui(root, uvx, "experiments", "exp", "run")
+    term = tui(root, "experiments", "exp", "run")
 
-    assert result.returncode == 0, result.stdout + result.stderr
+    expect(term.get_by_text("2 passed, 0 failed.")).to_be_visible(timeout=120)
+    term.write("[")
+    term.write("[")
+    expect(term.get_by_text("pod up")).to_be_visible()
+    tui.quit(term)
     logs = root / "exp/.labnotes/logs"
     [setup] = (logs / "setup").iterdir()
     [teardown] = (logs / "teardown").iterdir()
@@ -68,19 +47,12 @@ def test_uvx_run_keeps_setup_and_teardown_logs_with_the_experiment(
     assert (metadata["exit_code"], sorted(metadata["runs"])) == (0, runs)
 
 
-def test_uvx_run_tui_shows_setup_logs_then_the_runs(
-    terminal, tmp_path: Path, uvx: dict[str, str]
-) -> None:
+def test_uvx_run_tui_shows_setup_logs_then_the_runs(tmp_path: Path, tui: Tui) -> None:
     root = project(
         tmp_path, "import time\nprint('pod up', flush=True)\ntime.sleep(4)\n"
     )
 
-    term = terminal(
-        f"uvx labnotes -c {root / '.labnotes.toml'} experiments exp run",
-        rows=30,
-        cols=120,
-        env={**os.environ, **uvx},
-    )
+    term = tui(root, "experiments", "exp", "run")
 
     expect(term.get_by_text("pod up")).to_be_visible(timeout=60)
     expect(term.get_by_text("setup")).to_be_visible()
@@ -88,29 +60,21 @@ def test_uvx_run_tui_shows_setup_logs_then_the_runs(
     term.write("[")
     term.write("[")
     expect(term.get_by_text("pod up")).to_be_visible()
-    term.key_ctrl_c()
-    term.wait()
+    tui.quit(term)
 
 
-def test_uvx_ctrl_c_during_setup_stops_the_invocation(
-    terminal, tmp_path: Path, uvx: dict[str, str]
-) -> None:
+def test_uvx_ctrl_c_during_setup_stops_the_invocation(tmp_path: Path, tui: Tui) -> None:
     root = project(
         tmp_path, "import time\nprint('pod up', flush=True)\ntime.sleep(4)\n"
     )
     config = str(root / ".labnotes.toml")
 
-    term = terminal(
-        f"uvx labnotes -c {config} experiments exp run",
-        rows=30,
-        cols=120,
-        env={**os.environ, **uvx},
-    )
+    term = tui(root, "experiments", "exp", "run")
     expect(term.get_by_text("pod up")).to_be_visible(timeout=60)
     term.key_ctrl_c()
     expect(term.get_by_text("Setting up. Stop (s)")).to_be_visible()
     term.write("s")
-    term.wait(timeout=10)
+    assert tui.exited(term) == 0, term.to_snapshot()
 
     daemons = [
         process

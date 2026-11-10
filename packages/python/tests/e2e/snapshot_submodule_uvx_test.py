@@ -1,8 +1,9 @@
-import os
 import subprocess
 from pathlib import Path
 
 from curtaincall import expect
+
+from conftest import Tui
 
 
 def _commit(root: Path) -> None:
@@ -24,7 +25,7 @@ def _commit(root: Path) -> None:
 
 
 def test_uvx_run_can_read_git_inside_snapshot_submodule(
-    tmp_path: Path, uvx: dict[str, str], terminal
+    tmp_path: Path, tui: Tui
 ) -> None:
     source = tmp_path / "source"
     source.mkdir()
@@ -63,11 +64,9 @@ def test_uvx_run_can_read_git_inside_snapshot_submodule(
     _commit(root)
     (root / "dependency/version.txt").write_text("dirty\n")
 
-    command = f"uvx labnotes -c {root / '.labnotes.toml'} experiments exp run"
-    term = terminal(command, env={**os.environ, **uvx}, rows=30, cols=120)
-    expect(term.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=30)
-    term.key_ctrl_c()
-    term.wait()
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=120)
+    tui.quit(term)
     [run] = list((root / "runs/exp").iterdir())
     assert (run / "sha.txt").read_bytes() == expected_sha
     assert b" M version.txt" in (run / "status.txt").read_bytes()

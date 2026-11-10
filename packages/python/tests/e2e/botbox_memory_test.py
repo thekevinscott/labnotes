@@ -1,26 +1,25 @@
-from conftest import run_uvx_tui
 import json
-import os
 from pathlib import Path
+
+from curtaincall import expect
+
+from conftest import Tui
 
 
 def test_installed_labnotes_counts_container_memory_from_botbox_labels(
-    botbox_memory_project: Path, botbox_caller_labels: str, uvx: dict[str, str]
+    botbox_memory_project: Path, botbox_caller_labels: str, tui: Tui
 ) -> None:
     root = botbox_memory_project
-    result = run_uvx_tui(
-        root,
-        uvx,
-        "experiments",
-        "exp",
-        "run",
-        env={**os.environ, "BOTBOX_LABELS": botbox_caller_labels},
+    term = tui(
+        root, "experiments", "exp", "run", env={"BOTBOX_LABELS": botbox_caller_labels}
     )
-    assert "1 passed, 0 failed." in result.stdout
+    expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=120)
+    term.write("[")
+    expect(term.get_by_text("200000000")).to_be_visible()
+    tui.quit(term)
+
     [record] = root.glob("exp/runs/*/run.json")
     folder = record.parent
-    assert json.loads(record.read_text())["exit_code"] == 0
-    assert (folder / "stdout.log").read_text().strip() == "200000000"
     for hook in ("setup", "teardown"):
         assert (root / f"{hook}-labels.txt").read_text() == botbox_caller_labels
     samples = [

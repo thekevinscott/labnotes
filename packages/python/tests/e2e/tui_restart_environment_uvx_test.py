@@ -1,6 +1,5 @@
 import json
 import os
-import shlex
 import socket
 import subprocess
 import sys
@@ -11,6 +10,8 @@ from tempfile import TemporaryDirectory
 
 import psutil
 import pytest
+
+from conftest import Tui
 
 SCRIPT = """
 import json
@@ -168,26 +169,16 @@ def restart(term, root: Path, run: str) -> dict[str, object]:
 
 
 def test_uvx_live_run_restart_sends_this_shells_environment_and_config(
-    terminal, tmp_path: Path, runtime: Path, uvx: dict[str, str]
+    tui: Tui, tmp_path: Path, runtime: Path, uvx: dict[str, str]
 ) -> None:
     root = project(tmp_path / "project")
     daemon, attached = daemon_from_another_shell(root, runtime, uvx)
     try:
-        term = terminal(
-            shlex.join(
-                labnotes(
-                    root, "experiments", "exp", "run", "-e", str(root / "other.toml")
-                )
-                + ["--", "--token", "original"]
-            ),
-            rows=30,
-            cols=200,
-            env={
-                **os.environ,
-                **uvx,
-                "XDG_RUNTIME_DIR": str(runtime),
-                "RESTART_PROBE": "client",
-            },
+        term = tui(
+            root,
+            *["experiments", "exp", "run", "-e", str(root / "other.toml")],
+            *["--", "--token", "original"],
+            env={"XDG_RUNTIME_DIR": str(runtime), "RESTART_PROBE": "client"},
         )
         failed = failed_run(root)
 
@@ -206,7 +197,7 @@ def test_uvx_live_run_restart_sends_this_shells_environment_and_config(
 
 
 def test_uvx_browse_restart_sends_this_shells_environment(
-    terminal, tmp_path: Path, runtime: Path, uvx: dict[str, str]
+    tui: Tui, tmp_path: Path, runtime: Path, uvx: dict[str, str]
 ) -> None:
     root = project(tmp_path / "project")
     daemon, attached = daemon_from_another_shell(root, runtime, uvx)
@@ -229,16 +220,11 @@ def test_uvx_browse_restart_sends_this_shells_environment(
                 assert json.loads(reply.readline())["ok"] is True
         failed = failed_run(root)
         assert launches(root)[0]["probe"] == "daemon"
-        term = terminal(
-            shlex.join(labnotes(root, "experiments", "exp")),
-            rows=30,
-            cols=200,
-            env={
-                **os.environ,
-                **uvx,
-                "XDG_RUNTIME_DIR": str(runtime),
-                "RESTART_PROBE": "client",
-            },
+        term = tui(
+            root,
+            "experiments",
+            "exp",
+            env={"XDG_RUNTIME_DIR": str(runtime), "RESTART_PROBE": "client"},
         )
         restarted = restart(term, root, failed)
 

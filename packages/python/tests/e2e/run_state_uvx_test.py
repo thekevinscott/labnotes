@@ -1,19 +1,25 @@
-from conftest import run_uvx_tui
 import json
 import os
 import sys
 from pathlib import Path
 
+from curtaincall import expect
 
-def test_uvx_run_leaves_replayable_state(tmp_path: Path, uvx: dict[str, str]) -> None:
+from conftest import Tui
+
+
+def test_uvx_run_leaves_replayable_state(tmp_path: Path, tui: Tui) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     (root / "exp/experiment.toml").write_text(
         f'continues = false\ncommand = "{sys.executable} -c pass"\n' "repeats = 2\n"
     )
-    result = run_uvx_tui(root, uvx, "experiments", "exp", "run")
-    assert result.returncode == 0, result.stdout + result.stderr
+
+    term = tui(root, "experiments", "exp", "run")
+
+    expect(term.get_by_text("2 passed, 0 failed.")).to_be_visible(timeout=120)
+    tui.quit(term)
     [state] = list(
         (Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state").glob("*/*.jsonl")
     )

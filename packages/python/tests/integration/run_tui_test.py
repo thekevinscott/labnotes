@@ -162,6 +162,26 @@ def test_x_stops_selected_run(terminal, tmp_path: Path) -> None:
     stop(term)
 
 
+def test_drain_finishes_current_run_without_starting_queued_run(
+    terminal, tmp_path: Path
+) -> None:
+    command = f"{shlex.quote(sys.executable)} -c 'import time; time.sleep(2)'"
+    term = run_tui(terminal, tmp_path, 2, command)
+    expect(term.get_by_text(re.compile(r"[|/\\-] +\d+s"))).to_be_visible()
+    term.write("d")
+    expect(term.get_by_text("Draining")).to_be_visible()
+    assert term.is_alive
+    expect(term.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=15)
+    records = [
+        json.loads(path.read_text()) for path in tmp_path.glob("exp/runs/*/run.json")
+    ]
+    assert len(records) == 1
+    assert records[0]["exit_code"] == 0
+    assert records[0]["ended_by"] is None
+    term.key_ctrl_c()
+    term.wait()
+
+
 def test_retry_wait_and_end_summary(terminal, tmp_path: Path) -> None:
     command = f"{shlex.quote(sys.executable)} -c 'import sys; sys.exit(75)'"
     term = run_tui(terminal, tmp_path, 2, command, "retries = 1\n")

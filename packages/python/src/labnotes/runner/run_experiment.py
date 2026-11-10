@@ -202,6 +202,7 @@ async def run_experiment(
     stopped: set[str] = set()
     results: dict[str, dict[str, object]] = {}
     stopping = asyncio.Event()
+    draining = False
 
     def signal_run(run: str, signal_number: int) -> None:
         for process in running[run]:
@@ -224,6 +225,21 @@ async def run_experiment(
         elif any(running.values()):
             emit({"event": "killing"})
             signal_runs(signal.SIGKILL)
+
+    def drain() -> None:
+        nonlocal draining
+        if draining or stopping.is_set():
+            return
+        draining = True
+        for run, _ in plan:
+            if run in locks:
+                release(run)
+        plan.clear()
+        emit({"event": "draining"})
+        for run in list(waiting):
+            cancel_retry(run)
+        fill()
+        finish()
 
     def kill(run: str) -> None:
         if run in waiting:
@@ -368,7 +384,7 @@ async def run_experiment(
         ended[run] = params
         results[run] = {"run": run, **result}
         if result["exit_code"] == RETRY_EXIT_CODE and not (
-            stopping.is_set() or run in stopped
+            stopping.is_set() or draining or run in stopped
         ):
             retry_later(run)
         if run not in waiting:
@@ -395,7 +411,7 @@ async def run_experiment(
         if experiment.teardown is not None:
             await run_hook("teardown", experiment.teardown, "tearing down")
 
-    listen(Controls(interrupt, set_concurrency, kill, finish))
+    listen(Controls(interrupt, set_concurrency, kill, finish, drain))
     with TemporaryDirectory(prefix="labnotes-state-") as state_dir:
         state_file = Path(state_dir) / "state.json"
         for hook in ("setup", "teardown"):

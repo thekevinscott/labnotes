@@ -25,6 +25,7 @@ class Invocation:
     task: asyncio.Task[None] | None = None
     controls: Controls | None = None
     stop_requested: bool = False
+    drain_requested: bool = False
 
 
 class ExperimentDaemon:
@@ -46,6 +47,13 @@ class ExperimentDaemon:
             if invocation.controls is not None:
                 invocation.controls.interrupt()
 
+    def drain(self) -> None:
+        """Drop queued work while active runs finish without signals."""
+        for invocation in self.active.values():
+            invocation.drain_requested = True
+            if invocation.controls is not None:
+                invocation.controls.drain()
+
     async def start(self, options: dict[str, object]) -> dict[str, object]:
         """Start one invocation after earlier plans are visible."""
         async with self.start_lock:
@@ -60,7 +68,7 @@ class ExperimentDaemon:
                 ]
             except FileNotFoundError:
                 continue
-            if any(event.get("event") == "stopping" for event in events):
+            if any(event.get("event") in ("stopping", "draining") for event in events):
                 continue
             for event in events:
                 if event.get("event") == "planned":
@@ -101,6 +109,8 @@ class ExperimentDaemon:
             controls.finish()
             if invocation.stop_requested:
                 controls.interrupt()
+            elif invocation.drain_requested:
+                controls.drain()
             if not ready.done():
                 ready.set_result(None)
 
@@ -143,6 +153,9 @@ class ExperimentDaemon:
             return await self.start(options)
         if action == "stop_all":
             self.stop_all()
+            return {"ok": True}
+        if action == "drain":
+            self.drain()
             return {"ok": True}
         if action == "stop_one":
             run = message.get("run")

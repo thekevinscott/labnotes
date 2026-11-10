@@ -23,7 +23,7 @@ def test_runs_the_app_and_returns_its_results() -> None:
         ("a", "b"),
         config=None,
         experiment_config=None,
-        daemon_journal=None,
+        daemon_request=None,
     )
     run_app.return_value.run.assert_called_once_with()
 

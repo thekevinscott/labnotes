@@ -22,6 +22,7 @@ from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, S
 from labnotes.compose_experiment import compose_experiment
 from labnotes.daemon.command import command as daemon_command
 from labnotes.daemon.client import daemon_socket
+from labnotes.daemon.request_start import request_start
 from labnotes.load_experiment import load_experiment
 from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
@@ -44,6 +45,7 @@ from labnotes.tui.restart_request import restart_request
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 from labnotes.tui.stage_line import stage_line
+from labnotes.tui.startup_steps import startup_steps
 from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
@@ -486,7 +488,10 @@ class RunLiveView(Widget):
 
 
 class RunApp(ViewSwitcher, App[None]):
-    CSS = "#concurrency { dock: right; width: auto; padding: 0 1; }"
+    CSS = """
+    #concurrency { dock: right; width: auto; padding: 0 1; }
+    #startup { height: 1fr; padding: 1 2; display: none; }
+    """
     BINDINGS = [Binding("ctrl+c", "interrupt", "Quit")]
 
     def __init__(
@@ -497,6 +502,7 @@ class RunApp(ViewSwitcher, App[None]):
         config: LabnotesConfig | None = None,
         experiment_config: Path | None = None,
         daemon_journal: RunState | None = None,
+        daemon_request: dict[str, object] | None = None,
     ) -> None:
         super().__init__()
         self.start = start
@@ -516,6 +522,9 @@ class RunApp(ViewSwitcher, App[None]):
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
         self.daemon_journal = daemon_journal
+        self.daemon_request = daemon_request
+        self.steps: list[str] = []
+        self.startup_frame = 0
         self.run_state = daemon_journal or (
             start.run_state if isinstance(start, ExperimentStart) else None
         )
@@ -526,6 +535,7 @@ class RunApp(ViewSwitcher, App[None]):
 
     def compose(self) -> ComposeResult:
         yield Header()
+        yield Static(id="startup")
         with ContentSwitcher(initial="view-1"):
             if self.view_specs:
                 assert self.config is not None
@@ -556,33 +566,70 @@ class RunApp(ViewSwitcher, App[None]):
                 exit_on_error=False,
             )
             self.run_worker(self.watch_files(tables), exit_on_error=False)
-        if self.daemon_journal is not None:
-            journal = self.daemon_journal
+        if self.daemon_request is not None:
+            self.query_one("#startup").display = True
+            self.query_one(ContentSwitcher).display = False
+            self.startup_timer = self.set_interval(0.1, self.spin_startup)
+            self.run_worker(self.start_daemon_run(), exit_on_error=False)
+        elif self.daemon_journal is not None:
             try:
-                self.attach_daemon()
+                self.follow_daemon()
             except (OSError, ValueError) as error:
                 self.error = error
                 self.exit()
-                return
-            self.listen(
-                Controls(
-                    lambda: self.queue_command({"command": "stop_all"}),
-                    lambda count: self.queue_command(
-                        {
-                            "command": "set_concurrency",
-                            "count": count,
-                            "journal": str(journal.path),
-                        }
-                    ),
-                    lambda run: self.queue_command({"command": "stop_one", "run": run}),
-                    lambda: None,
-                    lambda: self.queue_command({"command": "drain"}),
-                )
-            )
-            self.set_interval(0.25, self.refresh_state)
-            self.refresh_state()
         else:
             self.run_worker(self.drive())
+
+    def step(self, step: str) -> None:
+        self.steps.append(step)
+        self.spin_startup()
+
+    def spin_startup(self) -> None:
+        self.startup_frame = (self.startup_frame + 1) % len(SPINNER)
+        self.query_one("#startup", Static).update(
+            startup_steps(self.steps, SPINNER[self.startup_frame])
+        )
+
+    async def start_daemon_run(self) -> None:
+        assert self.config is not None and self.daemon_request is not None
+        try:
+            reply = await request_start(
+                self.config, self.experiment_name, self.daemon_request, self.step
+            )
+            self.daemon_journal = RunState(Path(str(reply["journal"])))
+            self.run_state = self.daemon_journal
+            self.follow_daemon()
+        except (OSError, ValueError) as error:
+            self.error = ValueError(str(error))
+            self.exit()
+            return
+        self.startup_timer.stop()
+        self.query_one("#startup").display = False
+        self.query_one(ContentSwitcher).display = True
+        # Auto-focus ran while the views were hidden.
+        self.call_after_refresh(self.screen.focus_next)
+
+    def follow_daemon(self) -> None:
+        assert self.daemon_journal is not None
+        journal = self.daemon_journal
+        self.attach_daemon()
+        self.listen(
+            Controls(
+                lambda: self.queue_command({"command": "stop_all"}),
+                lambda count: self.queue_command(
+                    {
+                        "command": "set_concurrency",
+                        "count": count,
+                        "journal": str(journal.path),
+                    }
+                ),
+                lambda run: self.queue_command({"command": "stop_one", "run": run}),
+                lambda: None,
+                lambda: self.queue_command({"command": "drain"}),
+            )
+        )
+        self.set_interval(0.25, self.refresh_state)
+        self.refresh_state()
 
     def attach_daemon(self) -> None:
         assert self.config is not None
@@ -633,16 +680,14 @@ class RunApp(ViewSwitcher, App[None]):
     async def restart_daemon_run(self, run: str) -> None:
         assert self.config is not None
         try:
-            reply = await asyncio.to_thread(
-                daemon_command,
+            await request_start(
                 self.config,
                 self.experiment_name,
                 restart_request(run, self.experiment_config),
+                lambda step: self.body.show(f"Restarting {run}: {step}"),
             )
-            if not reply.get("ok"):
-                raise ValueError(str(reply.get("error", "Daemon rejected restart")))
             self.body.show(f"Restarted {run}.")
-        except ValueError as error:
+        except (OSError, ValueError) as error:
             self.body.show(f"Could not restart {run}: {error}")
 
     def configured_views(self) -> dict[str, str]:
@@ -727,6 +772,11 @@ class RunApp(ViewSwitcher, App[None]):
             self.controls.interrupt()
 
     def action_interrupt(self) -> None:
+        if self.daemon_request is not None and self.daemon_journal is None:
+            name = self.experiment_name
+            self.farewell = f"{name} may still start. Stop it with: labnotes experiments {name} stop"
+            self.exit()
+            return
         if self.daemon_journal is not None:
             busy = self.body.busy() if self.body_ready else "Still running."
             if busy is None:

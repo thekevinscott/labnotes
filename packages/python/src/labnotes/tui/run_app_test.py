@@ -1037,15 +1037,17 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
             worker.assert_called_once()
             worker.call_args.args[0].close()
         with mock.patch(
-            "labnotes.tui.run_app.daemon_command", return_value={"ok": True}
+            "labnotes.tui.run_app.request_start", new=mock.AsyncMock()
         ) as command:
             asyncio.run(app.restart_daemon_run("r1"))
             request.assert_called_once_with("r1", tmp_path / "other.toml")
-            command.assert_called_once_with(config, "exp", mock.sentinel.request)
+            assert command.call_args.args[:3] == (config, "exp", mock.sentinel.request)
             show.assert_called_with("Restarted r1.")
+            command.call_args.args[3]("Snapshotting repo")
+            show.assert_called_with("Restarting r1: Snapshotting repo")
         with mock.patch(
-            "labnotes.tui.run_app.daemon_command",
-            return_value={"ok": False, "error": "locked"},
+            "labnotes.tui.run_app.request_start",
+            new=mock.AsyncMock(side_effect=ValueError("locked")),
         ):
             asyncio.run(app.restart_daemon_run("r1"))
             show.assert_called_with("Could not restart r1: locked")
@@ -2392,3 +2394,72 @@ def test_runs_stage_state(
     view.failed, view.retried = failed, retried
 
     assert view.stage_state("runs") == state
+
+
+def starting_app(tmp_path: Path) -> RunApp:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    return RunApp(None, "exp", COLUMNS, config, daemon_request={"command": "start"})
+
+
+def test_startup_shows_each_step_then_follows_the_run(tmp_path: Path) -> None:
+    app = starting_app(tmp_path)
+    accept = asyncio.Event()
+
+    async def request_start(config, name, request, progress):
+        progress("Starting daemon")
+        progress("Snapshotting repo")
+        await accept.wait()
+        return {"ok": True, "journal": str(tmp_path / "j.jsonl")}
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.tui.run_app.request_start", new=request_start),
+            mock.patch.object(app, "follow_daemon") as follow,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                shown = str(app.query_one("#startup").render())
+                assert "✓ Starting daemon" in shown
+                assert "Snapshotting repo" in shown
+                assert app.query_one("#startup").display is True
+                accept.set()
+                await pilot.pause()
+                follow.assert_called_once_with()
+                assert app.daemon_journal is not None
+                assert app.daemon_journal.path == tmp_path / "j.jsonl"
+                assert app.run_state is app.daemon_journal
+                assert app.query_one("#startup").display is False
+                await pilot.pause()
+                assert app.focused is not None
+
+    asyncio.run(drive())
+
+
+def test_startup_failure_exits_with_the_error(tmp_path: Path) -> None:
+    app = starting_app(tmp_path)
+
+    async def request_start(config, name, request, progress):
+        progress("Starting daemon")
+        raise OSError("AF_UNIX path too long")
+
+    async def drive() -> None:
+        with mock.patch("labnotes.tui.run_app.request_start", new=request_start):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert not app.is_running
+        assert isinstance(app.error, ValueError)
+        assert str(app.error) == "AF_UNIX path too long"
+
+    asyncio.run(drive())
+
+
+def test_ctrl_c_before_the_daemon_replies_names_the_stop_command(
+    tmp_path: Path,
+) -> None:
+    app = starting_app(tmp_path)
+    with mock.patch.object(app, "exit") as exit_app:
+        app.action_interrupt()
+        exit_app.assert_called_once_with()
+    assert app.farewell == (
+        "exp may still start. Stop it with: labnotes experiments exp stop"
+    )

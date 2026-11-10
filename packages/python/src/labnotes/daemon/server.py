@@ -6,6 +6,7 @@ import json
 import os
 import signal
 import time
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
@@ -15,7 +16,6 @@ from labnotes.models import Controls, LabnotesConfig
 from labnotes.runner.start_experiment import start_experiment
 
 IDLE_SECONDS = 5.0
-START_WAIT_SECONDS = 30.0
 
 
 @dataclass
@@ -54,12 +54,20 @@ class ExperimentDaemon:
             if invocation.controls is not None:
                 invocation.controls.drain()
 
-    async def start(self, options: dict[str, object]) -> dict[str, object]:
+    async def start(
+        self,
+        options: dict[str, object],
+        progress: Callable[[str], None] = lambda step: None,
+    ) -> dict[str, object]:
         """Start one invocation after earlier plans are visible."""
+        if self.start_lock.locked():
+            progress("Waiting for an earlier start")
         async with self.start_lock:
-            return await self._start(options)
+            return await self._start(options, progress)
 
-    async def _start(self, options: dict[str, object]) -> dict[str, object]:
+    async def _start(
+        self, options: dict[str, object], progress: Callable[[str], None]
+    ) -> dict[str, object]:
         reserved: dict[str, dict[str, object]] = {}
         for path in self.active:
             try:
@@ -98,6 +106,7 @@ class ExperimentDaemon:
             bool(options.get("replace_capped")),
             reserved,
             cast(dict[str, str] | None, options.get("environment")),
+            progress,
         )
         path = str(selected.run_state.path)
         invocation = Invocation()
@@ -126,20 +135,22 @@ class ExperimentDaemon:
                     )
             finally:
                 self.active.pop(path, None)
+                if not ready.done():
+                    ready.set_exception(ValueError("Start ended before any run"))
 
         task = asyncio.create_task(run())
         invocation.task = task
         try:
-            await asyncio.wait_for(ready, timeout=START_WAIT_SECONDS)
-        except TimeoutError:
-            task.cancel()
-            await asyncio.gather(task, return_exceptions=True)
-            return {"ok": False, "error": "Experiment preparation timed out"}
+            await ready
         except ValueError as error:
             return {"ok": False, "error": str(error)}
         return {"ok": True, "journal": path}
 
-    async def dispatch(self, message: dict[str, object]) -> dict[str, object]:
+    async def dispatch(
+        self,
+        message: dict[str, object],
+        progress: Callable[[str], None] = lambda step: None,
+    ) -> dict[str, object]:
         """Apply one command and provide one success or error reply."""
         action = message.get("command")
         if action == "ping":
@@ -150,7 +161,7 @@ class ExperimentDaemon:
                 return {"ok": False, "error": "options must be an object"}
             if action == "restart" and "run_id" not in options:
                 return {"ok": False, "error": "restart needs run_id"}
-            return await self.start(options)
+            return await self.start(options, progress)
         if action == "stop_all":
             self.stop_all()
             return {"ok": True}
@@ -201,7 +212,12 @@ class ExperimentDaemon:
                 reply = {"ok": False, "error": "Request must be an object"}
             else:
                 try:
-                    reply = await self.dispatch(message)
+                    reply = await self.dispatch(
+                        message,
+                        lambda step: writer.write(
+                            (json.dumps({"step": step}) + "\n").encode()
+                        ),
+                    )
                 except Exception as error:
                     # A request always gets one error reply, even on internal failures.
                     reply = {"ok": False, "error": str(error)}

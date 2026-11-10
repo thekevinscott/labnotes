@@ -92,3 +92,51 @@ def test_invocation_keeps_its_journal_identity() -> None:
     with pytest.raises(FrozenInstanceError):
         setattr(start, "run_state", mock.sentinel.other)
     assert start.run_state is original
+
+
+def test_reports_each_step_before_it_starts() -> None:
+    config = mock.Mock(root=Path("/tmp/project"), runs="{experiment}/runs/{run}")
+    seen: list[str] = []
+
+    async def prepare(*args: object) -> tuple[object, int]:
+        seen.append("prepare")
+        return mock.sentinel.experiment, 1
+
+    async def finalize(*args: object) -> None:
+        seen.append("finalize")
+
+    async def run(*args: object, **kwargs: object) -> list[dict[str, object]]:
+        seen.append("run")
+        return []
+
+    snapshot = mock.MagicMock()
+    snapshot.return_value.__enter__.side_effect = lambda: seen.append("snapshot")
+    with (
+        mock.patch("labnotes.runner.start_experiment.prepare_experiment", new=prepare),
+        mock.patch("labnotes.runner.start_experiment.finalize_lost_runs", new=finalize),
+        mock.patch("labnotes.runner.start_experiment.run_experiment", new=run),
+        mock.patch("labnotes.runner.start_experiment.project_snapshot", new=snapshot),
+    ):
+        start = start_experiment(
+            config,
+            "exp",
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            None,
+            progress=seen.append,
+        )
+        asyncio.run(start(mock.Mock(), mock.Mock()))
+    assert seen == [
+        "Reading experiment config",
+        "prepare",
+        "Finalizing lost runs",
+        "finalize",
+        "Snapshotting repo",
+        "snapshot",
+        "Starting run",
+        "run",
+    ]

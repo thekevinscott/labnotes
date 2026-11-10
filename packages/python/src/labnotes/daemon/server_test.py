@@ -215,7 +215,7 @@ def test_start_passes_retries_retry_wait_and_replace_capped(
         ) as start:
             await daemon.start(options)
         assert start.call_args.args[11:14] == expected
-        assert start.call_args.args[14:] == ({}, None)
+        assert start.call_args.args[14:16] == ({}, None)
 
     asyncio.run(drive())
 
@@ -258,26 +258,71 @@ def test_start_returns_preparation_error_and_records_late_error(
     asyncio.run(drive())
 
 
-def test_start_times_out_and_cancels_stuck_preparation(tmp_path: Path) -> None:
+def test_start_waits_for_slow_preparation_without_a_deadline(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
         selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "slow.jsonl"))
 
         async def run(report, listen):
-            await asyncio.Event().wait()
+            await asyncio.sleep(0.2)
+            listen(mock.Mock())
+            return []
 
         selected.side_effect = run
-        with (
-            mock.patch(
-                "labnotes.daemon.server.start_experiment", return_value=selected
-            ),
-            mock.patch("labnotes.daemon.server.START_WAIT_SECONDS", 0),
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ):
+            assert await daemon.start({}) == {
+                "ok": True,
+                "journal": str(tmp_path / "slow.jsonl"),
+            }
+
+    asyncio.run(drive())
+
+
+def test_start_that_ends_before_any_run_reports_it(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "none.jsonl"))
+
+        async def run(report, listen):
+            return []
+
+        selected.side_effect = run
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
         ):
             assert await daemon.start({}) == {
                 "ok": False,
-                "error": "Experiment preparation timed out",
+                "error": "Start ended before any run",
             }
         assert not daemon.active
+
+    asyncio.run(drive())
+
+
+def test_start_passes_progress_and_reports_a_queued_start(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+
+        async def run(report, listen):
+            listen(mock.Mock())
+            return []
+
+        selected.side_effect = run
+        steps: list[str] = []
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ) as start:
+            async with daemon.start_lock:
+                waiting = asyncio.create_task(
+                    daemon.dispatch({"command": "start", "options": {}}, steps.append)
+                )
+                await asyncio.sleep(0)
+            assert (await waiting)["ok"] is True
+        assert steps == ["Waiting for an earlier start"]
+        assert start.call_args.args[-1] == steps.append
 
     asyncio.run(drive())
 
@@ -583,6 +628,36 @@ def test_socket_closes_after_one_reply_unless_attached(tmp_path: Path) -> None:
     asyncio.run(drive())
 
 
+def test_start_steps_reach_the_wire_before_the_reply(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+
+        async def dispatch(message, progress):
+            progress("Snapshotting repo")
+            return {"ok": True}
+
+        server = await asyncio.start_unix_server(
+            daemon.handle, path=str(tmp_path / "s.sock")
+        )
+        try:
+            with mock.patch.object(daemon, "dispatch", new=dispatch):
+                reader, writer = await asyncio.open_unix_connection(
+                    str(tmp_path / "s.sock")
+                )
+                writer.write(b'{"command":"start","options":{}}\n')
+                await writer.drain()
+                assert await reader.read() == (
+                    b'{"step": "Snapshotting repo"}\n{"ok": true}\n'
+                )
+                writer.close()
+                await writer.wait_closed()
+        finally:
+            server.close()
+            await server.wait_closed()
+
+    asyncio.run(drive())
+
+
 def test_idle_exit_waits_five_seconds_after_last_busy(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
@@ -597,30 +672,6 @@ def test_idle_exit_waits_five_seconds_after_last_busy(tmp_path: Path) -> None:
         ):
             await daemon.wait_until_idle()
         assert sleep.await_args_list == [mock.call(0.2), mock.call(0.2)]
-
-    asyncio.run(drive())
-
-
-def test_start_waits_thirty_seconds_for_preparation(tmp_path: Path) -> None:
-    async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "slow.jsonl"))
-
-        async def run(report, listen):
-            await asyncio.Event().wait()
-
-        async def expire(future, timeout):
-            assert timeout == 30.0
-            raise TimeoutError
-
-        selected.side_effect = run
-        with (
-            mock.patch(
-                "labnotes.daemon.server.start_experiment", return_value=selected
-            ),
-            mock.patch("labnotes.daemon.server.asyncio.wait_for", new=expire),
-        ):
-            assert (await daemon.start({}))["ok"] is False
 
     asyncio.run(drive())
 
@@ -687,7 +738,7 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
             "labnotes.daemon.server.start_experiment", return_value=selected
         ) as start:
             await daemon.start({"environment": {"KEY": "value"}})
-        assert start.call_args.args[14:] == (
+        assert start.call_args.args[14:16] == (
             {"r1": {"m": "a"}},
             {"KEY": "value"},
         )

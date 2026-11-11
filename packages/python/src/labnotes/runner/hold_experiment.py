@@ -1,4 +1,5 @@
 import fcntl
+import operator
 import os
 from collections.abc import Iterator
 from contextlib import contextmanager, suppress
@@ -15,7 +16,7 @@ def hold_experiment(config: LabnotesConfig, name: str) -> Iterator[None]:
     descriptor = os.open(folder, os.O_RDONLY)
     try:
         try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)  # probe
+            fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
         except BlockingIOError:
             raise ValueError(
                 f"{name} is already running in another labnotes run."

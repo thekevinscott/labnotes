@@ -1,3 +1,5 @@
+import fcntl
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -65,3 +67,44 @@ def test_stale_record_for_a_vanished_socket_is_cleaned(
     lock.touch()
     assert daemon_socket(mock.Mock(), "exp") is None
     assert not record.exists()
+
+
+def test_a_lock_held_elsewhere_exposes_the_socket(paths: tuple[Path, Path]) -> None:
+    record, lock = paths
+    record.write_text("/tmp/held.sock")
+    lock.touch()
+    holder = os.open(lock, os.O_RDONLY)
+    try:
+        fcntl.flock(holder, fcntl.LOCK_EX)
+        assert daemon_socket(mock.Mock(), "exp") == Path("/tmp/held.sock")
+    finally:
+        os.close(holder)
+
+
+def test_a_record_another_client_cleaned_first_is_not_an_error(
+    paths: tuple[Path, Path], tmp_path: Path
+) -> None:
+    record, lock = paths
+    record.write_text(str(tmp_path / "gone.sock"))
+
+    def cleaned_elsewhere(*_: object) -> Path:
+        record.unlink()
+        return lock
+
+    with mock.patch("labnotes.daemon.client.lock_path", side_effect=cleaned_elsewhere):
+        assert daemon_socket(mock.Mock(), "exp") is None
+
+
+def test_a_record_cleaned_while_checking_the_lock_is_not_an_error(
+    paths: tuple[Path, Path], tmp_path: Path
+) -> None:
+    record, lock = paths
+    record.write_text(str(tmp_path / "gone.sock"))
+    lock.touch()
+
+    def unlock(descriptor: int, operation: int) -> None:
+        if operation == fcntl.LOCK_UN:
+            record.unlink()
+
+    with mock.patch("labnotes.daemon.client.fcntl.flock", side_effect=unlock):
+        assert daemon_socket(mock.Mock(), "exp") is None

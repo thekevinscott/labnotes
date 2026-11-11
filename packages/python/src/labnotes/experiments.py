@@ -238,30 +238,31 @@ def experiments(
                 or ctx.args
             ):
                 raise click.UsageError(f"{action} takes no run or listing options.")
-            if action == "attach":
-                try:
-                    reply = daemon_command(config, name, {"command": "journals"})
-                except ValueError:
-                    reply = {}
-                if not reply.get("journals"):
-                    click.echo(f"Nothing is running for {name}.")
-                    return
-                if not sys.stdout.isatty() or not sys.stderr.isatty():
-                    raise click.UsageError("attach requires a terminal.")
-                try:
-                    run_tui(None, name, config, attach=True)
-                except ValueError as error:
-                    raise click.ClickException(str(error)) from error
-                return
-            try:
-                reply = daemon_command(config, name, {"command": "stop_all"})
-            except ValueError as error:
-                raise click.ClickException(str(error)) from error
-            if not reply.get("ok"):
-                raise click.ClickException(
-                    str(reply.get("error", "Daemon rejected stop"))
-                )
-            click.echo(f"Asked daemon for {name} to stop all runs.")
+            match action:
+                case "attach":
+                    try:
+                        reply = daemon_command(config, name, {"command": "journals"})
+                    except ValueError:
+                        reply = {}
+                    if not reply.get("journals"):
+                        click.echo(f"Nothing is running for {name}.")
+                        return
+                    if not sys.stdout.isatty() or not sys.stderr.isatty():
+                        raise click.UsageError("attach requires a terminal.")
+                    try:
+                        run_tui(None, name, config, attach=True)
+                    except ValueError as error:
+                        raise click.ClickException(str(error)) from error
+                case "stop":
+                    try:
+                        reply = daemon_command(config, name, {"command": "stop_all"})
+                    except ValueError as error:
+                        raise click.ClickException(str(error)) from error
+                    if not reply.get("ok"):
+                        raise click.ClickException(
+                            str(reply.get("error", "Daemon rejected stop"))
+                        )
+                    click.echo(f"Asked daemon for {name} to stop all runs.")
             return
     if passthrough is not None:
         raise click.UsageError("-- ARGS needs run.")

@@ -771,6 +771,29 @@ def test_shows_the_new_concurrency() -> None:
     asyncio.run(drive())
 
 
+def test_passes_each_concurrency_event_time_to_the_label() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1"))
+        report(json.loads('{"event": "concurrency", "concurrency": 3, "at": 7}'))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        with mock.patch(
+            "labnotes.tui.flash_value.FlashValue.set_value", autospec=True
+        ) as set_value:
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                label = app.query_one("Header #concurrency")
+        assert set_value.call_args_list == [
+            mock.call(label, "2 at a time", None),
+            mock.call(label, "3 at a time", 7.0),
+        ]
+        assert type(set_value.call_args.args[2]) is float
+
+    asyncio.run(drive())
+
+
 def test_shows_other_events_as_status() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report({"event": "killing"})

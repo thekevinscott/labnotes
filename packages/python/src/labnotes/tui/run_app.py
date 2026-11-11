@@ -35,6 +35,7 @@ from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.count_runs import count_runs
 from labnotes.tui.dim import dim
+from labnotes.tui.flash_value import FlashValue
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.hook_panel import HookPanel
 from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
@@ -357,8 +358,9 @@ class RunLiveView(Widget):
 
     def show_concurrency(self, event: dict[str, object]) -> None:
         self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]
-        self.app.query_one("#concurrency", Static).update(
-            f"{self.concurrency} at a time"
+        at = event.get("at")
+        self.app.query_one("#concurrency", FlashValue).set_value(
+            f"{self.concurrency} at a time", None if at is None else float(str(at))
         )
 
     def tick(self) -> None:
@@ -545,7 +547,7 @@ class RunApp(ViewSwitcher, App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        await self.query_one(Header).mount(Static(id="concurrency"))
+        await self.query_one(Header).mount(FlashValue(id="concurrency"))
         if self.view_specs:
             assert self.config is not None
             self._bindings.bind("escape", "leave", "Back")

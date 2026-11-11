@@ -534,6 +534,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.startup_frame = 0
         self.attach = attach
         self.busy_journals: set[str] = set()
+        self.restart_batches: set[str] = set()
         self.disconnected = False
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
@@ -799,6 +800,20 @@ class RunApp(ViewSwitcher, App[None]):
             self.body.show_event(event)
 
     def forward(self, journal: str, event: dict[str, object]) -> None:
+        if (
+            not self.attach
+            and self.daemon_journal is not None
+            and journal != str(self.daemon_journal.path)
+            and journal not in self.restart_batches
+        ):
+            match event:
+                case {
+                    "event": "planned",
+                    "restart": str(run),
+                } if run in self.body.cells:
+                    self.restart_batches.add(journal)
+                case _:
+                    return
         match event:
             case {"event": "planned", "restart": str(run)} if run in self.body.cells:
                 [planned] = cast(list[dict[str, object]], event["runs"])

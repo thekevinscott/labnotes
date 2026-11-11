@@ -2629,7 +2629,7 @@ def test_a_restart_plan_shows_as_a_retry_of_its_known_run(tmp_path: Path) -> Non
     app.body.cells["r1"] = {"run": "r1"}
     with mock.patch.object(app.body, "show_event") as show:
         app.forward("j", restart)
-        app.forward("j2", {**restart, "restart": "r9"})
+        app.forward(str(tmp_path / "j"), {**restart, "restart": "r9"})
     assert show.call_args_list == [
         mock.call(
             {"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}}
@@ -2816,3 +2816,38 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
     assert order == ["ensure", "attach", "start", "follow"]
     assert app.daemon_journal is not None
     assert str(app.daemon_journal.path) == "fast-batch"
+
+
+@pytest.mark.parametrize("attach", [False, True])
+def test_run_stream_filters_other_batches_but_follows_its_restarts(
+    tmp_path: Path, attach: bool
+) -> None:
+    app = RunApp(
+        None, "exp", COLUMNS, daemon_journal=mock.Mock(path=Path("own")), attach=attach
+    )
+    app.body.cells["r1"] = {"run": "r1"}
+    old: dict[str, object] = {
+        "event": "planned",
+        "runs": [{"run": "old", "params": {}}],
+    }
+    own = {"event": "concurrency", "concurrency": 2}
+    restart: dict[str, object] = {
+        "event": "planned",
+        "restart": "r1",
+        "runs": [{"run": "r2", "params": {}}],
+    }
+    ended: dict[str, object] = {"event": "ended", "run": "r2"}
+    with mock.patch.object(app.body, "show_event") as show:
+        app.forward("previous", old)
+        app.forward("unrelated", {**restart, "restart": "other"})
+        app.forward("own", own)
+        app.forward("restart", restart)
+        app.forward("restart", ended)
+    expected = [
+        own,
+        {"event": "retried", "run": "r1", "retry": "r2", "params": {}},
+        ended,
+    ]
+    if attach:
+        expected = [old, {**restart, "restart": "other"}, *expected]
+    assert show.call_args_list == [mock.call(event) for event in expected]

@@ -2,17 +2,11 @@ import json
 import sys
 from pathlib import Path
 
-import pytest
 from curtaincall import expect
 
 from conftest import Tui
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="After the run goes idle, the restarted run passes on disk but never "
-    "shows up in the live view.",
-)
 def test_uvx_restarts_only_the_selected_failed_run(tmp_path: Path, tui: Tui) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)

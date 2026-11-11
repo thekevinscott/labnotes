@@ -10,6 +10,7 @@ from textual.strip import Strip
 
 from labnotes.latest_log import latest_log
 from labnotes.line_index import LineIndex
+from labnotes.visible_line import visible_line
 
 BUFFER = 100
 
@@ -121,7 +122,9 @@ class StreamLog(ScrollView):
                 first -= segment.rows
                 continue
             lines = segment.read(first, count - len(found))
-            found.extend(line.decode("utf-8", "replace") for line in lines)
+            found.extend(
+                visible_line(line.decode("utf-8", "replace")) for line in lines
+            )
             first = 0
         return found
 

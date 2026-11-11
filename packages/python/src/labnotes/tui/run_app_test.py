@@ -1055,7 +1055,7 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
 
 
 def journal(path: Path, *events: dict[str, object]) -> mock.Mock:
-    pending = [list(events)]
+    pending = [json.loads(json.dumps(events))]
     return mock.Mock(path=path, read=lambda: pending.pop() if pending else [])
 
 

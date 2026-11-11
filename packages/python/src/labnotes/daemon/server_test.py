@@ -42,7 +42,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
         finish = mock.Mock()
         controls = mock.Mock(
             interrupt=done.set,
-            drain=mock.Mock(),
+            finish_up=mock.Mock(),
             set_concurrency=set_concurrency,
             kill=kill,
             finish=finish,
@@ -102,8 +102,8 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
                 mock.call(3),
             ]
             assert await daemon.dispatch({"command": "attach"}) == {"ok": True}
-            assert await daemon.dispatch({"command": "drain"}) == {"ok": True}
-            controls.drain.assert_called_once_with()
+            assert await daemon.dispatch({"command": "finish_up"}) == {"ok": True}
+            controls.finish_up.assert_called_once_with()
             assert (await daemon.dispatch({"command": "unknown"}))["ok"] is False
             assert await daemon.dispatch({"command": "stop_all"}) == {"ok": True}
             await asyncio.sleep(0)
@@ -113,14 +113,14 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
     asyncio.run(drive())
 
 
-def test_drained_journal_releases_planned_runs_from_reservations(
+def test_finished_up_journal_releases_planned_runs_from_reservations(
     tmp_path: Path,
 ) -> None:
-    journal = tmp_path / "drained.jsonl"
+    journal = tmp_path / "finished_up.jsonl"
     journal.write_text(
         json.dumps({"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]})
         + "\n"
-        + json.dumps({"event": "draining"})
+        + json.dumps({"event": "finishing up"})
         + "\n"
     )
 
@@ -142,20 +142,20 @@ def test_drained_journal_releases_planned_runs_from_reservations(
     asyncio.run(drive())
 
 
-def test_drain_command_decoded_from_socket_json_reaches_controls(
+def test_finish_up_command_decoded_from_socket_json_reaches_controls(
     tmp_path: Path,
 ) -> None:
     daemon = ExperimentDaemon(config(tmp_path), "exp")
     controls = mock.Mock()
     daemon.active[str(tmp_path / "active.jsonl")] = Invocation(controls=controls)
 
-    reply = asyncio.run(daemon.dispatch(json.loads('{"command": "drain"}')))
+    reply = asyncio.run(daemon.dispatch(json.loads('{"command": "finish_up"}')))
 
     assert reply == {"ok": True}
-    controls.drain.assert_called_once_with()
+    controls.finish_up.assert_called_once_with()
 
 
-def test_drain_requested_during_preparation_reaches_new_controls(
+def test_finish_up_requested_during_preparation_reaches_new_controls(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
@@ -163,7 +163,7 @@ def test_drain_requested_during_preparation_reaches_new_controls(
         preparing = asyncio.Event()
         ready = asyncio.Event()
         done = asyncio.Event()
-        controls = mock.Mock(drain=mock.Mock(side_effect=done.set))
+        controls = mock.Mock(finish_up=mock.Mock(side_effect=done.set))
         selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
 
         async def run(report, listen):
@@ -179,11 +179,11 @@ def test_drain_requested_during_preparation_reaches_new_controls(
         ):
             starting = asyncio.create_task(daemon.start({}))
             await preparing.wait()
-            assert await daemon.dispatch({"command": "drain"}) == {"ok": True}
+            assert await daemon.dispatch({"command": "finish_up"}) == {"ok": True}
             ready.set()
             assert (await starting)["ok"] is True
             await asyncio.sleep(0)
-        controls.drain.assert_called_once_with()
+        controls.finish_up.assert_called_once_with()
         controls.interrupt.assert_not_called()
 
     asyncio.run(drive())

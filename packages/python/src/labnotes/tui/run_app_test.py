@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
+from textual.binding import Binding
 
 from labnotes.tui.run_app import RunApp, RunLiveView
 
@@ -640,11 +641,20 @@ def test_skips_pending_runs_when_stopping() -> None:
     asyncio.run(drive())
 
 
-def test_drain_key_keeps_tui_open_and_skips_pending_runs() -> None:
-    drain = mock.Mock()
+def test_finish_up_is_bound_to_f() -> None:
+    bindings = [
+        (binding.key, binding.description)
+        for binding in RunLiveView.BINDINGS
+        if isinstance(binding, Binding) and binding.action == "finish_up"
+    ]
+    assert bindings == [("f", "Finish up")]
+
+
+def test_finish_up_key_keeps_tui_open_and_skips_pending_runs() -> None:
+    finish_up = mock.Mock()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(mock.Mock(drain=drain))
+        listen(mock.Mock(finish_up=finish_up))
         report(planned("r1", "r2"))
         report(
             {
@@ -662,23 +672,26 @@ def test_drain_key_keeps_tui_open_and_skips_pending_runs() -> None:
             await pilot.pause()
             await pilot.press("d")
             await pilot.pause()
-            drain.assert_called_once_with()
+            finish_up.assert_not_called()
+            await pilot.press("f")
+            await pilot.pause()
+            finish_up.assert_called_once_with()
             assert app.is_running
-            app.body.show_event({"event": "draining"})
+            app.body.show_event({"event": "finishing up"})
             assert [row[2] for row in rows(app)] == ["|", "–"]
-            assert status(app) == "said draining"
+            assert status(app) == "said finishing up"
 
     asyncio.run(drive())
 
 
-def test_in_process_tui_stays_open_after_drain_finishes() -> None:
-    drained = asyncio.Event()
+def test_in_process_tui_stays_open_after_finishing_up() -> None:
+    finished_up = asyncio.Event()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        listen(mock.Mock(drain=drained.set))
+        listen(mock.Mock(finish_up=finished_up.set))
         report(planned("r1", "r2"))
-        await drained.wait()
-        report({"event": "draining"})
+        await finished_up.wait()
+        report({"event": "finishing up"})
         report({"event": "idle"})
         return []
 
@@ -686,7 +699,7 @@ def test_in_process_tui_stays_open_after_drain_finishes() -> None:
         app = RunApp(start, "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            await pilot.press("d")
+            await pilot.press("f")
             await pilot.pause()
             assert app.is_running
             assert status(app).startswith("0 passed")
@@ -697,22 +710,22 @@ def test_in_process_tui_stays_open_after_drain_finishes() -> None:
     asyncio.run(drive())
 
 
-def test_earlier_event_does_not_mark_app_drained() -> None:
+def test_earlier_event_does_not_mark_app_finishing_up() -> None:
     app = RunApp(None, "exp", COLUMNS)
     app.body_ready = False
 
     app.show_event({"event": "concurrency", "concurrency": 1})
 
-    assert not app.drained
+    assert not app.finishing_up
 
 
-def test_drain_event_decoded_from_journal_marks_app_drained() -> None:
+def test_finishing_up_event_decoded_from_journal_marks_app_finishing_up() -> None:
     app = RunApp(None, "exp", COLUMNS)
     app.body_ready = False
 
-    app.show_event(json.loads('{"event": "draining"}'))
+    app.show_event(json.loads('{"event": "finishing up"}'))
 
-    assert app.drained
+    assert app.finishing_up
 
 
 def test_plus_and_minus_change_the_concurrency() -> None:
@@ -900,7 +913,7 @@ def test_detached_app_reads_journal_and_routes_controls(tmp_path: Path) -> None:
                 journal.read.assert_called()
                 app.controls.set_concurrency(3)
                 app.controls.kill("r1")
-                app.controls.drain()
+                app.controls.finish_up()
                 assert queue.call_args_list == [
                     mock.call(
                         {
@@ -910,7 +923,7 @@ def test_detached_app_reads_journal_and_routes_controls(tmp_path: Path) -> None:
                         }
                     ),
                     mock.call({"command": "stop_one", "run": "r1"}),
-                    mock.call({"command": "drain"}),
+                    mock.call({"command": "finish_up"}),
                 ]
                 app.body.cells["r1"] = {"run": "r1"}
                 app.body.folders["r1"] = tmp_path
@@ -1343,14 +1356,14 @@ def test_sighup_stops_the_runs() -> None:
     asyncio.run(drive())
 
 
-def test_signal_exits_an_idle_in_process_tui_after_drain() -> None:
+def test_signal_exits_an_idle_in_process_tui_after_finish_up() -> None:
     controls = mock.Mock()
 
     async def drive() -> None:
         app = RunApp(going(controls), "exp", COLUMNS)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.show_event({"event": "draining"})
+            app.show_event({"event": "finishing up"})
             app.show_event({"event": "idle"})
             with mock.patch.object(app, "exit") as exit_app:
                 app.stop_runs()
@@ -1623,7 +1636,7 @@ def test_enter_follows_the_output_of_the_run_under_the_cursor(
     asyncio.run(drive())
 
 
-def test_back_quit_and_drain_work_while_following_output() -> None:
+def test_back_quit_and_finish_up_work_while_following_output() -> None:
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1"))
         return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
@@ -1640,10 +1653,10 @@ def test_back_quit_and_drain_work_while_following_output() -> None:
                     for action in ["interrupt", *actions]
                     if app.body.check_action(action, ())
                 ]
-                assert live == ["interrupt", "drain", "leave"]
+                assert live == ["interrupt", "finish_up", "leave"]
                 assert app.body.check_action("command_palette", ())
-                await pilot.press("d")
-                controls.drain.assert_called_once_with()
+                await pilot.press("f")
+                controls.finish_up.assert_called_once_with()
                 await pilot.press("x", "plus")
                 controls.kill.assert_not_called()
                 controls.set_concurrency.assert_not_called()

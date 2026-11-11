@@ -162,14 +162,18 @@ def test_x_stops_selected_run(terminal, tmp_path: Path) -> None:
     stop(term)
 
 
-def test_drain_finishes_current_run_without_starting_queued_run(
+def test_finish_up_finishes_current_run_without_starting_queued_run(
     terminal, tmp_path: Path
 ) -> None:
     command = f"{shlex.quote(sys.executable)} -c 'import time; time.sleep(2)'"
     term = run_tui(terminal, tmp_path, 2, command)
     expect(term.get_by_text(re.compile(r"[|/\\-] +\d+s"))).to_be_visible()
+    expect(term.get_by_text("Finish up")).to_be_visible()
     term.write("d")
-    expect(term.get_by_text("Draining")).to_be_visible()
+    expect(term.get_by_text("Finishing up")).not_to_be_visible()
+    expect(term.get_by_text("Draining")).not_to_be_visible()
+    term.write("f")
+    expect(term.get_by_text("Finishing up")).to_be_visible()
     assert term.is_alive
     expect(term.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=15)
     records = [

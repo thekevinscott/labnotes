@@ -7,6 +7,8 @@ import pytest
 
 from labnotes.tables.open_note_tables import open_note_tables
 
+READ_FILE = mock.Mock(name="read_file")
+
 
 @pytest.fixture
 def dirsql() -> Iterator[mock.MagicMock]:
@@ -14,9 +16,7 @@ def dirsql() -> Iterator[mock.MagicMock]:
         mock.patch("labnotes.tables.open_note_tables.DirSQL") as dir_sql,
         mock.patch("labnotes.tables.open_note_tables.Table", side_effect=dict),
         mock.patch("labnotes.tables.open_note_tables.FILES", mock.sentinel.FILES),
-        mock.patch(
-            "labnotes.tables.open_note_tables.read_file", mock.sentinel.read_file
-        ),
+        mock.patch("labnotes.tables.open_note_tables.read_file", READ_FILE),
     ):
         yield dir_sql
 
@@ -51,7 +51,7 @@ def test_watches_only_the_experiments_notes_folder(
     on_file = table["on_file"]
     assert isinstance(on_file, partial)
     assert (on_file.func, on_file.args, on_file.keywords) == (
-        mock.sentinel.read_file,
+        READ_FILE,
         (tmp_path, files),
         {"experiment": None},
     )

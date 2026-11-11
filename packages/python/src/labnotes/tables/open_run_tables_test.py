@@ -26,7 +26,7 @@ def dirsql() -> Iterator[mock.MagicMock]:
 
 @pytest.fixture
 def stand_ins() -> Iterator[dict[str, object]]:
-    found = {name: getattr(mock.sentinel, name) for name in COLLABORATORS}
+    found = {name: mock.Mock(name=name) for name in COLLABORATORS}
     with mock.patch.multiple(MODULE, **found):
         yield found
 

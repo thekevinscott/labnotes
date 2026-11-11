@@ -6,8 +6,6 @@ from unittest import mock
 import pytest
 
 from labnotes.tables.open_note_tables import open_note_tables
-from labnotes.tables.open_tables import FILES
-from labnotes.tables.read_file import read_file
 
 
 @pytest.fixture
@@ -15,6 +13,10 @@ def dirsql() -> Iterator[mock.MagicMock]:
     with (
         mock.patch("labnotes.tables.open_note_tables.DirSQL") as dir_sql,
         mock.patch("labnotes.tables.open_note_tables.Table", side_effect=dict),
+        mock.patch("labnotes.tables.open_note_tables.FILES", mock.sentinel.FILES),
+        mock.patch(
+            "labnotes.tables.open_note_tables.read_file", mock.sentinel.read_file
+        ),
     ):
         yield dir_sql
 
@@ -41,11 +43,15 @@ def test_watches_only_the_experiments_notes_folder(
     assert dirsql.call_args.args == (str(tmp_path / folder),)
     assert dirsql.call_args.kwargs["no_ignore"] is True
     [table] = dirsql.call_args.kwargs["tables"]
-    assert (table["name"], table["ddl"], table["glob"]) == ("files", FILES, glob)
+    assert (table["name"], table["ddl"], table["glob"]) == (
+        "files",
+        mock.sentinel.FILES,
+        glob,
+    )
     on_file = table["on_file"]
     assert isinstance(on_file, partial)
     assert (on_file.func, on_file.args, on_file.keywords) == (
-        read_file,
+        mock.sentinel.read_file,
         (tmp_path, files),
         {"experiment": None},
     )

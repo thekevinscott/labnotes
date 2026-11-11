@@ -1,3 +1,4 @@
+import re
 import json
 import sys
 from pathlib import Path
@@ -88,3 +89,32 @@ def test_uvx_ctrl_c_during_setup_stops_the_invocation(tmp_path: Path, tui: Tui) 
     assert not list(root.glob("exp/runs/*/run.json"))
     [teardown] = (root / "exp/.labnotes/logs/teardown").iterdir()
     assert (teardown / "stdout.log").read_text() == "down\n"
+
+
+def test_uvx_stop_interrupts_a_running_setup_hook(tmp_path: Path, tui: Tui) -> None:
+    root = project(
+        tmp_path,
+        "import signal, sys, time\n"
+        "def stop(*_):\n"
+        "    print('setup got SIGTERM', flush=True)\n"
+        "    sys.exit(0)\n"
+        "signal.signal(signal.SIGTERM, stop)\n"
+        "print('pod up', flush=True)\n"
+        "time.sleep(600)\n",
+    )
+
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text("pod up")).to_be_visible(timeout=60)
+    stop = tui(root, "experiments", "exp", "stop")
+    expect(stop.get_by_text("Asked daemon for exp to stop all runs.")).to_be_visible(
+        timeout=60
+    )
+    assert tui.exited(stop) == 0, stop.to_snapshot()
+
+    expect(term.get_by_text(re.compile(r"teardown ✓"))).to_be_visible(timeout=30)
+    expect(term.get_by_text("down")).to_be_visible()
+    term.write("[")
+    term.write("[")
+    expect(term.get_by_text("setup got SIGTERM")).to_be_visible()
+    tui.quit(term)
+    assert not list(root.glob("exp/runs/*/run.json"))

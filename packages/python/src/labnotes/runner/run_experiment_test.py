@@ -593,8 +593,10 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
 
     assert [c[0] for c in order.mock_calls] == ["hook", "run", "run", "hook"]
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"]),
-        mock.call(tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]),
+        mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"], mock.ANY),
+        mock.call(
+            tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"], mock.ANY
+        ),
     ]
     events = [c.args[0] for c in report.call_args_list]
     stamp = collaborators["invocation_hook"].await_args_list[0].args[4].name
@@ -615,6 +617,89 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
     ]
 
 
+def test_stop_during_setup_signals_the_setup_hook_then_tears_down(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    held: list[Any] = []
+    report = mock.Mock()
+
+    async def hook(*args: Any) -> None:
+        if args[1] == "setup":
+            args[6](mock.Mock(pid=7))
+            held[0].interrupt()
+            held[0].interrupt()
+            raise ValueError("setup command up exited -15")
+
+    collaborators["invocation_hook"].side_effect = hook
+
+    def listen(controls: Any) -> None:
+        held.append(controls)
+        controls.finish()
+
+    results = start_with_hooks(tmp_path, report, listen)
+
+    assert results == []
+    assert collaborators["signal_tree"].call_args_list == [
+        mock.call(7, SIGTERM, set()),
+        mock.call(7, SIGKILL, set()),
+    ]
+    collaborators["execute_run"].assert_not_awaited()
+    assert [c.args[1] for c in collaborators["invocation_hook"].await_args_list] == [
+        "setup",
+        "teardown",
+    ]
+    events = [c.args[0]["event"] for c in report.call_args_list]
+    assert "killing" in events
+
+
+def test_signals_a_setup_hook_that_starts_after_stop(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    held: list[Any] = []
+
+    async def hook(*args: Any) -> None:
+        if args[1] == "setup":
+            held[0].interrupt()
+            args[6](mock.Mock(pid=7))
+
+    collaborators["invocation_hook"].side_effect = hook
+
+    def listen(controls: Any) -> None:
+        held.append(controls)
+        controls.finish()
+
+    start_with_hooks(tmp_path, mock.Mock(), listen)
+
+    collaborators["signal_tree"].assert_called_once_with(7, SIGTERM, set())
+
+
+def test_skips_setup_when_stopped_before_it_starts(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    def listen(controls: Any) -> None:
+        controls.finish()
+        controls.interrupt()
+
+    start_with_hooks(tmp_path, mock.Mock(), listen)
+
+    assert [c.args[1] for c in collaborators["invocation_hook"].await_args_list] == [
+        "teardown"
+    ]
+
+
+def test_a_setup_failure_without_stop_still_raises(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    async def hook(*args: Any) -> None:
+        if args[1] == "setup":
+            raise ValueError("setup command up exited 3")
+
+    collaborators["invocation_hook"].side_effect = hook
+
+    with pytest.raises(ValueError, match="exited 3"):
+        start_with_hooks(tmp_path, mock.Mock())
+
+
 def test_checks_the_hooks_and_runs_them_unfilled(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
@@ -626,8 +711,10 @@ def test_checks_the_hooks_and_runs_them_unfilled(
         {"setup": "up", "teardown": "down", "meta": None}
     )
     assert collaborators["invocation_hook"].await_args_list == [
-        mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"]),
-        mock.call(tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]),
+        mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"], mock.ANY),
+        mock.call(
+            tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"], mock.ANY
+        ),
     ]
 
 
@@ -713,7 +800,7 @@ def test_starts_no_runs_and_still_tears_down_when_setup_fails(
 
     collaborators["execute_run"].assert_not_awaited()
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
-        tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]
+        tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"], mock.ANY
     )
 
 
@@ -775,7 +862,7 @@ def test_tears_down_after_an_interrupt_during_setup(
 
     collaborators["execute_run"].assert_not_awaited()
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
-        tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]
+        tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"], mock.ANY
     )
 
 

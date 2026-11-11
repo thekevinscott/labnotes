@@ -618,7 +618,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.query_one(ContentSwitcher).display = True
         # Focus requests made while the views were hidden were dropped.
         if self.body_ready:
-            self.call_after_refresh(self.body.go, self.body.stage)
+            self.call_after_refresh(lambda: self.body.go(self.body.stage))
         else:
             self.call_after_refresh(self.screen.focus_next)
 

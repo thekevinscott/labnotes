@@ -127,6 +127,12 @@ class Attached:
         assert line, "daemon closed the attach connection"
         return json.loads(line)
 
+    def take(self, count: int) -> list[dict[str, object]]:
+        messages = [self.next() for _ in range(count)]
+        for message in messages:
+            assert set(message) == {"journal", "event"}, message
+        return messages
+
     def until(self, journal: str, name: str) -> list[dict[str, object]]:
         """Collect streamed events up to one with this name for this batch."""
         seen: list[dict[str, object]] = []
@@ -145,7 +151,7 @@ class Attached:
 
 
 def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) -> None:
-    root, release = project(tmp_path, "[params]\nm = ['a', 'b']\n")
+    root, release = project(tmp_path, "[params]\nm = ['a', 'b', 'c']\n")
     env = {
         **os.environ,
         "XDG_RUNTIME_DIR": str(runtime),
@@ -155,36 +161,45 @@ def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) 
         labnotes(root, "daemon", "exp"), cwd=root, env=env, stdout=subprocess.PIPE
     )
     clients: list[Attached] = []
+
+    def start(value: str) -> str:
+        reply = request(path, {"command": "start", "options": {"only": {"m": [value]}}})
+        assert reply["ok"] is True, reply
+        journal = str(reply["journal"])
+        wait_for_event(Path(journal), "started")
+        return journal
+
+    def assert_replay(client: Attached, journals: list[str]) -> None:
+        recorded = {journal: journal_events(Path(journal)) for journal in journals}
+        replay = client.take(sum(len(events) for events in recorded.values()))
+        for journal, events in recorded.items():
+            assert [m["event"] for m in replay if m["journal"] == journal] == events
+
     try:
         path = wait_for_socket(runtime)
-        first = request(path, {"command": "start", "options": {"only": {"m": ["a"]}}})
-        assert first["ok"] is True, first
-        journal = str(first["journal"])
-        recorded = wait_for_event(Path(journal), "started")
+        active = [start("a"), start("b")]
 
         clients = [Attached(path), Attached(path)]
         for client in clients:
-            replay = client.until(journal, "started")
-            assert [message["event"] for message in replay] == recorded
+            assert_replay(client, active)
 
-        second = request(path, {"command": "start", "options": {"only": {"m": ["b"]}}})
-        assert second["ok"] is True, second
-        later = str(second["journal"])
+        later = start("c")
         for client in clients:
             streamed = client.until(later, "started")
-            names = [
-                message["event"]["event"]  # type: ignore[index]
-                for message in streamed
-                if message["journal"] == later
-            ]
+            names = [m["event"]["event"] for m in streamed if m["journal"] == later]  # type: ignore[index]
             assert names[0] == "planned", names
+
+        late = Attached(path)
+        clients.append(late)
+        assert_replay(late, [*active, later])
 
         release.touch()
         for client in clients:
-            client.until(journal, "ended")
-        wait_for_event(Path(journal), "ended")
-        for client in clients:
-            client.until(later, "idle")
+            ended = set()
+            while ended != {*active, later}:
+                message = client.next()
+                if message["event"]["event"] == "idle":  # type: ignore[index]
+                    ended.add(str(message["journal"]))
     finally:
         release.touch()
         for client in clients:
@@ -239,6 +254,10 @@ def test_lost_daemon_shows_disconnected_and_keeps_last_state(
         expect(term.get_by_text("disconnected")).to_be_visible(timeout=15)
         expect(term.get_by_text("working")).to_be_visible()
         expect(term.get_by_text("1 at a time")).to_be_visible()
+        for key in ("+", "d"):
+            term.write(key)
+            time.sleep(0.5)
+        expect(term.get_by_text("disconnected")).to_be_visible()
         assert term.is_alive, term.to_snapshot()
         assert not term.get_by_text("Traceback").is_visible(), term.to_snapshot()
     finally:

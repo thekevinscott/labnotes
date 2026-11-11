@@ -1,5 +1,6 @@
 import signal
 import sys
+import time
 from pathlib import Path
 
 import psutil
@@ -68,6 +69,10 @@ def test_uvx_lost_daemon_shows_disconnected_and_keeps_last_state(
         expect(term.get_by_text("disconnected")).to_be_visible(timeout=15)
         expect(term.get_by_text("working")).to_be_visible()
         expect(term.get_by_text("1 at a time")).to_be_visible()
+        for key in ("+", "d"):
+            term.write(key)
+            time.sleep(0.5)
+        expect(term.get_by_text("disconnected")).to_be_visible()
         tui.check(term)
     finally:
         release.touch()

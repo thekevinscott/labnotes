@@ -207,34 +207,3 @@ def test_no_hooks_shows_no_stages(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("›")).not_to_be_visible()
 
     quit_tui(term)
-
-
-def test_stop_during_setup_interrupts_the_setup_hook(terminal, tmp_path: Path) -> None:
-    setup = script(
-        tmp_path,
-        "setup",
-        "import signal\n"
-        "def stop(*_):\n"
-        f"    open({str(tmp_path / 'term')!r}, 'w').close()\n"
-        "    sys.exit(0)\n"
-        "signal.signal(signal.SIGTERM, stop)\n"
-        "print('setup begun', flush=True)\n"
-        "time.sleep(600)\n",
-    )
-    teardown = script(
-        tmp_path, "teardown", f"open({str(tmp_path / 'down')!r}, 'w').close()\n"
-    )
-    hooks = f"setup = '''{setup}'''\nteardown = '''{teardown}'''\n"
-    term = run_tui(terminal, tmp_path, hooks)
-    expect(term.get_by_text("setup begun")).to_be_visible(timeout=15)
-    term.key_ctrl_c()
-    expect(term.get_by_text("Setting up. Stop (s)")).to_be_visible()
-
-    term.write("s")
-    term.wait(timeout=10)
-
-    _, alive = psutil.wait_procs(daemons(tmp_path), timeout=30)
-    assert not alive
-    assert (tmp_path / "term").exists()
-    assert (tmp_path / "down").exists()
-    assert not list(tmp_path.glob("exp/runs/*/run.json"))

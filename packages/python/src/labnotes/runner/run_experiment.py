@@ -2,7 +2,6 @@ import asyncio
 import json
 import os
 import signal
-from collections.abc import Callable
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -34,7 +33,6 @@ from labnotes.runner.run_folder import run_folder
 from labnotes.runner.run_locked import run_locked
 from labnotes.runner.run_state import RunState
 from labnotes.runner.signal_tree import signal_tree
-from labnotes.runner.wait_for_tree import wait_for_tree
 from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
@@ -205,8 +203,6 @@ async def run_experiment(
     results: dict[str, dict[str, object]] = {}
     stopping = asyncio.Event()
     draining = False
-    setting_up: set[asyncio.subprocess.Process] = set()
-    setup_tree: set[psutil.Process] = set()
 
     def signal_run(run: str, signal_number: int) -> None:
         for process in running[run]:
@@ -215,8 +211,6 @@ async def run_experiment(
     def signal_runs(signal_number: int) -> None:
         for run in running:
             signal_run(run, signal_number)
-        for process in setting_up:
-            signal_tree(process.pid, signal_number, setup_tree)
 
     def interrupt() -> None:
         plan.clear()
@@ -228,7 +222,7 @@ async def run_experiment(
                 for run in list(waiting):
                     cancel_retry(run)
                 fill()
-        elif any(running.values()) or setting_up:
+        elif any(running.values()):
             emit({"event": "killing"})
             signal_runs(signal.SIGKILL)
 
@@ -396,17 +390,7 @@ async def run_experiment(
         if run not in waiting:
             release(run)
 
-    def setup_started(process: asyncio.subprocess.Process) -> None:
-        setting_up.add(process)
-        if stopping.is_set():
-            signal_tree(process.pid, signal.SIGTERM, setup_tree)
-
-    async def run_hook(
-        hook: str,
-        command: str,
-        announce: str,
-        on_start: Callable[[asyncio.subprocess.Process], None] = lambda process: None,
-    ) -> None:
+    async def run_hook(hook: str, command: str, announce: str) -> None:
         folder = hook_folder(config, name, hook, state.path.stem)
         emit({"event": announce, "hook": hook, "folder": folder})
         try:
@@ -417,22 +401,11 @@ async def run_experiment(
                 hook_env[hook],
                 folder,
                 [str(entry["run"]) for entry in runs],
-                on_start,
             )
         except Exception as failure:
             emit({"event": "hook ended", "hook": hook, "error": str(failure)})
             raise
         emit({"event": "hook ended", "hook": hook, "error": None})
-
-    async def setup(command: str) -> None:
-        try:
-            await run_hook("setup", command, "setting up", setup_started)
-        except ValueError:
-            if not stopping.is_set():
-                raise
-        finally:
-            await wait_for_tree(setup_tree)
-            setting_up.clear()
 
     async def teardown() -> None:
         if experiment.teardown is not None:
@@ -446,8 +419,8 @@ async def run_experiment(
                 hook_env[hook][STATE_ENV] = str(state_file)
         # Like vitest's globalSetup: a failed setup still gets its teardown.
         try:
-            if experiment.setup is not None and not stopping.is_set():
-                await setup(experiment.setup)
+            if experiment.setup is not None:
+                await run_hook("setup", experiment.setup, "setting up")
             fill()
             await done.wait()
             await asyncio.gather(*started)

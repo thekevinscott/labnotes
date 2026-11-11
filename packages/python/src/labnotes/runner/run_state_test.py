@@ -159,3 +159,14 @@ def test_empty_line_is_invalid_journal_data(tmp_path: Path) -> None:
     reader.path.write_bytes(b"\n")
     with pytest.raises(json.JSONDecodeError):
         reader.read()
+
+
+def test_reader_follows_a_journal_recreated_after_deletion(tmp_path: Path) -> None:
+    writer = state(tmp_path)
+    for run in ("one", "two", "three"):
+        writer.record({"event": "started", "run": run})
+    reader = RunState(writer.path)
+    assert len(reader.read()) == 3
+    writer.path.unlink()
+    writer.record({"event": "idle"})
+    assert [event["event"] for event in reader.read()] == ["idle"]

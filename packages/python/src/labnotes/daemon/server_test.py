@@ -1,7 +1,10 @@
 import asyncio
 import json
+import os
+import socket
 from collections.abc import Iterator
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
@@ -779,3 +782,32 @@ def test_attach_and_journals_list_active_invocations_in_start_order(
         }
 
     asyncio.run(drive())
+
+
+def test_server_never_unlinks_a_live_daemons_socket(tmp_path: Path) -> None:
+    with TemporaryDirectory(prefix="ln-") as folder:
+        live = Path(folder) / "live.sock"
+        record = tmp_path / "socket.record"
+        with (
+            socket.socket(socket.AF_UNIX) as other,
+            mock.patch(
+                "labnotes.daemon.server.lock_path", return_value=tmp_path / "d.lock"
+            ),
+            mock.patch("labnotes.daemon.server.socket_path", return_value=live),
+            mock.patch("labnotes.daemon.server.socket_record", return_value=record),
+            mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0),
+        ):
+            other.bind(str(live))
+            other.listen()
+            asyncio.run(serve_daemon(config(tmp_path), "exp"))
+            assert live.exists()
+            assert not record.exists()
+
+
+def test_server_marks_run_state_as_live(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    with mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0):
+        asyncio.run(serve_daemon(config(tmp_path), "exp"))
+    marker = Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state/README"
+    assert "live" in marker.read_text()

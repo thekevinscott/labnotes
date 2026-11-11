@@ -1,5 +1,7 @@
+import socket
 from collections.abc import Iterator
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from unittest import mock
 
 import pytest
@@ -14,6 +16,11 @@ def paths(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
     with (
         mock.patch("labnotes.daemon.client.socket_record", return_value=record),
         mock.patch("labnotes.daemon.client.lock_path", return_value=lock),
+        mock.patch(
+            "labnotes.daemon.client.socket_path",
+            return_value=tmp_path / "none.sock",
+            create=True,
+        ),
     ):
         yield record, lock
 
@@ -112,3 +119,34 @@ def test_a_record_cleaned_while_checking_the_lock_is_not_an_error(
 
     flock.side_effect = unlock
     assert daemon_socket(mock.Mock(), "exp") is None
+
+
+@pytest.fixture
+def live_socket() -> Iterator[Path]:
+    with TemporaryDirectory(prefix="ln-") as folder:
+        path = Path(folder) / "live.sock"
+        with socket.socket(socket.AF_UNIX) as server:
+            server.bind(str(path))
+            server.listen()
+            yield path
+
+
+def test_a_live_daemon_is_found_after_its_record_and_lock_are_deleted(
+    paths: tuple[Path, Path], live_socket: Path
+) -> None:
+    with mock.patch(
+        "labnotes.daemon.client.socket_path", return_value=live_socket, create=True
+    ):
+        assert daemon_socket(mock.Mock(), "exp") == live_socket
+    assert live_socket.exists()
+
+
+def test_a_live_socket_is_kept_when_its_lock_file_was_replaced(
+    paths: tuple[Path, Path], live_socket: Path
+) -> None:
+    record, lock = paths
+    record.write_text(str(live_socket))
+    lock.touch()
+    assert daemon_socket(mock.Mock(), "exp") == live_socket
+    assert live_socket.exists()
+    assert record.exists()

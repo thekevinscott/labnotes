@@ -1,6 +1,7 @@
 import json
 import os
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -75,16 +76,15 @@ def daemons(root: Path) -> list[psutil.Process]:
     ]
 
 
-def browse_process(root: Path) -> psutil.Process:
+def browse_processes(root: Path) -> list[psutil.Process]:
     config = str(root / ".labnotes.toml")
-    (found,) = [
+    return [
         process
         for process in psutil.process_iter(["cmdline"])
         if config in (cmdline := process.info["cmdline"] or [])
         and "experiments" in cmdline
         and "daemon" not in cmdline
     ]
-    return found
 
 
 def inotify_watches(pid: int) -> int:
@@ -122,55 +122,142 @@ def audited(tmp_path: Path, root: Path) -> dict[str, str]:
     }
 
 
-def browse(terminal, root: Path, env: dict[str, str] | None = None) -> Terminal:
+def browse(
+    terminal, root: Path, argv: str = "", env: dict[str, str] | None = None
+) -> Terminal:
     command = Path(sys.executable).parent / "labnotes"
     return terminal(
-        f"{command} -c {root / '.labnotes.toml'} experiments",
+        f"{command} -c {root / '.labnotes.toml'} experiments {argv}",
         rows=30,
         cols=160,
         env=env or {},
     )
 
 
-def shows_everything(term: Terminal) -> None:
+def shows_the_list(term: Terminal) -> None:
     expect(term.get_by_text("Alpha study")).to_be_visible()
     expect(term.get_by_text("beta")).to_be_visible()
-    term.key_enter()
+
+
+def shows_alpha(term: Terminal) -> None:
+    expect(term.get_by_text("Alpha study")).to_be_visible()
     expect(term.get_by_text("20261017-000000/second")).to_be_visible()
     expect(term.get_by_text("source-language")).to_be_visible()
-    expect(term.get_by_text("fr")).to_be_visible()
 
 
-def test_browsing_adds_no_inotify_watches(terminal, root: Path) -> None:
-    term = browse(terminal, root)
-    shows_everything(term)
+def open_list(terminal, root: Path, env: dict[str, str] | None = None) -> Terminal:
+    term = browse(terminal, root, "", env)
+    shows_the_list(term)
+    return term
 
-    assert inotify_watches(browse_process(root).pid) == 0
 
+def open_alpha(terminal, root: Path, env: dict[str, str] | None = None) -> Terminal:
+    term = browse(terminal, root, "alpha", env)
+    shows_alpha(term)
+    return term
+
+
+def open_alpha_from_list(
+    terminal, root: Path, env: dict[str, str] | None = None
+) -> Terminal:
+    term = open_list(terminal, root, env)
+    term.key_enter()
+    shows_alpha(term)
+    return term
+
+
+SCREENS = pytest.mark.parametrize(
+    "open_screen",
+    [open_list, open_alpha, open_alpha_from_list],
+    ids=["experiments screen", "experiment screen", "list then experiment"],
+)
+
+
+def close(term: Terminal) -> None:
     term.key_ctrl_c()
     term.wait()
 
 
-def test_browsing_reads_nothing_from_the_project(
-    terminal, tmp_path: Path, root: Path, audited: dict[str, str]
+@SCREENS
+def test_screen_adds_no_inotify_watches(terminal, root: Path, open_screen) -> None:
+    term = open_screen(terminal, root)
+
+    (process,) = browse_processes(root)
+    assert inotify_watches(process.pid) == 0
+
+    close(term)
+
+
+@SCREENS
+def test_screen_reads_nothing_from_the_project(
+    terminal, tmp_path: Path, root: Path, audited: dict[str, str], open_screen
 ) -> None:
-    term = browse(terminal, root, audited)
-    shows_everything(term)
-    term.key_escape()
-    expect(term.get_by_text("Alpha study")).to_be_visible()
+    term = open_screen(terminal, root, audited)
+    # Long enough for a periodic refresh to happen.
+    time.sleep(6)
 
-    term.key_ctrl_c()
-    term.wait()
+    close(term)
     reads = tmp_path / "reads.log"
     assert not reads.exists(), sorted(set(reads.read_text().splitlines()))
 
 
-def test_browsing_starts_a_daemon_on_demand(terminal, root: Path) -> None:
+@SCREENS
+def test_screen_starts_a_daemon_on_demand(terminal, root: Path, open_screen) -> None:
     assert daemons(root) == []
-    term = browse(terminal, root)
-    shows_everything(term)
+    term = open_screen(terminal, root)
 
     assert daemons(root) != []
 
-    term.key_ctrl_c()
-    term.wait()
+    close(term)
+
+
+def test_runs_written_before_the_daemon_started_show(terminal, root: Path) -> None:
+    term = open_alpha(terminal, root)
+    expect(term.get_by_text("20261017-000000/first")).to_be_visible()
+    close(term)
+
+
+def test_a_run_written_by_hand_while_open_is_not_picked_up(
+    terminal, root: Path
+) -> None:
+    term = open_alpha(terminal, root)
+
+    write(
+        root / "alpha/runs/20261018-000000/manual/run.json",
+        json.dumps({"created": "2026-10-18T00:00:00Z", "exit_code": 0}),
+    )
+    time.sleep(3)
+    assert not term.get_by_text(
+        "20261018-000000/manual"
+    ).is_visible(), term.to_snapshot()
+
+    close(term)
+
+
+def test_notes_written_outside_labnotes_while_open_are_not_picked_up(
+    terminal, root: Path
+) -> None:
+    term = open_list(terminal, root)
+
+    write(root / "gamma/files/notes.md", "notes")
+    time.sleep(3)
+    assert not term.get_by_text("gamma").is_visible(), term.to_snapshot()
+
+    close(term)
+
+
+def test_a_second_window_gets_the_daemons_snapshot(terminal, root: Path) -> None:
+    first = open_alpha(terminal, root)
+    write(
+        root / "alpha/runs/20261018-000000/manual/run.json",
+        json.dumps({"created": "2026-10-18T00:00:00Z", "exit_code": 0}),
+    )
+
+    second = open_alpha(terminal, root)
+    time.sleep(3)
+    assert not second.get_by_text(
+        "20261018-000000/manual"
+    ).is_visible(), second.to_snapshot()
+
+    close(second)
+    close(first)

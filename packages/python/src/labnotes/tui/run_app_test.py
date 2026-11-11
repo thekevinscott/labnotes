@@ -863,10 +863,10 @@ def test_spins_the_status_of_running_runs() -> None:
 
     async def drive() -> None:
         app = RunApp(start, "exp", COLUMNS)
-        with mock.patch("labnotes.tui.run_app.DataTable.set_interval") as interval:
+        with mock.patch.object(app.body, "set_interval") as interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
-                interval.assert_called_once_with(0.1, app.body.spin)
+                interval.assert_any_call(0.1, app.body.spin)
                 spun = []
                 for _ in range(4):
                     app.body.spin()
@@ -1415,6 +1415,7 @@ def test_ticks_every_second_and_follows_output_often() -> None:
             async with app.run_test() as pilot:
                 await pilot.pause()
         assert set_interval.call_args_list == [
+            mock.call(0.1, app.body.spin),
             mock.call(1, app.body.tick),
             mock.call(0.25, app.body.follow),
         ]

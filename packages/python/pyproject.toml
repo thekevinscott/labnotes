@@ -51,6 +51,10 @@ curtaincall = false
 dirsql = false
 posix-tools = false
 
+# PyPI publishing is blocked; take curtaincall from GitHub until a release ships.
+[tool.uv.sources]
+curtaincall = { git = "https://github.com/thekevinscott/curtaincall", rev = "3cb0f7c2de370093963a9bdd6e7e618ac7e14595" }
+
 [tool.hatch.version]
 source = "vcs"
 

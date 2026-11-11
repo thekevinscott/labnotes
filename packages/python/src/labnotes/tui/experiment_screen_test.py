@@ -338,15 +338,14 @@ def test_waits_for_the_run_folder_then_reloads_once_watching(
 ) -> None:
     screen.config = mock.Mock(root=tmp_path, runs="{experiment}/runs/{run}")
 
-    async def nothing() -> AsyncIterator[dict[str, object]]:
-        return
-        yield
+    async def a_log_line() -> AsyncIterator[dict[str, object]]:
+        yield {"path": "alpha/runs/lone/stdout.log"}
 
     async def appear(seconds: float) -> None:
         assert seconds == 5
         (tmp_path / "alpha/runs").mkdir(parents=True)
 
-    collaborators["watch_rows"].return_value = nothing()
+    collaborators["watch_rows"].return_value = a_log_line()
     with mock.patch("labnotes.tui.experiment_screen.asyncio.sleep", new=appear):
         reloads = asyncio.run(collect(screen.run_changes()))
 

@@ -632,7 +632,7 @@ class RunApp(ViewSwitcher, App[None]):
     def follow_daemon(self) -> None:
         journals = self.attach_daemon()
         if self.attached is not None:
-            self.run_worker(self.watch_daemon(), exit_on_error=False)
+            self.run_worker(self.watch_daemon())
         if self.attach:
             if not journals:
                 self.farewell = f"Nothing is running for {self.experiment_name}."

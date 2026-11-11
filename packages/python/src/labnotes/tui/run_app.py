@@ -57,7 +57,7 @@ from labnotes.watch_rows import watch_rows
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED = "–"
-VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette", "drain"}
+VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette", "finish_up"}
 RUNS_ACTIONS = {"kill_run", "restart_run", "filter", "leave"}
 BUILT_IN = "labnotes.tui.run_app:RunLiveView"
 
@@ -70,7 +70,7 @@ class RunLiveView(Widget):
     RunLiveView #stages { padding: 0 1; display: none; }
     """
     BINDINGS = [
-        Binding("d", "drain", "Drain"),
+        Binding("f", "finish_up", "Finish up"),
         Binding("x", "kill_run", "Stop run"),
         Binding("r", "restart_run", "Restart"),
         Binding("slash", "filter", "Filter", key_display="/"),
@@ -236,7 +236,7 @@ class RunLiveView(Widget):
                 self.show_summary()
             case "concurrency":
                 self.show_concurrency(event)
-            case "stopping" | "draining":
+            case "stopping" | "finishing up":
                 for pending in self.pending:
                     self.set_cell(pending, "status", dim(SKIPPED))
                 self.show(describe_event(event))
@@ -418,8 +418,8 @@ class RunLiveView(Widget):
         if (run := self.cursor_run()) is not None:
             self.controls.kill(run)
 
-    def action_drain(self) -> None:
-        self.controls.drain()
+    def action_finish_up(self) -> None:
+        self.controls.finish_up()
 
     def action_concurrency(self, change: int) -> None:
         self.controls.set_concurrency(self.concurrency + change)
@@ -531,7 +531,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.watching_state = False
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
-        self.drained = False
+        self.finishing_up = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -629,7 +629,7 @@ class RunApp(ViewSwitcher, App[None]):
                 ),
                 lambda run: self.queue_command({"command": "stop_one", "run": run}),
                 lambda: None,
-                lambda: self.queue_command({"command": "drain"}),
+                lambda: self.queue_command({"command": "finish_up"}),
             )
         )
         self.set_interval(0.25, self.refresh_state)
@@ -738,7 +738,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.results = await self.start(self.show_event, self.listen)
         except Exception as error:
             self.error = error
-        if not self.drained or self.error is not None:
+        if not self.finishing_up or self.error is not None:
             self.exit()
 
     def listen(self, controls: Controls) -> None:
@@ -750,8 +750,8 @@ class RunApp(ViewSwitcher, App[None]):
             stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
-        if event["event"] == "draining":
-            self.drained = True
+        if event["event"] == "finishing up":
+            self.finishing_up = True
         if self.run_state is None:
             if self.body_ready:
                 self.body.show_event(event)
@@ -768,7 +768,7 @@ class RunApp(ViewSwitcher, App[None]):
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:
-            if self.drained:
+            if self.finishing_up:
                 self.exit()
             else:
                 self.controls.finish()
@@ -791,7 +791,7 @@ class RunApp(ViewSwitcher, App[None]):
         if self.body_ready and self.body.started:
             self.push_screen(LeavePrompt(len(self.body.started)), self.answer)
         elif self.body_ready and self.body.idle:
-            if self.drained:
+            if self.finishing_up:
                 self.exit()
             else:
                 self.controls.finish()

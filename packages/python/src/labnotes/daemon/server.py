@@ -25,7 +25,7 @@ class Invocation:
     task: asyncio.Task[None] | None = None
     controls: Controls | None = None
     stop_requested: bool = False
-    drain_requested: bool = False
+    finish_up_requested: bool = False
 
 
 class ExperimentDaemon:
@@ -47,12 +47,12 @@ class ExperimentDaemon:
             if invocation.controls is not None:
                 invocation.controls.interrupt()
 
-    def drain(self) -> None:
+    def finish_up(self) -> None:
         """Drop queued work while active runs finish without signals."""
         for invocation in self.active.values():
-            invocation.drain_requested = True
+            invocation.finish_up_requested = True
             if invocation.controls is not None:
-                invocation.controls.drain()
+                invocation.controls.finish_up()
 
     async def start(
         self,
@@ -76,7 +76,9 @@ class ExperimentDaemon:
                 ]
             except FileNotFoundError:
                 continue
-            if any(event.get("event") in ("stopping", "draining") for event in events):
+            if any(
+                event.get("event") in ("stopping", "finishing up") for event in events
+            ):
                 continue
             for event in events:
                 if event.get("event") == "planned":
@@ -118,8 +120,8 @@ class ExperimentDaemon:
             controls.finish()
             if invocation.stop_requested:
                 controls.interrupt()
-            elif invocation.drain_requested:
-                controls.drain()
+            elif invocation.finish_up_requested:
+                controls.finish_up()
             if not ready.done():
                 ready.set_result(None)
 
@@ -165,8 +167,8 @@ class ExperimentDaemon:
         if action == "stop_all":
             self.stop_all()
             return {"ok": True}
-        if action == "drain":
-            self.drain()
+        if action == "finish_up":
+            self.finish_up()
             return {"ok": True}
         if action == "stop_one":
             run = message.get("run")

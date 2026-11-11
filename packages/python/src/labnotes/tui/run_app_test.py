@@ -998,9 +998,9 @@ def test_detached_attach_replies_and_closes(tmp_path: Path) -> None:
     ):
         client = cast(mock.MagicMock, socket_factory.return_value)
         client.makefile.return_value.__enter__.return_value.readline.return_value = (
-            '{"ok":true}\n'
+            '{"ok":true,"journals":["/j1","/j2"]}\n'
         )
-        app.attach_daemon()
+        assert app.attach_daemon() == ["/j1", "/j2"]
         assert app.attached is client
         client.connect.assert_called_once_with(str(tmp_path / "run.sock"))
         client.sendall.assert_called_once_with(b'{"command":"attach"}\n')
@@ -1147,7 +1147,7 @@ def test_detached_ctrl_c_asks_while_the_invocation_is_busy(
         assert answer == app.answer
 
 
-def test_detached_leave_names_the_stop_command(tmp_path: Path) -> None:
+def test_detached_leave_names_the_attach_and_stop_commands(tmp_path: Path) -> None:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(
         None, "exp", COLUMNS, config, daemon_journal=mock.Mock(path=tmp_path / "j")
@@ -1156,7 +1156,9 @@ def test_detached_leave_names_the_stop_command(tmp_path: Path) -> None:
         app.answer("leave")
         exit_app.assert_called_once_with()
     assert app.farewell == (
-        "exp is still running. Stop it with: labnotes experiments exp stop"
+        "exp is still running.\n"
+        "Reattach with: labnotes experiments exp attach\n"
+        "Stop it with: labnotes experiments exp stop"
     )
 
 
@@ -2588,3 +2590,192 @@ def test_stages_run_in_order_whatever_order_hooks_arrive(
     view = RunLiveView()
     view.hooks = hooks
     assert view.stage_names() == names
+
+
+def test_a_later_single_run_plan_keeps_the_runs_table() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(planned("r1", "r2"))
+        report(planned("r3"))
+        await pilot.pause()
+        assert app.body.viewing is None
+        assert [row[0] for row in rows(app)] == ["r1", "r2", "r3"]
+
+    drive_hooks(steps)
+
+
+def test_a_first_single_run_plan_opens_its_output() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(planned("r1"))
+        await pilot.pause()
+        assert app.body.viewing == "r1"
+
+    drive_hooks(steps)
+
+
+def feed(path: Path, *batches: list[dict[str, object]]) -> mock.Mock:
+    pending = list(batches)
+    return mock.Mock(path=path, read=lambda: pending.pop(0) if pending else [])
+
+
+def test_a_restart_plan_shows_as_a_retry_of_its_known_run(tmp_path: Path) -> None:
+    restart: dict[str, object] = {
+        "event": "planned",
+        "title": "exp",
+        "runs": [{"run": "r2", "params": {"m": "a"}}],
+        "restart": "r1",
+    }
+    app = RunApp(
+        None,
+        "exp",
+        COLUMNS,
+        daemon_journal=feed(tmp_path / "j", [restart, {**restart, "restart": "r9"}]),
+    )
+    app.body.cells["r1"] = {"run": "r1"}
+    with mock.patch.object(app.body, "show_event") as show:
+        app.refresh_state()
+    assert show.call_args_list == [
+        mock.call(
+            {"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}}
+        ),
+        mock.call({**restart, "restart": "r9"}),
+    ]
+
+
+def test_idle_shows_only_once_every_followed_journal_is_idle(tmp_path: Path) -> None:
+    first = feed(tmp_path / "one", [{"event": "started"}], [{"event": "idle"}])
+    second = feed(tmp_path / "two", [{"event": "started"}], [], [{"event": "idle"}])
+    app = RunApp(None, "exp", COLUMNS, daemon_journal=first)
+    app.others.append(second)
+    with mock.patch.object(app.body, "show_event") as show:
+        app.refresh_state()
+        app.refresh_state()
+        assert show.call_args_list == [
+            mock.call({"event": "started"}),
+            mock.call({"event": "started"}),
+        ]
+        app.refresh_state()
+        assert show.call_args_list[2:] == [mock.call({"event": "idle"})]
+    assert app.busy_journals == set()
+
+
+def test_refresh_state_waits_for_a_journal(tmp_path: Path) -> None:
+    app = RunApp(None, "exp", COLUMNS)
+    other = mock.Mock(path=tmp_path / "two")
+    app.others.append(other)
+    app.refresh_state()
+    other.read.assert_not_called()
+
+
+def test_find_journals_adds_only_new_daemon_journals(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    known = mock.Mock(path=tmp_path / "one.jsonl")
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=known, attach=True)
+    reply = {"ok": True, "journals": [str(known.path), str(tmp_path / "two.jsonl")]}
+    with mock.patch(
+        "labnotes.tui.run_app.daemon_command", return_value=reply
+    ) as command:
+        asyncio.run(app.find_journals())
+        asyncio.run(app.find_journals())
+    command.assert_called_with(config, "exp", {"command": "journals"})
+    assert [journal.path for journal in app.others] == [tmp_path / "two.jsonl"]
+    assert app.others[0].offset == 0
+
+
+@pytest.mark.parametrize(
+    "outcome",
+    [ValueError("No daemon is running for exp."), {"ok": False, "error": "old"}],
+)
+def test_find_journals_keeps_journals_when_the_daemon_has_none(
+    tmp_path: Path, outcome: object
+) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    known = mock.Mock(path=tmp_path / "one.jsonl")
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=known, attach=True)
+    command = mock.Mock(return_value=outcome)
+    if isinstance(outcome, Exception):
+        command.side_effect = outcome
+    with mock.patch("labnotes.tui.run_app.daemon_command", command):
+        asyncio.run(app.find_journals())
+    assert app.others == []
+    assert app.run_state is known
+
+
+def test_queue_find_journals_runs_one_poll_at_a_time() -> None:
+    app = RunApp(None, "exp", COLUMNS, attach=True)
+    with (
+        mock.patch.object(app, "run_worker") as worker,
+        mock.patch.object(app, "find_journals", new=mock.Mock()) as find,
+    ):
+        app.queue_find_journals()
+    worker.assert_called_once_with(
+        find.return_value, group="journals", exclusive=True, exit_on_error=False
+    )
+
+
+def test_attached_app_follows_every_journal_and_controls_them_all(
+    tmp_path: Path,
+) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, attach=True)
+    paths = [str(tmp_path / "one.jsonl"), str(tmp_path / "two.jsonl")]
+
+    async def drive() -> None:
+        with (
+            mock.patch.object(app, "attach_daemon", return_value=paths),
+            mock.patch.object(app, "queue_command") as queue,
+            mock.patch.object(app, "queue_find_journals") as find,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause(1.2)
+                find.assert_called()
+                assert app.daemon_journal is app.run_state
+                assert app.run_state is not None
+                assert [
+                    str(journal.path) for journal in [app.run_state, *app.others]
+                ] == paths
+                app.controls.set_concurrency(3)
+                queue.assert_called_once_with(
+                    {"command": "set_concurrency", "count": 3, "journal": None}
+                )
+                app.exit()
+
+    asyncio.run(drive())
+
+
+def test_attached_app_with_nothing_running_says_so_and_exits(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, attach=True)
+
+    async def drive() -> None:
+        with (
+            mock.patch.object(app, "attach_daemon", return_value=[]),
+            mock.patch.object(app, "listen") as listen,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert not app.is_running
+        listen.assert_not_called()
+
+    asyncio.run(drive())
+    assert app.farewell == "Nothing is running for exp."
+    assert app.daemon_journal is None
+
+
+def test_detached_app_does_not_poll_for_journals(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    journal = mock.Mock(path=tmp_path / "one.jsonl")
+    journal.read.return_value = []
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=journal)
+
+    async def drive() -> None:
+        with (
+            mock.patch.object(app, "attach_daemon", return_value=["/other"]),
+            mock.patch.object(app, "queue_find_journals") as find,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause(1.2)
+                find.assert_not_called()
+                assert app.others == []
+                app.exit()
+
+    asyncio.run(drive())

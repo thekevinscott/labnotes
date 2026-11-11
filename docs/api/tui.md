@@ -54,7 +54,7 @@ Ctrl-C quits at once only when the experiment is done. While it is setting up, r
 
 | Key | Action |
 | --- | --- |
-| Enter or `l` | Quit and leave the experiment going. The TUI prints the `labnotes experiments NAME stop` command as it exits. |
+| Enter or `l` | Quit and leave the experiment going. The TUI prints the `labnotes experiments NAME attach` and `labnotes experiments NAME stop` commands as it exits. |
 | `s` | Stop the experiment, the same as `labnotes experiments NAME stop`. No more runs start, running scripts are stopped and any still going 5 seconds later are killed, and teardown still runs. A setup hook that has begun finishes first. |
 | Escape | Back to the table. |
 

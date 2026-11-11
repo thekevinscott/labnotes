@@ -141,6 +141,7 @@ class RunLiveView(Widget):
         match event["event"]:
             case "planned":
                 self.app.title = str(event["title"])
+                first = not self.cells
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
                     self.cells[planned["run"]] = self.waiting_cells(
@@ -154,7 +155,7 @@ class RunLiveView(Widget):
                     self.query_one("#stages").display = True
                     self.go(self.stage_names()[0])
                 match event["runs"]:
-                    case [only]:
+                    case [only] if first:
                         self.view(only["run"])  # type: ignore[index]
             case "started":
                 self.idle = False
@@ -508,6 +509,7 @@ class RunApp(ViewSwitcher, App[None]):
         experiment_config: Path | None = None,
         daemon_journal: RunState | None = None,
         daemon_request: dict[str, object] | None = None,
+        attach: bool = False,
     ) -> None:
         super().__init__()
         self.start = start
@@ -533,6 +535,9 @@ class RunApp(ViewSwitcher, App[None]):
         self.run_state = daemon_journal or (
             start.run_state if isinstance(start, ExperimentStart) else None
         )
+        self.attach = attach
+        self.others: list[RunState] = []
+        self.busy_journals: set[Path] = set()
         self.watching_state = False
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
@@ -576,7 +581,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.query_one(ContentSwitcher).display = False
             self.startup_timer = self.set_interval(0.1, self.spin_startup)  # probe
             self.run_worker(self.start_daemon_run())
-        elif self.daemon_journal is not None:
+        elif self.daemon_journal is not None or self.attach:
             try:
                 self.follow_daemon()
             except (OSError, ValueError) as error:
@@ -619,9 +624,17 @@ class RunApp(ViewSwitcher, App[None]):
             self.call_after_refresh(self.screen.focus_next)
 
     def follow_daemon(self) -> None:
+        journals = self.attach_daemon()
+        if self.attach:
+            if not journals:
+                self.farewell = f"Nothing is running for {self.experiment_name}."
+                self.exit()
+                return
+            self.daemon_journal = self.run_state = RunState(Path(journals[0]))
+            self.add_journals(journals)
+            self.set_interval(1, self.queue_find_journals)
         assert self.daemon_journal is not None
         journal = self.daemon_journal
-        self.attach_daemon()
         self.listen(
             Controls(
                 lambda: self.queue_command({"command": "stop_all"}),
@@ -629,7 +642,7 @@ class RunApp(ViewSwitcher, App[None]):
                     {
                         "command": "set_concurrency",
                         "count": count,
-                        "journal": str(journal.path),
+                        "journal": None if self.attach else str(journal.path),
                     }
                 ),
                 lambda run: self.queue_command({"command": "stop_one", "run": run}),
@@ -640,7 +653,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.set_interval(0.25, self.refresh_state)
         self.refresh_state()
 
-    def attach_daemon(self) -> None:
+    def attach_daemon(self) -> list[str]:
         assert self.config is not None
         path = daemon_socket(self.config, self.experiment_name)
         if path is None:
@@ -658,6 +671,30 @@ class RunApp(ViewSwitcher, App[None]):
             client.close()
             raise
         self.attached = client
+        return cast(list[str], reply.get("journals", []))
+
+    def add_journals(self, journals: list[str]) -> None:
+        assert self.run_state is not None
+        known = {str(journal.path) for journal in [self.run_state, *self.others]}
+        self.others += [RunState(Path(path)) for path in journals if path not in known]
+
+    def queue_find_journals(self) -> None:
+        self.run_worker(
+            self.find_journals(), group="journals", exclusive=True, exit_on_error=False
+        )
+
+    async def find_journals(self) -> None:
+        assert self.config is not None
+        try:
+            reply = await asyncio.to_thread(
+                daemon_command,
+                self.config,
+                self.experiment_name,
+                {"command": "journals"},
+            )
+        except ValueError:
+            return
+        self.add_journals(cast(list[str], reply.get("journals", [])))
 
     def on_unmount(self) -> None:
         if self.attached is not None:
@@ -767,9 +804,29 @@ class RunApp(ViewSwitcher, App[None]):
         self.refresh_state()
 
     def refresh_state(self) -> None:
-        if self.run_state is not None and self.body_ready:
-            for event in self.run_state.read():
-                self.body.show_event(event)
+        if self.run_state is None or not self.body_ready:
+            return
+        for journal in [self.run_state, *self.others]:
+            for event in journal.read():
+                self.forward(journal.path, event)
+
+    def forward(self, journal: Path, event: dict[str, object]) -> None:
+        match event:
+            case {"event": "planned", "restart": str(run)} if run in self.body.cells:
+                [planned] = cast(list[dict[str, object]], event["runs"])
+                event = {
+                    "event": "retried",
+                    "run": run,
+                    "retry": planned["run"],
+                    "params": planned["params"],
+                }
+            case {"event": "started"}:
+                self.busy_journals.add(journal)
+            case {"event": "idle"}:
+                self.busy_journals.discard(journal)
+                if self.busy_journals:
+                    return
+        self.body.show_event(event)
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:
@@ -816,7 +873,8 @@ class RunApp(ViewSwitcher, App[None]):
         elif choice == "leave" and self.daemon_journal is not None:
             name = self.experiment_name
             self.farewell = (
-                f"{name} is still running. "
+                f"{name} is still running.\n"
+                f"Reattach with: labnotes experiments {name} attach\n"
                 f"Stop it with: labnotes experiments {name} stop"
             )
             self.exit()

@@ -17,7 +17,7 @@ class BrowseApp(App[BaseException | None]):
         self.title = config.root.name
 
     def on_mount(self) -> None:
-        tables = open_tables(self.config, run_files=True)
+        tables = open_tables(self.config)
         self.push_screen(ExperimentsScreen(tables, self.config))
         if self.experiment_name is not None:
             self.push_screen(

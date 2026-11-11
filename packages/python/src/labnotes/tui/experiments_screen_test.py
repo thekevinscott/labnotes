@@ -32,13 +32,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.tui.experiments_screen.daemon_marker",
             new=mock.AsyncMock(return_value={"daemon": False, "running_cells": 0}),
         ) as marker,
-        mock.patch(
-            "labnotes.tui.experiments_screen.watch_rows", return_value="changes"
-        ) as watch_rows,
-        mock.patch(
-            "labnotes.tui.experiments_screen.reload_on_change",
-            new=mock.Mock(return_value="reloading"),
-        ) as reload_on_change,
         mock.patch("labnotes.tui.experiments_screen.Header", return_value="header"),
         mock.patch("labnotes.tui.experiments_screen.Footer", return_value="footer"),
         mock.patch.object(
@@ -51,8 +44,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "runs_table": runs_table,
             "fill_table": fill_table,
             "marker": marker,
-            "watch_rows": watch_rows,
-            "reload_on_change": reload_on_change,
             "app": app,
         }
 
@@ -82,26 +73,23 @@ def test_shows_a_table_between_the_header_and_footer(
     )
 
 
-def test_reloads_the_experiments_on_each_change(
-    screen: ExperimentsScreen, collaborators: dict[str, mock.MagicMock]
+def test_loads_now_and_every_five_seconds_without_a_watch(
+    screen: ExperimentsScreen,
 ) -> None:
-    screen.on_mount()
-
-    collaborators["watch_rows"].assert_called_once_with(
-        TABLES, {"files", "runs", "experiment_configs"}
-    )
-    collaborators["reload_on_change"].assert_called_once_with(
-        "changes", screen.load, screen.stopped
-    )
-    getattr(screen.run_worker, "assert_called_once_with")(
-        "reloading", exit_on_error=False
-    )
-    getattr(screen.set_interval, "assert_called_once_with")(5, screen.refresh_daemons)
-
-
-def test_refreshes_daemon_marker_without_file_change(screen: ExperimentsScreen) -> None:
     with mock.patch.object(screen, "load", new=mock.Mock(return_value="loading")):
-        screen.refresh_daemons()
+        screen.on_mount()
+
+    getattr(screen.run_worker, "assert_called_once_with")(
+        "loading", exit_on_error=False
+    )
+    getattr(screen.set_interval, "assert_called_once_with")(
+        5, screen.refresh_experiments
+    )
+
+
+def test_refresh_reloads_the_experiments(screen: ExperimentsScreen) -> None:
+    with mock.patch.object(screen, "load", new=mock.Mock(return_value="loading")):
+        screen.refresh_experiments()
     getattr(screen.run_worker, "assert_called_once_with")(
         "loading", exit_on_error=False
     )
@@ -172,9 +160,3 @@ def test_exits_with_what_stopped_the_read(
         )
 
     collaborators["app"].return_value.exit.assert_called_once_with(error)
-
-
-def test_says_live_updates_stopped(screen: ExperimentsScreen) -> None:
-    screen.stopped(OSError("watcher died"))
-
-    assert screen.sub_title == "Live updates stopped: watcher died"

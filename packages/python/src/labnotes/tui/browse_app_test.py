@@ -7,7 +7,9 @@ import pytest
 
 from labnotes.tui.browse_app import BrowseApp
 
-CONFIG = mock.Mock(root=Path("/p/project"), mode="matrix")
+CONFIG = mock.Mock(
+    root=Path("/p/project"), runs="{experiment}/runs/{run}", mode="matrix"
+)
 
 
 @pytest.fixture(autouse=True)
@@ -49,7 +51,7 @@ def test_opens_on_the_experiment_list(
             assert screens(app) == ["ExperimentsScreen"]
 
     asyncio.run(drive())
-    collaborators["open_tables"].assert_called_once_with(CONFIG, run_files=True)
+    collaborators["open_tables"].assert_called_once_with(CONFIG)
 
 
 def test_opens_a_named_experiment_over_the_list() -> None:

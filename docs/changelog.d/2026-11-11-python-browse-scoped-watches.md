@@ -1,0 +1,1 @@
+**Fixed**: `labnotes experiments` no longer watches every folder in the repo, which could exhaust the inotify watch limit and crash the TUI. The experiment screen watches only that experiment's run folder, and still shows new runs and status changes live. The experiments list refreshes every five seconds instead of watching.

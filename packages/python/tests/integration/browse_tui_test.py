@@ -84,7 +84,7 @@ def test_lists_an_experiment_that_appears_while_open(terminal, tmp_path: Path) -
     expect(term.get_by_text("beta")).to_be_visible()
 
     write(root / "gamma/files/notes.md", "notes")
-    expect(term.get_by_text("gamma")).to_be_visible()
+    expect(term.get_by_text("gamma")).to_be_visible(timeout=10)
 
     term.key_ctrl_c()
     term.wait()

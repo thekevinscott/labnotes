@@ -9,7 +9,7 @@ import pytest
 from labnotes.tui.experiment_screen import Experiment, ExperimentScreen
 
 ROOT = Path("/p/project")
-CONFIG = mock.Mock(root=ROOT)
+CONFIG = mock.Mock(root=ROOT, runs="{experiment}/runs/{run}")
 TABLES = mock.Mock()
 RUNS = [
     {"id": "inv/first", "folder": "alpha/runs/inv/first", "labnotes_completed": 1},
@@ -45,6 +45,9 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "labnotes.tui.experiment_screen.watch_rows", return_value="changes"
         ) as watch_rows,
         mock.patch(
+            "labnotes.tui.experiment_screen.open_run_files", return_value="run files"
+        ) as open_run_files,
+        mock.patch(
             "labnotes.tui.experiment_screen.reload_on_change",
             new=mock.Mock(return_value="reloading"),
         ) as reload_on_change,
@@ -73,6 +76,7 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "load_experiment": load_experiment,
             "native_rows": native_rows,
             "watch_rows": watch_rows,
+            "open_run_files": open_run_files,
             "reload_on_change": reload_on_change,
             "view_pane": view_pane,
             "content_switcher": content_switcher,
@@ -103,7 +107,7 @@ def screen(
         mock.patch.object(shown, "run_worker"),
         mock.patch.object(shown, "refresh_bindings"),
         mock.patch.object(shown, "call_after_refresh"),
-        mock.patch.object(shown, "watch_files", new=mock.Mock(return_value="files")),
+        mock.patch.object(shown, "set_interval"),
     ):
         yield shown
 
@@ -147,16 +151,23 @@ def test_names_the_experiment_and_reloads_it_on_each_change(
     screen.on_mount()
 
     assert screen.sub_title == "alpha"
-    collaborators["watch_rows"].assert_called_once_with(
-        TABLES, {"runs", "experiment_configs"}, "alpha"
+    [(changes, load, stopped), _] = collaborators["reload_on_change"].call_args
+    assert changes.__name__ == "run_changes"
+    assert (load, stopped) == (screen.load, screen.stopped)
+    getattr(screen.run_worker, "assert_called_once_with")(
+        "reloading", exit_on_error=False
     )
-    collaborators["reload_on_change"].assert_called_once_with(
-        "changes", screen.load, screen.stopped
+    getattr(screen.set_interval, "assert_called_once_with")(
+        5, screen.refresh_experiment
     )
-    assert getattr(screen.run_worker, "call_args_list") == [
-        mock.call("reloading", exit_on_error=False),
-        mock.call("files", exit_on_error=False),
-    ]
+
+
+def test_refresh_reloads_the_experiment(screen: ExperimentScreen) -> None:
+    with mock.patch.object(screen, "load", new=mock.Mock(return_value="loading")):
+        screen.refresh_experiment()
+    getattr(screen.run_worker, "assert_called_once_with")(
+        "loading", exit_on_error=False
+    )
 
 
 def test_hands_each_view_the_experiment(
@@ -283,25 +294,63 @@ def test_adds_hidden_views_and_a_key_for_each_once(
     getattr(screen.refresh_bindings, "assert_called_once_with")()
 
 
-def test_hands_each_view_the_files_that_changed(
+async def collect(changes: AsyncIterator[str]) -> list[str]:
+    return [change async for change in changes]
+
+
+def test_watches_only_the_experiments_run_folder(
+    tmp_path: Path,
     screen: ExperimentScreen,
     panes: list[mock.MagicMock],
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
+    (tmp_path / "alpha/runs").mkdir(parents=True)
+    screen.config = mock.Mock(root=tmp_path, runs="{experiment}/runs/{run}")
+
     async def changes() -> AsyncIterator[dict[str, object]]:
         yield {"path": "alpha/runs/lone/stderr.log"}
         screen.shown = SHOWN
         yield {"path": "alpha/runs/lone/stdout.log"}
+        yield {"path": "alpha/runs/lone/run.json"}
 
     collaborators["watch_rows"].return_value = changes()
 
-    asyncio.run(ExperimentScreen.watch_files(screen))
+    reloads = asyncio.run(collect(screen.run_changes()))
 
-    collaborators["watch_rows"].assert_called_once_with(TABLES, {"run_files"}, "alpha")
+    collaborators["open_run_files"].assert_called_once_with(
+        screen.config, tmp_path / "alpha/runs"
+    )
+    collaborators["watch_rows"].assert_called_once_with(
+        "run files", {"run_files"}, "alpha"
+    )
+    assert reloads == ["alpha/runs/lone/run.json"]
     for pane in panes:
-        pane.deliver.assert_called_once_with(
-            SHOWN, frozenset({"alpha/runs/lone/stdout.log"})
-        )
+        assert pane.deliver.call_args_list == [
+            mock.call(SHOWN, frozenset({"alpha/runs/lone/stdout.log"})),
+            mock.call(SHOWN, frozenset({"alpha/runs/lone/run.json"})),
+        ]
+
+
+def test_waits_for_the_run_folder_then_reloads_once_watching(
+    tmp_path: Path,
+    screen: ExperimentScreen,
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    screen.config = mock.Mock(root=tmp_path, runs="{experiment}/runs/{run}")
+
+    async def nothing() -> AsyncIterator[dict[str, object]]:
+        return
+        yield
+
+    async def appear(seconds: float) -> None:
+        assert seconds == 5
+        (tmp_path / "alpha/runs").mkdir(parents=True)
+
+    collaborators["watch_rows"].return_value = nothing()
+    with mock.patch("labnotes.tui.experiment_screen.asyncio.sleep", new=appear):
+        reloads = asyncio.run(collect(screen.run_changes()))
+
+    assert reloads == [str(tmp_path / "alpha/runs")]
 
 
 def test_switches_views_and_restores_focus_after(

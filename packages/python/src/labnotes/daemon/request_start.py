@@ -18,8 +18,8 @@ async def request_start(
     progress: Callable[[str], None],
 ) -> dict[str, object]:
     """Return the daemon's accepted reply, waiting as long as it stays alive."""
-    await ensure_daemon(config, name, progress)
-    progress("Connecting to daemon")
+    progress("Starting up")
+    await ensure_daemon(config, name)
     loop = asyncio.get_running_loop()
     reply: asyncio.Future[dict[str, object]] = loop.create_future()
 

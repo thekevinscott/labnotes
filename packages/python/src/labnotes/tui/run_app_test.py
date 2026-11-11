@@ -1043,8 +1043,8 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
             request.assert_called_once_with("r1", tmp_path / "other.toml")
             assert command.call_args.args[:3] == (config, "exp", mock.sentinel.request)
             show.assert_called_with("Restarted r1.")
-            command.call_args.args[3]("Snapshotting repo")
-            show.assert_called_with("Restarting r1: Snapshotting repo")
+            command.call_args.args[3]("Preparing codebase")
+            show.assert_called_with("Restarting r1: Preparing codebase")
         with mock.patch(
             "labnotes.tui.run_app.request_start",
             new=mock.AsyncMock(side_effect=ValueError("locked")),

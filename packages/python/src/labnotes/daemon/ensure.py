@@ -4,7 +4,6 @@ import asyncio
 import subprocess
 import sys
 import time
-from collections.abc import Callable
 
 from labnotes.daemon.client import daemon_socket
 from labnotes.daemon.socket_path import discovery_folder
@@ -12,15 +11,10 @@ from labnotes.models import LabnotesConfig
 from labnotes.tables.iso_time import iso_time
 
 
-async def ensure_daemon(
-    config: LabnotesConfig,
-    name: str,
-    progress: Callable[[str], None] = lambda step: None,
-) -> None:
+async def ensure_daemon(config: LabnotesConfig, name: str) -> None:
     """Return once a detached daemon holds the experiment's socket."""
     if daemon_socket(config, name) is not None:
         return
-    progress("Starting daemon")
     folder = discovery_folder(config, name)
     folder.mkdir(parents=True, exist_ok=True)
     errors = folder / "daemon.stderr"

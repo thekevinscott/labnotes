@@ -81,7 +81,9 @@ def test_uvx_startup_shows_each_merged_step_once(
                 try:
                     steps = shown_steps(term, gate)
                     assert steps == STEPS, (daemon_running, term.to_snapshot())
-                    wait_for(term, "1 passed, 0 failed.", timeout=30)
+                    # The first run fills the plan, so the second has none.
+                    done = "params" if daemon_running else "1 passed, 0 failed."
+                    wait_for(term, done, timeout=30)
                     term.key_ctrl_c()
                     assert term.wait(timeout=10) == 0, term.to_snapshot()
                 finally:

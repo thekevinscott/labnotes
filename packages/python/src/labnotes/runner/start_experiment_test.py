@@ -131,11 +131,10 @@ def test_reports_each_step_before_it_starts() -> None:
         )
         asyncio.run(start(mock.Mock(), mock.Mock()))
     assert seen == [
-        "Reading experiment config",
+        "Preparing experiment",
         "prepare",
-        "Finalizing lost runs",
         "finalize",
-        "Snapshotting repo",
+        "Preparing codebase",
         "snapshot",
         "Starting run",
         "run",

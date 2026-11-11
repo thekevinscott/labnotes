@@ -530,6 +530,7 @@ class RunApp(ViewSwitcher, App[None]):
         )
         self.watching_state = False
         self.restarts: list[tuple[str, RunState]] = []
+        self.busy_journals: set[Path] = set()
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
         self.drained = False
@@ -767,7 +768,7 @@ class RunApp(ViewSwitcher, App[None]):
     def refresh_state(self) -> None:
         if self.run_state is not None and self.body_ready:
             for event in self.run_state.read():
-                self.body.show_event(event)
+                self.forward(self.run_state.path, event)
             # A restart is its own daemon invocation with its own journal.
             for run, journal in self.restarts:
                 for event in journal.read():
@@ -779,7 +780,17 @@ class RunApp(ViewSwitcher, App[None]):
                             "retry": planned["run"],
                             "params": planned["params"],
                         }
-                    self.body.show_event(event)
+                    self.forward(journal.path, event)
+
+    def forward(self, journal: Path, event: dict[str, object]) -> None:
+        match event["event"]:
+            case "started":
+                self.busy_journals.add(journal)
+            case "idle":
+                self.busy_journals.discard(journal)
+                if self.busy_journals:
+                    return
+        self.body.show_event(event)
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:

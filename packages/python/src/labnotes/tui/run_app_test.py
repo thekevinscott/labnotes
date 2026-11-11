@@ -7,7 +7,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.runner.run_state import RunState
 from labnotes.tui.run_app import RunApp, RunLiveView
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
@@ -1055,31 +1054,48 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
             show.assert_called_with("Could not restart r1: locked")
 
 
+def journal(path: Path, *events: dict[str, object]) -> mock.Mock:
+    pending = [list(events)]
+    return mock.Mock(path=path, read=lambda: pending.pop() if pending else [])
+
+
 def test_restart_journal_shows_its_run_as_a_retry(tmp_path: Path) -> None:
-    app = RunApp(
-        None,
-        "exp",
-        COLUMNS,
-        daemon_journal=mock.Mock(path=tmp_path / "j", read=lambda: []),
-    )
-    journal = RunState(tmp_path / "r.jsonl")
+    app = RunApp(None, "exp", COLUMNS, daemon_journal=journal(tmp_path / "j"))
     planned = {"run": "r2", "params": {"m": "a"}}
-    journal.record({"event": "planned", "title": "exp", "runs": [planned]})
-    journal.record({"event": "idle"})
-    app.restarts.append(("r1", RunState(journal.path)))
+    restart = journal(
+        tmp_path / "r",
+        {"event": "planned", "title": "exp", "runs": [planned]},
+        {"event": "started", "run": "r2"},
+        {"event": "idle"},
+    )
+    app.restarts.append(("r1", restart))
     with mock.patch.object(app.body, "show_event") as show_event:
         app.refresh_state()
         app.refresh_state()
-    assert [call.args[0]["event"] for call in show_event.call_args_list] == [
-        "retried",
-        "idle",
+    assert [call.args[0] for call in show_event.call_args_list] == [
+        {"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}},
+        {"event": "started", "run": "r2"},
+        {"event": "idle"},
     ]
-    assert show_event.call_args_list[0].args[0] == {
-        "event": "retried",
-        "run": "r1",
-        "retry": "r2",
-        "params": {"m": "a"},
-    }
+
+
+def test_restart_idle_waits_for_the_original_runs(tmp_path: Path) -> None:
+    main = journal(tmp_path / "j", {"event": "started", "run": "hold"})
+    app = RunApp(None, "exp", COLUMNS, daemon_journal=main)
+    restart = journal(
+        tmp_path / "r",
+        {"event": "started", "run": "r2"},
+        {"event": "idle"},
+    )
+    app.restarts.append(("r1", restart))
+    with mock.patch.object(app.body, "show_event") as show_event:
+        app.refresh_state()
+        assert {"event": "idle"} not in [
+            call.args[0] for call in show_event.call_args_list
+        ]
+        main.read = lambda: [{"event": "idle"}]
+        app.refresh_state()
+    assert show_event.call_args.args[0] == {"event": "idle"}
 
 
 def test_detached_startup_error_is_reported(tmp_path: Path) -> None:

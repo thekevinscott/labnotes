@@ -63,8 +63,7 @@ async def run_experiment(
     forward = report
 
     def emit(event: dict[str, object]) -> None:
-        state.record(event)
-        forward(event)
+        forward(state.record(event))
 
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment

@@ -779,3 +779,81 @@ def test_attach_and_journals_list_active_invocations_in_start_order(
         }
 
     asyncio.run(drive())
+
+
+@pytest.mark.parametrize("buffer_size", [1024 * 1024, 1024 * 1024 + 1])
+def test_slow_subscriber_is_dropped_without_blocking_others(
+    tmp_path: Path, buffer_size: int
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    slow, fast = mock.Mock(), mock.Mock()
+    for writer in (slow, fast):
+        writer.is_closing.return_value = False
+    slow.transport.get_write_buffer_size.return_value = buffer_size
+    fast.transport.get_write_buffer_size.return_value = 0
+    daemon.subscribers.update((slow, fast))
+    event = {"event": "idle", "at": 12.0}
+    daemon.report("batch", event)
+    assert daemon.history["batch"].events == [event]
+    assert json.loads(fast.write.call_args.args[0]) == {
+        "journal": "batch",
+        "event": event,
+    }
+    assert (slow in daemon.subscribers) is (buffer_size == 1024 * 1024)
+    assert slow.transport.abort.call_count == (buffer_size > 1024 * 1024)
+    assert fast in daemon.subscribers
+
+
+@pytest.mark.parametrize("closing", [True, False])
+def test_broken_subscriber_does_not_break_recording(
+    tmp_path: Path, closing: bool
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    writer = mock.Mock()
+    writer.is_closing.return_value = closing
+    writer.write.side_effect = BrokenPipeError()
+    daemon.subscribers.add(writer)
+    daemon.report("batch", {"event": "idle"})
+    assert daemon.history["batch"].events == [{"event": "idle"}]
+    assert writer not in daemon.subscribers
+    assert writer.write.call_count == (not closing)
+    assert writer.transport.abort.call_count == (not closing)
+
+
+def test_attach_replays_finished_batches_then_new_batch_without_gaps(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        old = [{"event": "planned", "at": 1}, {"event": "idle", "at": 2}]
+        daemon.history["ended"] = Invocation(events=old)
+        server = await asyncio.start_unix_server(
+            daemon.handle, path=str(tmp_path / "s")
+        )
+        async with server:
+            reader, writer = await asyncio.open_unix_connection(str(tmp_path / "s"))
+            writer.write(b'{"command":"attach"}\n')
+            assert json.loads(await reader.readline()) == {"ok": True, "journals": []}
+            daemon.history["new"] = Invocation()
+            event = {"event": "planned", "at": 3}
+            daemon.report("new", event)
+            messages = [
+                json.loads(await asyncio.wait_for(reader.readline(), 1))
+                for _ in range(3)
+            ]
+            assert messages == [
+                *({"journal": "ended", "event": e} for e in old),
+                {"journal": "new", "event": event},
+            ]
+            writer.close()
+            await writer.wait_closed()
+            for _ in range(20):
+                if not daemon.clients:
+                    break
+                await asyncio.sleep(0.01)
+            assert not daemon.subscribers
+            assert daemon.clients == 0
+
+    asyncio.run(drive())

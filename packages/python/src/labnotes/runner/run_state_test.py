@@ -159,3 +159,19 @@ def test_empty_line_is_invalid_journal_data(tmp_path: Path) -> None:
     reader.path.write_bytes(b"\n")
     with pytest.raises(json.JSONDecodeError):
         reader.read()
+
+
+def test_record_returns_exact_stored_event_with_retry_deadline(tmp_path: Path) -> None:
+    writer = state(tmp_path)
+    source = {"event": "retrying", "seconds": 5, "folder": tmp_path}
+    with mock.patch("labnotes.runner.run_state.time.time", return_value=100.0):
+        stored = writer.record(source)
+    assert stored == {
+        "event": "retrying",
+        "seconds": 5,
+        "folder": str(tmp_path),
+        "at": 100.0,
+        "retry_at": 105.0,
+    }
+    assert stored == json.loads(writer.path.read_text())
+    assert "at" not in source

@@ -155,20 +155,28 @@ def test_attached_client_receives_live_stdout_and_stderr(
         daemon.communicate(timeout=30)
 
 
+# The views path opens dirsql tables and a run_files watcher; the plain path
+# polls the files. Both must take logs from the daemon.
+@pytest.mark.parametrize("views", [False, True], ids=["plain", "views"])
 def test_run_tui_shows_live_output_without_reading_log_files(
-    terminal, tmp_path: Path
+    terminal, tmp_path: Path, views: bool
 ) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
     command = (
         f"{shlex.quote(sys.executable)} -c "
-        "\"import time\nfor i in range(100): print('tick', i, flush=True); "
+        "\"import sys, time\nfor i in range(100): print('tick', i, flush=True); "
+        "print('warn', i, file=sys.stderr, flush=True); "
         'time.sleep(0.2)"'
     )
-    (root / "exp/experiment.toml").write_text(
-        f"continues = false\ncommand = '''{command}'''\n"
-    )
+    config = f"continues = false\ncommand = '''{command}'''\n"
+    if views:
+        config += '[views]\nprogress = "progress.py:Progress"\n'
+        (root / "progress.py").write_text(
+            "from textual.widgets import Static\nclass Progress(Static):\n    pass\n"
+        )
+    (root / "exp/experiment.toml").write_text(config)
     hooks = tmp_path / "hooks"
     hooks.mkdir()
     (hooks / "sitecustomize.py").write_text(RECORD_OPENS)
@@ -184,6 +192,8 @@ def test_run_tui_shows_live_output_without_reading_log_files(
     term.key_enter()
     expect(term.get_by_text("tick 3")).to_be_visible()
     expect(term.get_by_text("tick 12")).to_be_visible()
+    term.write("t")
+    expect(term.get_by_text("warn 20")).to_be_visible()
     term.key_ctrl_c()
     expect(term.get_by_text("leave running")).to_be_visible()
     term.write("s")
@@ -192,3 +202,55 @@ def test_run_tui_shows_live_output_without_reading_log_files(
     assert list(root.glob("exp/runs/*/stdout.log")), "run wrote no log record"
     read = opens.read_text().splitlines() if opens.exists() else []
     assert read == [], f"run TUI read log files itself: {sorted(set(read))}"
+
+
+def test_log_files_stay_complete_while_an_attached_client_stalls(
+    tmp_path: Path, runtime: Path
+) -> None:
+    root = tmp_path / "project"
+    (root / "exp").mkdir(parents=True)
+    (root / ".labnotes.toml").write_text("")
+    (root / "child.py").write_text(
+        "import sys\n"
+        "for i in range(200_000):\n"
+        "    print(f'out {i:06d} ' + 'x' * 40)\n"
+        "    if i % 1000 == 0: print(f'err {i:06d}', file=sys.stderr)\n"
+    )
+    (root / "exp/experiment.toml").write_text(
+        f'continues = false\ncommand = "{sys.executable} child.py"\n'
+    )
+    env = {**os.environ, "XDG_RUNTIME_DIR": str(runtime)}
+    daemon = subprocess.Popen(
+        labnotes(root, "daemon", "exp"), cwd=root, env=env, stdout=subprocess.PIPE
+    )
+    try:
+        path = wait_for_socket(runtime)
+        with socket.socket(socket.AF_UNIX) as stalled:
+            stalled.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)
+            stalled.connect(str(path))
+            stalled.sendall(b'{"command":"attach"}\n')
+            started = request(path, {"command": "start", "options": {}})
+            assert started["ok"] is True, started
+            deadline = time.monotonic() + 60
+            while time.monotonic() < deadline:
+                ended = [
+                    record
+                    for record in root.glob("exp/runs/*/run.json")
+                    if json.loads(record.read_text()).get("ended")
+                ]
+                if ended:
+                    break
+                time.sleep(0.1)
+            assert ended, "a client that never reads held the run back"
+        [folder] = root.glob("exp/runs/*")
+        expected_out = "".join(
+            f"out {i:06d} " + "x" * 40 + "\n" for i in range(200_000)
+        )
+        expected_err = "".join(f"err {i:06d}\n" for i in range(0, 200_000, 1000))
+        assert (folder / "stdout.log").read_text() == expected_out
+        assert (folder / "stderr.log").read_text() == expected_err
+        assert json.loads((folder / "run.json").read_text())["exit_code"] == 0
+    finally:
+        if daemon.poll() is None:
+            daemon.terminate()
+        daemon.communicate(timeout=30)

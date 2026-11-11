@@ -86,6 +86,13 @@ def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:
     assert shown(output) == ["café done"]
 
 
+def test_shows_the_last_carriage_return_overwrite(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_bytes(b"crlf\r\nstep 1\rstep 2\r\nloading\r")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    assert shown(output) == ["crlf", "step 2", "loading"]
+
+
 @pytest.mark.parametrize(
     ("text", "count"),
     [("", 0), ("one", 0), ("one\n", 1), ("one\ntwo", 1), ("one\ntwo\nthree", 2)],

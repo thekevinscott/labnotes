@@ -55,7 +55,7 @@ reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^
 [[python.exempt]]
 path = "src/labnotes/daemon/server.py"
 rules = ["mutation"]
-lines = [257]
+lines = [259]
 reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^ gives the same flock operation"
 
 [[python.exempt]]
@@ -78,7 +78,7 @@ reason = "the next line chmods the folder to 0700, so the mkdir mode only narrow
 [[python.exempt]]
 path = "src/labnotes/daemon/server.py"
 rules = ["mutation"]
-lines = [162]
+lines = [164]
 reason = "action is \"start\" or \"restart\" here, and \"start\" sorts after \"restart\", so <= equals =="
 
 [[python.exempt]]

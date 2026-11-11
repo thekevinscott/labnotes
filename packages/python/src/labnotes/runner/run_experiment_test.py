@@ -1500,25 +1500,25 @@ def test_never_retries_once_stopping(
     assert events(report) == ["planned", "started", "stopping", "ended", "idle"]
 
 
-def test_drain_drops_plan_without_signaling_in_flight_run(
+def test_finish_up_drops_plan_without_signaling_in_flight_run(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     listen, report = mock.Mock(), mock.Mock()
     collaborators["plan_runs"].return_value = [A, B]
 
     async def execute(*args: object, **_: object) -> dict[str, object]:
-        listen.call_args.args[0].drain()
+        listen.call_args.args[0].finish_up()
         return {"exit_code": 0, "error": None}
 
     collaborators["execute_run"].side_effect = execute
     run(tmp_path, report, listen=listen)
 
     assert started_runs(report) == ["r1"]
-    assert events(report) == ["planned", "started", "draining", "ended", "idle"]
+    assert events(report) == ["planned", "started", "finishing up", "ended", "idle"]
     collaborators["signal_tree"].assert_not_called()
 
 
-def test_drain_finishes_in_process_runner_without_an_explicit_finish(
+def test_finish_up_finishes_in_process_runner_without_an_explicit_finish(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = [A, B]
@@ -1534,7 +1534,7 @@ def test_drain_finishes_in_process_runner_without_an_explicit_finish(
         controls.found = found
 
     async def execute(*args: object, **_: object) -> dict[str, object]:
-        controls.found.drain()
+        controls.found.finish_up()
         return {"exit_code": 0, "error": None}
 
     collaborators["execute_run"].side_effect = execute
@@ -1544,7 +1544,7 @@ def test_drain_finishes_in_process_runner_without_an_explicit_finish(
     assert started_runs(report) == ["r1"]
 
 
-def test_drain_releases_lock_for_queued_resumed_run(
+def test_finish_up_releases_lock_for_queued_resumed_run(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["resumable"].return_value = [
@@ -1559,7 +1559,7 @@ def test_drain_releases_lock_for_queued_resumed_run(
     listen, report = mock.Mock(), mock.Mock()
 
     async def execute(*args: object, **_: object) -> dict[str, object]:
-        listen.call_args.args[0].drain()
+        listen.call_args.args[0].finish_up()
         collaborators["close"].assert_called_once_with(102)
         return {"exit_code": 0, "error": None}
 
@@ -1569,39 +1569,39 @@ def test_drain_releases_lock_for_queued_resumed_run(
     assert started_runs(report) == ["old-a"]
 
 
-def test_drain_prevents_retry_after_in_flight_failure(
+def test_finish_up_prevents_retry_after_in_flight_failure(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
     listen, report = mock.Mock(), mock.Mock()
 
     async def execute(*args: object, **_: object) -> dict[str, object]:
-        listen.call_args.args[0].drain()
+        listen.call_args.args[0].finish_up()
         return {"exit_code": 75, "error": None}
 
     collaborators["execute_run"].side_effect = execute
     run(tmp_path, report, listen=listen)
 
-    assert events(report) == ["planned", "started", "draining", "ended", "idle"]
+    assert events(report) == ["planned", "started", "finishing up", "ended", "idle"]
 
 
-def test_drain_cancels_waiting_retry(
+def test_finish_up_cancels_waiting_retry(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
     collaborators["execute_run"].side_effect = exiting(75)
-    listen, report = calling("drain")
+    listen, report = calling("finish_up")
 
     run(tmp_path, report, listen=listen, retry_seconds=60)
 
     assert reported(report)[-3:] == [
-        {"event": "draining"},
+        {"event": "finishing up"},
         {"event": "retry cancelled", "run": "r1"},
         {"event": "idle"},
     ]
 
 
-def test_stop_during_drain_signals_running_process(
+def test_stop_during_finish_up_signals_running_process(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
@@ -1618,7 +1618,7 @@ def test_stop_during_drain_signals_running_process(
     ) -> dict[str, object]:
         running.add(mock.Mock(pid=42))
         controls = listen.call_args.args[0]
-        controls.drain()
+        controls.finish_up()
         controls.interrupt()
         return {"exit_code": -15, "error": None}
 
@@ -1628,7 +1628,7 @@ def test_stop_during_drain_signals_running_process(
     assert events(report) == [
         "planned",
         "started",
-        "draining",
+        "finishing up",
         "stopping",
         "ended",
         "idle",
@@ -1636,7 +1636,7 @@ def test_stop_during_drain_signals_running_process(
     collaborators["signal_tree"].assert_called_once()
 
 
-def test_drain_after_stop_does_not_emit_a_drain_event(
+def test_finish_up_after_stop_does_not_emit_a_finishing_up_event(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["plan_runs"].return_value = [A]
@@ -1645,7 +1645,7 @@ def test_drain_after_stop_does_not_emit_a_drain_event(
     async def execute(*args: object, **_: object) -> dict[str, object]:
         controls = listen.call_args.args[0]
         controls.interrupt()
-        controls.drain()
+        controls.finish_up()
         return {"exit_code": -15, "error": None}
 
     collaborators["execute_run"].side_effect = execute

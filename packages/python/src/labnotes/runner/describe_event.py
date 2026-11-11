@@ -57,7 +57,7 @@ def describe_event(event: dict[str, object]) -> str:
             return str(event["error"])
         case "stopping":
             return "Stopping runs. Ctrl-C again to kill them."
-        case "draining":
-            return "Draining queued runs. Running cells will finish."
+        case "finishing up":
+            return "Finishing up. Queued runs won't start; running cells will finish."
         case _:
             return "Killing runs."

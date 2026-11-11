@@ -600,6 +600,7 @@ class RunApp(ViewSwitcher, App[None]):
         assert self.config is not None
         assert self.daemon_request is not None
         try:
+            self.step("Starting daemon")
             await ensure_daemon(self.config, self.experiment_name)
             self.attach_daemon()
             reply = await request_start(

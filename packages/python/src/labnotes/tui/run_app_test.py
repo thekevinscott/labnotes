@@ -2790,6 +2790,7 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
     order: list[str] = []
 
     async def ensure(*args):
+        assert app.steps == ["Starting daemon"]
         order.append("ensure")
 
     def attach():

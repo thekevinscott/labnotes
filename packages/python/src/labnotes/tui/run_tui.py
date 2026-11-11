@@ -1,7 +1,6 @@
 from pathlib import Path
 
 from labnotes.models import LabnotesConfig, Start
-from labnotes.runner.run_state import RunState
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.run_app import RunApp
 
@@ -11,7 +10,7 @@ def run_tui(
     title: str,
     config: LabnotesConfig | None = None,
     experiment_config: Path | None = None,
-    daemon_journal: RunState | None = None,
+    daemon_request: dict[str, object] | None = None,
 ) -> list[dict[str, object]]:
     app = RunApp(
         start,
@@ -19,7 +18,7 @@ def run_tui(
         RUN_COLUMNS,
         config=config,
         experiment_config=experiment_config,
-        daemon_journal=daemon_journal,
+        daemon_request=daemon_request,
     )
     app.run()
     if app.farewell is not None:

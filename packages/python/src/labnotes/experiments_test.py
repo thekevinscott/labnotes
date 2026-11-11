@@ -281,13 +281,6 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
     results = [{"exit_code": 0}, {"exit_code": 0}]
     with (
         mock.patch("labnotes.experiments.run_tui", return_value=results) as run_tui,
-        mock.patch(
-            "labnotes.experiments.ensure_daemon", new=mock.AsyncMock()
-        ) as ensure_daemon,
-        mock.patch(
-            "labnotes.experiments.daemon_command",
-            return_value={"ok": True, "journal": "/state/invocation.jsonl"},
-        ) as daemon_command,
         mock.patch("labnotes.experiments.sys") as sys,
         mock.patch("labnotes.experiments.os", mock.Mock(environ={"KEY": "value"})),
         mock.patch(
@@ -298,8 +291,6 @@ def drivers() -> Iterator[dict[str, mock.MagicMock]]:
         sys.stderr.isatty.return_value = True
         yield {
             "run_tui": run_tui,
-            "ensure_daemon": ensure_daemon,
-            "daemon_command": daemon_command,
             "sys": sys,
             "parse_subset": parse_subset,
         }
@@ -310,10 +301,9 @@ def test_runs_an_experiment_through_daemon(
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", "run", "--concurrency", "3"]) == 0
-    options = drivers["daemon_command"].call_args.args[2]["options"]
+    options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
     assert options["concurrency"] == 3
     drivers["run_tui"].assert_called_once()
-    drivers["ensure_daemon"].assert_awaited_once()
 
 
 def test_runs_an_experiment_from_a_named_config(
@@ -326,7 +316,7 @@ def test_runs_an_experiment_from_a_named_config(
 
     assert run(["a", "run", "-e", str(path)]) == 0
 
-    assert drivers["daemon_command"].call_args.args[2]["options"][
+    assert drivers["run_tui"].call_args.kwargs["daemon_request"]["options"][
         "experiment_config"
     ] == str(path)
 
@@ -344,7 +334,7 @@ def test_resolves_named_config_from_the_invoking_folder(
 
     assert run(["a", "run", "-e", "alt/experiment.toml"]) == 0
 
-    options = drivers["daemon_command"].call_args.args[2]["options"]
+    options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
     assert options["experiment_config"] == str(path)
 
 
@@ -355,8 +345,8 @@ def test_passes_the_setup_and_teardown_flags(
     assert run(["a", "run", "--setup", "up", "--teardown", "down"]) == 0
 
     assert (
-        drivers["daemon_command"].call_args.args[2]["options"]["setup"],
-        drivers["daemon_command"].call_args.args[2]["options"]["teardown"],
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["setup"],
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["teardown"],
     ) == ("up", "down")
 
 
@@ -370,9 +360,9 @@ def test_passes_the_labnotes_command_line(
     with ctx:
         experiments.invoke(ctx)
 
-    assert drivers["daemon_command"].call_args.args[2]["options"]["command_line"] == (
-        "labnotes experiments a run"
-    )
+    assert drivers["run_tui"].call_args.kwargs["daemon_request"]["options"][
+        "command_line"
+    ] == ("labnotes experiments a run")
 
 
 def test_runs_the_subset_given_as_params(
@@ -382,7 +372,7 @@ def test_runs_the_subset_given_as_params(
     assert run(["a", "run", "--model=small", "--timeout", "5", "--lang=en"]) == 0
 
     drivers["parse_subset"].assert_called_once_with(["--model=small", "--lang=en"])
-    options = drivers["daemon_command"].call_args.args[2]["options"]
+    options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
     assert options["only"] == drivers["parse_subset"].return_value
     assert options["timeout"] == 5
 
@@ -396,7 +386,7 @@ def test_passes_args_after_the_double_dash_through(
     assert run(argv) == 0
 
     drivers["parse_subset"].assert_called_once_with(["--model=small"])
-    assert drivers["daemon_command"].call_args.args[2]["options"]["args"] == [
+    assert drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["args"] == [
         "--auth",
         "api",
         "--",
@@ -410,7 +400,9 @@ def test_sends_no_args_for_a_bare_double_dash(
 ) -> None:
     assert run(["a", "run", "--"]) == 0
 
-    assert drivers["daemon_command"].call_args.args[2]["options"]["args"] is None
+    assert (
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["args"] is None
+    )
 
 
 @pytest.mark.parametrize("argv", [["a", "--", "--auth"], ["a", "runs", "--"]])
@@ -455,10 +447,7 @@ def test_reports_an_experiment_that_cannot_run(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
 ) -> None:
-    drivers["daemon_command"].return_value = {
-        "ok": False,
-        "error": "a is already running",
-    }
+    drivers["run_tui"].side_effect = ValueError("a is already running")
 
     assert run(["a", "run"]) == 1
 
@@ -503,15 +492,9 @@ def test_shows_the_live_view_in_a_terminal(
         "a",
         collaborators["load_config"].return_value,
         None,
-        daemon_journal=mock.ANY,
+        daemon_request=mock.ANY,
     )
-    assert drivers["run_tui"].call_args.kwargs["daemon_journal"].path == Path(
-        "/state/invocation.jsonl"
-    )
-    drivers["ensure_daemon"].assert_awaited_once_with(
-        collaborators["load_config"].return_value, "a"
-    )
-    drivers["daemon_command"].assert_called_once()
+    assert drivers["run_tui"].call_args.kwargs["daemon_request"]["command"] == "start"
     assert capsys.readouterr().out == ""
 
 
@@ -524,9 +507,7 @@ def test_terminal_restart_sends_options_to_daemon(
     alternate.write_text("command = 'true'\n")
     drivers["sys"].stdout.isatty.return_value = True
     assert run(["a", "run", "--run-id", "failed", "-e", str(alternate)]) == 0
-    drivers["daemon_command"].assert_called_once_with(
-        collaborators["load_config"].return_value,
-        "a",
+    assert drivers["run_tui"].call_args.kwargs["daemon_request"] == (
         {
             "command": "restart",
             "options": {
@@ -544,9 +525,8 @@ def test_terminal_restart_sends_options_to_daemon(
                 "replace_capped": False,
                 "environment": {"KEY": "value"},
             },
-        },
+        }
     )
-    drivers["run_tui"].assert_called_once()
 
 
 def test_terminal_reports_daemon_rejection(
@@ -555,10 +535,9 @@ def test_terminal_reports_daemon_rejection(
     drivers: dict[str, mock.MagicMock],
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = True
-    drivers["daemon_command"].return_value = {"ok": False, "error": "bad config"}
+    drivers["run_tui"].side_effect = ValueError("bad config")
     assert run(["a", "run"]) == 1
     assert "bad config" in capsys.readouterr().err
-    drivers["run_tui"].assert_not_called()
 
 
 @pytest.mark.parametrize(
@@ -669,7 +648,10 @@ def test_sends_the_timeout_in_seconds(
 ) -> None:
     assert run(["a", "run", "--timeout", "90"]) == 0
 
-    assert drivers["daemon_command"].call_args.args[2]["options"]["timeout"] == 90
+    assert (
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["timeout"]
+        == 90
+    )
 
 
 @pytest.mark.parametrize("given", ["0", "-5"])
@@ -731,9 +713,11 @@ def test_passes_retries_and_replace_capped_to_the_run(
     assert run(["a", "run", "--retries", "0", "--replace-capped"]) == 0
 
     assert (
-        drivers["daemon_command"].call_args.args[2]["options"]["retries"],
-        drivers["daemon_command"].call_args.args[2]["options"]["retry_wait"],
-        drivers["daemon_command"].call_args.args[2]["options"]["replace_capped"],
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["retries"],
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["retry_wait"],
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"][
+            "replace_capped"
+        ],
     ) == (0, None, True)
 
 
@@ -743,7 +727,10 @@ def test_passes_retry_wait_to_the_run(
 ) -> None:
     assert run(["a", "run", "--retry-wait", "0.5"]) == 0
 
-    assert drivers["daemon_command"].call_args.args[2]["options"]["retry_wait"] == 0.5
+    assert (
+        drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]["retry_wait"]
+        == 0.5
+    )
 
 
 def test_terminal_run_sends_retry_wait_to_daemon(
@@ -753,7 +740,7 @@ def test_terminal_run_sends_retry_wait_to_daemon(
     drivers["sys"].stdout.isatty.return_value = True
     assert run(["a", "run", "--retry-wait", "2"]) == 0
 
-    options = drivers["daemon_command"].call_args.args[2]["options"]
+    options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
     assert options["retry_wait"] == 2.0
 
 
@@ -772,7 +759,7 @@ def test_terminal_run_sends_retries_and_replace_capped_to_daemon(
     drivers["sys"].stdout.isatty.return_value = True
     assert run(["a", "run", "--retries", "1", "--replace-capped"]) == 0
 
-    options = drivers["daemon_command"].call_args.args[2]["options"]
+    options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
     assert (options["retries"], options["replace_capped"]) == (1, True)
 
 
@@ -792,5 +779,4 @@ def test_run_without_a_terminal_is_a_usage_error(
     drivers["sys"].stdout.isatty.return_value = False
     assert run(["a", "run"]) == 2
     assert "requires a terminal" in capsys.readouterr().err
-    drivers["ensure_daemon"].assert_not_awaited()
-    drivers["daemon_command"].assert_not_called()
+    drivers["run_tui"].assert_not_called()

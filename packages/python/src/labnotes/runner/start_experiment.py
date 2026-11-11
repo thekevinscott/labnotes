@@ -1,3 +1,4 @@
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -37,10 +38,12 @@ def start_experiment(
     replace_capped: bool = False,
     reserved: dict[str, dict[str, object]] | None = None,
     environment: dict[str, str] | None = None,
+    progress: Callable[[str], None] = lambda step: None,
 ) -> ExperimentStart:
     state = RunState.create(config, name)
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        progress("Reading experiment config")
         experiment, limit = await prepare_experiment(
             config,
             name,
@@ -54,8 +57,11 @@ def start_experiment(
             retry_wait,
             replace_capped,
         )
+        progress("Finalizing lost runs")
         await finalize_lost_runs(config)
+        progress("Snapshotting repo")
         with project_snapshot(config.root) as snapshot:
+            progress("Starting run")
             return await run_experiment(
                 config,
                 name,

@@ -25,19 +25,19 @@ reason = "exit_code is non-negative here; when bit 7 is set, - 128 equals ^ 128,
 [[python.exempt]]
 path = "src/labnotes/experiments.py"
 rules = ["mutation"]
-lines = [245]
+lines = [235]
 reason = "click hands back the \"json\" choice literal itself, so is not equals !="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [352]
+lines = [354]
 reason = "the leave action name is the string literal from the Binding, which CPython interns, so is equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [770]
+lines = [824]
 reason = "the switcher contains only view-1 through view-9; every non-built-in view id sorts above view-1, so > equals !="
 
 [[python.exempt]]
@@ -55,7 +55,7 @@ reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^
 [[python.exempt]]
 path = "src/labnotes/daemon/server.py"
 rules = ["mutation"]
-lines = [241]
+lines = [257]
 reason = "LOCK_EX and LOCK_NB are disjoint flag bits, so replacing | with + or ^ gives the same flock operation"
 
 [[python.exempt]]
@@ -70,12 +70,6 @@ lines = [23, 34]
 reason = "the record was read a moment earlier, so it is missing only if another client cleaned it up concurrently; missing_ok guards that race and cannot be triggered deterministically"
 
 [[python.exempt]]
-path = "src/labnotes/daemon/command.py"
-rules = ["mutation"]
-lines = [27]
-reason = "daemon_socket just read this record, so it is missing only if another client cleaned it up concurrently; missing_ok guards that race"
-
-[[python.exempt]]
 path = "src/labnotes/daemon/socket_path.py"
 rules = ["mutation"]
 lines = [29]
@@ -84,31 +78,31 @@ reason = "the next line chmods the folder to 0700, so the mkdir mode only narrow
 [[python.exempt]]
 path = "src/labnotes/daemon/server.py"
 rules = ["mutation"]
-lines = [151]
+lines = [162]
 reason = "action is \"start\" or \"restart\" here, and \"start\" sorts after \"restart\", so <= equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [224, 253, 254]
+lines = [226, 255, 256]
 reason = "hooks only ever hold setup and teardown, so hook <= \"setup\" and hook >= \"teardown\" equal ==; panel.hook and panel.state are string literals from HookPanel, which CPython interns, so is equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [258, 274, 350]
+lines = [260, 276, 352]
 reason = "a stage is setup, runs or teardown and both hooks sort above runs, so > equals !=; \"runs\" always comes from the literal in stage_names or advance, so is not equals !="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [348]
+lines = [350]
 reason = "every action bound on RunLiveView sorts at or below stage, so >= equals =="
 
 [[python.exempt]]
 path = "src/labnotes/tui/run_app.py"
 rules = ["mutation"]
-lines = [373, 452]
+lines = [375, 454]
 reason = "HookPanel.state returns string literals, which CPython interns, so is equals =="
 
 [[python.exempt]]
@@ -158,3 +152,9 @@ path = "src/labnotes/line_index.py"
 rules = ["mutation"]
 lines = [63, 66, 67]
 reason = "position never exceeds scanned, line grows by one and never passes last, and continue after reaching last exits the loop; equality and continue therefore match the original outcomes, while large-value and bounded-read tests cover identity and limit mutations"
+
+[[python.exempt]]
+path = "src/labnotes/tui/run_app.py"
+rules = ["mutation"]
+lines = [572]
+reason = "the startup spinner's tick rate is cosmetic; frame stepping is tested through spin_startup"

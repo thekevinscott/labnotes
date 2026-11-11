@@ -217,7 +217,7 @@ def test_uvx_browse_restart_sends_this_shells_environment(
                 ).encode()
             )
             with client.makefile("r") as reply:
-                assert json.loads(reply.readline())["ok"] is True
+                assert json.loads(reply.readlines()[-1])["ok"] is True
         failed = failed_run(root)
         assert launches(root)[0]["probe"] == "daemon"
         term = tui(

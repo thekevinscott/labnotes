@@ -4,19 +4,23 @@ import asyncio
 import subprocess
 import sys
 import time
+from collections.abc import Callable
 
 from labnotes.daemon.client import daemon_socket
 from labnotes.daemon.socket_path import discovery_folder
 from labnotes.models import LabnotesConfig
 from labnotes.tables.iso_time import iso_time
 
-START_SECONDS = 10
 
-
-async def ensure_daemon(config: LabnotesConfig, name: str) -> None:
+async def ensure_daemon(
+    config: LabnotesConfig,
+    name: str,
+    progress: Callable[[str], None] = lambda step: None,
+) -> None:
     """Return once a detached daemon holds the experiment's socket."""
     if daemon_socket(config, name) is not None:
         return
+    progress("Starting daemon")
     folder = discovery_folder(config, name)
     folder.mkdir(parents=True, exist_ok=True)
     errors = folder / "daemon.stderr"
@@ -43,13 +47,15 @@ async def ensure_daemon(config: LabnotesConfig, name: str) -> None:
             stderr=stream,
             start_new_session=True,
         )
-    for _ in range(START_SECONDS * 10):
-        if daemon_socket(config, name) is not None:
-            return
-        if (status := process.poll()) is not None and status != 0:
+    # No deadline: a large project can take long to start, and the caller
+    # shows progress. Only the process exiting ends the wait.
+    while daemon_socket(config, name) is None:
+        if process.poll() is not None:
+            # A zero exit lost the lock race; the winner has published by now.
+            if daemon_socket(config, name) is not None:
+                return
             with errors.open("rb") as log:
                 log.seek(start)
                 detail = log.read().decode("utf-8", errors="replace").strip()
             raise ValueError(detail or f"Daemon for {name} exited during startup.")
         await asyncio.sleep(0.1)
-    raise ValueError(f"Daemon for {name} did not start in {START_SECONDS}s.")

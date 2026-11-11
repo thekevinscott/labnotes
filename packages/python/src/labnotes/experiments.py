@@ -8,8 +8,6 @@ import click
 from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
 from labnotes.daemon.command import command as daemon_command
-from labnotes.daemon.ensure import ensure_daemon
-from labnotes.runner.run_state import RunState
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
 from labnotes.parse_params import parse_params
@@ -194,11 +192,12 @@ def experiments(
             if not sys.stdout.isatty() or not sys.stderr.isatty():
                 raise click.UsageError("run requires a terminal.")
             try:
-                asyncio.run(ensure_daemon(config, name))
-                reply = daemon_command(
-                    config,
+                run_tui(
+                    None,
                     name,
-                    {
+                    config,
+                    experiment_config,
+                    daemon_request={
                         "command": "restart" if run_id else "start",
                         "options": {
                             "experiment_config": str(experiment_config)
@@ -218,15 +217,6 @@ def experiments(
                             "environment": dict(os.environ),
                         },
                     },
-                )
-                if not reply.get("ok"):
-                    raise ValueError(str(reply.get("error", "Daemon rejected start")))
-                run_tui(
-                    None,
-                    name,
-                    config,
-                    experiment_config,
-                    daemon_journal=RunState(Path(str(reply["journal"]))),
                 )
             except ValueError as error:
                 raise click.ClickException(str(error)) from error

@@ -55,8 +55,12 @@ def request(path: Path, message: dict[str, object]) -> dict[str, object]:
         client.settimeout(5)
         client.connect(str(path))
         client.sendall((json.dumps(message) + "\n").encode())
-        with client.makefile("r") as reply:
-            return json.loads(reply.readline())
+        with client.makefile("r") as replies:
+            for line in replies:
+                reply = json.loads(line)
+                if "step" not in reply:
+                    return reply
+    raise AssertionError("daemon closed without a reply")
 
 
 def test_concurrent_starters_reuse_one_daemon(

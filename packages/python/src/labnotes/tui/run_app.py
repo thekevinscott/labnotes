@@ -589,7 +589,8 @@ class RunApp(ViewSwitcher, App[None]):
             self.run_worker(self.drive())
 
     def step(self, step: str) -> None:
-        self.steps.append(step)
+        if self.steps[-1:] != [step]:
+            self.steps.append(step)
         self.spin_startup()
 
     def spin_startup(self) -> None:
@@ -602,7 +603,7 @@ class RunApp(ViewSwitcher, App[None]):
         assert self.config is not None
         assert self.daemon_request is not None
         try:
-            self.step("Starting daemon")
+            self.step("Starting up")
             await ensure_daemon(self.config, self.experiment_name)
             self.attach_daemon()
             reply = await request_start(

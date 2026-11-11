@@ -2918,3 +2918,11 @@ def test_run_stream_filters_other_batches_but_follows_its_restarts(
     if attach:
         expected = [old, {**restart, "restart": "other"}, *expected]
     assert show.call_args_list == [mock.call(event) for event in expected]
+
+
+def test_a_step_repeated_back_to_back_shows_once(tmp_path: Path) -> None:
+    app = starting_app(tmp_path)
+    with mock.patch.object(app, "query_one"):
+        for step in ["Starting up", "Preparing", "Preparing", "Starting up"]:
+            app.step(step)
+    assert app.steps == ["Starting up", "Preparing", "Starting up"]

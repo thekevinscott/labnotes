@@ -2905,7 +2905,7 @@ def test_run_stream_filters_other_batches_but_follows_its_restarts(
     }
     ended: dict[str, object] = {"event": "ended", "run": "r2"}
     with mock.patch.object(app.body, "show_event") as show:
-        app.forward("previous", old)
+        app.forward("earlier", old)
         app.forward("unrelated", {**restart, "restart": "other"})
         app.forward("own", own)
         app.forward("restart", restart)

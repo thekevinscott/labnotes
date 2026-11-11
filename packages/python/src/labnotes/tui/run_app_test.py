@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
+from textual.css.query import NoMatches
 
 from labnotes.tui.run_app import RunApp, RunLiveView
 
@@ -2802,6 +2803,20 @@ def test_stream_reads_lines_up_to_sixteen_mebibytes() -> None:
     ):
         asyncio.run(app.read_stream())
     connect.assert_awaited_once_with(sock=app.attached, limit=16 * 1024 * 1024)
+
+
+def test_stream_ending_after_the_screen_is_gone_does_not_crash() -> None:
+    app = RunApp(None, "exp", COLUMNS)
+    app.attached = mock.Mock()
+    with (
+        mock.patch(
+            "labnotes.tui.run_app.asyncio.open_connection",
+            new=mock.AsyncMock(side_effect=OSError("closed")),
+        ),
+        mock.patch.object(app, "query_one", side_effect=NoMatches("gone")),
+    ):
+        asyncio.run(app.read_stream())
+    assert app.disconnected
 
 
 def test_stream_connection_error_is_shown_without_crashing() -> None:

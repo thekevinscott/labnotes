@@ -30,6 +30,10 @@ class HookPanel(Vertical):
         yield RunOutput(id=f"{self.hook}-output")
 
     @property
+    def running(self) -> bool:
+        return self.began is not None and self.took is None
+
+    @property
     def state(self) -> str:
         if self.began is None:
             return "waiting"

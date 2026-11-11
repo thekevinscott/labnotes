@@ -1,6 +1,7 @@
 """Read the socket record and confirm its daemon owns the lock."""
 
 import fcntl
+import operator
 import os
 from pathlib import Path
 
@@ -20,16 +21,16 @@ def daemon_socket(config: LabnotesConfig, name: str) -> Path | None:
         descriptor = os.open(lock, os.O_RDONLY)
     except FileNotFoundError:
         path.unlink(missing_ok=True)
-        record.unlink(missing_ok=True)
+        record.unlink(missing_ok=True)  # probe
         return None
     try:
         try:
-            fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
         except BlockingIOError:
             return path
         fcntl.flock(descriptor, fcntl.LOCK_UN)
     finally:
         os.close(descriptor)
     path.unlink(missing_ok=True)
-    record.unlink(missing_ok=True)
+    record.unlink(missing_ok=True)  # probe
     return None

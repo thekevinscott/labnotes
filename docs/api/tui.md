@@ -29,7 +29,7 @@ The `memory` column shows how much memory a running run's processes hold: the re
 | `g` / `G` | Jump to the first / last row. |
 | `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
 | `x` | Stop the running run under the cursor. Press again to kill it. On a run waiting to retry, cancel the retry. |
-| `d` | Drain: drop queued runs and pending retries. Running runs finish normally; the TUI stays open. |
+| `f` | Finish up: drop queued runs and pending retries. Running runs finish normally; the TUI stays open. |
 | `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
 | Enter | Open the run's output. |
 | Ctrl-p | Open the command palette. |
@@ -44,7 +44,7 @@ Blocks the script writes with [`log`](sdk#log) show above the raw output, one li
 | Key | Action |
 | --- | --- |
 | `t` | Switch between the stdout and stderr tabs. Clicking a tab works too. |
-| `d` | Drain queued runs and pending retries while continuing to watch this run. |
+| `f` | Finish up: drop queued runs and pending retries while continuing to watch this run. |
 | Escape | Back to the table. |
 | Ctrl-C | Quit, as from the table. |
 
@@ -54,7 +54,7 @@ Ctrl-C quits at once only when the experiment is done. While it is setting up, r
 
 | Key | Action |
 | --- | --- |
-| Enter or `l` | Quit and leave the experiment going. The TUI prints the `labnotes experiments NAME stop` command as it exits. |
+| Enter or `l` | Quit and leave the experiment going. The TUI prints the `labnotes experiments NAME attach` and `labnotes experiments NAME stop` commands as it exits. |
 | `s` | Stop the experiment, the same as `labnotes experiments NAME stop`. No more runs start, running scripts are stopped and any still going 5 seconds later are killed, and teardown still runs. A setup hook that has begun finishes first. |
 | Escape | Back to the table. |
 

@@ -1,18 +1,11 @@
-import json
 import sys
 from pathlib import Path
 
-import pytest
 from curtaincall import expect
 
 from conftest import Tui
 
 
-@pytest.mark.xfail(
-    strict=True,
-    reason="After the run goes idle, the restarted run passes on disk but never "
-    "shows up in the live view.",
-)
 def test_uvx_restarts_only_the_selected_failed_run(tmp_path: Path, tui: Tui) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
@@ -32,15 +25,13 @@ def test_uvx_restarts_only_the_selected_failed_run(tmp_path: Path, tui: Tui) -> 
 
     term = tui(root, "experiments", "exp", "run")
     expect(term.get_by_text("1 passed, 1 failed.")).to_be_visible(timeout=120)
-    [failed] = [
-        path.parent.name
-        for path in (root / "exp/runs").rglob("run.json")
-        if json.loads(path.read_text())["exit_code"] == 1
-    ]
     expect(term.get_by_text("✗ exited 1")).to_be_visible()
     term.write("r")
 
-    expect(term.get_by_text(f"Restarted {failed}.")).to_be_visible()
     expect(term.get_by_text("2 passed, 0 failed. 1 retried.")).to_be_visible(timeout=60)
+    runs = [path.parent.name for path in (root / "exp/runs").rglob("run.json")]
+    assert len(runs) == 3
+    for run in runs:
+        expect(term.get_by_text(run)).to_be_visible()
     tui.quit(term)
     assert (root / "launches.txt").read_text().splitlines() == ["a", "b", "a"]

@@ -140,11 +140,10 @@ def test_zero_exit_without_a_winner_reports_the_exit(tmp_path: Path) -> None:
             asyncio.run(ensure_daemon(config(tmp_path), "exp"))
 
 
-def test_startup_waits_past_any_deadline_and_reports_the_step(
+def test_startup_waits_past_any_deadline(
     tmp_path: Path,
 ) -> None:
     process = mock.Mock(**{"poll.return_value": None})
-    steps: list[str] = []
     with (
         mock.patch(
             "labnotes.daemon.ensure.daemon_socket",
@@ -156,8 +155,7 @@ def test_startup_waits_past_any_deadline_and_reports_the_step(
             "labnotes.daemon.ensure.asyncio.sleep", new=mock.AsyncMock()
         ) as sleep,
     ):
-        asyncio.run(ensure_daemon(config(tmp_path), "exp", steps.append))
-    assert steps == ["Starting daemon"]
+        asyncio.run(ensure_daemon(config(tmp_path), "exp"))
     assert sleep.await_args_list == [mock.call(0.1)] * 500
 
 

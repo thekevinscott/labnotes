@@ -180,10 +180,12 @@ def test_leaving_during_setup_names_the_stop_command(terminal, tmp_path: Path) -
     term.write("l")
     term.wait(timeout=10)
 
+    expect(term.get_by_text("exp is still running.")).to_be_visible()
     expect(
-        term.get_by_text(
-            "exp is still running. Stop it with: labnotes experiments exp stop"
-        )
+        term.get_by_text("Reattach with: labnotes experiments exp attach")
+    ).to_be_visible()
+    expect(
+        term.get_by_text("Stop it with: labnotes experiments exp stop")
     ).to_be_visible()
     assert daemons(tmp_path)
 

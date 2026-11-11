@@ -251,3 +251,31 @@ def test_browse_explains_when_selected_run_is_held(terminal, tmp_path: Path) -> 
         term.key_ctrl_c()
         term.wait()
     assert len(records(root)) == 2
+
+
+@pytest.mark.parametrize(
+    ("continues", "summary"),
+    [
+        (False, "2 passed, 0 failed. 1 retried. Ctrl-C"),
+        (True, "2 passed, 0 failed. Ctrl-C"),
+    ],
+)
+def test_live_view_shows_the_restarted_run(
+    terminal, tmp_path: Path, continues: bool, summary: str
+) -> None:
+    from curtaincall import expect
+
+    root = project(tmp_path, continues)
+    command = Path(sys.executable).parent / "labnotes"
+    term = terminal(
+        f"{command} -c {root / '.labnotes.toml'} experiments exp run -- --token t",
+        rows=30,
+        cols=120,
+    )
+    expect(term.get_by_text("1 passed, 1 failed.")).to_be_visible(timeout=30)
+    term.write("r")
+    expect(term.get_by_text(summary)).to_be_visible(timeout=30)
+    for run_id in records(root):
+        expect(term.get_by_text(run_id)).to_be_visible()
+    term.key_ctrl_c()
+    term.wait()

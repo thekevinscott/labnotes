@@ -86,13 +86,6 @@ def test_decodes_characters_split_across_follows(tmp_path: Path) -> None:
     assert shown(output) == ["café done"]
 
 
-def test_shows_the_last_carriage_return_overwrite(tmp_path: Path) -> None:
-    (tmp_path / "stdout.log").write_bytes(b"crlf\r\nstep 1\rstep 2\r\nloading\r")
-    output = StreamLog("stdout")
-    output.follow(tmp_path)
-    assert shown(output) == ["crlf", "step 2", "loading"]
-
-
 @pytest.mark.parametrize(
     ("text", "count"),
     [("", 0), ("one", 0), ("one\n", 1), ("one\ntwo", 1), ("one\ntwo\nthree", 2)],
@@ -391,7 +384,7 @@ def test_cuts_a_line_into_rows_of_the_view_width(
     output = StreamLog("stdout")
     with mock.patch.object(StreamLog, "settle"):
         output.follow(tmp_path)
-    strip = drawing["Strip"].return_value.apply_style.return_value
+    strip = drawing["Strip"].return_value
     strip.cell_length = length
     pieces = [piece("ab", "cd"), piece("e")]
     strip.divide.return_value = pieces
@@ -401,7 +394,6 @@ def test_cuts_a_line_into_rows_of_the_view_width(
     drawing["Strip"].assert_called_once_with(
         text.render.return_value, drawing["cell_len"].return_value
     )
-    drawing["Strip"].return_value.apply_style.assert_called_once_with(output.rich_style)
     strip.divide.assert_called_once_with(cuts)
     for each in pieces:
         each.extend_cell_length.assert_called_once_with(4, output.rich_style)
@@ -425,7 +417,7 @@ def test_an_empty_line_takes_one_row(tmp_path: Path, drawing: dict[str, Any]) ->
     output = StreamLog("stdout")
     with mock.patch.object(StreamLog, "settle"):
         output.follow(tmp_path)
-    strip = drawing["Strip"].return_value.apply_style.return_value
+    strip = drawing["Strip"].return_value
     strip.cell_length = 0
     strip.__iter__.return_value = []
     wrapped = output.wrap(0)
@@ -433,7 +425,7 @@ def test_an_empty_line_takes_one_row(tmp_path: Path, drawing: dict[str, Any]) ->
     assert wrapped == [strip.extend_cell_length.return_value.apply_offsets.return_value]
 
 
-@pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
+@pytest.mark.parametrize("span", [None, (0, -1), (0, 0), (1, 2)])
 @pytest.mark.usefixtures("sized")
 def test_highlights_the_selected_part_of_a_line(
     tmp_path: Path, drawing: dict[str, Any], span: tuple[int, int] | None

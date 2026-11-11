@@ -11,8 +11,8 @@ from labnotes.daemon.request_start import request_start
 def run(command: Callable[..., dict[str, object]]) -> tuple[object, list[str]]:
     steps: list[str] = []
 
-    async def ensure(config: object, name: str, progress: Callable[[str], None]):
-        progress("Starting daemon")
+    async def ensure(config: object, name: str) -> None:
+        steps.append("ensured")
 
     with (
         mock.patch("labnotes.daemon.request_start.ensure_daemon", new=ensure),
@@ -33,12 +33,12 @@ def test_relays_steps_in_order_and_returns_the_accepted_reply() -> None:
             "exp",
             {"command": "start"},
         )
-        progress("Snapshotting repo")
+        progress("Preparing codebase")
         return {"ok": True, "journal": "j.jsonl"}
 
     reply, steps = run(command)
     assert reply == {"ok": True, "journal": "j.jsonl"}
-    assert steps == ["Starting daemon", "Connecting to daemon", "Snapshotting repo"]
+    assert steps == ["Starting up", "ensured", "Preparing codebase"]
 
 
 def test_sends_from_a_daemon_thread() -> None:

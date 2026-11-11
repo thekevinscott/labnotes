@@ -40,8 +40,9 @@ class ExperimentsScreen(Screen[None]):
         self.run_worker(self.load(), exit_on_error=False)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.state == WorkerState.ERROR:
-            self.app.exit(event.worker.error)
+        match event.state:
+            case WorkerState.ERROR:
+                self.app.exit(event.worker.error)
 
     def stopped(self, error: BaseException | None) -> None:
         self.sub_title = stopped_title(self.sub_title, error)

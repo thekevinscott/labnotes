@@ -1,0 +1,1 @@
+**Fixed:** `labnotes server` no longer watches every folder in the project. Pages read from disk, and a running run's output or an open note watches only its own folder while the page is open, so the server no longer eats into the inotify watch limit.

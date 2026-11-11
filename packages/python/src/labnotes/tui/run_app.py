@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import signal
 import socket
@@ -687,9 +688,10 @@ class RunApp(ViewSwitcher, App[None]):
             if writer is not None:
                 writer.close()
             self.disconnected = True
-            self.query_one("#concurrency", FlashValue).update(
-                f"{self.body.concurrency} at a time · disconnected"
-            )
+            with contextlib.suppress(NoMatches):
+                self.query_one("#concurrency", FlashValue).update(
+                    f"{self.body.concurrency} at a time · disconnected"
+                )
 
     def on_unmount(self) -> None:
         if self.attached is not None:

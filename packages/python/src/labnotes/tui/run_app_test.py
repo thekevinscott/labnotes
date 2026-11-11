@@ -6,9 +6,8 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
-from textual.css.query import NoMatches
 
-from labnotes.tui.run_app import RunApp, RunLiveView
+from labnotes.tui.run_app import NoMatches, RunApp, RunLiveView
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]

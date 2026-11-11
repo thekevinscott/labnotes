@@ -7,7 +7,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui import run_app
 from labnotes.tui.run_app import RunApp, RunLiveView
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
@@ -2302,7 +2301,7 @@ def test_busy_after_a_failed_setup_waits_only_for_teardown(
 
 
 def test_spinning_stages_survive_the_table_outliving_them_at_shutdown() -> None:
-    prune = run_app.DataTable.on_prune
+    prune = RunLiveView.on_prune
 
     async def slow_prune(self: Any, event: Any) -> None:
         await asyncio.sleep(0.3)

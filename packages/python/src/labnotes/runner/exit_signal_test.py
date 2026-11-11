@@ -28,6 +28,8 @@ def nsig() -> Iterator[None]:
         (128, None),
         (193, None),
         (255, None),
+        (265, None),
+        (393, None),
         (None, None),
     ],
 )

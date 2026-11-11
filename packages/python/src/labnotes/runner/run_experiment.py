@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 import psutil
 
+from labnotes import retries
 from labnotes.models import (
     Controls,
     ExperimentConfig,
@@ -14,7 +15,6 @@ from labnotes.models import (
     Listen,
     Report,
 )
-from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.check_hook_placeholders import check_hook_placeholders
 from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.execute_run import execute_run
@@ -273,7 +273,7 @@ async def run_experiment(
 
     def retry_later(run: str) -> None:
         tried = attempts.get(run, earlier.get(run, 0))
-        if tried >= experiment.retries:
+        if tried not in range(experiment.retries):
             emit({"event": "gave up", "run": run, "retries": tried})
             return
         seconds = experiment.retry_wait * 2 ** (tried - earlier.get(run, 0))
@@ -386,10 +386,11 @@ async def run_experiment(
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
-        if result["exit_code"] == RETRY_EXIT_CODE and not (
-            stopping.is_set() or finishing_up or run in stopped
-        ):
-            retry_later(run)
+        match result["exit_code"]:
+            case retries.RETRY_EXIT_CODE if not (
+                stopping.is_set() or finishing_up or run in stopped
+            ):
+                retry_later(run)
         if run not in waiting:
             release(run)
 

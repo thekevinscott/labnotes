@@ -15,24 +15,24 @@ class LineIndex:
         self.breaks = [0]
         self.scanned = 0
         self.lines = 0
-        self.tail_start = 0
+        self.partial = False
 
     @property
     def rows(self) -> int:
-        return self.lines + (self.scanned > self.tail_start)
+        return self.lines + self.partial
 
     def extend(self) -> bool:
-        before = self.scanned
+        grew = False
         with self.path.open("rb") as file:
             file.seek(self.scanned)
             while data := file.read(BLOCK - self.scanned % BLOCK):
-                if (found := data.rfind(b"\n")) >= 0:
-                    self.tail_start = self.scanned + found + 1
-                    self.lines += data.count(b"\n")
+                grew = True
+                self.lines += data.count(b"\n")
+                self.partial = not data.endswith(b"\n")
                 self.scanned += len(data)
-                if self.scanned % BLOCK == 0:
+                if not self.scanned % BLOCK:
                     self.breaks.append(self.lines)
-        return self.scanned != before
+        return grew
 
     def start(self, line: int, file: BinaryIO) -> int:
         if line == 0:
@@ -40,36 +40,32 @@ class LineIndex:
         block = bisect_left(self.breaks, line) - 1
         offset = block * BLOCK
         file.seek(offset)
-        data = file.read(min(BLOCK, self.scanned - offset))
+        data = file.read(min(BLOCK, self.scanned - offset))  # probe
         at = -1
         for _ in range(line - self.breaks[block]):
             at = data.index(b"\n", at + 1)
         return offset + at + 1
 
+    def seek(self, line: int, file: BinaryIO) -> int:
+        position = self.start(line, file)
+        file.seek(position)
+        return self.scanned - position
+
     def read(self, first: int, count: int) -> list[bytes]:
-        last = min(first + count, self.rows)
+        wanted = range(first, min(first + count, self.rows))
         found: list[bytes] = []
-        if first >= last:
+        if not wanted:
             return found
         with self.path.open("rb") as file:
-            position = self.start(first, file)
-            file.seek(position)
+            left = self.seek(first, file)
             pending = b""
-            while len(found) < last - first:
-                cut = pending.find(b"\n")
-                if cut >= 0:
-                    found.append(pending[:cut][:MAX_LINE])
-                    pending = pending[cut + 1 :]
-                elif len(pending) >= MAX_LINE or position >= self.scanned:
-                    found.append(pending[:MAX_LINE])
-                    line = first + len(found)
-                    if line >= last:
-                        break
-                    position = self.start(line, file)
-                    file.seek(position)
-                    pending = b""
-                else:
-                    data = file.read(min(BLOCK, self.scanned - position))
-                    position += len(data)
+            for line in wanted:
+                while b"\n" not in pending and len(pending) < MAX_LINE and left:
+                    data = file.read(min(BLOCK, left))
+                    left -= len(data)
                     pending += data
+                text, newline, pending = pending.partition(b"\n")
+                found.append(text[:MAX_LINE])
+                if not newline and line + 1 in wanted:
+                    left = self.seek(line + 1, file)
         return found

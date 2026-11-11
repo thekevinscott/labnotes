@@ -2060,6 +2060,23 @@ def test_a_resumed_run_spends_its_earlier_tries_from_its_retries(
     assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
 
 
+def test_a_resumed_run_with_no_tries_left_gives_up_on_its_first_retry_exit(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["resumable"].return_value = [
+        {"id": "old", "params": '{"m": "a"}', "invocations": 3},
+    ]
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(75, 75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=3, retry_seconds=0.01, continues=True)
+
+    assert started_runs(report) == ["old"]
+    assert [e for e in reported(report) if e["event"] == "retrying"] == []
+    assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+
+
 def test_a_resumed_run_doubles_its_wait_from_this_session_only(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

@@ -58,6 +58,8 @@ from labnotes.watch_rows import watch_rows
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED = "–"
+STAGES = ("setup", "runs", "teardown")
+HOOKS = ("setup", "teardown")
 VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette", "finish_up"}
 RUNS_ACTIONS = {"kill_run", "restart_run", "filter", "leave"}
 BUILT_IN = "labnotes.tui.run_app:RunLiveView"
@@ -224,8 +226,9 @@ class RunLiveView(Widget):
                 panel = self.panel(str(event["hook"]))
                 error = event["error"]
                 panel.end(None if error is None else str(error), self.since(event))
-                if panel.hook == "setup" and panel.state == "passed":
-                    self.advance("runs")
+                match panel.hook, panel.state:
+                    case "setup", "passed":
+                        self.advance("runs")
                 self.draw_stages()
                 if self.idle and error is None:
                     self.show_summary()
@@ -253,12 +256,11 @@ class RunLiveView(Widget):
         return self.query_one(f"#{hook}-stage", HookPanel)
 
     def stage_names(self) -> list[str]:
-        before = [hook for hook in self.hooks if hook == "setup"]
-        after = [hook for hook in self.hooks if hook == "teardown"]
-        return [*before, "runs", *after]
+        shown = {"runs", *self.hooks}
+        return [name for name in STAGES if name in shown]
 
     def stage_state(self, stage: str) -> str:
-        if stage != "runs":
+        if stage in HOOKS:
             return self.panel(stage).state
         if self.idle:
             return "failed" if self.failed - self.retried else "passed"
@@ -272,9 +274,9 @@ class RunLiveView(Widget):
 
     def go(self, stage: str) -> None:
         self.stage = stage
-        for name in ("setup", "runs", "teardown"):
+        for name in STAGES:
             self.query_one(f"#{name}-stage").display = name == stage
-        if stage != "runs":
+        if stage in HOOKS:
             self.panel(stage).query_one(RunOutput).focus()
         elif self.viewing is None:
             self.query_one(DataTable).focus()
@@ -348,12 +350,13 @@ class RunLiveView(Widget):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         if isinstance(self.app.screen, LeavePrompt):
             return False
-        if action == "stage":
-            return bool(self.hooks)
-        if self.stage != "runs" and action in RUNS_ACTIONS:
-            return False
-        if action == "leave" and self.viewing is None:
-            return self.query_one(Input).display
+        match action:
+            case "stage":
+                return bool(self.hooks)
+            case _ if self.stage in HOOKS and action in RUNS_ACTIONS:
+                return False
+            case "leave" if self.viewing is None:
+                return self.query_one(Input).display
         return self.viewing is None or action in VIEWING_ACTIONS
 
     def show_concurrency(self, event: dict[str, object]) -> None:
@@ -374,7 +377,7 @@ class RunLiveView(Widget):
         if self.started:
             self.measure()
         for panel in self.query(HookPanel):
-            if panel.state == "running":
+            if panel.running:
                 panel.tick()
 
     def measure(self) -> None:
@@ -453,7 +456,7 @@ class RunLiveView(Widget):
 
     def follow(self) -> None:
         for panel in self.query(HookPanel):
-            if panel.state == "running":
+            if panel.running:
                 panel.follow()
         if self.viewing in self.folders:
             self.query_one(LogBlocks).follow(self.folders[self.viewing])
@@ -571,7 +574,7 @@ class RunApp(ViewSwitcher, App[None]):
         if self.daemon_request is not None:
             self.query_one("#startup").display = True
             self.query_one(ContentSwitcher).display = False
-            self.startup_timer = self.set_interval(0.1, self.spin_startup)
+            self.startup_timer = self.set_interval(0.1, self.spin_startup)  # probe
             self.run_worker(self.start_daemon_run())
         elif self.daemon_journal is not None:
             try:
@@ -823,5 +826,8 @@ class RunApp(ViewSwitcher, App[None]):
         self.exit()
 
     def action_leave(self) -> None:
-        if self.query_one(ContentSwitcher).current != "view-1":
-            self.action_show_view(1)
+        match self.query_one(ContentSwitcher).current:
+            case "view-1":
+                pass
+            case _:
+                self.action_show_view(1)

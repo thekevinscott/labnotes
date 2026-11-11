@@ -3,6 +3,7 @@
 import asyncio
 import fcntl
 import json
+import operator
 import os
 import signal
 import time
@@ -161,8 +162,9 @@ class ExperimentDaemon:
             options = message.get("options", {})
             if not isinstance(options, dict):
                 return {"ok": False, "error": "options must be an object"}
-            if action == "restart" and "run_id" not in options:
-                return {"ok": False, "error": "restart needs run_id"}
+            match action:
+                case "restart" if "run_id" not in options:
+                    return {"ok": False, "error": "restart needs run_id"}
             return await self.start(options, progress)
         if action == "stop_all":
             self.stop_all()
@@ -256,7 +258,7 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
     try:
         for _ in range(10):
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
             except BlockingIOError:
                 await asyncio.sleep(0.1)
             else:

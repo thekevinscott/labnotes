@@ -677,14 +677,15 @@ def test_help_says_runs_have_no_timeout_by_default(
     assert "Unset, runs have no time limit." in out
 
 
+@pytest.mark.parametrize("flags", [[], ["--format", "table"]])
 def test_shows_memory_and_size_readably_in_a_table(
-    collaborators: dict[str, mock.MagicMock],
+    collaborators: dict[str, mock.MagicMock], flags: list[str]
 ) -> None:
     collaborators["experiment_rows"].return_value = [
         {"id": "r", "memory": 3_200_000_000, "size": None}
     ]
 
-    assert run(["a", "runs"]) == 0
+    assert run(["a", "runs", *flags]) == 0
 
     collaborators["print_rows"].assert_called_once_with(
         [{"id": "r", "memory": "3.2 GB", "size": ""}], "table"

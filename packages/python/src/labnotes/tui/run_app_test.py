@@ -1056,7 +1056,7 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
         COLUMNS,
         config,
         tmp_path / "other.toml",
-        daemon_journal=mock.Mock(path=tmp_path / "j"),
+        daemon_journal=mock.Mock(path=tmp_path / "j", read=lambda: []),
     )
     with (
         mock.patch.object(app.body, "show") as show,
@@ -1071,10 +1071,16 @@ def test_detached_restart_sends_run_id_and_reports_reply(tmp_path: Path) -> None
             app.restart_run("r1")
             worker.assert_called_once()
             worker.call_args.args[0].close()
-        with mock.patch(
-            "labnotes.tui.run_app.request_start", new=mock.AsyncMock()
-        ) as command:
+        with (
+            mock.patch(
+                "labnotes.tui.run_app.request_start",
+                new=mock.AsyncMock(return_value={"journal": str(tmp_path / "r.jsonl")}),
+            ) as command,
+            mock.patch.object(app, "refresh_state") as refresh,
+        ):
             asyncio.run(app.restart_daemon_run("r1"))
+            assert [journal.path for journal in app.others] == [tmp_path / "r.jsonl"]
+            refresh.assert_called_once_with()
             request.assert_called_once_with("r1", tmp_path / "other.toml")
             assert command.call_args.args[:3] == (config, "exp", mock.sentinel.request)
             show.assert_called_with("Restarted r1.")

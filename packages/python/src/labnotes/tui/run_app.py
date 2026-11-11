@@ -726,12 +726,14 @@ class RunApp(ViewSwitcher, App[None]):
     async def restart_daemon_run(self, run: str) -> None:
         assert self.config is not None
         try:
-            await request_start(
+            reply = await request_start(
                 self.config,
                 self.experiment_name,
                 restart_request(run, self.experiment_config),
                 lambda step: self.body.show(f"Restarting {run}: {step}"),
             )
+            self.add_journals([str(reply["journal"])])
+            self.refresh_state()
             self.body.show(f"Restarted {run}.")
         except (OSError, ValueError) as error:
             self.body.show(f"Could not restart {run}: {error}")

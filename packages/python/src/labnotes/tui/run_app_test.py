@@ -2860,3 +2860,19 @@ def test_leaving_the_tui_does_not_report_a_lost_daemon(tmp_path: Path) -> None:
         assert app.error is None
 
     asyncio.run(drive())
+
+
+def test_a_connection_closed_by_unmounting_is_not_a_lost_daemon(
+    tmp_path: Path,
+) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_journal=mock.Mock())
+    app.attached = mock.Mock()
+    app.on_unmount()
+    with (
+        mock.patch("labnotes.tui.run_app.connection_closed", new=mock.AsyncMock()),
+        mock.patch.object(app, "push_screen") as notice,
+    ):
+        asyncio.run(app.watch_daemon())
+    notice.assert_not_called()
+    assert app.error is None

@@ -182,3 +182,16 @@ def test_reader_starts_over_on_a_shorter_file_with_the_same_inode(
     assert len(reader.read()) == 2
     writer.path.write_bytes(b'{"event": "idle"}\n')
     assert reader.read() == [{"event": "idle"}]
+
+
+def test_reader_starts_over_on_a_longer_replacement_file(tmp_path: Path) -> None:
+    writer = state(tmp_path)
+    writer.record({"event": "started", "run": "one"})
+    reader = RunState(writer.path)
+    assert len(reader.read()) == 1
+    moved = writer.path.with_suffix(".old")
+    writer.path.rename(moved)
+    for run in ("two", "three", "four"):
+        writer.record({"event": "started", "run": run})
+    assert moved.exists()
+    assert [event["run"] for event in reader.read()] == ["two", "three", "four"]

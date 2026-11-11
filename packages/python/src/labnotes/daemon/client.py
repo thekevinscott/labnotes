@@ -3,9 +3,9 @@
 import fcntl
 import operator
 import os
-import socket
 from pathlib import Path
 
+from labnotes.daemon.listening import listening
 from labnotes.daemon.socket_path import lock_path, socket_path, socket_record
 from labnotes.models import LabnotesConfig
 
@@ -22,38 +22,21 @@ def daemon_socket(config: LabnotesConfig, name: str) -> Path | None:
     except FileNotFoundError:
         path = socket_path(config, name)
         return path if listening(path) else None
-    if owns_lock(lock_path(config, name)) or listening(path):
+    try:
+        descriptor = os.open(lock_path(config, name), os.O_RDONLY)
+    except FileNotFoundError:
+        descriptor = None
+    if descriptor is not None:
+        try:
+            try:
+                fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
+            except BlockingIOError:
+                return path
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+    if listening(path):
         return path
     path.unlink(missing_ok=True)
     record.unlink(missing_ok=True)  # probe
     return None
-
-
-def owns_lock(lock: Path) -> bool:
-    """Report whether some process holds the lock, without waiting for it."""
-    try:
-        descriptor = os.open(lock, os.O_RDONLY)
-    except FileNotFoundError:
-        return False
-    try:
-        try:
-            fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
-        except BlockingIOError:
-            return True
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
-        return False
-    finally:
-        os.close(descriptor)
-
-
-def listening(path: Path) -> bool:
-    """Report whether a server accepts connections on the socket path."""
-    with socket.socket(socket.AF_UNIX) as probe:
-        probe.settimeout(1)
-        try:
-            probe.connect(str(path))
-        except TimeoutError:
-            return True
-        except OSError:
-            return False
-    return True

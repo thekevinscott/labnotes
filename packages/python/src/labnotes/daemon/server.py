@@ -12,7 +12,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from labnotes.daemon.client import listening
+from labnotes.daemon.listening import listening
 from labnotes.daemon.socket_path import (
     discovery_folder,
     lock_path,

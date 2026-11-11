@@ -1,6 +1,5 @@
 import asyncio
 import json
-import socket
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
@@ -2789,53 +2788,64 @@ def test_detached_app_does_not_poll_for_journals(tmp_path: Path) -> None:
     asyncio.run(drive())
 
 
-def attached_app(tmp_path: Path) -> tuple[RunApp, socket.socket]:
+def attached_app(
+    tmp_path: Path,
+) -> tuple[RunApp, asyncio.Event, Callable[[object], Awaitable[None]]]:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     journal = mock.Mock(path=tmp_path / "j")
     journal.read.return_value = []
     app = RunApp(None, "exp", COLUMNS, config, daemon_journal=journal)
-    ours, daemon = socket.socketpair()
+    client = mock.Mock()
+    closed = asyncio.Event()
 
     def attach() -> list[str]:
-        app.attached = ours
+        app.attached = client
         return []
 
+    async def connection_closed(held: object) -> None:
+        assert held is client
+        await closed.wait()
+
     app.attach_daemon = attach  # type: ignore[method-assign]
-    return app, daemon
+    return app, closed, connection_closed
 
 
 def test_a_lost_daemon_is_a_fatal_error_without_a_keypress(tmp_path: Path) -> None:
-    app, daemon = attached_app(tmp_path)
-
     async def drive() -> None:
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            assert app.screen is app.screen_stack[0]
-            daemon.close()
-            for _ in range(50):
-                await pilot.pause(0.02)
-                if app.screen is not app.screen_stack[0]:
-                    break
-            assert prompt(app).startswith("Lost the daemon for exp.")
-            assert app.is_running
-            await pilot.press("q")
-            await pilot.pause()
-            assert not app.is_running
+        app, closed, held = attached_app(tmp_path)
+        with mock.patch("labnotes.tui.run_app.connection_closed", side_effect=held):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert app.screen is app.screen_stack[0]
+                closed.set()
+                for _ in range(50):
+                    await pilot.pause(0.02)
+                    if app.screen is not app.screen_stack[0]:
+                        break
+                assert prompt(app).startswith("Lost the daemon for exp.")
+                assert app.is_running
+                await pilot.press("q")
+                await pilot.pause()
+                assert not app.is_running
         assert str(app.error).startswith("Lost the daemon for exp.")
 
     asyncio.run(drive())
 
 
 def test_leaving_the_tui_does_not_report_a_lost_daemon(tmp_path: Path) -> None:
-    app, daemon = attached_app(tmp_path)
-
-    def stop_all(*_: object) -> dict[str, object]:
-        daemon.close()
-        time.sleep(0.2)
-        return {"ok": True}
-
     async def drive() -> None:
-        with mock.patch("labnotes.tui.run_app.daemon_command", side_effect=stop_all):
+        app, closed, held = attached_app(tmp_path)
+        loop = asyncio.get_running_loop()
+
+        def stop_all(*_: object) -> dict[str, object]:
+            loop.call_soon_threadsafe(closed.set)
+            time.sleep(0.2)
+            return {"ok": True}
+
+        with (
+            mock.patch("labnotes.tui.run_app.daemon_command", side_effect=stop_all),
+            mock.patch("labnotes.tui.run_app.connection_closed", side_effect=held),
+        ):
             async with app.run_test() as pilot:
                 await pilot.pause()
                 app.body.cells["r1"] = {"run": "r1"}

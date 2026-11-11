@@ -21,6 +21,7 @@ from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, S
 
 from labnotes.compose_experiment import compose_experiment
 from labnotes.daemon.command import command as daemon_command
+from labnotes.daemon.connection_closed import connection_closed
 from labnotes.daemon.client import daemon_socket
 from labnotes.daemon.request_start import request_start
 from labnotes.load_experiment import load_experiment
@@ -682,14 +683,7 @@ class RunApp(ViewSwitcher, App[None]):
 
     async def watch_daemon(self) -> None:
         assert self.attached is not None
-        client = self.attached
-        client.setblocking(False)
-        loop = asyncio.get_running_loop()
-        try:
-            while await loop.sock_recv(client, 1024):
-                pass
-        except OSError:
-            pass
+        await connection_closed(self.attached)
         if self.leaving:
             return
         message = (

@@ -238,21 +238,22 @@ def experiments(
                 or ctx.args
             ):
                 raise click.UsageError(f"{action} takes no run or listing options.")
-            if action == "attach":
-                try:
-                    reply = daemon_command(config, name, {"command": "journals"})
-                except ValueError:
-                    reply = {}
-                if not reply.get("journals"):
-                    click.echo(f"Nothing is running for {name}.")
+            match action:
+                case "attach":
+                    try:
+                        reply = daemon_command(config, name, {"command": "journals"})
+                    except ValueError:
+                        reply = {}
+                    if not reply.get("journals"):
+                        click.echo(f"Nothing is running for {name}.")
+                        return
+                    if not sys.stdout.isatty() or not sys.stderr.isatty():
+                        raise click.UsageError("attach requires a terminal.")
+                    try:
+                        run_tui(None, name, config, attach=True)
+                    except ValueError as error:
+                        raise click.ClickException(str(error)) from error
                     return
-                if not sys.stdout.isatty() or not sys.stderr.isatty():
-                    raise click.UsageError("attach requires a terminal.")
-                try:
-                    run_tui(None, name, config, attach=True)
-                except ValueError as error:
-                    raise click.ClickException(str(error)) from error
-                return
             try:
                 reply = daemon_command(config, name, {"command": "stop_all"})
             except ValueError as error:

@@ -212,6 +212,15 @@ def test_targets_one_failed_run_with_recorded_arguments(
         collaborators["claim_run"].assert_any_call(tmp_path / "exp" / "r1")
     assert executed.args[7] == (None if continues else "target")
     assert collaborators["close"].called
+    [plan] = [
+        call.args[0]
+        for call in report.call_args_list
+        if call.args[0]["event"] == "planned"
+    ]
+    assert plan["restart"] == "target"
+    assert plan["runs"] == [
+        {"run": "target" if continues else "r1", "params": {"m": "a"}}
+    ]
 
 
 @pytest.mark.parametrize(

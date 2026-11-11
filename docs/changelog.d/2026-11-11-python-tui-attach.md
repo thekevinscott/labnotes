@@ -1,0 +1,1 @@
+**Added** `labnotes experiments NAME attach` reopens the run TUI on whatever the experiment's daemon is running, without starting anything. It follows every active batch, including restarts, and any number of TUIs can attach at once. With nothing running it says so and exits. Leaving a running experiment now prints the attach command too.

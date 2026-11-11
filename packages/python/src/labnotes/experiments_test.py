@@ -106,13 +106,15 @@ def test_stop_sends_command_and_reports_missing_daemon(
         ["--model=x"],
     ],
 )
-def test_stop_rejects_run_and_listing_options(
+@pytest.mark.parametrize("action", ["stop", "attach"])
+def test_stop_and_attach_reject_run_and_listing_options(
+    action: str,
     option: list[str],
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(["a", "stop", *option]) == 2
-    assert "stop takes no run or listing options" in capsys.readouterr().err
+    assert run(["a", action, *option]) == 2
+    assert f"{action} takes no run or listing options" in capsys.readouterr().err
 
 
 def test_stop_rejects_an_experiment_config_option(
@@ -153,7 +155,9 @@ def test_rejects_an_unknown_action(
 ) -> None:
     assert run(["a", "jump"]) == 2
 
-    assert "Unknown action jump. Use runs, run or stop." in capsys.readouterr().err
+    assert (
+        "Unknown action jump. Use runs, run, attach or stop." in capsys.readouterr().err
+    )
     collaborators["experiment_rows"].assert_not_called()
 
 
@@ -781,3 +785,80 @@ def test_run_without_a_terminal_is_a_usage_error(
     assert run(["a", "run"]) == 2
     assert "requires a terminal" in capsys.readouterr().err
     drivers["run_tui"].assert_not_called()
+
+
+@pytest.fixture
+def journals() -> Iterator[mock.MagicMock]:
+    with mock.patch("labnotes.experiments.daemon_command") as command:
+        command.return_value = {"ok": True, "journals": ["/state/one.jsonl"]}
+        yield command
+
+
+def test_attach_opens_the_tui_on_what_the_daemon_runs(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    journals: mock.MagicMock,
+) -> None:
+    assert run(["a", "attach"]) == 0
+
+    config = collaborators["load_config"].return_value
+    journals.assert_called_once_with(config, "a", {"command": "journals"})
+    drivers["run_tui"].assert_called_once_with(None, "a", config, attach=True)
+
+
+@pytest.mark.parametrize(
+    "reply",
+    [
+        {"ok": True, "journals": []},
+        {"ok": False, "error": "Unknown command journals"},
+        ValueError("No daemon is running for a."),
+    ],
+)
+def test_attach_with_nothing_running_says_so_and_opens_nothing(
+    reply: object,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    journals: mock.MagicMock,
+) -> None:
+    if isinstance(reply, Exception):
+        journals.side_effect = reply
+    else:
+        journals.return_value = reply
+    drivers["sys"].stdout.isatty.return_value = False
+
+    assert run(["a", "attach"]) == 0
+
+    assert capsys.readouterr().out == "Nothing is running for a.\n"
+    drivers["run_tui"].assert_not_called()
+
+
+@pytest.mark.parametrize(("stdout", "stderr"), [(False, True), (True, False)])
+def test_attach_without_a_terminal_is_a_usage_error(
+    stdout: bool,
+    stderr: bool,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    journals: mock.MagicMock,
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = stdout
+    drivers["sys"].stderr.isatty.return_value = stderr
+
+    assert run(["a", "attach"]) == 2
+
+    assert "attach requires a terminal." in capsys.readouterr().err
+    drivers["run_tui"].assert_not_called()
+
+
+def test_attach_reports_a_tui_error(
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    journals: mock.MagicMock,
+) -> None:
+    drivers["run_tui"].side_effect = ValueError("No daemon is running for a.")
+
+    assert run(["a", "attach"]) == 1
+
+    assert "Error: No daemon is running for a." in capsys.readouterr().err

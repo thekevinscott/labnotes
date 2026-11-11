@@ -198,8 +198,8 @@ class ExperimentDaemon:
                 if invocation.controls is not None:
                     invocation.controls.set_concurrency(count)
             return {"ok": True}
-        if action == "attach":
-            return {"ok": True}
+        if action in ("attach", "journals"):
+            return {"ok": True, "journals": list(self.active)}
         return {"ok": False, "error": f"Unknown command {action}"}
 
     async def handle(

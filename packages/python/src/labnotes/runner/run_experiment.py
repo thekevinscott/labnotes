@@ -191,6 +191,7 @@ async def run_experiment(
             "concurrency": concurrency,
             "hooks": [hook for hook in ("setup", "teardown") if hooks[hook]],
         }
+        | ({} if run_id is None else {"restart": run_id})
     )
     for row in held:
         emit({"event": "held", "run": str(row["id"])})

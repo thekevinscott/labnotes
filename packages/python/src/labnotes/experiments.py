@@ -33,7 +33,8 @@ class PassthroughCommand(click.Command):
 
 @click.command(
     cls=PassthroughCommand,
-    help="List experiments, show one, list its runs, or run it."
+    help="List experiments, show one, list its runs, or run it. attach"
+    " reopens the run TUI on whatever the experiment is running."
     " `new [NAME]` creates one, from --command, --param, --repeats and"
     " --from OTHER if given. With run, --PARAM=VALUE runs only the"
     " matrix cells where that param has that value (repeat it for several"
@@ -43,7 +44,7 @@ class PassthroughCommand(click.Command):
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
 @click.argument("name", required=False)
-@click.argument("action", required=False, metavar="[runs|run|stop]")
+@click.argument("action", required=False, metavar="[runs|run|attach|stop]")
 @click.option(
     "--format",
     "output_format",
@@ -221,7 +222,7 @@ def experiments(
             except ValueError as error:
                 raise click.ClickException(str(error)) from error
             return
-        case str(), "stop":
+        case str(), "stop" | "attach":
             if (
                 output_format is not None
                 or concurrency is not None
@@ -236,7 +237,22 @@ def experiments(
                 or passthrough is not None
                 or ctx.args
             ):
-                raise click.UsageError("stop takes no run or listing options.")
+                raise click.UsageError(f"{action} takes no run or listing options.")
+            if action == "attach":
+                try:
+                    reply = daemon_command(config, name, {"command": "journals"})
+                except ValueError:
+                    reply = {}
+                if not reply.get("journals"):
+                    click.echo(f"Nothing is running for {name}.")
+                    return
+                if not sys.stdout.isatty() or not sys.stderr.isatty():
+                    raise click.UsageError("attach requires a terminal.")
+                try:
+                    run_tui(None, name, config, attach=True)
+                except ValueError as error:
+                    raise click.ClickException(str(error)) from error
+                return
             try:
                 reply = daemon_command(config, name, {"command": "stop_all"})
             except ValueError as error:
@@ -260,7 +276,9 @@ def experiments(
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
     if action not in (None, "runs"):
-        raise click.UsageError(f"Unknown action {action}. Use runs, run or stop.")
+        raise click.UsageError(
+            f"Unknown action {action}. Use runs, run, attach or stop."
+        )
     if output_format is None and sys.stdout.isatty() and sys.stderr.isatty():
         try:
             browse_tui(config, name)

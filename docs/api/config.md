@@ -205,7 +205,7 @@ Setup gets no folder placeholders. `{run_dir}` or `{invocation_dir}` in the comm
 
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 
-Stopping the invocation during setup sends the setup command SIGTERM, the same as a running script, and a second stop kills it. No run starts, and teardown runs once setup has exited.
+Stopping the invocation during setup doesn't stop the setup command. Once it finishes, no run starts and teardown runs.
 
 ### `teardown`
 

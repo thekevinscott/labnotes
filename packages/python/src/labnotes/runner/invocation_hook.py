@@ -1,6 +1,6 @@
 import asyncio
 import json
-from collections.abc import Callable, Sequence
+from collections.abc import Sequence
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -16,7 +16,6 @@ async def invocation_hook(
     environment: dict[str, str] | None,
     folder: Path,
     runs: Sequence[str] = (),
-    started: Callable[[asyncio.subprocess.Process], None] = lambda process: None,
 ) -> None:
     folder.mkdir(parents=True, exist_ok=True)
     metadata: dict[str, object] = {
@@ -30,15 +29,9 @@ async def invocation_hook(
         (folder / "stdout.log").open("wb") as stdout,
         (folder / "stderr.log").open("wb") as stderr,
     ):
-        # Same as runs: keep the script's own exit code when stop signals it.
         process = await asyncio.create_subprocess_shell(
-            f"trap : TERM; {command}",
-            cwd=root,
-            stdout=stdout,
-            stderr=stderr,
-            env=environment,
+            command, cwd=root, stdout=stdout, stderr=stderr, env=environment
         )
-        started(process)
         await process.wait()
     error = None
     if process.returncode != 0:

@@ -659,7 +659,7 @@ class RunApp(ViewSwitcher, App[None]):
             client.settimeout(10)
             client.connect(str(path))
             client.sendall(b'{"command":"attach"}\n')
-            with client.makefile("rb", buffering=0) as replies:
+            with socket.SocketIO(client, "rb") as replies:
                 reply = json.loads(replies.readline())
             if not reply.get("ok"):
                 raise ValueError(str(reply.get("error", "Daemon rejected attach")))
@@ -674,7 +674,6 @@ class RunApp(ViewSwitcher, App[None]):
             return
         writer = None
         try:
-            self.attached.setblocking(False)
             reader, writer = await asyncio.open_connection(
                 sock=self.attached, limit=16 * 1024 * 1024
             )

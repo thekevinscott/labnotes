@@ -2483,6 +2483,37 @@ def test_startup_shows_each_step_then_follows_the_run(
     asyncio.run(drive())
 
 
+def test_a_setup_plan_streamed_while_starting_keeps_the_setup_stage(
+    tmp_path: Path,
+) -> None:
+    app = starting_app(tmp_path)
+    journal = str(tmp_path / "j.jsonl")
+
+    async def request_start(config, name, request, progress):
+        return {"ok": True, "journal": journal}
+
+    def stream_arrives() -> None:
+        app.call_later(
+            app.forward, journal, {**planned("r1", "r2"), "hooks": ["setup"]}
+        )
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.tui.run_app.ensure_daemon", new=mock.AsyncMock()),
+            mock.patch.object(app, "attach_daemon"),
+            mock.patch("labnotes.tui.run_app.request_start", new=request_start),
+            mock.patch.object(app, "follow_daemon", side_effect=stream_arrives),
+        ):
+            async with app.run_test() as pilot:
+                for _ in range(5):
+                    await pilot.pause()
+                assert app.body.stage == "setup"
+                assert app.body.query_one("#setup-stage").display is True
+                assert app.body.query_one("#runs-stage").display is False
+
+    asyncio.run(drive())
+
+
 def test_startup_failure_exits_with_the_error(tmp_path: Path) -> None:
     app = starting_app(tmp_path)
 

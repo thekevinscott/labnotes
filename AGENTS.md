@@ -4,6 +4,15 @@ This file is the operating contract for AI agents working in this repo.
 Conventions, supervision rules, and per-language style live under
 `docs/internals/` — start there before making changes.
 
+## Be proactive
+
+If there is work to be done, do it. Don't park a known next step as
+"waiting on Kevin" or ask permission to start it. Open PRs and drive them
+to green.
+
+Proactive never means merging. Never merge or auto-merge a PR until Kevin
+approves that PR.
+
 ## Where to read first
 
 - `docs/internals/repo.md` — cross-cutting rules (changelog/migration fragment philosophy, public-API surface, CI-logic-in-scripts).

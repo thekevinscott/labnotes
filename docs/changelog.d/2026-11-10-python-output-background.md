@@ -1,0 +1,1 @@
+**Fixed** Run output in the TUI draws its text on the log background. Each line no longer sits on a dark band in the terminal's own color, and blank lines between paragraphs no longer read as separate bands.

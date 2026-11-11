@@ -237,8 +237,11 @@ def test_wraps_long_lines_and_sticks_to_the_bottom(tmp_path: Path) -> None:
         window = stdout.locator(".window")
         await expect(window.locator("div").last).to_have_text("x" * 3000)
         assert await stdout.evaluate("pane => pane.scrollWidth <= pane.clientWidth")
-        long_row = await window.locator("div").last.evaluate("row => row.offsetHeight")
-        assert long_row > 40
+        # A scroll can redraw the rows between finding the last one and measuring it.
+        await page.wait_for_function(
+            "() => document.querySelector('#run-stdout .window')"
+            ".lastElementChild?.offsetHeight > 40"
+        )
         append("line 201\n")
         await expect(window.locator("div").last).to_have_text("line 201")
         await stdout.evaluate("pane => { pane.scrollTop = 0 }")

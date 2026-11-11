@@ -2520,6 +2520,24 @@ def test_ctrl_c_before_the_daemon_replies_names_the_stop_command(
     )
 
 
+def test_startup_spinner_ticks_ten_times_a_second(tmp_path: Path) -> None:
+    app = starting_app(tmp_path)
+
+    async def request_start(config, name, request, progress):
+        await asyncio.Event().wait()
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.tui.run_app.request_start", new=request_start),
+            mock.patch.object(app, "set_interval", wraps=app.set_interval) as interval,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                assert mock.call(0.1, app.spin_startup) in interval.call_args_list
+
+    asyncio.run(drive())
+
+
 @mock.patch("labnotes.tui.run_app.SPINNER", "|/-\\")
 def test_startup_spinner_steps_one_frame_per_tick_and_wraps(tmp_path: Path) -> None:
     app = starting_app(tmp_path)
@@ -2553,3 +2571,19 @@ def test_following_the_daemon_refreshes_state_every_quarter_second(
     attach.assert_called_once_with()
     listen.assert_called_once()
     refresh.assert_called_once_with()
+
+
+@pytest.mark.parametrize(
+    ("hooks", "names"),
+    [
+        ((), ["runs"]),
+        (("teardown",), ["runs", "teardown"]),
+        (("teardown", "setup"), ["setup", "runs", "teardown"]),
+    ],
+)
+def test_stages_run_in_order_whatever_order_hooks_arrive(
+    hooks: tuple[str, ...], names: list[str]
+) -> None:
+    view = RunLiveView()
+    view.hooks = hooks
+    assert view.stage_names() == names

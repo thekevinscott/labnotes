@@ -2534,6 +2534,7 @@ def test_startup_spinner_ticks_ten_times_a_second(tmp_path: Path) -> None:
             async with app.run_test() as pilot:
                 await pilot.pause()
                 assert mock.call(0.1, app.spin_startup) in interval.call_args_list
+                app.startup_timer.stop()
 
     asyncio.run(drive())
 

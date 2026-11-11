@@ -857,3 +857,60 @@ def test_attach_replays_finished_batches_then_new_batch_without_gaps(
             assert daemon.clients == 0
 
     asyncio.run(drive())
+
+
+@pytest.mark.parametrize("failure", ["drain", "read", "wait_closed"])
+def test_attach_transport_errors_release_the_subscription(
+    tmp_path: Path, failure: str
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    reader, writer = mock.Mock(), mock.Mock()
+    reader.readline = mock.AsyncMock(return_value=b'{"command":"attach"}\n')
+    reader.read = mock.AsyncMock(return_value=b"")
+    writer.drain = mock.AsyncMock()
+    writer.wait_closed = mock.AsyncMock()
+    target = reader if failure == "read" else writer
+    getattr(target, failure).side_effect = ConnectionResetError("client left")
+    asyncio.run(daemon.handle(reader, writer))
+    assert daemon.clients == 0
+    assert not daemon.subscribers
+    writer.close.assert_called_once_with()
+    writer.wait_closed.assert_awaited_once_with()
+
+
+def test_start_publishes_runner_events_and_retains_daemon_errors(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        path = str(tmp_path / "batch")
+        planned = {"event": "planned", "at": 1.0}
+        failed = {"event": "daemon error", "error": "oops", "at": 2.0}
+        selected = mock.Mock(run_state=mock.Mock(path=Path(path)))
+        selected.run_state.record.return_value = failed
+        writer = mock.Mock()
+        writer.is_closing.return_value = False
+        writer.transport.get_write_buffer_size.return_value = 0
+        daemon.subscribers.add(writer)
+
+        async def run(report, listen):
+            report(planned)
+            listen(mock.Mock())
+            raise ValueError("oops")
+
+        selected.side_effect = run
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ):
+            assert await daemon.start({}) == {"ok": True, "journal": path}
+        assert daemon.history[path].events == [planned, failed]
+        assert not daemon.active
+        assert [json.loads(call.args[0]) for call in writer.write.call_args_list] == [
+            {"journal": path, "event": planned},
+            {"journal": path, "event": failed},
+        ]
+        selected.run_state.record.assert_called_once_with(
+            {"event": "daemon error", "error": "oops"}
+        )
+
+    asyncio.run(drive())

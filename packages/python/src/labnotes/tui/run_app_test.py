@@ -2427,8 +2427,15 @@ def test_startup_shows_each_step_then_follows_the_run(
                 assert app.query_one("#startup").display is True
                 assert app.query_one("ContentSwitcher").display is False
                 app.body_ready = body_ready
-                accept.set()
-                await pilot.pause()
+                with (
+                    mock.patch.object(app.body, "go", wraps=app.body.go) as go,
+                    mock.patch.object(
+                        app.screen, "focus_next", wraps=app.screen.focus_next
+                    ) as focus_next,
+                ):
+                    accept.set()
+                    await pilot.pause()
+                    await pilot.pause()
                 follow.assert_called_once_with()
                 assert app.daemon_journal is not None
                 assert app.daemon_journal.path == tmp_path / "j.jsonl"
@@ -2437,8 +2444,12 @@ def test_startup_shows_each_step_then_follows_the_run(
                 await pilot.pause()
                 assert app.focused is not None
                 if body_ready:
+                    go.assert_called_once_with(app.body.stage)
+                    focus_next.assert_not_called()
                     assert app.focused is app.body.query_one("DataTable")
                 else:
+                    focus_next.assert_called_once_with()
+                    go.assert_not_called()
                     assert app.focused is app.screen.focus_chain[0]
 
     asyncio.run(drive())

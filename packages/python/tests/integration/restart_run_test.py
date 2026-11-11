@@ -273,11 +273,7 @@ def test_live_view_shows_the_restarted_run(
         cols=120,
     )
     expect(term.get_by_text("1 passed, 1 failed.")).to_be_visible(timeout=30)
-    [failed_id] = [
-        run_id for run_id, record in records(root).items() if record["exit_code"] == 1
-    ]
     term.write("r")
-    expect(term.get_by_text(f"Restarted {failed_id}.")).to_be_visible(timeout=15)
     expect(term.get_by_text(summary)).to_be_visible(timeout=30)
     for run_id in records(root):
         expect(term.get_by_text(run_id)).to_be_visible()

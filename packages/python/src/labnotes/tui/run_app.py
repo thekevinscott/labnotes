@@ -529,6 +529,7 @@ class RunApp(ViewSwitcher, App[None]):
             start.run_state if isinstance(start, ExperimentStart) else None
         )
         self.watching_state = False
+        self.restarts: list[tuple[str, RunState]] = []
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
         self.drained = False
@@ -684,12 +685,14 @@ class RunApp(ViewSwitcher, App[None]):
     async def restart_daemon_run(self, run: str) -> None:
         assert self.config is not None
         try:
-            await request_start(
+            reply = await request_start(
                 self.config,
                 self.experiment_name,
                 restart_request(run, self.experiment_config),
                 lambda step: self.body.show(f"Restarting {run}: {step}"),
             )
+            self.restarts.append((run, RunState(Path(str(reply["journal"])))))
+            self.refresh_state()
             self.body.show(f"Restarted {run}.")
         except (OSError, ValueError) as error:
             self.body.show(f"Could not restart {run}: {error}")
@@ -765,6 +768,18 @@ class RunApp(ViewSwitcher, App[None]):
         if self.run_state is not None and self.body_ready:
             for event in self.run_state.read():
                 self.body.show_event(event)
+            # A restart is its own daemon invocation with its own journal.
+            for run, journal in self.restarts:
+                for event in journal.read():
+                    if event["event"] == "planned":
+                        [planned] = cast(list[dict[str, object]], event["runs"])
+                        event = {
+                            "event": "retried",
+                            "run": run,
+                            "retry": planned["run"],
+                            "params": planned["params"],
+                        }
+                    self.body.show_event(event)
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:

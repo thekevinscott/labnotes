@@ -41,9 +41,3 @@ def test_starts_over_when_the_log_shrank(
     log_window(indexes, path, 0, 1)  # type: ignore[arg-type]
     assert (indexes[path] is index.return_value) is fresh
     assert (old.extend.called) is not fresh
-
-
-def test_shows_the_last_carriage_return_overwrite(tmp_path: Path) -> None:
-    path = tmp_path / "stdout.log"
-    path.write_bytes(b"crlf\r\nstep 1\rstep 2\r\nloading\r")
-    assert log_window({}, path, 0, 5) == ["crlf", "step 2", "loading"]

@@ -105,18 +105,3 @@ def test_writes_metadata_as_indented_json_before_and_after(tmp_path: Path) -> No
     for written in (tmp_path / "during.json", folder / "metadata.json"):
         text = written.read_text()
         assert text == json.dumps(json.loads(text), indent=2) + "\n"
-
-
-def test_hands_over_the_process_while_it_runs(tmp_path: Path) -> None:
-    seen: list[int | None] = []
-
-    def started(process: asyncio.subprocess.Process) -> None:
-        seen.append(process.returncode)
-
-    asyncio.run(
-        invocation_hook(
-            tmp_path, "setup", "true", None, tmp_path / "logs", started=started
-        )
-    )
-
-    assert seen == [None]

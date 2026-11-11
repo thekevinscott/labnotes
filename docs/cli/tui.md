@@ -14,7 +14,7 @@ Experiments with `[views]` also show custom views in the run TUI. Press `1` for 
 
 Runs belong to the experiment's daemon, not the terminal. Press Ctrl-C to quit: `s` stops the runs, Enter or `l` leaves them running, and Escape returns to the table. A TUI crash or lost terminal leaves the daemon running. Run the experiment again to open a new TUI. `run` requires stdout and stderr to be terminals.
 
-Press `d` to drain the experiment: queued runs and retries are dropped, running runs finish without a stop signal, and the TUI stays open.
+Press `f` to finish up: queued runs and retries are dropped, running runs finish without a stop signal, and the TUI stays open.
 
 A `run` that plans a single run opens straight on its output.
 

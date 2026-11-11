@@ -28,7 +28,7 @@ def test_waits_until_the_hook_starts(
     panel: HookPanel, parts: dict[str, mock.Mock]
 ) -> None:
     panel.tick()
-    assert panel.state == "waiting"
+    assert (panel.state, panel.running) == ("waiting", False)
     assert shown(parts["header"]) == "setup: waiting"
 
 
@@ -36,9 +36,9 @@ def test_shows_the_elapsed_time_and_outcome(
     panel: HookPanel, parts: dict[str, mock.Mock], tmp_path: Path
 ) -> None:
     panel.start(tmp_path, 100.0)
-    assert panel.state == "running"
+    assert (panel.state, panel.running) == ("running", True)
     panel.end(None, 250.0)
-    assert panel.state == "passed"
+    assert (panel.state, panel.running) == ("passed", False)
     assert shown(parts["header"]) == "setup: ✓  2m 30s"
 
 
@@ -47,7 +47,7 @@ def test_shows_the_error_of_a_failed_hook(
 ) -> None:
     panel.start(tmp_path, 100.0)
     panel.end("setup command up exited 3", 102.0)
-    assert panel.state == "failed"
+    assert (panel.state, panel.running) == ("failed", False)
     assert shown(parts["header"]) == "setup: ✗ setup command up exited 3  2s"
     assert parts["header"].update.call_args.args[0].style == "red"
 

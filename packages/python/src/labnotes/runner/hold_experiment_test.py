@@ -42,3 +42,13 @@ def test_leaves_no_runs_folder_it_made_and_left_empty(
 
     assert not (tmp_path / "exp" / "runs").exists()
     assert (tmp_path / "exp").is_dir()
+
+
+def test_a_held_experiment_is_refused_without_waiting(config: mock.Mock) -> None:
+    with mock.patch("labnotes.runner.hold_experiment.fcntl") as fcntl:
+        fcntl.LOCK_EX, fcntl.LOCK_NB = 2, 4
+        fcntl.flock.side_effect = BlockingIOError
+        with pytest.raises(ValueError, match="exp is already running"):
+            with hold_experiment(config, "exp"):
+                pass
+    assert fcntl.flock.call_args.args[1] == 2 | 4

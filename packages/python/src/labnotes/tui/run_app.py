@@ -35,6 +35,7 @@ from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.count_runs import count_runs
 from labnotes.tui.dim import dim
+from labnotes.tui.flash_value import FlashValue
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.hook_panel import HookPanel
 from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
@@ -57,7 +58,9 @@ from labnotes.watch_rows import watch_rows
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
 SKIPPED = "–"
-VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette", "drain"}
+STAGES = ("setup", "runs", "teardown")
+HOOKS = ("setup", "teardown")
+VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette", "finish_up"}
 RUNS_ACTIONS = {"kill_run", "restart_run", "filter", "leave"}
 BUILT_IN = "labnotes.tui.run_app:RunLiveView"
 
@@ -70,7 +73,7 @@ class RunLiveView(Widget):
     RunLiveView #stages { padding: 0 1; display: none; }
     """
     BINDINGS = [
-        Binding("d", "drain", "Drain"),
+        Binding("f", "finish_up", "Finish up"),
         Binding("x", "kill_run", "Stop run"),
         Binding("r", "restart_run", "Restart"),
         Binding("slash", "filter", "Filter", key_display="/"),
@@ -138,6 +141,7 @@ class RunLiveView(Widget):
         match event["event"]:
             case "planned":
                 self.app.title = str(event["title"])
+                first = not self.cells
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
                     self.cells[planned["run"]] = self.waiting_cells(
@@ -151,7 +155,7 @@ class RunLiveView(Widget):
                     self.query_one("#stages").display = True
                     self.go(self.stage_names()[0])
                 match event["runs"]:
-                    case [only]:
+                    case [only] if first:
                         self.view(only["run"])  # type: ignore[index]
             case "started":
                 self.idle = False
@@ -223,8 +227,9 @@ class RunLiveView(Widget):
                 panel = self.panel(str(event["hook"]))
                 error = event["error"]
                 panel.end(None if error is None else str(error), self.since(event))
-                if panel.hook == "setup" and panel.state == "passed":
-                    self.advance("runs")
+                match panel.hook, panel.state:
+                    case "setup", "passed":
+                        self.advance("runs")
                 self.draw_stages()
                 if self.idle and error is None:
                     self.show_summary()
@@ -236,7 +241,7 @@ class RunLiveView(Widget):
                 self.show_summary()
             case "concurrency":
                 self.show_concurrency(event)
-            case "stopping" | "draining":
+            case "stopping" | "finishing up":
                 for pending in self.pending:
                     self.set_cell(pending, "status", dim(SKIPPED))
                 self.show(describe_event(event))
@@ -252,12 +257,11 @@ class RunLiveView(Widget):
         return self.query_one(f"#{hook}-stage", HookPanel)
 
     def stage_names(self) -> list[str]:
-        before = [hook for hook in self.hooks if hook == "setup"]
-        after = [hook for hook in self.hooks if hook == "teardown"]
-        return [*before, "runs", *after]
+        shown = {"runs", *self.hooks}
+        return [name for name in STAGES if name in shown]
 
     def stage_state(self, stage: str) -> str:
-        if stage != "runs":
+        if stage in HOOKS:
             return self.panel(stage).state
         if self.idle:
             return "failed" if self.failed - self.retried else "passed"
@@ -271,9 +275,9 @@ class RunLiveView(Widget):
 
     def go(self, stage: str) -> None:
         self.stage = stage
-        for name in ("setup", "runs", "teardown"):
+        for name in STAGES:
             self.query_one(f"#{name}-stage").display = name == stage
-        if stage != "runs":
+        if stage in HOOKS:
             self.panel(stage).query_one(RunOutput).focus()
         elif self.viewing is None:
             self.query_one(DataTable).focus()
@@ -347,18 +351,20 @@ class RunLiveView(Widget):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         if isinstance(self.app.screen, LeavePrompt):
             return False
-        if action == "stage":
-            return bool(self.hooks)
-        if self.stage != "runs" and action in RUNS_ACTIONS:
-            return False
-        if action == "leave" and self.viewing is None:
-            return self.query_one(Input).display
+        match action:
+            case "stage":
+                return bool(self.hooks)
+            case _ if self.stage in HOOKS and action in RUNS_ACTIONS:
+                return False
+            case "leave" if self.viewing is None:
+                return self.query_one(Input).display
         return self.viewing is None or action in VIEWING_ACTIONS
 
     def show_concurrency(self, event: dict[str, object]) -> None:
         self.concurrency = int(event["concurrency"])  # type: ignore[call-overload]
-        self.app.query_one("#concurrency", Static).update(
-            f"{self.concurrency} at a time"
+        at = event.get("at")
+        self.app.query_one("#concurrency", FlashValue).set_value(
+            f"{self.concurrency} at a time", None if at is None else float(str(at))
         )
 
     def tick(self) -> None:
@@ -372,7 +378,7 @@ class RunLiveView(Widget):
         if self.started:
             self.measure()
         for panel in self.query(HookPanel):
-            if panel.state == "running":
+            if panel.running:
                 panel.tick()
 
     def measure(self) -> None:
@@ -418,8 +424,8 @@ class RunLiveView(Widget):
         if (run := self.cursor_run()) is not None:
             self.controls.kill(run)
 
-    def action_drain(self) -> None:
-        self.controls.drain()
+    def action_finish_up(self) -> None:
+        self.controls.finish_up()
 
     def action_concurrency(self, change: int) -> None:
         self.controls.set_concurrency(self.concurrency + change)
@@ -451,7 +457,7 @@ class RunLiveView(Widget):
 
     def follow(self) -> None:
         for panel in self.query(HookPanel):
-            if panel.state == "running":
+            if panel.running:
                 panel.follow()
         if self.viewing in self.folders:
             self.query_one(LogBlocks).follow(self.folders[self.viewing])
@@ -503,6 +509,7 @@ class RunApp(ViewSwitcher, App[None]):
         experiment_config: Path | None = None,
         daemon_journal: RunState | None = None,
         daemon_request: dict[str, object] | None = None,
+        attach: bool = False,
     ) -> None:
         super().__init__()
         self.start = start
@@ -528,10 +535,13 @@ class RunApp(ViewSwitcher, App[None]):
         self.run_state = daemon_journal or (
             start.run_state if isinstance(start, ExperimentStart) else None
         )
+        self.attach = attach
+        self.others: list[RunState] = []
+        self.busy_journals: set[Path] = set()
         self.watching_state = False
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
-        self.drained = False
+        self.finishing_up = False
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -545,7 +555,7 @@ class RunApp(ViewSwitcher, App[None]):
         yield Footer()
 
     async def on_mount(self) -> None:
-        await self.query_one(Header).mount(Static(id="concurrency"))
+        await self.query_one(Header).mount(FlashValue(id="concurrency"))
         if self.view_specs:
             assert self.config is not None
             self._bindings.bind("escape", "leave", "Back")
@@ -569,9 +579,9 @@ class RunApp(ViewSwitcher, App[None]):
         if self.daemon_request is not None:
             self.query_one("#startup").display = True
             self.query_one(ContentSwitcher).display = False
-            self.startup_timer = self.set_interval(0.1, self.spin_startup)
+            self.startup_timer = self.set_interval(0.1, self.spin_startup)  # probe
             self.run_worker(self.start_daemon_run())
-        elif self.daemon_journal is not None:
+        elif self.daemon_journal is not None or self.attach:
             try:
                 self.follow_daemon()
             except (OSError, ValueError) as error:
@@ -614,9 +624,17 @@ class RunApp(ViewSwitcher, App[None]):
             self.call_after_refresh(self.screen.focus_next)
 
     def follow_daemon(self) -> None:
+        journals = self.attach_daemon()
+        if self.attach:
+            if not journals:
+                self.farewell = f"Nothing is running for {self.experiment_name}."
+                self.exit()
+                return
+            self.daemon_journal = self.run_state = RunState(Path(journals[0]))
+            self.add_journals(journals)
+            self.set_interval(1, self.queue_find_journals)
         assert self.daemon_journal is not None
         journal = self.daemon_journal
-        self.attach_daemon()
         self.listen(
             Controls(
                 lambda: self.queue_command({"command": "stop_all"}),
@@ -624,18 +642,18 @@ class RunApp(ViewSwitcher, App[None]):
                     {
                         "command": "set_concurrency",
                         "count": count,
-                        "journal": str(journal.path),
+                        "journal": None if self.attach else str(journal.path),
                     }
                 ),
                 lambda run: self.queue_command({"command": "stop_one", "run": run}),
                 lambda: None,
-                lambda: self.queue_command({"command": "drain"}),
+                lambda: self.queue_command({"command": "finish_up"}),
             )
         )
         self.set_interval(0.25, self.refresh_state)
         self.refresh_state()
 
-    def attach_daemon(self) -> None:
+    def attach_daemon(self) -> list[str]:
         assert self.config is not None
         path = daemon_socket(self.config, self.experiment_name)
         if path is None:
@@ -653,6 +671,30 @@ class RunApp(ViewSwitcher, App[None]):
             client.close()
             raise
         self.attached = client
+        return cast(list[str], reply.get("journals", []))
+
+    def add_journals(self, journals: list[str]) -> None:
+        assert self.run_state is not None
+        known = {str(journal.path) for journal in [self.run_state, *self.others]}
+        self.others += [RunState(Path(path)) for path in journals if path not in known]
+
+    def queue_find_journals(self) -> None:
+        self.run_worker(
+            self.find_journals(), group="journals", exclusive=True, exit_on_error=False
+        )
+
+    async def find_journals(self) -> None:
+        assert self.config is not None
+        try:
+            reply = await asyncio.to_thread(
+                daemon_command,
+                self.config,
+                self.experiment_name,
+                {"command": "journals"},
+            )
+        except ValueError:
+            return
+        self.add_journals(cast(list[str], reply.get("journals", [])))
 
     def on_unmount(self) -> None:
         if self.attached is not None:
@@ -684,12 +726,14 @@ class RunApp(ViewSwitcher, App[None]):
     async def restart_daemon_run(self, run: str) -> None:
         assert self.config is not None
         try:
-            await request_start(
+            reply = await request_start(
                 self.config,
                 self.experiment_name,
                 restart_request(run, self.experiment_config),
                 lambda step: self.body.show(f"Restarting {run}: {step}"),
             )
+            self.add_journals([str(reply["journal"])])
+            self.refresh_state()
             self.body.show(f"Restarted {run}.")
         except (OSError, ValueError) as error:
             self.body.show(f"Could not restart {run}: {error}")
@@ -738,7 +782,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.results = await self.start(self.show_event, self.listen)
         except Exception as error:
             self.error = error
-        if not self.drained or self.error is not None:
+        if not self.finishing_up or self.error is not None:
             self.exit()
 
     def listen(self, controls: Controls) -> None:
@@ -750,8 +794,8 @@ class RunApp(ViewSwitcher, App[None]):
             stop_then_kill(self.stop_runs, signal.SIGHUP)
 
     def show_event(self, event: dict[str, object]) -> None:
-        if event["event"] == "draining":
-            self.drained = True
+        if event["event"] == "finishing up":
+            self.finishing_up = True
         if self.run_state is None:
             if self.body_ready:
                 self.body.show_event(event)
@@ -762,13 +806,33 @@ class RunApp(ViewSwitcher, App[None]):
         self.refresh_state()
 
     def refresh_state(self) -> None:
-        if self.run_state is not None and self.body_ready:
-            for event in self.run_state.read():
-                self.body.show_event(event)
+        if self.run_state is None or not self.body_ready:
+            return
+        for journal in [self.run_state, *self.others]:
+            for event in journal.read():
+                self.forward(journal.path, event)
+
+    def forward(self, journal: Path, event: dict[str, object]) -> None:
+        match event:
+            case {"event": "planned", "restart": str(run)} if run in self.body.cells:
+                [planned] = cast(list[dict[str, object]], event["runs"])
+                event = {
+                    "event": "retried",
+                    "run": run,
+                    "retry": planned["run"],
+                    "params": planned["params"],
+                }
+            case {"event": "started"}:
+                self.busy_journals.add(journal)
+            case {"event": "idle"}:
+                self.busy_journals.discard(journal)
+                if self.busy_journals:
+                    return
+        self.body.show_event(event)
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:
-            if self.drained:
+            if self.finishing_up:
                 self.exit()
             else:
                 self.controls.finish()
@@ -791,7 +855,7 @@ class RunApp(ViewSwitcher, App[None]):
         if self.body_ready and self.body.started:
             self.push_screen(LeavePrompt(len(self.body.started)), self.answer)
         elif self.body_ready and self.body.idle:
-            if self.drained:
+            if self.finishing_up:
                 self.exit()
             else:
                 self.controls.finish()
@@ -811,7 +875,8 @@ class RunApp(ViewSwitcher, App[None]):
         elif choice == "leave" and self.daemon_journal is not None:
             name = self.experiment_name
             self.farewell = (
-                f"{name} is still running. "
+                f"{name} is still running.\n"
+                f"Reattach with: labnotes experiments {name} attach\n"
                 f"Stop it with: labnotes experiments {name} stop"
             )
             self.exit()
@@ -821,5 +886,8 @@ class RunApp(ViewSwitcher, App[None]):
         self.exit()
 
     def action_leave(self) -> None:
-        if self.query_one(ContentSwitcher).current != "view-1":
-            self.action_show_view(1)
+        match self.query_one(ContentSwitcher).current:
+            case "view-1":
+                pass
+            case _:
+                self.action_show_view(1)

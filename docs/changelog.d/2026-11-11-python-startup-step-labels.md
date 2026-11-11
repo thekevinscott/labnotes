@@ -1,0 +1,1 @@
+**Changed** The startup view of `labnotes experiments <name> run` lists four steps, each once: Starting up, Preparing experiment, Preparing codebase, Starting run. They replace Starting daemon, Connecting to daemon, Reading experiment config, Finalizing lost runs, and Snapshotting repo. A restart reports the same labels.

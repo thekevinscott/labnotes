@@ -1,1 +1,0 @@
-**Fixed** run output lines ending in a carriage return (CRLF output, `\r` progress bars) showing blank in the TUI and the web run page. Each line now shows its last `\r` overwrite, as a terminal would.

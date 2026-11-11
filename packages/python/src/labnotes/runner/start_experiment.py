@@ -43,7 +43,7 @@ def start_experiment(
     state = RunState.create(config, name)
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        progress("Reading experiment config")
+        progress("Preparing experiment")
         experiment, limit = await prepare_experiment(
             config,
             name,
@@ -57,9 +57,8 @@ def start_experiment(
             retry_wait,
             replace_capped,
         )
-        progress("Finalizing lost runs")
         await finalize_lost_runs(config)
-        progress("Snapshotting repo")
+        progress("Preparing codebase")
         with project_snapshot(config.root) as snapshot:
             progress("Starting run")
             return await run_experiment(

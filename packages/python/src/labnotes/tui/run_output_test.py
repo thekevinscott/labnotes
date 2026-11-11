@@ -150,6 +150,15 @@ def test_a_clicked_tab_shows_its_stream(
     assert [call.args[0] for call in show.call_args_list] == shown
 
 
+@pytest.mark.parametrize("stream", ["stdout", "stderr"])
+def test_a_tab_is_matched_to_its_stream_by_id(stream: str) -> None:
+    output = RunOutput()
+    output.current = "other"
+    with mock.patch.object(output, "show") as show:
+        output.on_tabs_tab_activated(mock.Mock(tab=mock.Mock(id=f"{stream}-tab")))
+    show.assert_called_once_with(stream)
+
+
 @pytest.mark.parametrize(
     ("current", "other"), [("stdout", "stderr"), ("stderr", "stdout")]
 )

@@ -10,7 +10,6 @@ from textual.strip import Strip
 
 from labnotes.latest_log import latest_log
 from labnotes.line_index import LineIndex
-from labnotes.visible_line import visible_line
 
 BUFFER = 100
 
@@ -93,9 +92,10 @@ class StreamLog(ScrollView):
             self.virtual_size = Size(0, self.rows)
             return
         line, filled = self.rows, 0
-        while line > 0 and filled < height:
-            line -= 1
+        for line in reversed(range(self.rows)):
             filled += len(self.wrap(line))
+            if filled >= height:
+                break
         self.bottom = line
         self.virtual_size = Size(0, line + height)
         self.refresh()
@@ -122,9 +122,7 @@ class StreamLog(ScrollView):
                 first -= segment.rows
                 continue
             lines = segment.read(first, count - len(found))
-            found.extend(
-                visible_line(line.decode("utf-8", "replace")) for line in lines
-            )
+            found.extend(line.decode("utf-8", "replace") for line in lines)
             first = 0
         return found
 
@@ -153,11 +151,9 @@ class StreamLog(ScrollView):
             text.stylize(
                 self.screen.get_component_rich_style("screen--selection"),
                 start,
-                len(text) if end == -1 else end,
+                len(text) if end < 0 else end,
             )
-        strip = Strip(text.render(self.app.console), cell_len(text.plain)).apply_style(
-            self.rich_style
-        )
+        strip = Strip(text.render(self.app.console), cell_len(text.plain))
         length = strip.cell_length
         pieces = (
             strip.divide([*range(width, length, width), length]) if length else [strip]

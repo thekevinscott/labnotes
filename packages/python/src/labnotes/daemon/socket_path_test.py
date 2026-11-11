@@ -79,3 +79,13 @@ def test_runtime_folder_is_created_under_a_missing_parent(
     nested_runtime: Path,
 ) -> None:
     assert runtime_folder() == nested_runtime / "labnotes"
+
+
+def test_runtime_folder_is_private_from_creation(nested_runtime: Path) -> None:
+    umask = os.umask(0o022)
+    try:
+        with mock.patch.object(Path, "chmod"):
+            folder = runtime_folder()
+    finally:
+        os.umask(umask)
+    assert folder.stat().st_mode & 0o777 == 0o700

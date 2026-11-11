@@ -16,7 +16,7 @@ class Controls:
     set_concurrency: Callable[[int], None]
     kill: Callable[[str], None]
     finish: Callable[[], None]
-    drain: Callable[[], None]
+    finish_up: Callable[[], None]
 
 
 Listen = Callable[[Controls], None]

@@ -162,8 +162,9 @@ class ExperimentDaemon:
             options = message.get("options", {})
             if not isinstance(options, dict):
                 return {"ok": False, "error": "options must be an object"}
-            if action == "restart" and "run_id" not in options:  # probe
-                return {"ok": False, "error": "restart needs run_id"}
+            match action:
+                case "restart" if "run_id" not in options:
+                    return {"ok": False, "error": "restart needs run_id"}
             return await self.start(options, progress)
         if action == "stop_all":
             self.stop_all()

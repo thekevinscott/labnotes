@@ -744,3 +744,12 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
         )
 
     asyncio.run(drive())
+
+
+def test_restart_with_a_run_id_starts_that_run(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    options = {"run_id": "r"}
+    with mock.patch.object(daemon, "start", return_value={"ok": True}) as start:
+        reply = asyncio.run(daemon.dispatch({"command": "restart", "options": options}))
+    assert reply == {"ok": True}
+    start.assert_called_once_with(options, mock.ANY)

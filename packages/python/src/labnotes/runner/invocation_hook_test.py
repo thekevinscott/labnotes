@@ -1,10 +1,13 @@
 import json
 import asyncio
+import signal
+import sys
 from pathlib import Path
 
 import pytest
 
 from labnotes.runner.invocation_hook import invocation_hook
+from labnotes.runner.signal_tree import signal_tree
 
 
 def test_runs_the_command_from_the_root(tmp_path: Path) -> None:
@@ -105,3 +108,53 @@ def test_writes_metadata_as_indented_json_before_and_after(tmp_path: Path) -> No
     for written in (tmp_path / "during.json", folder / "metadata.json"):
         text = written.read_text()
         assert text == json.dumps(json.loads(text), indent=2) + "\n"
+
+
+def test_hands_over_the_process_while_it_runs(tmp_path: Path) -> None:
+    seen: list[int | None] = []
+
+    def started(process: asyncio.subprocess.Process) -> None:
+        seen.append(process.returncode)
+
+    asyncio.run(
+        invocation_hook(
+            tmp_path, "setup", "true", None, tmp_path / "logs", started=started
+        )
+    )
+
+    assert seen == [None]
+
+
+def test_records_the_scripts_own_exit_code_when_signalled(tmp_path: Path) -> None:
+    script = tmp_path / "hook.py"
+    script.write_text(
+        "import signal, sys, time\n"
+        "signal.signal(signal.SIGTERM, lambda *_: sys.exit(4))\n"
+        "print('up', flush=True)\n"
+        "time.sleep(30)\n"
+    )
+
+    async def stop_once_up(process: asyncio.subprocess.Process) -> None:
+        while not (tmp_path / "logs" / "stdout.log").read_text():
+            await asyncio.sleep(0.05)
+        signal_tree(process.pid, signal.SIGTERM, set())
+
+    async def main() -> None:
+        tasks: list[asyncio.Task[None]] = []
+        with pytest.raises(ValueError, match="exited 4"):
+            await invocation_hook(
+                tmp_path,
+                "setup",
+                f"{sys.executable} {script}",
+                None,
+                tmp_path / "logs",
+                started=lambda process: tasks.append(
+                    asyncio.create_task(stop_once_up(process))
+                ),
+            )
+        await asyncio.gather(*tasks)
+
+    asyncio.run(main())
+
+    metadata = json.loads((tmp_path / "logs" / "metadata.json").read_text())
+    assert metadata["exit_code"] == 4

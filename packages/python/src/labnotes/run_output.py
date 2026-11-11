@@ -1,24 +1,31 @@
 import json
 from collections.abc import AsyncIterator, Iterable, Iterator
-from pathlib import Path
 
 from dirsql import DirSQL
 
 from labnotes.latest_log import latest_log
 from labnotes.line_index import LineIndex
 from labnotes.load_run import load_run
+from labnotes.models import LabnotesConfig
+from labnotes.tables.open_run_tables import open_run_tables
 from labnotes.tables.read_log import STREAMS
 
 
 async def run_output(
-    tables: DirSQL, root: Path, experiment: str, run_id: str
+    tables: DirSQL, config: LabnotesConfig, experiment: str, run_id: str
 ) -> AsyncIterator[str]:
-    # Watch before reading, so nothing written in between is missed.
-    events = tables.watch()
     run = await load_run(tables, experiment, run_id)
     if run is None:
         return
-    folder = root / str(run["folder"])
+    folder = config.root / str(run["folder"])
+    ended, exit_code = run["ended"], run["exit_code"]
+    if ended is None:
+        # Watch before reading, so nothing written in between is missed.
+        watched = open_run_tables(config, folder)
+        events = watched.watch()
+        await watched.ready()
+        for row in await watched.query("SELECT ended, exit_code FROM runs"):
+            ended, exit_code = row["ended"], row["exit_code"]
     indexes: dict[str, LineIndex] = {}
 
     def read(streams: Iterable[str]) -> Iterator[str]:
@@ -70,8 +77,7 @@ async def run_output(
         yield message
     for message in read_blocks():
         yield message
-    exit_code = run["exit_code"]
-    if run["ended"] is None:
+    if ended is None:
         async for event in events:
             row = event.row
             if row is None or row["experiment"] != experiment:

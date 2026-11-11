@@ -1,4 +1,5 @@
 import asyncio
+import gc
 import json
 import warnings
 from collections.abc import Iterator
@@ -46,9 +47,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         ) as experiment_notes,
         mock.patch("labnotes.create_app.note_path") as note_path,
         mock.patch(
-            "labnotes.create_app.drain_watch", new_callable=mock.AsyncMock
-        ) as drain,
-        mock.patch(
             "labnotes.create_app.list_experiments",
             new_callable=mock.AsyncMock,
             return_value=[EXPERIMENT],
@@ -66,7 +64,6 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
             "open_tables": open_tables,
             "experiment_notes": experiment_notes,
             "note_path": note_path,
-            "drain_watch": drain,
             "list_experiments": list_experiments,
             "load_experiment": load_experiment,
             "templates": templates,
@@ -97,14 +94,13 @@ def call(app: Any, path: str, **path_params: str) -> tuple[int, str]:
     return response.status_code, response.body.decode()
 
 
-def test_opens_the_tables_and_watches_them(
+def test_opens_the_tables_without_watching_them(
     app: Any, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     tables = collaborators["open_tables"].return_value
     collaborators["open_tables"].assert_called_once_with(CONFIG)
     tables.ready.assert_awaited_once()
-    watched = [call.args[0] for call in collaborators["drain_watch"].await_args_list]
-    assert watched == [tables]
+    tables.watch.assert_not_called()
 
 
 def test_index_lists_experiments(
@@ -159,28 +155,6 @@ def test_builds_without_deprecation_warnings(
     with warnings.catch_warnings():
         warnings.simplefilter("error")
         create_app(CONFIG)
-
-
-def test_stops_watching_on_shutdown(collaborators: dict[str, mock.MagicMock]) -> None:
-    cancelled: list[object] = []
-
-    async def watch_forever(db: object) -> None:
-        try:
-            await asyncio.Event().wait()
-        except asyncio.CancelledError:
-            cancelled.append(db)
-            raise
-
-    collaborators["drain_watch"].side_effect = watch_forever
-    app = create_app(CONFIG)
-
-    async def run_lifespan() -> list[object]:
-        async with app.router.lifespan_context(app):
-            await asyncio.sleep(0)
-        await asyncio.sleep(0)
-        return list(cancelled)
-
-    assert asyncio.run(run_lifespan()) == [app.state.tables]
 
 
 def post_run(
@@ -549,7 +523,8 @@ def test_streams_the_experiments_file_changes(app: Any) -> None:
         response = asyncio.run(endpoint(request))
 
     assert response.media_type == "text/event-stream"
-    changes.assert_called_once_with(app.state.tables, "models-effort")
+    assert response.background.func is gc.collect
+    changes.assert_called_once_with(CONFIG, "models-effort")
 
 
 RUN: dict[str, object] = {"id": "g1/r1"}
@@ -617,9 +592,8 @@ def test_streams_the_runs_output(app: Any) -> None:
         response = asyncio.run(endpoint(request))
 
     assert response.media_type == "text/event-stream"
-    output.assert_called_once_with(
-        app.state.tables, Path("/p/project"), "alpha", "g1/r1"
-    )
+    assert response.background.func is gc.collect
+    output.assert_called_once_with(app.state.tables, CONFIG, "alpha", "g1/r1")
 
 
 def window(app: Any, query: dict[str, str], exists: bool = True) -> Any:

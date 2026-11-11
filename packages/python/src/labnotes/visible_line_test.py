@@ -11,6 +11,7 @@ from labnotes.visible_line import visible_line
         ("crlf\r", "crlf"),
         ("step 1\rstep 2\r", "step 2"),
         ("step 1\rstep 2", "step 2"),
+        ("a\rb\rc", "c"),
         ("done\r\r", "done"),
         ("\r", ""),
     ],

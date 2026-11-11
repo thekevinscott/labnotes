@@ -302,9 +302,12 @@ async def run_experiment(
     live: set[asyncio.Task[None]] = set()
     started: list[asyncio.Task[None]] = []
     finishing = False
+    set_up = False
     done = asyncio.Event()
 
     def fill() -> None:
+        if not set_up:
+            return
         while plan and len(live) < limit:
             task = asyncio.create_task(start(*plan.pop(0)))
             task.add_done_callback(end)
@@ -421,6 +424,7 @@ async def run_experiment(
         try:
             if experiment.setup is not None:
                 await run_hook("setup", experiment.setup, "setting up")
+            set_up = True
             fill()
             await done.wait()
             await asyncio.gather(*started)

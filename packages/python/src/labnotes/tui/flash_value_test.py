@@ -103,3 +103,26 @@ def test_settle_drops_the_inline_background(
     widget, styles, app, color = styled
     widget.settle()
     styles.clear_rule.assert_called_once_with("background")
+
+
+def test_stays_quiet_for_a_change_well_past_fresh(label: FlashValue) -> None:
+    label.set_value("1")
+    label.set_value("2", 50.0)
+    label.flash.assert_not_called()  # type: ignore[attr-defined]
+
+
+def test_flashes_a_change_to_a_smaller_value(label: FlashValue) -> None:
+    label.set_value("2")
+    label.set_value("1")
+    label.flash.assert_called_once_with()  # type: ignore[attr-defined]
+
+
+def test_compares_values_by_equality_not_identity(label: FlashValue) -> None:
+    label.set_value("".join(["1", " at a time"]))
+    label.set_value("".join(["1 at", " a time"]))
+    label.flash.assert_not_called()  # type: ignore[attr-defined]
+
+
+def test_takes_its_id_by_keyword_only() -> None:
+    with pytest.raises(TypeError):
+        FlashValue("value")  # type: ignore[misc]

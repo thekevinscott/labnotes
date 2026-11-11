@@ -2425,6 +2425,7 @@ def test_startup_shows_each_step_then_follows_the_run(
                 assert "✓ Starting daemon" in shown
                 assert "Snapshotting repo" in shown
                 assert app.query_one("#startup").display is True
+                assert app.query_one("ContentSwitcher").display is False
                 app.body_ready = body_ready
                 accept.set()
                 await pilot.pause()
@@ -2471,3 +2472,38 @@ def test_ctrl_c_before_the_daemon_replies_names_the_stop_command(
     assert app.farewell == (
         "exp may still start. Stop it with: labnotes experiments exp stop"
     )
+
+
+@mock.patch("labnotes.tui.run_app.SPINNER", "|/-\\")
+def test_startup_spinner_steps_one_frame_per_tick_and_wraps(tmp_path: Path) -> None:
+    app = starting_app(tmp_path)
+    app.steps = ["Starting daemon"]
+    startup = mock.Mock()
+    with mock.patch.object(app, "query_one", return_value=startup):
+        app.spin_startup()
+        app.spin_startup()
+        assert [call.args[0].plain for call in startup.update.call_args_list] == [
+            "/ Starting daemon\n",
+            "- Starting daemon\n",
+        ]
+        app.startup_frame = 3
+        app.spin_startup()
+    assert app.startup_frame == 0
+
+
+def test_following_the_daemon_refreshes_state_every_quarter_second(
+    tmp_path: Path,
+) -> None:
+    app = starting_app(tmp_path)
+    app.daemon_journal = mock.Mock(path=tmp_path / "j.jsonl")
+    with (
+        mock.patch.object(app, "attach_daemon") as attach,
+        mock.patch.object(app, "listen") as listen,
+        mock.patch.object(app, "set_interval") as interval,
+        mock.patch.object(app, "refresh_state") as refresh,
+    ):
+        app.follow_daemon()
+        interval.assert_called_once_with(0.25, refresh)
+    attach.assert_called_once_with()
+    listen.assert_called_once()
+    refresh.assert_called_once_with()

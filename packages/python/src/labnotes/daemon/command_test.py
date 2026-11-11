@@ -148,3 +148,24 @@ def test_failed_connect_to_a_vanished_socket_still_reports_no_daemon(
         with pytest.raises(ValueError, match="No daemon is running"):
             command(mock.Mock(), "exp", {"command": "ping"})
     assert not record.exists()
+
+
+def test_failed_connect_without_a_record_still_reports_no_daemon(
+    tmp_path: Path,
+) -> None:
+    path = tmp_path / "stale.sock"
+    path.touch()
+    client = mock.MagicMock()
+    client.connect.side_effect = ConnectionRefusedError("refused")
+    with (
+        mock.patch("labnotes.daemon.command.daemon_socket", return_value=path),
+        mock.patch(
+            "labnotes.daemon.command.socket_record",
+            return_value=tmp_path / "missing.record",
+        ),
+        mock.patch("labnotes.daemon.command.socket.socket") as sockets,
+    ):
+        sockets.return_value.__enter__.return_value = client
+        with pytest.raises(ValueError, match="No daemon is running"):
+            command(mock.Mock(), "exp", {"command": "ping"})
+    assert not path.exists()

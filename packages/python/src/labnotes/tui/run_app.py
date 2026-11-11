@@ -570,7 +570,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.query_one("#startup").display = True
             self.query_one(ContentSwitcher).display = False
             self.startup_timer = self.set_interval(0.1, self.spin_startup)
-            self.run_worker(self.start_daemon_run(), exit_on_error=False)
+            self.run_worker(self.start_daemon_run())
         elif self.daemon_journal is not None:
             try:
                 self.follow_daemon()
@@ -591,7 +591,8 @@ class RunApp(ViewSwitcher, App[None]):
         )
 
     async def start_daemon_run(self) -> None:
-        assert self.config is not None and self.daemon_request is not None
+        assert self.config is not None
+        assert self.daemon_request is not None
         try:
             reply = await request_start(
                 self.config, self.experiment_name, self.daemon_request, self.step

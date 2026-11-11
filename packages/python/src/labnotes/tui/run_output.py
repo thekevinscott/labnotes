@@ -55,11 +55,11 @@ class RunOutput(Vertical):
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
         event.stop()
         for stream, tab in self.tabs.items():
-            if tab is event.tab and stream != self.current:
+            if tab is event.tab and stream != self.current:  # probe
                 self.show(stream)
 
     def action_switch(self) -> None:
-        self.show(STREAMS[1 - STREAMS.index(self.current)])
+        self.show(STREAMS[1 - STREAMS.index(self.current)])  # probe
         self.focus()
 
     def focus(self, scroll_visible: bool = True) -> Self:

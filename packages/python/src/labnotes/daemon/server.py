@@ -161,7 +161,7 @@ class ExperimentDaemon:
             options = message.get("options", {})
             if not isinstance(options, dict):
                 return {"ok": False, "error": "options must be an object"}
-            if action == "restart" and "run_id" not in options:
+            if action == "restart" and "run_id" not in options:  # probe
                 return {"ok": False, "error": "restart needs run_id"}
             return await self.start(options, progress)
         if action == "stop_all":
@@ -256,7 +256,7 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
     try:
         for _ in range(10):
             try:
-                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)
+                fcntl.flock(descriptor, fcntl.LOCK_EX | fcntl.LOCK_NB)  # probe
             except BlockingIOError:
                 await asyncio.sleep(0.1)
             else:

@@ -273,7 +273,7 @@ def experiments(
         raise click.ClickException(str(error)) from error
     if rows is None:
         raise click.ClickException(f"No experiment named {name}.")
-    if output_format != "json":
+    if output_format != "json":  # probe
         rows = [
             row | {key: format_bytes(row[key]) for key in BYTES if key in row}  # type: ignore[arg-type]
             for row in rows

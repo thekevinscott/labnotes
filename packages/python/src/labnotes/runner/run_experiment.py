@@ -273,7 +273,7 @@ async def run_experiment(
 
     def retry_later(run: str) -> None:
         tried = attempts.get(run, earlier.get(run, 0))
-        if tried >= experiment.retries:
+        if tried >= experiment.retries:  # probe
             emit({"event": "gave up", "run": run, "retries": tried})
             return
         seconds = experiment.retry_wait * 2 ** (tried - earlier.get(run, 0))
@@ -386,7 +386,7 @@ async def run_experiment(
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
-        if result["exit_code"] == RETRY_EXIT_CODE and not (
+        if result["exit_code"] == RETRY_EXIT_CODE and not (  # probe
             stopping.is_set() or finishing_up or run in stopped
         ):
             retry_later(run)

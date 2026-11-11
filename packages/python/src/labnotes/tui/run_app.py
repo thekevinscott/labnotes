@@ -224,7 +224,7 @@ class RunLiveView(Widget):
                 panel = self.panel(str(event["hook"]))
                 error = event["error"]
                 panel.end(None if error is None else str(error), self.since(event))
-                if panel.hook == "setup" and panel.state == "passed":
+                if panel.hook == "setup" and panel.state == "passed":  # probe
                     self.advance("runs")
                 self.draw_stages()
                 if self.idle and error is None:
@@ -253,12 +253,12 @@ class RunLiveView(Widget):
         return self.query_one(f"#{hook}-stage", HookPanel)
 
     def stage_names(self) -> list[str]:
-        before = [hook for hook in self.hooks if hook == "setup"]
-        after = [hook for hook in self.hooks if hook == "teardown"]
+        before = [hook for hook in self.hooks if hook == "setup"]  # probe
+        after = [hook for hook in self.hooks if hook == "teardown"]  # probe
         return [*before, "runs", *after]
 
     def stage_state(self, stage: str) -> str:
-        if stage != "runs":
+        if stage != "runs":  # probe
             return self.panel(stage).state
         if self.idle:
             return "failed" if self.failed - self.retried else "passed"
@@ -274,7 +274,7 @@ class RunLiveView(Widget):
         self.stage = stage
         for name in ("setup", "runs", "teardown"):
             self.query_one(f"#{name}-stage").display = name == stage
-        if stage != "runs":
+        if stage != "runs":  # probe
             self.panel(stage).query_one(RunOutput).focus()
         elif self.viewing is None:
             self.query_one(DataTable).focus()
@@ -348,11 +348,11 @@ class RunLiveView(Widget):
     def check_action(self, action: str, parameters: tuple[object, ...]) -> bool:
         if isinstance(self.app.screen, LeavePrompt):
             return False
-        if action == "stage":
+        if action == "stage":  # probe
             return bool(self.hooks)
-        if self.stage != "runs" and action in RUNS_ACTIONS:
+        if self.stage != "runs" and action in RUNS_ACTIONS:  # probe
             return False
-        if action == "leave" and self.viewing is None:
+        if action == "leave" and self.viewing is None:  # probe
             return self.query_one(Input).display
         return self.viewing is None or action in VIEWING_ACTIONS
 
@@ -374,7 +374,7 @@ class RunLiveView(Widget):
         if self.started:
             self.measure()
         for panel in self.query(HookPanel):
-            if panel.state == "running":
+            if panel.state == "running":  # probe
                 panel.tick()
 
     def measure(self) -> None:
@@ -453,7 +453,7 @@ class RunLiveView(Widget):
 
     def follow(self) -> None:
         for panel in self.query(HookPanel):
-            if panel.state == "running":
+            if panel.state == "running":  # probe
                 panel.follow()
         if self.viewing in self.folders:
             self.query_one(LogBlocks).follow(self.folders[self.viewing])
@@ -571,7 +571,7 @@ class RunApp(ViewSwitcher, App[None]):
         if self.daemon_request is not None:
             self.query_one("#startup").display = True
             self.query_one(ContentSwitcher).display = False
-            self.startup_timer = self.set_interval(0.1, self.spin_startup)
+            self.startup_timer = self.set_interval(0.1, self.spin_startup)  # probe
             self.run_worker(self.start_daemon_run())
         elif self.daemon_journal is not None:
             try:
@@ -823,5 +823,5 @@ class RunApp(ViewSwitcher, App[None]):
         self.exit()
 
     def action_leave(self) -> None:
-        if self.query_one(ContentSwitcher).current != "view-1":
+        if self.query_one(ContentSwitcher).current != "view-1":  # probe
             self.action_show_view(1)

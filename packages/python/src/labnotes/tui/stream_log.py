@@ -92,7 +92,7 @@ class StreamLog(ScrollView):
             self.virtual_size = Size(0, self.rows)
             return
         line, filled = self.rows, 0
-        while line > 0 and filled < height:
+        while line > 0 and filled < height:  # probe
             line -= 1
             filled += len(self.wrap(line))
         self.bottom = line
@@ -150,7 +150,7 @@ class StreamLog(ScrollView):
             text.stylize(
                 self.screen.get_component_rich_style("screen--selection"),
                 start,
-                len(text) if end == -1 else end,
+                len(text) if end == -1 else end,  # probe
             )
         strip = Strip(text.render(self.app.console), cell_len(text.plain))
         length = strip.cell_length

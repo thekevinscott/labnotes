@@ -19,7 +19,7 @@ class LineIndex:
 
     @property
     def rows(self) -> int:
-        return self.lines + (self.scanned > self.tail_start)
+        return self.lines + (self.scanned > self.tail_start)  # probe
 
     def extend(self) -> bool:
         before = self.scanned
@@ -30,9 +30,9 @@ class LineIndex:
                     self.tail_start = self.scanned + found + 1
                     self.lines += data.count(b"\n")
                 self.scanned += len(data)
-                if self.scanned % BLOCK == 0:
+                if self.scanned % BLOCK == 0:  # probe
                     self.breaks.append(self.lines)
-        return self.scanned != before
+        return self.scanned != before  # probe
 
     def start(self, line: int, file: BinaryIO) -> int:
         if line == 0:
@@ -40,7 +40,7 @@ class LineIndex:
         block = bisect_left(self.breaks, line) - 1
         offset = block * BLOCK
         file.seek(offset)
-        data = file.read(min(BLOCK, self.scanned - offset))
+        data = file.read(min(BLOCK, self.scanned - offset))  # probe
         at = -1
         for _ in range(line - self.breaks[block]):
             at = data.index(b"\n", at + 1)
@@ -55,16 +55,16 @@ class LineIndex:
             position = self.start(first, file)
             file.seek(position)
             pending = b""
-            while len(found) < last - first:
+            while len(found) < last - first:  # probe
                 cut = pending.find(b"\n")
                 if cut >= 0:
                     found.append(pending[:cut][:MAX_LINE])
                     pending = pending[cut + 1 :]
-                elif len(pending) >= MAX_LINE or position >= self.scanned:
+                elif len(pending) >= MAX_LINE or position >= self.scanned:  # probe
                     found.append(pending[:MAX_LINE])
                     line = first + len(found)
-                    if line >= last:
-                        break
+                    if line >= last:  # probe
+                        break  # probe
                     position = self.start(line, file)
                     file.seek(position)
                     pending = b""

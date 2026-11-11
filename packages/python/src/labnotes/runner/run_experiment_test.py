@@ -555,6 +555,7 @@ def start_with_hooks(
     tmp_path: Path,
     report: mock.Mock,
     listen: Callable[[Any], None] = lambda controls: controls.finish(),
+    concurrency: int = 1,
 ) -> list[dict[str, object]]:
     configured = experiment()
     configured.setup = "up"
@@ -566,7 +567,7 @@ def start_with_hooks(
             ),
             "exp",
             configured,
-            1,
+            concurrency,
             report,
             listen,
         )
@@ -777,6 +778,57 @@ def test_tears_down_after_an_interrupt_during_setup(
     assert collaborators["invocation_hook"].await_args_list[-1] == mock.call(
         tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]
     )
+
+
+@pytest.mark.parametrize(
+    ("concurrency", "to", "limit", "widths"),
+    [(1, 3, 3, [1, 2]), (2, 1, 1, [1, 1]), (2, 0, 1, [1, 1])],
+)
+def test_a_concurrency_change_during_setup_starts_runs_only_after_setup(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    concurrency: int,
+    to: int,
+    limit: int,
+    widths: list[int],
+) -> None:
+    heard: list[Any] = []
+    measured: list[int] = []
+    live = 0
+
+    async def setup_then_change(*args: object) -> None:
+        if args[1] == "setup":
+            heard[0].set_concurrency(to)
+            await asyncio.sleep(0.05)
+            assert collaborators["execute_run"].await_count == 0
+
+    async def execute(*args: object, **_: object) -> dict[str, object]:
+        nonlocal live
+        live += 1
+        measured.append(live)
+        await asyncio.sleep(0.01)
+        live -= 1
+        return {"exit_code": 0, "error": None}
+
+    collaborators["invocation_hook"].side_effect = setup_then_change
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock()
+
+    def listen(controls: Any) -> None:
+        heard.append(controls)
+        controls.finish()
+
+    start_with_hooks(tmp_path, report, listen, concurrency)
+
+    assert events(report)[:5] == [
+        "planned",
+        "setting up",
+        "concurrency",
+        "hook ended",
+        "started",
+    ]
+    assert reported(report)[2] == {"event": "concurrency", "concurrency": limit}
+    assert measured == widths
 
 
 def test_titles_the_plan_with_the_experiments_name(

@@ -806,6 +806,20 @@ def test_attach_opens_the_tui_on_what_the_daemon_runs(
     drivers["run_tui"].assert_called_once_with(None, "a", config, attach=True)
 
 
+def test_attach_from_a_built_argument_attaches_and_stops_nothing(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    journals: mock.MagicMock,
+) -> None:
+    built = "".join(["att", "ach"])
+
+    assert run(["a", built]) == 0
+
+    config = collaborators["load_config"].return_value
+    journals.assert_called_once_with(config, "a", {"command": "journals"})
+    drivers["run_tui"].assert_called_once_with(None, "a", config, attach=True)
+
+
 @pytest.mark.parametrize(
     "reply",
     [

@@ -25,7 +25,7 @@ def dirsql() -> Iterator[mock.MagicMock]:
 
 
 @pytest.fixture
-def stand_ins() -> Iterator[dict[str, object]]:
+def stand_ins() -> Iterator[dict[str, mock.Mock]]:
     found = {name: mock.Mock(name=name) for name in COLLABORATORS}
     with mock.patch.multiple(MODULE, **found):
         yield found
@@ -39,7 +39,7 @@ def test_watches_only_the_run_folder(dirsql: mock.MagicMock) -> None:
 
 
 def test_reads_the_runs_own_files_with_the_project_readers(
-    dirsql: mock.MagicMock, stand_ins: dict[str, object]
+    dirsql: mock.MagicMock, stand_ins: dict[str, mock.Mock]
 ) -> None:
     open_run_tables(CONFIG, FOLDER)
 

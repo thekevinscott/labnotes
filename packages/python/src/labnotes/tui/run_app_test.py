@@ -6,6 +6,7 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
+from textual.widgets import DataTable
 
 from labnotes.tui.run_app import RunApp, RunLiveView
 
@@ -2297,6 +2298,21 @@ def test_busy_after_a_failed_setup_waits_only_for_teardown(
         assert app.query_one(RunLiveView).busy() == busy
 
     drive_hooks(steps)
+
+
+def test_spinning_stages_survive_the_table_outliving_them_at_shutdown() -> None:
+    prune = DataTable.on_prune
+
+    async def slow_prune(self: DataTable, event: Any) -> None:
+        await asyncio.sleep(0.3)
+        await prune(self, event)
+
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        await pilot.pause()
+
+    with mock.patch.object(DataTable, "on_prune", slow_prune):
+        drive_hooks(steps)
 
 
 def hook_calls(app: RunApp, method: str) -> dict[str, bool]:

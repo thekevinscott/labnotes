@@ -7,6 +7,7 @@ from tempfile import TemporaryDirectory
 
 import psutil
 
+from labnotes import retries
 from labnotes.models import (
     Controls,
     ExperimentConfig,
@@ -14,7 +15,6 @@ from labnotes.models import (
     Listen,
     Report,
 )
-from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.check_hook_placeholders import check_hook_placeholders
 from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.execute_run import execute_run
@@ -191,6 +191,7 @@ async def run_experiment(
             "concurrency": concurrency,
             "hooks": [hook for hook in ("setup", "teardown") if hooks[hook]],
         }
+        | ({} if run_id is None else {"restart": run_id})
     )
     for row in held:
         emit({"event": "held", "run": str(row["id"])})
@@ -202,7 +203,7 @@ async def run_experiment(
     stopped: set[str] = set()
     results: dict[str, dict[str, object]] = {}
     stopping = asyncio.Event()
-    draining = False
+    finishing_up = False
 
     def signal_run(run: str, signal_number: int) -> None:
         for process in running[run]:
@@ -226,16 +227,16 @@ async def run_experiment(
             emit({"event": "killing"})
             signal_runs(signal.SIGKILL)
 
-    def drain() -> None:
-        nonlocal draining
-        if draining or stopping.is_set():
+    def finish_up() -> None:
+        nonlocal finishing_up
+        if finishing_up or stopping.is_set():
             return
-        draining = True
+        finishing_up = True
         for run, _ in plan:
             if run in locks:
                 release(run)
         plan.clear()
-        emit({"event": "draining"})
+        emit({"event": "finishing up"})
         for run in list(waiting):
             cancel_retry(run)
         fill()
@@ -273,7 +274,7 @@ async def run_experiment(
 
     def retry_later(run: str) -> None:
         tried = attempts.get(run, earlier.get(run, 0))
-        if tried >= experiment.retries:
+        if tried not in range(experiment.retries):
             emit({"event": "gave up", "run": run, "retries": tried})
             return
         seconds = experiment.retry_wait * 2 ** (tried - earlier.get(run, 0))
@@ -302,9 +303,12 @@ async def run_experiment(
     live: set[asyncio.Task[None]] = set()
     started: list[asyncio.Task[None]] = []
     finishing = False
+    set_up = False
     done = asyncio.Event()
 
     def fill() -> None:
+        if not set_up:
+            return
         while plan and len(live) < limit:
             task = asyncio.create_task(start(*plan.pop(0)))
             task.add_done_callback(end)
@@ -383,10 +387,11 @@ async def run_experiment(
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
-        if result["exit_code"] == RETRY_EXIT_CODE and not (
-            stopping.is_set() or draining or run in stopped
-        ):
-            retry_later(run)
+        match result["exit_code"]:
+            case retries.RETRY_EXIT_CODE if not (
+                stopping.is_set() or finishing_up or run in stopped
+            ):
+                retry_later(run)
         if run not in waiting:
             release(run)
 
@@ -411,7 +416,7 @@ async def run_experiment(
         if experiment.teardown is not None:
             await run_hook("teardown", experiment.teardown, "tearing down")
 
-    listen(Controls(interrupt, set_concurrency, kill, finish, drain))
+    listen(Controls(interrupt, set_concurrency, kill, finish, finish_up))
     with TemporaryDirectory(prefix="labnotes-state-") as state_dir:
         state_file = Path(state_dir) / "state.json"
         for hook in ("setup", "teardown"):
@@ -421,6 +426,7 @@ async def run_experiment(
         try:
             if experiment.setup is not None:
                 await run_hook("setup", experiment.setup, "setting up")
+            set_up = True
             fill()
             await done.wait()
             await asyncio.gather(*started)

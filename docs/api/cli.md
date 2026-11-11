@@ -29,7 +29,7 @@ Prints a guide to `labnotes` for coding agents, headed by the config it found an
 ## `experiments`
 
 ```bash
-labnotes experiments [NAME] [runs|run|stop]
+labnotes experiments [NAME] [runs|run|attach|stop]
 ```
 
 | Form | Does |
@@ -38,6 +38,7 @@ labnotes experiments [NAME] [runs|run|stop]
 | `labnotes experiments NAME` | Shows one experiment, plus its config. |
 | `labnotes experiments NAME runs` | Lists the experiment's runs, oldest first, with each run's `memory` and `size`. |
 | `labnotes experiments NAME run` | Runs the experiment in the [TUI](tui). Requires stdout and stderr to be terminals. |
+| `labnotes experiments NAME attach` | Reopens the run [TUI](tui) on whatever the experiment's daemon is running, including restarts. Starts nothing: with nothing running it says so and exits. Any number of TUIs can attach at once, and every control acts on the daemon, so all of them see the result. |
 | `labnotes experiments NAME stop` | Asks the live daemon to stop all its cells. Exits non-zero with a clear message if no daemon is live. Daemons are keyed by the installed labnotes version, so after an upgrade or downgrade `stop` cannot see or stop a daemon started by the old version. |
 | `labnotes experiments new [NAME]` | Creates an experiment folder and writes its `experiment.toml`, from the starter or from `--from OTHER`, with any `--command`, `--param` and `--repeats` written in. Picks a random name if you give none. Refuses a folder that already exists. |
 

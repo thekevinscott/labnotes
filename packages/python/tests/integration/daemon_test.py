@@ -329,7 +329,7 @@ def test_attach_connection_keeps_idle_daemon_alive_until_disconnect(
             client.connect(str(path))
             client.sendall(b'{"command":"attach"}\n')
             with client.makefile("r") as reply:
-                assert json.loads(reply.readline()) == {"ok": True}
+                assert json.loads(reply.readline()) == {"ok": True, "journals": []}
             time.sleep(5.5)
             assert daemon.poll() is None
         assert daemon.wait(timeout=10) == 0

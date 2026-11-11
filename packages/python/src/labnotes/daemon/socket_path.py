@@ -26,7 +26,7 @@ def runtime_folder() -> Path:
         if runtime
         else Path(tempfile.gettempdir()) / f"labnotes-{os.getuid()}"
     )
-    folder.mkdir(mode=0o700, parents=True, exist_ok=True)
+    folder.mkdir(mode=0o700, parents=True, exist_ok=True)  # probe
     folder.chmod(0o700)
     return folder
 

@@ -1,0 +1,1 @@
+**Added** the run TUI flashes the "N at a time" label when the concurrency changes, from `+`/`-` or from another attached TUI. The highlight fades back over about a second. Nothing flashes on first draw or when old events replay from the journal.

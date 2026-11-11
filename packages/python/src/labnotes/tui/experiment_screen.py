@@ -60,8 +60,9 @@ class ExperimentScreen(ViewSwitcher, Screen[None]):
         self.run_worker(self.watch_files(), exit_on_error=False)
 
     def on_worker_state_changed(self, event: Worker.StateChanged) -> None:
-        if event.state == WorkerState.ERROR:
-            self.app.exit(event.worker.error)
+        match event.state:
+            case WorkerState.ERROR:
+                self.app.exit(event.worker.error)
 
     def stopped(self, error: BaseException | None) -> None:
         self.sub_title = stopped_title(self.sub_title, error)
@@ -98,7 +99,8 @@ class ExperimentScreen(ViewSwitcher, Screen[None]):
                 self.deliver(self.shown, frozenset({str(row["path"])}))
 
     def action_back(self) -> None:
-        if self.query_one(ContentSwitcher).current == "view-1":
-            self.app.pop_screen()
-        else:
-            self.action_show_view(1)
+        match self.query_one(ContentSwitcher).current:
+            case "view-1":
+                self.app.pop_screen()
+            case _:
+                self.action_show_view(1)

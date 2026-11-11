@@ -25,8 +25,8 @@ def test_set_concurrency_takes_a_number() -> None:
     assert hint == Callable[[int], None]
 
 
-def test_drain_takes_no_arguments() -> None:
-    assert typing.get_type_hints(Controls)["drain"] == Callable[[], None]
+def test_finish_up_takes_no_arguments() -> None:
+    assert typing.get_type_hints(Controls)["finish_up"] == Callable[[], None]
 
 
 def test_a_config_holds_many_experiments_by_default() -> None:

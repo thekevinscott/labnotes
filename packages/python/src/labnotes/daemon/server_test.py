@@ -42,7 +42,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
         finish = mock.Mock()
         controls = mock.Mock(
             interrupt=done.set,
-            drain=mock.Mock(),
+            finish_up=mock.Mock(),
             set_concurrency=set_concurrency,
             kill=kill,
             finish=finish,
@@ -101,9 +101,12 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
                 mock.call(2),
                 mock.call(3),
             ]
-            assert await daemon.dispatch({"command": "attach"}) == {"ok": True}
-            assert await daemon.dispatch({"command": "drain"}) == {"ok": True}
-            controls.drain.assert_called_once_with()
+            assert await daemon.dispatch({"command": "attach"}) == {
+                "ok": True,
+                "journals": [str(tmp_path / "one.jsonl")],
+            }
+            assert await daemon.dispatch({"command": "finish_up"}) == {"ok": True}
+            controls.finish_up.assert_called_once_with()
             assert (await daemon.dispatch({"command": "unknown"}))["ok"] is False
             assert await daemon.dispatch({"command": "stop_all"}) == {"ok": True}
             await asyncio.sleep(0)
@@ -113,14 +116,14 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
     asyncio.run(drive())
 
 
-def test_drained_journal_releases_planned_runs_from_reservations(
+def test_finished_up_journal_releases_planned_runs_from_reservations(
     tmp_path: Path,
 ) -> None:
-    journal = tmp_path / "drained.jsonl"
+    journal = tmp_path / "finished_up.jsonl"
     journal.write_text(
         json.dumps({"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]})
         + "\n"
-        + json.dumps({"event": "draining"})
+        + json.dumps({"event": "finishing up"})
         + "\n"
     )
 
@@ -142,20 +145,20 @@ def test_drained_journal_releases_planned_runs_from_reservations(
     asyncio.run(drive())
 
 
-def test_drain_command_decoded_from_socket_json_reaches_controls(
+def test_finish_up_command_decoded_from_socket_json_reaches_controls(
     tmp_path: Path,
 ) -> None:
     daemon = ExperimentDaemon(config(tmp_path), "exp")
     controls = mock.Mock()
     daemon.active[str(tmp_path / "active.jsonl")] = Invocation(controls=controls)
 
-    reply = asyncio.run(daemon.dispatch(json.loads('{"command": "drain"}')))
+    reply = asyncio.run(daemon.dispatch(json.loads('{"command": "finish_up"}')))
 
     assert reply == {"ok": True}
-    controls.drain.assert_called_once_with()
+    controls.finish_up.assert_called_once_with()
 
 
-def test_drain_requested_during_preparation_reaches_new_controls(
+def test_finish_up_requested_during_preparation_reaches_new_controls(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
@@ -163,7 +166,7 @@ def test_drain_requested_during_preparation_reaches_new_controls(
         preparing = asyncio.Event()
         ready = asyncio.Event()
         done = asyncio.Event()
-        controls = mock.Mock(drain=mock.Mock(side_effect=done.set))
+        controls = mock.Mock(finish_up=mock.Mock(side_effect=done.set))
         selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
 
         async def run(report, listen):
@@ -179,11 +182,11 @@ def test_drain_requested_during_preparation_reaches_new_controls(
         ):
             starting = asyncio.create_task(daemon.start({}))
             await preparing.wait()
-            assert await daemon.dispatch({"command": "drain"}) == {"ok": True}
+            assert await daemon.dispatch({"command": "finish_up"}) == {"ok": True}
             ready.set()
             assert (await starting)["ok"] is True
             await asyncio.sleep(0)
-        controls.drain.assert_called_once_with()
+        controls.finish_up.assert_called_once_with()
         controls.interrupt.assert_not_called()
 
     asyncio.run(drive())
@@ -406,7 +409,10 @@ def test_socket_replies_once_and_attach_holds_connection(tmp_path: Path) -> None
             )
             writer.write(b'{"command":"attach"}\n')
             await writer.drain()
-            assert json.loads(await reader.readline()) == {"ok": True}
+            assert json.loads(await reader.readline()) == {
+                "ok": True,
+                "journals": [],
+            }
             assert daemon.clients == 1
             writer.close()
             await writer.wait_closed()
@@ -742,5 +748,34 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
             {"r1": {"m": "a"}},
             {"KEY": "value"},
         )
+
+    asyncio.run(drive())
+
+
+def test_restart_with_a_run_id_starts_that_run(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    options = {"run_id": "r"}
+    with mock.patch.object(daemon, "start", return_value={"ok": True}) as start:
+        reply = asyncio.run(daemon.dispatch({"command": "restart", "options": options}))
+    assert reply == {"ok": True}
+    start.assert_called_once_with(options, mock.ANY)
+
+
+@pytest.mark.parametrize("action", ["attach", "journals"])
+def test_attach_and_journals_list_active_invocations_in_start_order(
+    tmp_path: Path, action: str
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        assert await daemon.dispatch({"command": action}) == {
+            "ok": True,
+            "journals": [],
+        }
+        daemon.active["b.jsonl"] = Invocation()
+        daemon.active["a.jsonl"] = Invocation()
+        assert await daemon.dispatch({"command": action}) == {
+            "ok": True,
+            "journals": ["b.jsonl", "a.jsonl"],
+        }
 
     asyncio.run(drive())

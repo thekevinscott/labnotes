@@ -425,7 +425,7 @@ def test_an_empty_line_takes_one_row(tmp_path: Path, drawing: dict[str, Any]) ->
     assert wrapped == [strip.extend_cell_length.return_value.apply_offsets.return_value]
 
 
-@pytest.mark.parametrize("span", [None, (0, -1), (1, 2)])
+@pytest.mark.parametrize("span", [None, (0, -1), (0, 0), (1, 2)])
 @pytest.mark.usefixtures("sized")
 def test_highlights_the_selected_part_of_a_line(
     tmp_path: Path, drawing: dict[str, Any], span: tuple[int, int] | None

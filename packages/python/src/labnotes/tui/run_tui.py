@@ -11,6 +11,7 @@ def run_tui(
     config: LabnotesConfig | None = None,
     experiment_config: Path | None = None,
     daemon_request: dict[str, object] | None = None,
+    attach: bool = False,
 ) -> list[dict[str, object]]:
     app = RunApp(
         start,
@@ -19,6 +20,7 @@ def run_tui(
         config=config,
         experiment_config=experiment_config,
         daemon_request=daemon_request,
+        attach=attach,
     )
     app.run()
     if app.farewell is not None:

@@ -155,7 +155,9 @@ class StreamLog(ScrollView):
                 start,
                 len(text) if end == -1 else end,
             )
-        strip = Strip(text.render(self.app.console), cell_len(text.plain))
+        strip = Strip(text.render(self.app.console), cell_len(text.plain)).apply_style(
+            self.rich_style
+        )
         length = strip.cell_length
         pieces = (
             strip.divide([*range(width, length, width), length]) if length else [strip]

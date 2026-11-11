@@ -6,7 +6,6 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
-from textual.binding import Binding
 
 from labnotes.tui.run_app import RunApp, RunLiveView
 
@@ -643,9 +642,9 @@ def test_skips_pending_runs_when_stopping() -> None:
 
 def test_finish_up_is_bound_to_f() -> None:
     bindings = [
-        (binding.key, binding.description)
+        (binding.key, binding.description)  # type: ignore[union-attr]
         for binding in RunLiveView.BINDINGS
-        if isinstance(binding, Binding) and binding.action == "finish_up"
+        if binding.action == "finish_up"  # type: ignore[union-attr]
     ]
     assert bindings == [("f", "Finish up")]
 

@@ -3,7 +3,11 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
+from labnotes.tui.leave_prompt import (
+    DetachedLeavePrompt,
+    LeavePrompt,
+    LostDaemonNotice,
+)
 
 
 @pytest.fixture(autouse=True)
@@ -58,3 +62,14 @@ def test_detached_prompt_offers_stop_leave_and_cancel(static: mock.MagicMock) ->
         ("enter,l", "dismiss('leave')"),
         ("escape", "dismiss"),
     ]
+
+
+def test_lost_daemon_notice_says_why_and_quits_on_any_exit_key(
+    static: mock.MagicMock,
+) -> None:
+    assert list(LostDaemonNotice("Lost the daemon for exp.").compose()) == ["prompt"]
+    static.assert_called_once_with("Lost the daemon for exp. Quit (q).", id="prompt")
+    assert [
+        (binding.key, binding.action)  # type: ignore[union-attr]
+        for binding in LostDaemonNotice.BINDINGS
+    ] == [("q,enter,escape,ctrl+c", "dismiss")]

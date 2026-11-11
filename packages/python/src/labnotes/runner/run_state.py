@@ -24,6 +24,7 @@ class RunState:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.offset = 0
+        self.inode: int | None = None
 
     @classmethod
     def create(cls, config: LabnotesConfig, experiment: str) -> "RunState":
@@ -47,9 +48,13 @@ class RunState:
             file.write(data)
 
     def read(self) -> list[dict[str, object]]:
-        """Return only complete new events."""
+        """Return only complete new events, starting over on a recreated file."""
         try:
             with self.path.open("rb") as file:
+                status = os.fstat(file.fileno())
+                if status.st_ino != self.inode or status.st_size < self.offset:
+                    self.inode = status.st_ino
+                    self.offset = 0
                 file.seek(self.offset)
                 data = file.read()
         except FileNotFoundError:

@@ -19,7 +19,6 @@ def paths(tmp_path: Path) -> Iterator[tuple[Path, Path]]:
         mock.patch(
             "labnotes.daemon.client.socket_path",
             return_value=tmp_path / "none.sock",
-            create=True,
         ),
     ):
         yield record, lock
@@ -134,9 +133,7 @@ def live_socket() -> Iterator[Path]:
 def test_a_live_daemon_is_found_after_its_record_and_lock_are_deleted(
     paths: tuple[Path, Path], live_socket: Path
 ) -> None:
-    with mock.patch(
-        "labnotes.daemon.client.socket_path", return_value=live_socket, create=True
-    ):
+    with mock.patch("labnotes.daemon.client.socket_path", return_value=live_socket):
         assert daemon_socket(mock.Mock(), "exp") == live_socket
     assert live_socket.exists()
 

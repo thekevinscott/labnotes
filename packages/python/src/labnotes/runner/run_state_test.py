@@ -170,3 +170,15 @@ def test_reader_follows_a_journal_recreated_after_deletion(tmp_path: Path) -> No
     writer.path.unlink()
     writer.record({"event": "idle"})
     assert [event["event"] for event in reader.read()] == ["idle"]
+
+
+def test_reader_starts_over_on_a_shorter_file_with_the_same_inode(
+    tmp_path: Path,
+) -> None:
+    writer = state(tmp_path)
+    writer.record({"event": "started", "run": "one"})
+    writer.record({"event": "started", "run": "two"})
+    reader = RunState(writer.path)
+    assert len(reader.read()) == 2
+    writer.path.write_bytes(b'{"event": "idle"}\n')
+    assert reader.read() == [{"event": "idle"}]

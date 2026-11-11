@@ -12,11 +12,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import cast
 
-from labnotes.daemon.socket_path import lock_path, socket_path, socket_record
+from labnotes.daemon.client import listening
+from labnotes.daemon.socket_path import (
+    discovery_folder,
+    lock_path,
+    socket_path,
+    socket_record,
+)
 from labnotes.models import Controls, LabnotesConfig
 from labnotes.runner.start_experiment import start_experiment
 
 IDLE_SECONDS = 5.0
+LIVE_STATE_NOTE = (
+    "Live state for running labnotes daemons: locks, socket records and run\n"
+    "journals. Do not delete this folder while labnotes is running.\n"
+)
 
 
 @dataclass
@@ -253,6 +263,9 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
     """Hold the experiment/version lock for one Unix server lifetime."""
     lock = lock_path(config, name)
     lock.parent.mkdir(parents=True, exist_ok=True)
+    state = discovery_folder(config, name)
+    state.mkdir(parents=True, exist_ok=True)
+    (state.parent / "README").write_text(LIVE_STATE_NOTE)
     lock.touch(mode=0o600, exist_ok=True)
     descriptor = os.open(lock, os.O_RDONLY)
     try:
@@ -266,6 +279,8 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
         else:
             return
         path = socket_path(config, name)
+        if listening(path):
+            return
         path.unlink(missing_ok=True)
         daemon = ExperimentDaemon(config, name)
         server = await asyncio.start_unix_server(daemon.handle, path=str(path))

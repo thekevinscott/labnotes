@@ -810,4 +810,4 @@ def test_server_marks_run_state_as_live(
     with mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0):
         asyncio.run(serve_daemon(config(tmp_path), "exp"))
     marker = Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state/README"
-    assert "live" in marker.read_text()
+    assert "Do not delete" in marker.read_text()

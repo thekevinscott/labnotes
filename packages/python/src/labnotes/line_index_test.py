@@ -33,7 +33,7 @@ def indexed(path: Path, data: bytes) -> LineIndex:
 def test_starts_with_nothing_indexed(tmp_path: Path) -> None:
     index = LineIndex(tmp_path / "out.log")
     assert (index.path, index.breaks, index.scanned) == (tmp_path / "out.log", [0], 0)
-    assert (index.lines, index.rows, index.tail_start) == (0, 0, 0)
+    assert (index.lines, index.rows, index.partial) == (0, 0, False)
 
 
 @pytest.mark.parametrize(
@@ -51,7 +51,7 @@ def test_counts_complete_lines_and_an_unfinished_row(
 def test_records_newlines_before_each_block(tmp_path: Path) -> None:
     index = indexed(tmp_path / "out.log", b"a\nb\nc\nd\nee\nffff\ngggggggg\n")
     assert index.breaks == [0, 4, 6, 6]
-    assert index.tail_start == 25
+    assert not index.partial
 
 
 def test_extends_from_where_it_stopped(tmp_path: Path) -> None:
@@ -73,7 +73,7 @@ def test_unfinished_tail_keeps_its_start_across_newline_free_growth(
     with path.open("ab") as file:
         file.write(b"tial")
     assert index.extend()
-    assert (index.tail_start, index.rows, index.read(1, 1)) == (2, 2, [b"partial"])
+    assert (index.partial, index.rows, index.read(1, 1)) == (True, 2, [b"partial"])
 
 
 def logs() -> list[bytes]:
@@ -182,6 +182,20 @@ def test_start_and_read_do_not_consume_unindexed_bytes(tmp_path: Path) -> None:
     with counting() as counted:
         assert index.read(BLOCK // 2 + 1, 1) == [b"partx"]
     assert counted == [8, 5]
+
+
+def test_start_reads_only_indexed_bytes_of_an_uneven_block(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("labnotes.line_index.BLOCK", 6)
+    path = tmp_path / "out.log"
+    index = indexed(path, b"aaaaaaa\nb\nc")
+    with path.open("ab") as file:
+        file.write(b"\n")
+    with counting() as counted:
+        with path.open("rb") as file:
+            assert index.start(2, file) == 10
+    assert counted == [5]
 
 
 def test_start_rejects_a_negative_line(tmp_path: Path) -> None:

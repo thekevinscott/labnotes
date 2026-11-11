@@ -2854,15 +2854,17 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
     order: list[str] = []
 
     async def ensure(*args):
-        assert app.steps == ["Starting daemon"]
+        assert app.steps == ["Starting up"]
         order.append("ensure")
 
     def attach():
         order.append("attach")
         return []
 
-    async def start(*args):
+    async def start(config, name, request, progress):
         order.append("start")
+        progress("Starting up")
+        progress("Preparing experiment")
         return {"journal": "fast-batch"}
 
     app.startup_timer = mock.Mock()
@@ -2878,6 +2880,7 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
     ):
         asyncio.run(app.start_daemon_run())
     assert order == ["ensure", "attach", "start", "follow"]
+    assert app.steps == ["Starting up", "Preparing experiment"]
     assert app.daemon_journal is not None
     assert str(app.daemon_journal.path) == "fast-batch"
 

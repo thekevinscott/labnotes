@@ -16,6 +16,7 @@ ROOT = Path("/p/project")
         ("runs/{run}/{experiment}", "runs"),
         ("out/*/{experiment}/{run}", "out"),
         ("{run}", ""),
+        ("plain/runs", "plain/runs"),
     ],
 )
 def test_stops_at_the_first_part_that_is_not_literal(

@@ -1,5 +1,3 @@
-import fcntl
-import os
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -69,16 +67,22 @@ def test_stale_record_for_a_vanished_socket_is_cleaned(
     assert not record.exists()
 
 
-def test_a_lock_held_elsewhere_exposes_the_socket(paths: tuple[Path, Path]) -> None:
+@pytest.fixture
+def flock() -> Iterator[mock.Mock]:
+    with mock.patch("labnotes.daemon.client.fcntl") as fcntl:
+        fcntl.LOCK_EX, fcntl.LOCK_NB, fcntl.LOCK_UN = 2, 4, 8
+        yield fcntl.flock
+
+
+def test_checking_the_lock_never_waits_for_its_holder(
+    paths: tuple[Path, Path], flock: mock.Mock
+) -> None:
     record, lock = paths
     record.write_text("/tmp/held.sock")
     lock.touch()
-    holder = os.open(lock, os.O_RDONLY)
-    try:
-        fcntl.flock(holder, fcntl.LOCK_EX)
-        assert daemon_socket(mock.Mock(), "exp") == Path("/tmp/held.sock")
-    finally:
-        os.close(holder)
+    flock.side_effect = BlockingIOError
+    assert daemon_socket(mock.Mock(), "exp") == Path("/tmp/held.sock")
+    assert flock.call_args.args[1] == 2 | 4
 
 
 def test_a_record_another_client_cleaned_first_is_not_an_error(
@@ -96,15 +100,15 @@ def test_a_record_another_client_cleaned_first_is_not_an_error(
 
 
 def test_a_record_cleaned_while_checking_the_lock_is_not_an_error(
-    paths: tuple[Path, Path], tmp_path: Path
+    paths: tuple[Path, Path], tmp_path: Path, flock: mock.Mock
 ) -> None:
     record, lock = paths
     record.write_text(str(tmp_path / "gone.sock"))
     lock.touch()
 
     def unlock(descriptor: int, operation: int) -> None:
-        if operation == fcntl.LOCK_UN:
+        if operation == 8:
             record.unlink()
 
-    with mock.patch("labnotes.daemon.client.fcntl.flock", side_effect=unlock):
-        assert daemon_socket(mock.Mock(), "exp") is None
+    flock.side_effect = unlock
+    assert daemon_socket(mock.Mock(), "exp") is None

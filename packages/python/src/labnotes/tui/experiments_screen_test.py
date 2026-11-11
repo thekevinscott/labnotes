@@ -161,9 +161,10 @@ def test_exits_with_what_stopped_the_read(
 ) -> None:
     error = RuntimeError("bad scan")
     with mock.patch("labnotes.tui.experiments_screen.WorkerState") as states:
-        screen.on_worker_state_changed(
-            mock.Mock(state=states.RUNNING, worker=mock.Mock(error=None))
-        )
+        for state in (states.PENDING, states.RUNNING, states.CANCELLED, states.SUCCESS):
+            screen.on_worker_state_changed(
+                mock.Mock(state=state, worker=mock.Mock(error=None))
+            )
         collaborators["app"].return_value.exit.assert_not_called()
 
         screen.on_worker_state_changed(

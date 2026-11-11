@@ -1,85 +1,55 @@
-import asyncio
-import time
-from collections.abc import Awaitable, Callable
+from collections.abc import Iterator
 from unittest import mock
 
-from textual.app import App, ComposeResult
-from textual.color import Color
+import pytest
 
 from labnotes.tui.flash_value import FADE_SECONDS, FRESH_SECONDS, FlashValue
 
 
-class Host(App[None]):
-    def compose(self) -> ComposeResult:
-        yield FlashValue(id="value")
+@pytest.fixture
+def label() -> Iterator[FlashValue]:
+    widget = FlashValue(id="value")
+    with (
+        mock.patch.object(widget, "update") as update,
+        mock.patch.object(widget, "flash") as flash,
+        mock.patch("labnotes.tui.flash_value.time.time", return_value=100.0),
+    ):
+        widget.update = update  # type: ignore[method-assign]
+        widget.flash = flash  # type: ignore[method-assign]
+        yield widget
 
 
-def hosted(check: Callable[[Host, FlashValue], Awaitable[None]]) -> None:
-    async def drive() -> None:
-        app = Host()
-        async with app.run_test():
-            await check(app, app.query_one(FlashValue))
-
-    asyncio.run(drive())
+def test_shows_the_first_value_without_flashing(label: FlashValue) -> None:
+    label.set_value("1 at a time")
+    assert label.value == "1 at a time"
+    label.update.assert_called_once_with("1 at a time")  # type: ignore[attr-defined]
+    label.flash.assert_not_called()  # type: ignore[attr-defined]
 
 
-def test_shows_the_first_value_without_flashing() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        with mock.patch.object(label, "flash") as flash:
-            label.set_value("1 at a time")
-        assert label.value == "1 at a time"
-        assert "1 at a time" in str(label.render())
-        flash.assert_not_called()
-
-    hosted(check)
+def test_flashes_a_live_change(label: FlashValue) -> None:
+    label.set_value("1")
+    label.set_value("2")
+    label.flash.assert_called_once_with()  # type: ignore[attr-defined]
+    label.update.assert_called_with("2")  # type: ignore[attr-defined]
 
 
-def test_flashes_a_live_change() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        label.set_value("1")
-        with mock.patch.object(label, "flash") as flash:
-            label.set_value("2")
-        flash.assert_called_once_with()
-        assert "2" in str(label.render())
-
-    hosted(check)
+def test_ignores_a_repeat_of_the_same_value(label: FlashValue) -> None:
+    label.set_value("1")
+    label.set_value("1", 100.0)
+    label.flash.assert_not_called()  # type: ignore[attr-defined]
 
 
-def test_ignores_a_repeat_of_the_same_value() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        label.set_value("1")
-        with mock.patch.object(label, "flash") as flash:
-            label.set_value("1", time.time())
-        flash.assert_not_called()
-
-    hosted(check)
+def test_flashes_a_change_that_just_happened(label: FlashValue) -> None:
+    label.set_value("1")
+    label.set_value("2", 100.0 - FRESH_SECONDS + 0.01)
+    label.flash.assert_called_once_with()  # type: ignore[attr-defined]
 
 
-def test_flashes_a_change_that_just_happened() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        label.set_value("1")
-        with (
-            mock.patch.object(label, "flash") as flash,
-            mock.patch("labnotes.tui.flash_value.time.time", return_value=100.0),
-        ):
-            label.set_value("2", 100.0 - FRESH_SECONDS + 0.01)
-        flash.assert_called_once_with()
-
-    hosted(check)
-
-
-def test_stays_quiet_for_replayed_changes() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        label.set_value("1")
-        with (
-            mock.patch.object(label, "flash") as flash,
-            mock.patch("labnotes.tui.flash_value.time.time", return_value=100.0),
-        ):
-            label.set_value("2", 100.0 - FRESH_SECONDS)
-        flash.assert_not_called()
-        assert label.value == "2"
-
-    hosted(check)
+def test_stays_quiet_for_replayed_changes(label: FlashValue) -> None:
+    label.set_value("1")
+    label.set_value("2", 100.0 - FRESH_SECONDS)
+    label.flash.assert_not_called()  # type: ignore[attr-defined]
+    assert label.value == "2"
 
 
 def test_flash_is_tuned_to_about_a_second() -> None:
@@ -87,31 +57,49 @@ def test_flash_is_tuned_to_about_a_second() -> None:
     assert FADE_SECONDS == 1.0
 
 
-def test_flash_lights_the_warning_color_and_fades_back() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        normal = label.styles.background
-        with mock.patch.object(label.styles, "animate") as animate:
-            label.flash()
-        assert label.styles.background == Color.parse(app.theme_variables["warning"])
-        animate.assert_called_once_with(
-            "background",
-            normal,
-            duration=FADE_SECONDS,
-            level="basic",
-            on_complete=label.settle,
-        )
-        label.settle()
-        assert not label.styles.inline.has_rule("background")
-
-    hosted(check)
+@pytest.fixture
+def styled() -> Iterator[tuple[FlashValue, mock.Mock, mock.Mock, mock.Mock]]:
+    widget = FlashValue()
+    styles = mock.Mock(background="normal")
+    app = mock.Mock(theme_variables={"warning": "#ffa62b"})
+    with (
+        mock.patch.object(widget, "styles", new=styles),
+        mock.patch.object(FlashValue, "app", new=app),
+        mock.patch("labnotes.tui.flash_value.Color") as color,
+    ):
+        yield widget, styles, app, color
 
 
-def test_flash_again_fades_to_the_css_background() -> None:
-    async def check(app: Host, label: FlashValue) -> None:
-        normal = label.styles.background
-        label.flash()
-        with mock.patch.object(label.styles, "animate") as animate:
-            label.flash()
-        assert animate.call_args.args == ("background", normal)
+def test_flash_lights_the_warning_color_and_fades_back(
+    styled: tuple[FlashValue, mock.Mock, mock.Mock, mock.Mock],
+) -> None:
+    widget, styles, app, color = styled
+    widget.flash()
+    styles.clear_rule.assert_called_once_with("background")
+    color.parse.assert_called_once_with("#ffa62b")
+    assert styles.background is color.parse.return_value
+    styles.animate.assert_called_once_with(
+        "background",
+        "normal",
+        duration=FADE_SECONDS,
+        level="basic",
+        on_complete=widget.settle,
+    )
 
-    hosted(check)
+
+def test_flash_reads_the_css_background_after_clearing_its_own(
+    styled: tuple[FlashValue, mock.Mock, mock.Mock, mock.Mock],
+) -> None:
+    widget, styles, app, color = styled
+    styles.background = "mid-flash"
+    styles.clear_rule.side_effect = lambda rule: setattr(styles, "background", "css")
+    widget.flash()
+    assert styles.animate.call_args.args == ("background", "css")
+
+
+def test_settle_drops_the_inline_background(
+    styled: tuple[FlashValue, mock.Mock, mock.Mock, mock.Mock],
+) -> None:
+    widget, styles, app, color = styled
+    widget.settle()
+    styles.clear_rule.assert_called_once_with("background")

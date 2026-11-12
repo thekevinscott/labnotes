@@ -186,6 +186,29 @@ def test_finish_up_finishes_current_run_without_starting_queued_run(
     term.wait()
 
 
+def test_finish_up_from_output_view_keeps_status_line_on_return(
+    terminal, tmp_path: Path
+) -> None:
+    command = f"{shlex.quote(sys.executable)} -c 'import time; time.sleep(8)'"
+    term = run_tui(terminal, tmp_path, 2, command)
+    expect(term.get_by_text(re.compile(r"[|/\\-] +\d+s"))).to_be_visible()
+    term.key_enter()
+    expect(term.get_by_text("Back")).to_be_visible()
+    term.write("f")
+    expect(term.get_by_text("Finishing up")).to_be_visible()
+    term.key_escape()
+    expect(term.get_by_text("Back")).not_to_be_visible()
+    expect(
+        term.get_by_text(
+            "Finishing up. Queued runs won't start; running cells will finish."
+        )
+    ).to_be_visible()
+    expect(term.get_by_text("–")).to_be_visible()
+    expect(term.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=20)
+    term.key_ctrl_c()
+    term.wait()
+
+
 def test_retry_wait_and_end_summary(terminal, tmp_path: Path) -> None:
     command = f"{shlex.quote(sys.executable)} -c 'import sys; sys.exit(75)'"
     term = run_tui(terminal, tmp_path, 2, command, "retries = 1\n")

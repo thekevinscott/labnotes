@@ -117,6 +117,7 @@ class RunLiveView(Widget):
         self.hooks: tuple[str, ...] = ()
         self.stage = "runs"
         self.moved = False
+        self.notice = ""
 
     def compose(self) -> ComposeResult:
         yield Static(id="stages")
@@ -249,7 +250,8 @@ class RunLiveView(Widget):
             case "stopping" | "finishing up":
                 for pending in self.pending:
                     self.set_cell(pending, "status", dim(SKIPPED))
-                self.show(describe_event(event))
+                self.notice = describe_event(event)
+                self.show(self.notice)
             case _:
                 self.show(describe_event(event))
 
@@ -480,7 +482,7 @@ class RunLiveView(Widget):
             if self.idle:
                 self.show_summary()
             else:
-                self.show("")
+                self.show(self.notice)
             return
         field = self.query_one(Input)
         field.value = ""

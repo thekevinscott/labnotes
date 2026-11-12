@@ -8,7 +8,7 @@ import os
 import signal
 import time
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
@@ -24,15 +24,17 @@ from labnotes.runner.start_experiment import start_experiment
 
 IDLE_SECONDS = 5.0
 LIVE_STATE_NOTE = (
-    "Live state for running labnotes daemons: locks, socket records and run\n"
-    "journals. Do not delete this folder while labnotes is running.\n"
+    "Live state for running labnotes daemons: locks and socket records.\n"
+    "Do not delete this folder while labnotes is running.\n"
 )
+MAX_STREAM_BUFFER = 1024 * 1024
 
 
 @dataclass
 class Invocation:
     """Keep controls with the one invocation that produced a journal."""
 
+    events: list[dict[str, object]] = field(default_factory=list)
     task: asyncio.Task[None] | None = None
     controls: Controls | None = None
     stop_requested: bool = False
@@ -46,6 +48,8 @@ class ExperimentDaemon:
         self.config = config
         self.name = name
         self.active: dict[str, Invocation] = {}
+        self.history: dict[str, Invocation] = {}
+        self.subscribers: set[asyncio.StreamWriter] = set()
         self.clients = 0
         self.closing = False
         self.last_busy = time.monotonic()
@@ -124,6 +128,7 @@ class ExperimentDaemon:
         path = str(selected.run_state.path)
         invocation = Invocation()
         self.active[path] = invocation
+        self.history[path] = invocation
         ready: asyncio.Future[None] = asyncio.get_running_loop().create_future()
 
         def listen(controls: Controls) -> None:
@@ -138,13 +143,16 @@ class ExperimentDaemon:
 
         async def run() -> None:
             try:
-                await selected(lambda event: None, listen)
+                await selected(lambda event: self.report(path, event), listen)
             except Exception as error:
                 if not ready.done():
                     ready.set_exception(error)
                 else:
-                    selected.run_state.record(
-                        {"event": "daemon error", "error": str(error)}
+                    self.report(
+                        path,
+                        selected.run_state.record(
+                            {"event": "daemon error", "error": str(error)}
+                        ),
                     )
             finally:
                 self.active.pop(path, None)
@@ -212,10 +220,35 @@ class ExperimentDaemon:
             return {"ok": True, "journals": list(self.active)}
         return {"ok": False, "error": f"Unknown command {action}"}
 
+    def write_event(
+        self, writer: asyncio.StreamWriter, path: str, event: dict[str, object]
+    ) -> None:
+        """Drop slow consumers without blocking the runner."""
+        if writer.is_closing():
+            self.subscribers.discard(writer)
+            return
+        try:
+            writer.write(
+                (json.dumps({"journal": path, "event": event}) + "\n").encode()
+            )
+        except ConnectionError:
+            self.subscribers.discard(writer)
+            writer.transport.abort()
+            return  # A broken client must not interrupt event recording.
+        if writer.transport.get_write_buffer_size() > MAX_STREAM_BUFFER:
+            self.subscribers.discard(writer)
+            writer.transport.abort()
+
+    def report(self, path: str, event: dict[str, object]) -> None:
+        """Retain ordered replay and synchronously publish each stored event."""
+        self.history[path].events.append(event)
+        for writer in tuple(self.subscribers):
+            self.write_event(writer, path, event)
+
     async def handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
     ) -> None:
-        """Hold an attach connection open without streaming events to it."""
+        """Replay and subscribe without yielding between the snapshot and subscription."""
         self.clients += 1
         try:
             line = await reader.readline()
@@ -236,16 +269,28 @@ class ExperimentDaemon:
                     # A request always gets one error reply, even on internal failures.
                     reply = {"ok": False, "error": str(error)}
             writer.write((json.dumps(reply) + "\n").encode())
-            await writer.drain()
             if isinstance(message, dict) and message.get("command") == "attach":
+                self.subscribers.add(writer)
+                for path, invocation in self.history.items():
+                    for event in invocation.events:
+                        self.write_event(writer, path, event)
+                await writer.drain()
                 await reader.read()
+            else:
+                await writer.drain()
         except (json.JSONDecodeError, asyncio.LimitOverrunError):
             writer.write(b'{"ok":false,"error":"Invalid request"}\n')
             await writer.drain()
+        except ConnectionError:
+            pass  # A disconnected subscriber must not affect running invocations.
         finally:
+            self.subscribers.discard(writer)
             self.clients -= 1
             writer.close()
-            await writer.wait_closed()
+            try:
+                await writer.wait_closed()
+            except ConnectionError:
+                pass  # The transport may already have been aborted.
 
     async def wait_until_idle(self) -> None:
         """Leave a short window for another TUI after the last cell ends."""

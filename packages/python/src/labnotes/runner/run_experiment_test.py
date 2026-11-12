@@ -479,7 +479,7 @@ def test_runs_each_planned_run_in_a_new_folder(
     ]
     assert (tmp_path / "exp" / "r1").is_dir()
     ended = {"exit_code": 0, "error": None}
-    assert [c.args[0] for c in report.call_args_list] == [
+    assert reported(report) == [
         {
             "event": "planned",
             "title": "exp",
@@ -491,14 +491,14 @@ def test_runs_each_planned_run_in_a_new_folder(
             "event": "started",
             "run": "r1",
             "params": A,
-            "folder": tmp_path / "exp" / "r1",
+            "folder": str(tmp_path / "exp" / "r1"),
         },
         {"event": "ended", "run": "r1", **ended},
         {
             "event": "started",
             "run": "r2",
             "params": B,
-            "folder": tmp_path / "exp" / "r2",
+            "folder": str(tmp_path / "exp" / "r2"),
         },
         {"event": "ended", "run": "r2", **ended},
         {"event": "idle"},
@@ -606,19 +606,19 @@ def test_sets_up_before_the_first_run_and_tears_down_after_the_last(
         mock.call(tmp_path, "setup", "up", mock.ANY, mock.ANY, ["r1", "r2"]),
         mock.call(tmp_path, "teardown", "down", mock.ANY, mock.ANY, ["r1", "r2"]),
     ]
-    events = [c.args[0] for c in report.call_args_list]
+    events = reported(report)
     stamp = collaborators["invocation_hook"].await_args_list[0].args[4].name
     logs = tmp_path / "exp" / ".labnotes" / "logs"
     assert events[0]["hooks"] == ["setup", "teardown"]
     assert events[1:3] == [
-        {"event": "setting up", "hook": "setup", "folder": logs / "setup" / stamp},
+        {"event": "setting up", "hook": "setup", "folder": str(logs / "setup" / stamp)},
         {"event": "hook ended", "hook": "setup", "error": None},
     ]
     assert events[-3:] == [
         {
             "event": "tearing down",
             "hook": "teardown",
-            "folder": logs / "teardown" / stamp,
+            "folder": str(logs / "teardown" / stamp),
         },
         {"event": "hook ended", "hook": "teardown", "error": None},
         {"event": "idle"},
@@ -737,7 +737,12 @@ def test_reports_a_failed_setup_as_ended_with_its_error(
         start_with_hooks(tmp_path, report)
 
     report.assert_any_call(
-        {"event": "hook ended", "hook": "setup", "error": "setup failed"}
+        {
+            "event": "hook ended",
+            "hook": "setup",
+            "error": "setup failed",
+            "at": mock.ANY,
+        }
     )
 
 
@@ -763,7 +768,9 @@ def test_tears_down_and_keeps_the_runs_failure(
         start_with_hooks(tmp_path, report)
 
     assert collaborators["invocation_hook"].await_count == 2
-    report.assert_called_with({"event": "teardown failed", "error": "down failed"})
+    report.assert_called_with(
+        {"event": "teardown failed", "error": "down failed", "at": mock.ANY}
+    )
 
 
 def test_tears_down_after_an_interrupt_during_setup(
@@ -1092,7 +1099,10 @@ def changing_concurrency(listen: mock.Mock, to: int, widths: list[int]) -> objec
 
 
 def reported(report: mock.Mock) -> list[dict[str, object]]:
-    return [c.args[0] for c in report.call_args_list]
+    return [
+        {k: v for k, v in c.args[0].items() if k not in ("at", "retry_at")}
+        for c in report.call_args_list
+    ]
 
 
 def test_raising_concurrency_starts_more_runs_at_once(
@@ -2104,3 +2114,22 @@ def test_a_resumed_run_doubles_its_wait_from_this_session_only(
         (3, 0.02),
         (4, 0.04),
     ]
+
+
+def test_emit_forwards_the_exact_journal_records(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    import json
+
+    report = mock.Mock()
+    collaborators["execute_run"].side_effect = exiting(75, 0, 0)
+    run(tmp_path, report, retry_seconds=0.01)
+    journals = list(
+        Path(os.environ["XDG_STATE_HOME"]).glob("labnotes/run-state/*/*.jsonl")
+    )
+    assert len(journals) == 1
+    stored = [json.loads(line) for line in journals[0].read_text().splitlines()]
+    assert [call.args[0] for call in report.call_args_list] == stored
+    assert all(isinstance(event["at"], float) for event in stored)
+    retry = next(event for event in stored if event["event"] == "retrying")
+    assert retry["retry_at"] == retry["at"] + retry["seconds"]

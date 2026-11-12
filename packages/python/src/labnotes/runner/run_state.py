@@ -24,7 +24,6 @@ class RunState:
     def __init__(self, path: Path) -> None:
         self.path = path
         self.offset = 0
-        self.inode: int | None = None
 
     @classmethod
     def create(cls, config: LabnotesConfig, experiment: str) -> "RunState":
@@ -35,7 +34,7 @@ class RunState:
             journal_folder(runs) / f"{stamp}-{os.getpid()}-{uuid4().hex[:8]}.jsonl"
         )
 
-    def record(self, event: dict[str, object]) -> None:
+    def record(self, event: dict[str, object]) -> dict[str, object]:
         """Write one event before callers display it."""
         at = time.time()
         stored = {**event, "at": at}
@@ -46,15 +45,12 @@ class RunState:
         self.path.touch(mode=0o600, exist_ok=True)
         with self.path.open("ab") as file:
             file.write(data)
+        return json.loads(data)  # Return the same JSON-safe values sent to disk.
 
     def read(self) -> list[dict[str, object]]:
-        """Return only complete new events, starting over on a recreated file."""
+        """Return only complete new events."""
         try:
             with self.path.open("rb") as file:
-                status = os.fstat(file.fileno())
-                if status.st_ino != self.inode or status.st_size < self.offset:
-                    self.inode = status.st_ino
-                    self.offset = 0
                 file.seek(self.offset)
                 data = file.read()
         except FileNotFoundError:

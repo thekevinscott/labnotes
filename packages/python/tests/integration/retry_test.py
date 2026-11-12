@@ -192,7 +192,10 @@ def test_gives_up_once_the_retries_run_out(tmp_path: Path) -> None:
         recorded[1]["id"],
         recorded[2]["id"],
     ]
-    assert events[-2:] == [
+    assert [
+        {key: value for key, value in event.items() if key != "at"}
+        for event in events[-2:]
+    ] == [
         {"event": "gave up", "run": recorded[3]["id"], "retries": 3},
         {"event": "idle"},
     ]

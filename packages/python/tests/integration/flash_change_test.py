@@ -1,5 +1,4 @@
 import asyncio
-import json
 import time
 from collections.abc import Awaitable, Callable
 from pathlib import Path
@@ -9,7 +8,6 @@ from textual.color import Color
 from textual.pilot import Pilot
 from textual.widgets import Header, Static
 
-from labnotes.runner.run_state import RunState
 from labnotes.runner.start_experiment import ExperimentStart
 from labnotes.tui.run_app import RunApp
 
@@ -26,12 +24,6 @@ def planned(at: float) -> dict[str, object]:
 
 def concurrency(count: int, at: float) -> dict[str, object]:
     return {"event": "concurrency", "concurrency": count, "at": at}
-
-
-def write(path: Path, *events: dict[str, object]) -> None:
-    with path.open("a") as file:
-        for event in events:
-            file.write(json.dumps(event) + "\n")
 
 
 def background(app: RunApp) -> Color:
@@ -53,73 +45,71 @@ async def stays_normal(app: RunApp, pilot: Pilot[None], seconds: float) -> None:
 
 
 def attached(
-    journal: Path, scenario: Callable[[RunApp, Pilot[None]], Awaitable[None]]
+    *replayed: dict[str, object],
+    scenario: Callable[[RunApp, Pilot[None], Callable[..., None]], Awaitable[None]],
 ) -> None:
+    reporter: list[Callable[[dict[str, object]], None]] = []
+
     async def attach(report, listen):
-        report({"event": "wake up"})
+        reporter.append(report)
+        for event in replayed:
+            report(event)
         await asyncio.Event().wait()
         return []
 
+    def send(*events: dict[str, object]) -> None:
+        for event in events:
+            reporter[0](event)
+
     async def drive() -> None:
-        config = mock.Mock(root=journal.parent, experiments="{experiment}", defaults={})
+        config = mock.Mock(root=Path.cwd(), experiments="{experiment}", defaults={})
         app = RunApp(
-            ExperimentStart(RunState(journal), attach),
+            ExperimentStart(mock.Mock(), attach),
             "exp",
             ("run", "params", "status", "time"),
             config,
         )
         async with app.run_test() as pilot:
-            await scenario(app, pilot)
+            await scenario(app, pilot, send)
 
     asyncio.run(drive())
 
 
-def test_first_draw_does_not_flash(tmp_path: Path) -> None:
-    journal = tmp_path / "run.jsonl"
-    write(journal, planned(time.time()))
-
-    async def scenario(app: RunApp, pilot: Pilot[None]) -> None:
+def test_first_draw_does_not_flash() -> None:
+    async def scenario(app: RunApp, pilot: Pilot[None], send) -> None:
         await stays_normal(app, pilot, 1.0)
         assert "1 at a time" in label(app)
 
-    attached(journal, scenario)
+    attached(planned(time.time()), scenario=scenario)
 
 
-def test_journal_replay_does_not_flash(tmp_path: Path) -> None:
-    journal = tmp_path / "run.jsonl"
+def test_replayed_changes_do_not_flash() -> None:
     old = time.time() - 600
-    write(journal, planned(old), concurrency(3, old), concurrency(2, old))
 
-    async def scenario(app: RunApp, pilot: Pilot[None]) -> None:
+    async def scenario(app: RunApp, pilot: Pilot[None], send) -> None:
         await stays_normal(app, pilot, 1.0)
         assert "2 at a time" in label(app)
 
-    attached(journal, scenario)
+    attached(planned(old), concurrency(3, old), concurrency(2, old), scenario=scenario)
 
 
-def test_live_change_flashes(tmp_path: Path) -> None:
-    journal = tmp_path / "run.jsonl"
-    write(journal, planned(time.time() - 600))
-
-    async def scenario(app: RunApp, pilot: Pilot[None]) -> None:
+def test_live_change_flashes() -> None:
+    async def scenario(app: RunApp, pilot: Pilot[None], send) -> None:
         await stays_normal(app, pilot, 0.5)
-        write(journal, concurrency(1, time.time()))
+        send(concurrency(1, time.time()))
         await stays_normal(app, pilot, 0.5)
-        write(journal, concurrency(4, time.time()))
+        send(concurrency(4, time.time()))
         await pilot.pause(0.4)
         assert "4 at a time" in label(app)
         assert background(app) != normal(app)
 
-    attached(journal, scenario)
+    attached(planned(time.time() - 600), scenario=scenario)
 
 
-def test_flash_fades_back_within_about_a_second(tmp_path: Path) -> None:
-    journal = tmp_path / "run.jsonl"
-    write(journal, planned(time.time() - 600))
-
-    async def scenario(app: RunApp, pilot: Pilot[None]) -> None:
+def test_flash_fades_back_within_about_a_second() -> None:
+    async def scenario(app: RunApp, pilot: Pilot[None], send) -> None:
         await pilot.pause(0.5)
-        write(journal, concurrency(4, time.time()))
+        send(concurrency(4, time.time()))
         await pilot.pause(0.4)
         flashed = background(app)
         assert flashed != normal(app)
@@ -129,4 +119,4 @@ def test_flash_fades_back_within_about_a_second(tmp_path: Path) -> None:
         await pilot.pause(1.0)
         assert background(app) == normal(app)
 
-    attached(journal, scenario)
+    attached(planned(time.time() - 600), scenario=scenario)

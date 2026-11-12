@@ -161,37 +161,17 @@ def test_empty_line_is_invalid_journal_data(tmp_path: Path) -> None:
         reader.read()
 
 
-def test_reader_follows_a_journal_recreated_after_deletion(tmp_path: Path) -> None:
+def test_record_returns_exact_stored_event_with_retry_deadline(tmp_path: Path) -> None:
     writer = state(tmp_path)
-    for run in ("one", "two", "three"):
-        writer.record({"event": "started", "run": run})
-    reader = RunState(writer.path)
-    assert len(reader.read()) == 3
-    writer.path.unlink()
-    writer.record({"event": "idle"})
-    assert [event["event"] for event in reader.read()] == ["idle"]
-
-
-def test_reader_starts_over_on_a_shorter_file_with_the_same_inode(
-    tmp_path: Path,
-) -> None:
-    writer = state(tmp_path)
-    writer.record({"event": "started", "run": "one"})
-    writer.record({"event": "started", "run": "two"})
-    reader = RunState(writer.path)
-    assert len(reader.read()) == 2
-    writer.path.write_bytes(b'{"event": "idle"}\n')
-    assert reader.read() == [{"event": "idle"}]
-
-
-def test_reader_starts_over_on_a_longer_replacement_file(tmp_path: Path) -> None:
-    writer = state(tmp_path)
-    writer.record({"event": "started", "run": "one"})
-    reader = RunState(writer.path)
-    assert len(reader.read()) == 1
-    moved = writer.path.with_suffix(".old")
-    writer.path.rename(moved)
-    for run in ("two", "three", "four"):
-        writer.record({"event": "started", "run": run})
-    assert moved.exists()
-    assert [event["run"] for event in reader.read()] == ["two", "three", "four"]
+    source = {"event": "retrying", "seconds": 5, "folder": tmp_path}
+    with mock.patch("labnotes.runner.run_state.time.time", return_value=100.0):
+        stored = writer.record(source)
+    assert stored == {
+        "event": "retrying",
+        "seconds": 5,
+        "folder": str(tmp_path),
+        "at": 100.0,
+        "retry_at": 105.0,
+    }
+    assert stored == json.loads(writer.path.read_text())
+    assert "at" not in source

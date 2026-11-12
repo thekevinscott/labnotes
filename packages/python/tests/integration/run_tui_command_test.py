@@ -10,7 +10,7 @@ import pytest
 from conftest import run_tui_command
 
 
-def scripted(script: str, stale: bool = False):
+def scripted(script: str, stale: bool = False) -> type[curtaincall.Terminal]:
     class Scripted(curtaincall.Terminal):
         def __init__(self, command: str, **kwargs) -> None:
             super().__init__("/bin/sh -c " + shlex.quote(script), **kwargs)
@@ -21,7 +21,7 @@ def scripted(script: str, stale: bool = False):
                 time.sleep(0.01)
             return text
 
-    return mock.patch.object(curtaincall, "Terminal", Scripted)
+    return Scripted
 
 
 def exits_before_answering(self: curtaincall.Terminal) -> bool:
@@ -32,16 +32,18 @@ def exits_before_answering(self: curtaincall.Terminal) -> bool:
 
 @pytest.fixture
 def prints_on_exit() -> Iterator[None]:
-    with scripted("sleep 0.5; printf 'printed on exit'; exit 3", stale=True):
+    terminal = scripted("sleep 0.5; printf 'printed on exit'; exit 3", stale=True)
+    with mock.patch.object(curtaincall, "Terminal", terminal):
         yield
 
 
 @pytest.fixture
 def prints_after_close() -> Iterator[None]:
-    with scripted(
+    terminal = scripted(
         "trap 'printf \"printed after close\\n\"; exit 0' INT; "
         "printf '1 passed, 0 failed.\\n'; while :; do sleep 0.05; done"
-    ):
+    )
+    with mock.patch.object(curtaincall, "Terminal", terminal):
         yield
 
 

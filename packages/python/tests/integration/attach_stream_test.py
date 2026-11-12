@@ -37,6 +37,8 @@ def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
     record.parent.mkdir(parents=True, exist_ok=True)
     record.write_text(str(path))
     threads: list[threading.Thread] = []
+    # The server thread may see the close long after the client leaves.
+    lagging = threading.Event()
     with (
         lock_path(config, "exp").open("a+b") as held,
         socket.socket(socket.AF_UNIX) as server,
@@ -57,6 +59,7 @@ def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
                     received.append(connection.makefile("rb").readline())
                     connection.sendall(reply + b"".join(lines))
                     if until_closed and connection.recv(1) == b"":
+                        lagging.wait(10)
                         received.append(b"closed")
 
             thread = threading.Thread(target=serve, daemon=True)
@@ -65,6 +68,7 @@ def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
             return received
 
         yield start
+        lagging.set()
         for thread in threads:
             thread.join(timeout=10)
 

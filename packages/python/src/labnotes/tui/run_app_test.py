@@ -9,6 +9,7 @@ from unittest import mock
 import pytest
 
 from labnotes.tui.run_app import NoMatches, RunApp, RunLiveView
+from labnotes.view.experiment import Experiment
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]
@@ -168,26 +169,80 @@ def test_load_data_delivers_native_rows_and_skips_removed_experiment(
             mock.patch.object(app, "add_views", new=mock.AsyncMock()) as add_views,
             mock.patch.object(app, "deliver") as deliver,
         ):
-            await app.load_data(mock.Mock())
+            tables = mock.Mock(
+                query=mock.AsyncMock(return_value=[{"path": "alpha/runs/a/x.txt"}])
+            )
+            await app.load_data(tables)
             assert not app.loaded_views
             load.return_value = loaded
-            await app.load_data(mock.Mock())
-            await app.load_data(mock.Mock())
+            await app.load_data(tables)
+            await app.load_data(tables)
             add_views.assert_awaited_once_with(loaded["views"], tmp_path)
             assert deliver.call_count == 2
             assert app.shown is not None
             assert app.shown.name == "alpha"
             assert app.shown.runs == ({"status": "passed"},)
             assert app.shown.config == {"command": "go"}
+            assert app.shown.files == ("alpha/runs/a/x.txt",)
+            tables.query.assert_awaited_with(
+                "SELECT path FROM run_files WHERE experiment = 'alpha' ORDER BY path"
+            )
 
     asyncio.run(drive())
+
+
+def test_new_or_removed_run_file_refreshes_the_file_list(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, None)
+    kept = tmp_path / "alpha/runs/first/stdout.log"
+    kept.parent.mkdir(parents=True)
+    kept.write_text("ok\n")
+    app.shown = Experiment(
+        tmp_path,
+        "alpha",
+        (),
+        files=("alpha/runs/first/gone.txt", "alpha/runs/first/stdout.log"),
+    )
+    listings = [
+        [{"path": "alpha/runs/first/stdout.log"}],
+        [{"path": "alpha/runs/first/new.txt"}, {"path": "alpha/runs/first/stdout.log"}],
+    ]
+    tables = mock.Mock(query=mock.AsyncMock(side_effect=listings))
+
+    async def changes():
+        yield {"path": "alpha/runs/first/stdout.log"}
+        yield {"path": "alpha/runs/first/gone.txt"}
+        yield {"path": "alpha/runs/first/new.txt"}
+
+    with (
+        mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+        mock.patch.object(app, "deliver") as deliver,
+    ):
+        asyncio.run(app.watch_files(tables))
+    files = [call.args[0].files for call in deliver.call_args_list]
+    assert files == [
+        ("alpha/runs/first/gone.txt", "alpha/runs/first/stdout.log"),
+        ("alpha/runs/first/stdout.log",),
+        ("alpha/runs/first/new.txt", "alpha/runs/first/stdout.log"),
+    ]
+    assert [call.args[1] for call in deliver.call_args_list] == [
+        frozenset({"alpha/runs/first/stdout.log"}),
+        frozenset({"alpha/runs/first/gone.txt"}),
+        frozenset({"alpha/runs/first/new.txt"}),
+    ]
+    assert tables.query.await_count == 2
+    assert app.shown.name == "alpha"
 
 
 def test_run_file_change_notifies_view_and_escape_returns_to_runs(
     tmp_path: Path,
 ) -> None:
     app = configured_app(tmp_path, None)
-    app.shown = mock.Mock()
+    logs = ("alpha/runs/first/stderr.log", "alpha/runs/first/stdout.log")
+    (tmp_path / "alpha/runs/first").mkdir(parents=True)
+    for log in logs:
+        (tmp_path / log).write_text("")
+    app.shown = Experiment(tmp_path, "alpha", (), files=logs)
+    shown = app.shown
 
     async def changes():
         yield {"path": "alpha/runs/first/stdout.log"}
@@ -199,8 +254,8 @@ def test_run_file_change_notifies_view_and_escape_returns_to_runs(
     ):
         asyncio.run(app.watch_files(mock.Mock()))
     assert deliver.call_args_list == [
-        mock.call(app.shown, frozenset({"alpha/runs/first/stdout.log"})),
-        mock.call(app.shown, frozenset({"alpha/runs/first/stderr.log"})),
+        mock.call(shown, frozenset({"alpha/runs/first/stdout.log"})),
+        mock.call(shown, frozenset({"alpha/runs/first/stderr.log"})),
     ]
 
     app.shown = None

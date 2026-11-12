@@ -29,12 +29,23 @@ def test_holds_the_config() -> None:
     assert experiment.config == {"command": "go"}
 
 
+def test_defaults_to_no_files() -> None:
+    assert Experiment(Path("/p"), "alpha", ()).files == ()
+
+
+def test_holds_the_run_files() -> None:
+    files = ("alpha/runs/a/metrics.txt",)
+
+    assert Experiment(Path("/p"), "alpha", (), files=files).files == files
+
+
 def test_holds_data_only() -> None:
     assert [field.name for field in dataclasses.fields(Experiment)] == [
         "root",
         "name",
         "runs",
         "config",
+        "files",
     ]
 
 

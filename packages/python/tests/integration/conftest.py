@@ -175,13 +175,17 @@ def run_tui_command(
             screen = term._get_screen_text()
             found = summary.search(screen)
             if found:
-                print(screen.strip())
-                print(found.group())
                 term.key_ctrl_c()
-                return term.wait(timeout=10)
+                code = term.wait(timeout=10)
+                term._drain_output()
+                print(screen.strip())
+                print(term._get_screen_text().strip())
+                print(found.group())
+                return code
             if not term.is_alive:
                 code = term.wait(timeout=2)
-                print(screen.strip(), file=sys.stderr)
+                term._drain_output()
+                print(term._get_screen_text().strip(), file=sys.stderr)
                 return code
             time.sleep(0.05)
         raise TimeoutError(

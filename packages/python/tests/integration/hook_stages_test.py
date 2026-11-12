@@ -209,3 +209,40 @@ def test_no_hooks_shows_no_stages(terminal, tmp_path: Path) -> None:
     expect(term.get_by_text("›")).not_to_be_visible()
 
     quit_tui(term)
+
+
+def tab(stage: str) -> re.Pattern[str]:
+    return re.compile(rf" {stage} [○✓✗|/\\-] ")
+
+
+def test_stage_tabs_switch_on_click_and_stay_off_the_footer(
+    terminal, tmp_path: Path
+) -> None:
+    setup = script(
+        tmp_path, "setup", "print('setup begun', flush=True)\ntime.sleep(3)\n"
+    )
+    teardown = script(
+        tmp_path, "teardown", "print('teardown out', flush=True)\ntime.sleep(30)\n"
+    )
+    hooks = f"setup = '''{setup}'''\nteardown = '''{teardown}'''\n"
+    term = run_tui(terminal, tmp_path, hooks)
+    expect(term.get_by_text("setup begun")).to_be_visible(timeout=15)
+    expect(term.get_by_text("Finish up")).to_be_visible()
+    expect(term.get_by_text("Previous stage")).not_to_be_visible()
+    expect(term.get_by_text("Next stage")).not_to_be_visible()
+
+    term.get_by_text(tab("runs")).click()
+    expect(term.get_by_text("params")).to_be_visible()
+    expect(term.get_by_text("setup begun")).not_to_be_visible()
+
+    expect(term.get_by_text(re.compile("runs ✓"))).to_be_visible(timeout=15)
+    term.get_by_text(tab("teardown")).click()
+    expect(term.get_by_text("teardown out")).to_be_visible(timeout=15)
+    term.get_by_text(tab("setup")).click()
+    expect(term.get_by_text("setup begun")).to_be_visible()
+
+    term.write("]")
+    expect(term.get_by_text("params")).to_be_visible()
+    expect(term.get_by_text("Previous stage")).not_to_be_visible()
+
+    quit_tui(term, running=True)

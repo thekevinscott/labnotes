@@ -28,3 +28,14 @@ def test_highlights_only_the_stage_equal_to_the_current_one() -> None:
     line = stage_line([("runs", "waiting"), ("setup", "running")], current, "|")
 
     assert [str(span.style) for span in line.spans] == ["dim", "dim", "bold reverse"]
+
+
+def test_tags_each_stage_with_its_name() -> None:
+    line = stage_line([("setup", "passed"), ("runs", "waiting")], "runs", "|")
+
+    tagged = {
+        line.plain[span.start : span.end].strip(): span.style.meta["stage"]
+        for span in line.spans
+        if not isinstance(span.style, str) and "stage" in span.style.meta
+    }
+    assert tagged == {"setup ✓": "setup", "runs ○": "runs"}

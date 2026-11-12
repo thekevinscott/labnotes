@@ -2202,6 +2202,39 @@ def test_moving_by_hand_stops_auto_advance(tmp_path: Path) -> None:
     drive_hooks(steps)
 
 
+def test_clicking_a_stage_tab_moves_there_and_stops_auto_advance(
+    tmp_path: Path,
+) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        line = shown_stages(app)
+        await pilot.click("#stages", offset=(line.index("teardown") + 2, 0))
+        await pilot.pause()
+        assert stage(app) == "teardown"
+        await pilot.click("#stages", offset=(line.index("runs") + 2, 0))
+        await pilot.pause()
+        assert stage(app) == "runs"
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert stage(app) == "runs"
+
+    drive_hooks(steps)
+
+
+def test_stage_keys_stay_out_of_the_footer() -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup"))
+        await pilot.pause()
+        active = app.screen.active_bindings
+        for key in ("left_square_bracket", "right_square_bracket"):
+            assert active[key].binding.show is False
+
+    drive_hooks(steps)
+
+
 def test_run_keys_do_nothing_off_the_runs_stage(tmp_path: Path) -> None:
     kill = mock.Mock()
 

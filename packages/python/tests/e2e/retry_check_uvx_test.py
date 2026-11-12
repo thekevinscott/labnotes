@@ -7,23 +7,27 @@ from curtaincall import expect
 
 from conftest import Tui
 
-# Exits with the next code in codes.txt, one per launch, then 0.
+# Exits with the next code in codes.txt, saying why on stderr, then 0.
 SCRIPT = """
 import sys
 from pathlib import Path
 
 codes = Path("codes.txt")
-left = codes.read_text().split()
-codes.write_text(" ".join(left[1:]))
-sys.exit(int(left[0]) if left else 0)
+left = codes.read_text().splitlines()
+codes.write_text("\\n".join(left[1:]))
+if left:
+    code, reason = left[0].split(" ", 1)
+    print(f"error: {reason}", file=sys.stderr)
+    sys.exit(int(code))
 """
+CHECK = 'retry_check = "grep -q \'timed out\' \\"$LABNOTES_STDERR\\""\n'
 
 
-def make_project(root: Path, codes: str, project: str, experiment: str) -> None:
+def make_project(root: Path, codes: list[str], project: str, experiment: str) -> None:
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text(project)
     (root / "script.py").write_text(SCRIPT)
-    (root / "codes.txt").write_text(codes)
+    (root / "codes.txt").write_text("\n".join(codes))
     (root / "exp/experiment.toml").write_text(
         f'continues = false\ncommand = "{sys.executable} script.py"\n'
         f"retry_wait = 0\n{experiment}"
@@ -38,24 +42,16 @@ def exit_codes(root: Path) -> list[int]:
 
 
 @pytest.mark.parametrize(
-    ("project", "experiment", "flags"),
-    [
-        ("", "retry_exit_codes = [1]\n", []),
-        ("[experiments]\nretry_exit_codes = [1]\n", "", []),
-        ("", "retry_exit_codes = [2]\n", ["--retry-exit-code", "1"]),
-    ],
+    ("project", "experiment"),
+    [("", CHECK), ("[experiments]\n" + CHECK, "")],
 )
-def test_uvx_retries_a_listed_exit_code(
-    tmp_path: Path,
-    tui: Tui,
-    project: str,
-    experiment: str,
-    flags: list[str],
+def test_uvx_retries_a_failure_the_check_approves(
+    tmp_path: Path, tui: Tui, project: str, experiment: str
 ) -> None:
     root = tmp_path / "project"
-    make_project(root, "1", project, experiment)
+    make_project(root, ["1 ssh timed out"], project, experiment)
 
-    term = tui(root, "experiments", "exp", "run", *flags)
+    term = tui(root, "experiments", "exp", "run")
 
     expect(term.get_by_text("1 passed, 0 failed. 1 retried.")).to_be_visible(
         timeout=120
@@ -64,20 +60,23 @@ def test_uvx_retries_a_listed_exit_code(
     assert exit_codes(root) == [0, 1]
 
 
-def test_uvx_does_not_retry_an_unlisted_exit_code(tmp_path: Path, tui: Tui) -> None:
+def test_uvx_does_not_retry_a_failure_the_check_rejects(
+    tmp_path: Path, tui: Tui
+) -> None:
     root = tmp_path / "project"
-    make_project(root, "75", "", "retry_exit_codes = [1]\n")
+    make_project(root, ["1 bug in the code"], "", CHECK)
 
     term = tui(root, "experiments", "exp", "run")
 
     expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible(timeout=120)
     tui.quit(term)
-    assert exit_codes(root) == [75]
+    assert exit_codes(root) == [1]
 
 
 def test_uvx_gives_up_naming_the_exit_code(tmp_path: Path, tui: Tui) -> None:
     root = tmp_path / "project"
-    make_project(root, "1 1", "", "retries = 1\nretry_exit_codes = [1]\n")
+    codes = ["1 ssh timed out", "1 ssh timed out"]
+    make_project(root, codes, "", "retries = 1\n" + CHECK)
 
     term = tui(root, "experiments", "exp", "run")
 

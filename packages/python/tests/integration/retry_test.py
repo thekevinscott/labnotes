@@ -244,21 +244,51 @@ def test_the_retry_wait_flag_overrides_the_config(tmp_path: Path) -> None:
     assert 1 <= elapsed < 20
 
 
+# Exits with the next code in codes.txt, saying why on stdout and stderr, then 0.
+FAILING = """
+import sys
+from pathlib import Path
+
+codes = Path("codes.txt")
+left = codes.read_text().splitlines()
+codes.write_text("\\n".join(left[1:]))
+if left:
+    code, reason = left[0].split(" ", 1)
+    print(f"attempt says {reason}")
+    print(f"error: {reason}", file=sys.stderr)
+    sys.exit(int(code))
+"""
+TIMED_OUT = "grep -q 'timed out' \"$LABNOTES_STDERR\""
+
+
+def check(command: str) -> str:
+    return f"retry_check = {json.dumps(command)}\n"
+
+
+def make_checked(root: Path, codes: list[str], settings: str = "") -> Path:
+    make_project(root, "", settings)
+    write(root / "script.py", FAILING)
+    write(root / "codes.txt", "\n".join(codes))
+    return root
+
+
 @pytest.mark.parametrize(
     ("project", "settings"),
     [
-        ("", "retry_exit_codes = [1]\n"),
-        ("[experiments]\nretry_exit_codes = [1]\n", ""),
+        ("", check(TIMED_OUT)),
+        ("[experiments]\n" + check(TIMED_OUT), ""),
         (
-            "[experiment]\nretry_exit_codes = [1]\n[experiments]\npath = '{experiment}'\n",
+            "[experiment]\n"
+            + check(TIMED_OUT)
+            + "[experiments]\npath = '{experiment}'\n",
             "",
         ),
     ],
 )
-def test_retries_an_exit_code_the_config_lists(
+def test_retries_a_failure_the_check_approves(
     tmp_path: Path, project: str, settings: str
 ) -> None:
-    root = make_project(tmp_path, "1", settings)
+    root = make_checked(tmp_path, ["1 ssh timed out"], settings)
     write(root / ".labnotes.toml", project)
 
     run_now(root)
@@ -266,33 +296,60 @@ def test_retries_an_exit_code_the_config_lists(
     assert [run["exit_code"] for run in chain(root)] == [1, 0]
 
 
-def test_listing_exit_codes_replaces_the_default(tmp_path: Path) -> None:
-    root = make_project(tmp_path, "75", "retry_exit_codes = [1]\n")
+@pytest.mark.parametrize("codes", [["1 bug in the code"], ["75 no capacity"]])
+def test_gives_up_on_a_failure_the_check_rejects(
+    tmp_path: Path, codes: list[str]
+) -> None:
+    root = make_checked(tmp_path, codes, check(TIMED_OUT))
+
+    events = run_now(root)
+
+    [only] = runs(root)
+    assert only["exit_code"] == int(codes[0].split()[0])
+    assert [e for e in events if e["event"] in ("retrying", "gave up")] == []
+
+
+def test_the_check_sees_the_attempts_exit_code_and_output(tmp_path: Path) -> None:
+    seen = (
+        'echo "$LABNOTES_EXIT_CODE" > seen.txt;'
+        ' cat "$LABNOTES_STDOUT" "$LABNOTES_STDERR" >> seen.txt; exit 1'
+    )
+    root = make_checked(tmp_path, ["3 disk full"], check(seen))
+
+    run_now(root)
+
+    assert (root / "exp" / "seen.txt").read_text() == (
+        "3\nattempt says disk full\nerror: disk full\n"
+    )
+
+
+def test_the_check_reads_a_continued_runs_latest_invocation(tmp_path: Path) -> None:
+    seen = 'cat "$LABNOTES_STDERR" >> seen.txt; ' + TIMED_OUT
+    root = make_checked(tmp_path, ["1 ssh timed out", "1 bug in the code"], check(seen))
+    toml = root / "exp" / "experiment.toml"
+    toml.write_text(toml.read_text().replace("continues = false", "continues = true"))
 
     run_now(root)
 
     [only] = runs(root)
-    assert only["exit_code"] == 75
-
-
-def test_the_retry_exit_code_flag_overrides_the_config(tmp_path: Path) -> None:
-    root = make_project(tmp_path, "1 2", "retry_exit_codes = [3]\n")
-
-    flags = ["--retry-wait", "0", "--retry-exit-code", "1", "--retry-exit-code", "2"]
-    timed_run(root, *flags)
-
-    assert [run["exit_code"] for run in chain(root)] == [1, 2, 0]
+    assert only["exit_code"] == 1
+    assert (root / "exp" / "seen.txt").read_text() == (
+        "error: ssh timed out\nerror: bug in the code\n"
+    )
 
 
 def test_gives_up_on_the_exit_code_it_retried(tmp_path: Path) -> None:
-    root = make_project(tmp_path, "1 1", "retries = 1\nretry_exit_codes = [1]\n")
+    root = make_checked(
+        tmp_path,
+        ["1 ssh timed out", "1 ssh timed out"],
+        "retries = 1\n" + check(TIMED_OUT),
+    )
 
     events = run_now(root)
 
     recorded = chain(root)
     assert [run["exit_code"] for run in recorded] == [1, 1]
     [gave_up] = [event for event in events if event["event"] == "gave up"]
-    assert (
-        describe_event(gave_up)
-        == f"{recorded[1]['id']} gave up (exit 1) after 1 retries."
+    assert describe_event(gave_up) == (
+        f"{recorded[1]['id']} gave up (exit 1) after 1 retries."
     )

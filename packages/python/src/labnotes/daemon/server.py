@@ -1,4 +1,4 @@
-"""Own experiment invocations behind a private request/response socket."""
+"""Own experiment invocations behind a private HTTP socket."""
 
 import asyncio
 import fcntl
@@ -6,13 +6,22 @@ import json
 import operator
 import os
 import signal
+import socket
 import time
-from collections.abc import Callable
+from collections.abc import AsyncIterator, Callable
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
 
+import uvicorn
+from starlette.applications import Starlette
+from starlette.requests import Request
+from starlette.responses import JSONResponse, Response, StreamingResponse
+from starlette.routing import Route
+from starlette.types import Receive, Scope, Send
+
 from labnotes.daemon.listening import listening
+from labnotes.daemon.sse import sse
 from labnotes.daemon.socket_path import (
     discovery_folder,
     lock_path,
@@ -28,7 +37,9 @@ LIVE_STATE_NOTE = (
     "Live state for running labnotes daemons: locks and socket records.\n"
     "Do not delete this folder while labnotes is running.\n"
 )
-MAX_STREAM_BUFFER = 1024 * 1024
+MAX_QUEUED_EVENTS = 100_000
+INVALID = {"ok": False, "error": "Invalid request"}
+Queued = asyncio.Queue[tuple[str, dict[str, object]] | None]
 
 
 @dataclass
@@ -50,11 +61,32 @@ class ExperimentDaemon:
         self.name = name
         self.active: dict[str, Invocation] = {}
         self.history: dict[str, Invocation] = {}
-        self.subscribers: set[asyncio.StreamWriter] = set()
+        self.subscribers: set[Queued] = set()
+        self.starting: set[asyncio.Task[None]] = set()
         self.clients = 0
         self.closing = False
         self.last_busy = time.monotonic()
         self.start_lock = asyncio.Lock()
+        self.app = Starlette(
+            routes=[
+                Route("/batches", self.batches),
+                Route("/events", self.events),
+                Route("/start", self.start_route, methods=["POST"]),
+                Route("/restart", self.start_route, methods=["POST"]),
+                Route("/stop", self.stop_route, methods=["POST"]),
+                Route("/finish-up", self.finish_up_route, methods=["POST"]),
+                Route("/concurrency", self.concurrency, methods=["POST"]),
+                Route("/runs/{run}/stop", self.stop_one, methods=["POST"]),
+            ]
+        )
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        """Count each open request, so a live stream keeps the daemon up."""
+        self.clients += 1
+        try:
+            await self.app(scope, receive, send)
+        finally:
+            self.clients -= 1
 
     def stop_all(self) -> None:
         """Ask every invocation to stop, including one still preparing."""
@@ -168,8 +200,6 @@ class ExperimentDaemon:
     ) -> dict[str, object]:
         """Apply one command and provide one success or error reply."""
         action = message.get("command")
-        if action == "ping":
-            return {"ok": True}
         if action in ("start", "restart"):
             options = message.get("options", {})
             if not isinstance(options, dict):
@@ -210,79 +240,115 @@ class ExperimentDaemon:
                 if invocation.controls is not None:
                     invocation.controls.set_concurrency(count)
             return {"ok": True}
-        if action in ("attach", "batches"):
+        if action == "batches":
             return {"ok": True, "batches": list(self.active)}
         return {"ok": False, "error": f"Unknown command {action}"}
-
-    def write_event(
-        self, writer: asyncio.StreamWriter, batch: str, event: dict[str, object]
-    ) -> None:
-        """Drop slow consumers without blocking the runner."""
-        if writer.is_closing():
-            self.subscribers.discard(writer)
-            return
-        try:
-            writer.write((json.dumps({"batch": batch, "event": event}) + "\n").encode())
-        except ConnectionError:
-            self.subscribers.discard(writer)
-            writer.transport.abort()
-            return  # A broken client must not interrupt event recording.
-        if writer.transport.get_write_buffer_size() > MAX_STREAM_BUFFER:
-            self.subscribers.discard(writer)
-            writer.transport.abort()
 
     def report(self, batch: str, event: dict[str, object]) -> None:
         """Retain ordered replay and synchronously publish each stored event."""
         self.history[batch].events.append(event)
-        for writer in tuple(self.subscribers):
-            self.write_event(writer, batch, event)
+        for queue in tuple(self.subscribers):
+            if queue.qsize() < MAX_QUEUED_EVENTS:
+                queue.put_nowait((batch, event))
+            else:
+                self.subscribers.discard(queue)
+                queue.put_nowait(None)
 
-    async def handle(
-        self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
-    ) -> None:
-        """Replay and subscribe without yielding between the snapshot and subscription."""
-        self.clients += 1
+    def end_streams(self) -> None:
+        for queue in self.subscribers:
+            queue.put_nowait(None)
+        self.subscribers.clear()
+
+    async def answer(
+        self,
+        message: dict[str, object],
+        progress: Callable[[str], None] = lambda step: None,
+    ) -> dict[str, object]:
         try:
-            line = await reader.readline()
-            if not line:
-                return
-            message = json.loads(line)
-            if not isinstance(message, dict):
-                reply = {"ok": False, "error": "Request must be an object"}
-            else:
-                try:
-                    reply = await self.dispatch(
-                        message,
-                        lambda step: writer.write(
-                            (json.dumps({"step": step}) + "\n").encode()
-                        ),
-                    )
-                except Exception as error:
-                    # A request always gets one error reply, even on internal failures.
-                    reply = {"ok": False, "error": str(error)}
-            writer.write((json.dumps(reply) + "\n").encode())
-            if isinstance(message, dict) and message.get("command") == "attach":
-                self.subscribers.add(writer)
-                for batch, invocation in self.history.items():
-                    for event in invocation.events:
-                        self.write_event(writer, batch, event)
-                await writer.drain()
-                await reader.read()
-            else:
-                await writer.drain()
-        except (json.JSONDecodeError, asyncio.LimitOverrunError):
-            writer.write(b'{"ok":false,"error":"Invalid request"}\n')
-            await writer.drain()
-        except ConnectionError:
-            pass  # A disconnected subscriber must not affect running invocations.
-        finally:
-            self.subscribers.discard(writer)
-            self.clients -= 1
-            writer.close()
+            return await self.dispatch(message, progress)
+        except Exception as error:
+            # A request always gets one error reply, even on internal failures.
+            return {"ok": False, "error": str(error)}
+
+    @staticmethod
+    async def read_body(request: Request) -> dict[str, object] | None:
+        try:
+            body = json.loads(await request.body() or b"{}")
+        except ValueError:
+            return None
+        return body if isinstance(body, dict) else None
+
+    async def reply(self, message: dict[str, object]) -> Response:
+        answer = await self.answer(message)
+        return JSONResponse(answer, 200 if answer.get("ok") else 400)
+
+    async def batches(self, request: Request) -> Response:
+        return await self.reply({"command": "batches"})
+
+    async def stop_route(self, request: Request) -> Response:
+        return await self.reply({"command": "stop_all"})
+
+    async def finish_up_route(self, request: Request) -> Response:
+        return await self.reply({"command": "finish_up"})
+
+    async def stop_one(self, request: Request) -> Response:
+        return await self.reply({"command": "stop_one", **request.path_params})
+
+    async def concurrency(self, request: Request) -> Response:
+        body = await self.read_body(request)
+        if body is None:
+            return JSONResponse(INVALID, 400)
+        return await self.reply({**body, "command": "set_concurrency"})
+
+    async def start_route(self, request: Request) -> Response:
+        """Stream progress steps, then the reply, as server-sent events."""
+        options = await self.read_body(request)
+        if options is None:
+            return JSONResponse(INVALID, 400)
+        message: dict[str, object] = {
+            "command": request.url.path.strip("/"),
+            "options": options,
+        }
+        updates: asyncio.Queue[tuple[str, object]] = asyncio.Queue()
+
+        async def run() -> None:
+            answer = await self.answer(
+                message, lambda step: updates.put_nowait(("step", step))
+            )
+            updates.put_nowait(("reply", answer))
+
+        # A client leaving mid-start must not cancel the start.
+        task = asyncio.create_task(run())
+        self.starting.add(task)
+        task.add_done_callback(self.starting.discard)
+
+        async def stream() -> AsyncIterator[str]:
+            while True:
+                name, data = await updates.get()
+                yield sse(data, name)
+                if name == "reply":
+                    return
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
+
+    async def events(self, request: Request) -> Response:
+        """Replay and subscribe without yielding between the snapshot and subscription."""
+
+        async def stream() -> AsyncIterator[str]:
+            queue: Queued = asyncio.Queue()
+            for batch, invocation in self.history.items():
+                for event in invocation.events:
+                    queue.put_nowait((batch, event))
+            self.subscribers.add(queue)
             try:
-                await writer.wait_closed()
-            except ConnectionError:
-                pass  # The transport may already have been aborted.
+                yield sse({"batches": list(self.active)}, "batches")
+                while (item := await queue.get()) is not None:
+                    batch, event = item
+                    yield sse({"batch": batch, "event": event})
+            finally:
+                self.subscribers.discard(queue)
+
+        return StreamingResponse(stream(), media_type="text/event-stream")
 
     async def wait_until_idle(self) -> None:
         """Leave a short window for another TUI after the last cell ends."""
@@ -320,8 +386,22 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
             return
         path.unlink(missing_ok=True)
         daemon = ExperimentDaemon(config, name)
-        server = await asyncio.start_unix_server(daemon.handle, path=str(path))
+        listener = socket.socket(socket.AF_UNIX)
+        listener.bind(str(path))
         path.chmod(0o600)
+        server = uvicorn.Server(
+            uvicorn.Config(
+                daemon,
+                lifespan="off",
+                log_config=None,
+                access_log=False,
+                timeout_graceful_shutdown=1,
+            )
+        )
+        # startup() rather than serve(): serve() takes over SIGTERM and SIGINT.
+        server.config.load()
+        server.lifespan = server.config.lifespan_class(server.config)
+        await server.startup(sockets=[listener])
         record = socket_record(config, name)
         pending = record.with_suffix(".socket.tmp")
         pending.write_text(str(path), encoding="utf-8")
@@ -339,8 +419,8 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
         try:
             await daemon.wait_until_idle()
         finally:
-            server.close()
-            await server.wait_closed()
+            daemon.end_streams()
+            await server.shutdown(sockets=[listener])
             daemon.stop_all()
             await asyncio.gather(
                 *(item.task for item in daemon.active.values() if item.task is not None)

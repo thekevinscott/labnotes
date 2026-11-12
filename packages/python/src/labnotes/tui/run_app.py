@@ -1,8 +1,6 @@
 import asyncio
 import contextlib
-import json
 import signal
-import socket
 import time
 import tomllib
 from collections.abc import Mapping, Sequence
@@ -22,7 +20,7 @@ from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, S
 
 from labnotes.compose_experiment import compose_experiment
 from labnotes.daemon.command import command as daemon_command
-from labnotes.daemon.client import daemon_socket
+from labnotes.daemon.attachment import Attachment
 from labnotes.daemon.request_start import request_start
 from labnotes.daemon.ensure import ensure_daemon
 from labnotes.load_experiment import load_experiment
@@ -553,7 +551,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.busy_batches: set[str] = set()
         self.restart_batches: set[str] = set()
         self.disconnected = False
-        self.attached: socket.socket | None = None
+        self.attached: Attachment | None = None
         self.leaving = False
         self.farewell: str | None = None
         self.finishing_up = False
@@ -598,7 +596,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.run_worker(self.start_daemon_run())
         elif self.daemon_batch is not None or self.attach:
             try:
-                self.follow_daemon()
+                await self.follow_daemon()
             except (OSError, ValueError) as error:
                 self.error = error
                 self.exit()
@@ -622,12 +620,12 @@ class RunApp(ViewSwitcher, App[None]):
         try:
             self.step("Starting up")
             await ensure_daemon(self.config, self.experiment_name)
-            self.attach_daemon()
+            await self.attach_daemon()
             reply = await request_start(
                 self.config, self.experiment_name, self.daemon_request, self.step
             )
             self.daemon_batch = str(reply["batch"])
-            self.follow_daemon()
+            await self.follow_daemon()
         except (OSError, ValueError) as error:
             self.error = ValueError(str(error))
             self.exit()
@@ -641,8 +639,8 @@ class RunApp(ViewSwitcher, App[None]):
         else:
             self.call_after_refresh(self.screen.focus_next)
 
-    def follow_daemon(self) -> None:
-        batches = self.attach_daemon() if self.attached is None else []
+    async def follow_daemon(self) -> None:
+        batches = await self.attach_daemon() if self.attached is None else []
         if self.attach:
             if not batches:
                 self.farewell = f"Nothing is running for {self.experiment_name}."
@@ -668,43 +666,22 @@ class RunApp(ViewSwitcher, App[None]):
         )
         self.run_worker(self.read_stream())
 
-    def attach_daemon(self) -> list[str]:
+    async def attach_daemon(self) -> list[str]:
         assert self.config is not None
-        path = daemon_socket(self.config, self.experiment_name)
-        if path is None:
-            raise ValueError(f"No daemon is running for {self.experiment_name}.")
-        client = socket.socket(socket.AF_UNIX)
-        try:
-            client.settimeout(10)
-            client.connect(str(path))
-            client.sendall(b'{"command":"attach"}\n')
-            with socket.SocketIO(client, "rb") as replies:
-                reply = json.loads(replies.readline())
-            if not reply.get("ok"):
-                raise ValueError(str(reply.get("error", "Daemon rejected attach")))
-        except Exception:
-            client.close()
-            raise
-        self.attached = client
-        return cast(list[str], reply.get("batches", []))
+        self.attached = await Attachment.open(self.config, self.experiment_name)
+        return self.attached.batches
 
     async def read_stream(self) -> None:
         if self.attached is None:
             return
-        writer = None
         try:
-            reader, writer = await asyncio.open_connection(
-                sock=self.attached, limit=16 * 1024 * 1024
-            )
-            while line := await reader.readline():
-                message = json.loads(line)
+            async for batch, event in self.attached:
                 if self.body_ready:
-                    self.forward(str(message["batch"]), message["event"])
-        except (OSError, ValueError):
+                    self.forward(batch, event)
+        except ValueError:
             pass  # Keep the last visible state when the stream is lost.
         finally:
-            if writer is not None:
-                writer.close()
+            await self.attached.aclose()
             self.disconnected = True
             with contextlib.suppress(NoMatches):
                 self.query_one("#concurrency", FlashValue).update(
@@ -719,10 +696,10 @@ class RunApp(ViewSwitcher, App[None]):
         self.error = ValueError(notice)
         self.push_screen(LostDaemonNotice(notice), lambda _: self.exit())
 
-    def on_unmount(self) -> None:
+    async def on_unmount(self) -> None:
         self.leaving = True
         if self.attached is not None:
-            self.attached.close()
+            await self.attached.aclose()
 
     def queue_command(self, message: dict[str, object]) -> None:
         self.run_worker(self.send_command(message), exit_on_error=False)

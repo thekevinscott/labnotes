@@ -14,6 +14,7 @@ from labnotes.cli import main
 from conftest import run_tui_command
 from labnotes.models import Controls
 from labnotes.read_config import read_config
+from labnotes.runner.describe_event import describe_event
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
 
@@ -196,7 +197,7 @@ def test_gives_up_once_the_retries_run_out(tmp_path: Path) -> None:
         {key: value for key, value in event.items() if key != "at"}
         for event in events[-2:]
     ] == [
-        {"event": "gave up", "run": recorded[3]["id"], "retries": 3},
+        {"event": "gave up", "run": recorded[3]["id"], "retries": 3, "exit_code": 75},
         {"event": "idle"},
     ]
 
@@ -283,12 +284,15 @@ def test_the_retry_exit_code_flag_overrides_the_config(tmp_path: Path) -> None:
     assert [run["exit_code"] for run in chain(root)] == [1, 2, 0]
 
 
-def test_gives_up_on_the_exit_code_it_retried(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_gives_up_on_the_exit_code_it_retried(tmp_path: Path) -> None:
     root = make_project(tmp_path, "1 1", "retries = 1\nretry_exit_codes = [1]\n")
 
-    assert labnotes(root, ["experiments", "exp", "run", "--retry-wait", "0"]) == 0
+    events = run_now(root)
 
-    assert [run["exit_code"] for run in chain(root)] == [1, 1]
-    assert "gave up (exit 1)" in capsys.readouterr().out
+    recorded = chain(root)
+    assert [run["exit_code"] for run in recorded] == [1, 1]
+    [gave_up] = [event for event in events if event["event"] == "gave up"]
+    assert (
+        describe_event(gave_up)
+        == f"{recorded[1]['id']} gave up (exit 1) after 1 retries."
+    )

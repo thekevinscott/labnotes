@@ -140,31 +140,28 @@ def test_rejects_a_bad_retry_wait(
 
 
 @pytest.mark.parametrize(
-    ("text", "codes"),
+    ("text", "command"),
     [
-        ("", (75,)),
-        ("[experiments]\nretry_exit_codes = [1, 75]\n", (1, 75)),
-        ("[experiments]\nretry_exit_codes = []\n", ()),
+        ("", None),
+        ('[experiments]\nretryable = "uv run retryable.py"\n', "uv run retryable.py"),
     ],
 )
-def test_reads_the_project_retry_exit_codes(
-    tmp_path: Path, read_path: mock.MagicMock, text: str, codes: tuple[int, ...]
+def test_reads_the_project_retryable_command(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, command: str | None
 ) -> None:
-    assert read_config(write(tmp_path, text)).retry_exit_codes == codes
+    assert read_config(write(tmp_path, text)).retryable == command
 
 
-@pytest.mark.parametrize("value", ["1", "[0]", "[256]", '["1"]', "[true]"])
-def test_rejects_bad_retry_exit_codes(
+@pytest.mark.parametrize("value", ["1", '""', '" "', '["a"]'])
+def test_rejects_a_bad_retryable_command(
     tmp_path: Path, read_path: mock.MagicMock, value: str
 ) -> None:
-    path = write(tmp_path, f"[experiments]\nretry_exit_codes = {value}\n")
+    path = write(tmp_path, f"[experiments]\nretryable = {value}\n")
 
     with pytest.raises(ValueError) as error:
         read_config(path)
 
-    assert str(error.value) == (
-        f"{path}: [experiments] retry_exit_codes must be a list of exit codes 1-255"
-    )
+    assert str(error.value) == f"{path}: [experiments] retryable must be a command"
 
 
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:

@@ -56,11 +56,11 @@ def test_configs_wait_thirty_seconds_before_a_retry_by_default() -> None:
     assert (project.retry_wait, experiment.retry_wait) == (30.0, 30.0)
 
 
-def test_configs_retry_only_exit_75_by_default() -> None:
+def test_configs_have_no_retryable_command_by_default() -> None:
     project = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
     experiment = ExperimentConfig("run", 1, {})
 
-    assert (project.retry_exit_codes, experiment.retry_exit_codes) == ((75,), (75,))
+    assert (project.retryable, experiment.retryable) == (None, None)
 
 
 def test_an_experiment_has_no_meta_command_by_default() -> None:

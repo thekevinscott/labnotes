@@ -55,9 +55,8 @@ With `--format` unset, the three listing forms open the [browser](tui#browsing) 
 | `--param NAME=VALUE` | With `new`: a value for [`params`](config#params). Repeat it for several values, like `--param model=opus --param model=sonnet`. VALUE is taken whole, commas included, and parsed as TOML, falling back to a string: `3` is a number, `"3"` and `opus` are strings. |
 | `--repeats N` | With `new`: the experiment's [`repeats`](config#repeats). |
 | `--from OTHER` | With `new`: start from experiment OTHER. Copies its folder, `experiment.toml` and files, but never its runs, and records [`from`](config#from) in the new `experiment.toml`. `--command` and `--repeats` replace the copied values; `--param NAME=...` replaces that param's values and leaves the other params as copied. Comments in the copied file are kept. A copied `mode` is dropped, and a copy without `continues` gets the project's [`continues`](config#continues) default, else `continues = false`. |
-| `--retries N` | With `run`: how many times a failed run is tried again, on a [retry exit code](config#retry-exit-codes-1) or, with `continues`, by a later `run`. Overrides [`retries`](config#retries-1) in `experiment.toml` and `.labnotes.toml`; 3 if none sets it. |
+| `--retries N` | With `run`: how many times a failed run is tried again, on exit 75 (or when [`retryable`](config#retryable-1) says so) or, with `continues`, by a later `run`. Overrides [`retries`](config#retries-1) in `experiment.toml` and `.labnotes.toml`; 3 if none sets it. |
 | `--retry-wait SECONDS` | With `run`: seconds before the first retry; each later retry waits twice as long. Overrides [`retry_wait`](config#retry-wait-1) in `experiment.toml` and `.labnotes.toml`; 30 if none sets it. |
-| `--retry-exit-code CODE` | With `run`: an exit code, 1 to 255, that earns a retry. Repeat it for several. Overrides [`retry_exit_codes`](config#retry-exit-codes-1) in `experiment.toml` and `.labnotes.toml`; 75 if none sets it. |
 | `--replace-capped` | With `run`: start a fresh run for each cell whose failed run is out of `retries`. Unset, that cell stays short. |
 | `--setup COMMAND` | With `run`: shell command to run once before any run starts. Overrides [`setup`](config#setup) in `experiment.toml` and `.labnotes.toml`. |
 | `--teardown COMMAND` | With `run`: shell command to run once after every run ends. Overrides [`teardown`](config#teardown) in `experiment.toml` and `.labnotes.toml`. |
@@ -74,7 +73,7 @@ labnotes experiments new sanity-3 \
 labnotes experiments new sanity-4 --from sanity-3 --param model=haiku
 ```
 
-`run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75, or another code in [`retry_exit_codes`](config#retry-exit-codes-1), is retried on its own; see [`retries`](config#retries-1).
+`run` exits after printing `N passed, M failed.`, plus `K retried.` when runs were retried. A retried run counts as retried, not failed. A run whose command exits 75, or whose failure [`retryable`](config#retryable-1) approves, is retried on its own; see [`retries`](config#retries-1).
 
 Runs execute in a background daemon, not in your terminal. Each run's command, and `setup`, `meta` and `teardown`, get `/dev/null` as stdin, so a command that reads input sees end of file at once.
 

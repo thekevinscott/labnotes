@@ -39,7 +39,6 @@ def start_experiment(
     reserved: dict[str, dict[str, object]] | None = None,
     environment: dict[str, str] | None = None,
     progress: Callable[[str], None] = lambda step: None,
-    retry_exit_codes: tuple[int, ...] | None = None,
 ) -> ExperimentStart:
     state = RunState.create(config, name)
 
@@ -56,7 +55,6 @@ def start_experiment(
             teardown,
             retries,
             retry_wait,
-            retry_exit_codes,
             replace_capped,
         )
         await finalize_lost_runs(config)

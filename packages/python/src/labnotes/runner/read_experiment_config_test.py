@@ -129,17 +129,16 @@ def test_layers_retry_wait_over_the_defaults(source: str, retry_wait: float) -> 
 
 
 @pytest.mark.parametrize(
-    ("source", "defaults", "codes"),
+    ("source", "defaults", "command"),
     [
-        ("", {}, (9,)),
-        ("retry_exit_codes = [1, 75]\n", {}, (1, 75)),
-        ("retry_exit_codes = []\n", {}, ()),
-        ("", {"retry_exit_codes": [2]}, (2,)),
-        ("retry_exit_codes = [3]\n", {"retry_exit_codes": [2]}, (3,)),
+        ("", {}, "project"),
+        ('retryable = "mine"\n', {}, "mine"),
+        ("", {"retryable": "defaults"}, "defaults"),
+        ('retryable = "mine"\n', {"retryable": "defaults"}, "mine"),
     ],
 )
-def test_layers_retry_exit_codes_over_the_project(
-    source: str, defaults: dict[str, object], codes: tuple[int, ...]
+def test_layers_retryable_over_the_project(
+    source: str, defaults: dict[str, object], command: str
 ) -> None:
     config = read_experiment_config(
         PATH,
@@ -147,31 +146,29 @@ def test_layers_retry_exit_codes_over_the_project(
         1,
         2,
         {"command": "run", "continues": False, **defaults},
-        retry_exit_codes=(9,),
+        retryable="project",
     )
 
-    assert config.retry_exit_codes == codes
+    assert config.retryable == command
 
 
-def test_retries_exit_75_without_a_project_list() -> None:
+def test_has_no_retryable_command_without_one_configured() -> None:
     config = read_experiment_config(PATH, 'command = "run"\ncontinues = false\n', 1, 2)
 
-    assert config.retry_exit_codes == (75,)
+    assert config.retryable is None
 
 
-@pytest.mark.parametrize("value", ["1", "[0]", "[256]", '["1"]', "[true]"])
-def test_rejects_bad_retry_exit_codes(value: str) -> None:
+@pytest.mark.parametrize("value", ["1", '""', '" "', '["a"]'])
+def test_rejects_a_bad_retryable_command(value: str) -> None:
     with pytest.raises(ValueError) as error:
         read_experiment_config(
             PATH,
-            f"command = 'run'\ncontinues = false\nretry_exit_codes = {value}\n",
+            f"command = 'run'\ncontinues = false\nretryable = {value}\n",
             1,
             2,
         )
 
-    assert str(error.value) == (
-        f"{PATH}: retry_exit_codes must be a list of exit codes 1-255"
-    )
+    assert str(error.value) == f"{PATH}: retryable must be a command"
 
 
 @pytest.mark.parametrize("retries", [0, 3])

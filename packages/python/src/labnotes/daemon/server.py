@@ -114,9 +114,6 @@ class ExperimentDaemon:
             reserved,
             cast(dict[str, str] | None, options.get("environment")),
             progress,
-            None
-            if options.get("retry_exit_codes") is None
-            else tuple(cast(list[int], options["retry_exit_codes"])),
         )
         path = str(selected.run_state.path)
         invocation = Invocation()

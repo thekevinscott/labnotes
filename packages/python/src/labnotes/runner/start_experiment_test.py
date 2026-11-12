@@ -48,7 +48,6 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
             2,
             1.5,
             True,
-            retry_exit_codes=(1,),
         )
         assert asyncio.run(start(report, listen)) == results
 
@@ -63,7 +62,6 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         "teardown",
         2,
         1.5,
-        (1,),
         True,
     )
     finalize.assert_awaited_once_with(config)

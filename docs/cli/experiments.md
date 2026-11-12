@@ -101,7 +101,7 @@ For botbox sandboxes, labnotes sets `BOTBOX_LABELS` with `labnotes.run=<absolute
 
 Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI lets you filter runs by a parameter, raise or lower concurrency as runs go, and kill specific runs. Failed runs show in red.
 
-A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (3 by default). [`retry_wait`](../api/config#retry-wait-1) or `run --retry-wait` changes the first wait. Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone, unless [`retry_exit_codes`](../api/config#retry-exit-codes-1) or `run --retry-exit-code` lists it: a wrapper that exits 1 on an SSH timeout, say. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more. See [`retries`](../api/config#retries-1).
+A script that exits 75 (`EX_TEMPFAIL`) is saying it couldn't run for a reason outside the experiment, like no capacity. labnotes retries those on its own with the same params: after 30 seconds, then 60, up to `retries` times (3 by default). [`retry_wait`](../api/config#retry-wait-1) or `run --retry-wait` changes the first wait. Each retry gets its own run folder, linked back by `retry_of` in its `run.json`. Every other non-zero exit is left alone, unless [`retryable`](../api/config#retryable-1) names a command that says otherwise: one that reads the attempt's stderr and retries an SSH timeout, say. The failed run doesn't count, so its retry takes its place and the combination still gets `repeats` runs, not more. See [`retries`](../api/config#retries-1).
 
 Two `run` invocations of the same experiment can run at once. In a terminal they share the experiment's daemon, while each TUI follows its own invocation. Run locks prevent both invocations from claiming the same cell.
 
@@ -155,11 +155,11 @@ With `continues = true`, the next `run` invokes the failed run again in its own 
 continues = true
 ```
 
-`run` takes each failed run in a combination that is short of `repeats` and invokes it again, with the same params and the same `{run_dir}`. A run that fails, is stopped, or was lost when labnotes died all count as failed. Excluded runs and runs that count are left alone and get new folders. A run that exits with a retry exit code, 75 by default, retries in its folder too.
+`run` takes each failed run in a combination that is short of `repeats` and invokes it again, with the same params and the same `{run_dir}`. A run that fails, is stopped, or was lost when labnotes died all count as failed. Excluded runs and runs that count are left alone and get new folders. A run that exits 75, or that `retryable` approves, retries in its folder too.
 
 The folder then holds every invocation. `run.json` lists them under `"invocations"`, each with its own times, exit code, commit, dirty flag, patch, args, labnotes version, and labnotes command line. Each writes its own `stdout-<time>.txt`, `stderr-<time>.txt`, `git-sha-<time>.txt`, and `git-diff-<time>.patch`. See [`continues`](../api/config#continues) for the fields.
 
-A failed run is invoked again at most `retries` times (3 by default), counting retries after a retry exit code but not invocations you stopped. After that it is left alone and its combination stays short. `run --replace-capped` gives that combination a new run, and `run --run-id ID` invokes the capped run once more. See [`retries`](../api/config#retries-1).
+A failed run is invoked again at most `retries` times (3 by default), counting retries but not invocations you stopped. After that it is left alone and its combination stays short. `run --replace-capped` gives that combination a new run, and `run --run-id ID` invokes the capped run once more. See [`retries`](../api/config#retries-1).
 
 Your command finds what its last invocation left in `{run_dir}` and decides what to do with it. labnotes does nothing to those files. In return, your command must never delete `run.json`, `stdout-*`, `stderr-*`, or `run.lock`. labnotes holds a lock on `run.lock` while an invocation runs, and a second `run` skips any run that is locked.
 

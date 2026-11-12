@@ -5,7 +5,7 @@ from typing import Any, Protocol
 
 from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
-from labnotes.retries import DEFAULT_RETRIES, RETRY_EXIT_CODES, RETRY_SECONDS
+from labnotes.retries import DEFAULT_RETRIES, RETRY_SECONDS
 
 Report = Callable[[dict[str, object]], None]
 
@@ -46,7 +46,7 @@ class LabnotesConfig:
     concurrency: int = 1
     retries: int = DEFAULT_RETRIES
     retry_wait: float = RETRY_SECONDS
-    retry_exit_codes: tuple[int, ...] = RETRY_EXIT_CODES
+    retryable: str | None = None
     # Set when the config's folder is itself the one experiment.
     experiment: str | None = None
     # [experiment] in .labnotes.toml, under each experiment.toml.
@@ -69,6 +69,6 @@ class ExperimentConfig:
     teardown: str | None = None
     env: dict[str, str] = field(default_factory=dict)
     continues: bool = False
-    retry_exit_codes: tuple[int, ...] = RETRY_EXIT_CODES
+    retryable: str | None = None
     # A run option, not a config key: lets a run that used up `retries` free its slot.
     replace_capped: bool = False

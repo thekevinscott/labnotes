@@ -32,7 +32,7 @@ def test_reads_a_path(table: str, template: str) -> None:
         {"concurrency": 2},
         {"retries": 0},
         {"retry_wait": 1},
-        {"retry_exit_codes": [1]},
+        {"retryable": "check"},
     ],
 )
 def test_lets_settings_through_in_experiments(section: dict[str, object]) -> None:

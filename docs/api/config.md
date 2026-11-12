@@ -23,7 +23,7 @@ Paths are relative to the root. Absolute paths and `~` are rejected.
 
 ### One experiment
 
-When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `concurrency`, `retries`, `retry_wait` and `retry_exit_codes` still apply. The defaults become:
+When `experiment.toml` sits next to `.labnotes.toml`, or `.labnotes.toml` has an [`[experiment]`](#experiment) table and no `[experiments] path`, the root is the project's one experiment. Its name is the root folder's name; `name` in `experiment.toml` stays the display name. Paths can't use `{experiment}` and `[experiments] path` is rejected; `concurrency`, `retries`, `retry_wait` and `retryable` still apply. The defaults become:
 
 ```toml
 [files]
@@ -66,12 +66,12 @@ Retries for a failed run, for every experiment whose `experiment.toml` doesn't s
 
 Seconds before the first retry, for every experiment whose `experiment.toml` doesn't set it. See [`retry_wait`](#retry-wait-1).
 
-#### `retry_exit_codes`
+#### `retryable`
 
-- Type: list of exit codes, 1 to 255
-- Default: `[75]`
+- Type: string (shell command)
+- Default: none
 
-Exit codes that earn a retry, for every experiment whose `experiment.toml` doesn't set it. See [`retry_exit_codes`](#retry-exit-codes-1).
+The command that decides whether a failed run is retried, for every experiment whose `experiment.toml` doesn't set it. See [`retryable`](#retryable-1).
 
 ### `[files]`
 
@@ -121,7 +121,7 @@ name = "Surprisals"
 max-chars = [70, 80]
 ```
 
-With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `concurrency`, `retries`, `retry_wait` and `retry_exit_codes` stay in `[experiments]`.
+With no `[experiments] path`, `[experiment]` makes the root [one experiment](#one-experiment), and an `experiment.toml` beside it is optional. To share defaults across many experiments, set `[experiments] path`, such as `"{experiment}"`; experiments without an `experiment.toml` then take the base alone. Project-wide `concurrency`, `retries`, `retry_wait` and `retryable` stay in `[experiments]`.
 
 ## `experiment.toml`
 
@@ -266,27 +266,61 @@ Runs at once. `--concurrency` on the command line overrides it.
 - Type: integer, 0 or more
 - Default: `[experiments] retries` in `.labnotes.toml`, else `3`
 
-How many times to retry a run whose command exits with one of [`retry_exit_codes`](#retry-exit-codes-1), 75 (`EX_TEMPFAIL`) by default. Exit 75 means the run failed for a reason outside the experiment, such as no capacity, so labnotes runs it again with the same params. No other exit is retried. The first retry waits [`retry_wait`](#retry-wait-1) seconds, 30 by default, and each later one waits twice as long. `0` turns retries off.
+How many times to retry a run whose command exits 75 (`EX_TEMPFAIL`). Exit 75 means the run failed for a reason outside the experiment, such as no capacity, so labnotes runs it again with the same params. No other exit is retried, unless [`retryable`](#retryable-1) names a command, which then decides for every failed exit. The first retry waits [`retry_wait`](#retry-wait-1) seconds, 30 by default, and each later one waits twice as long. `0` turns retries off.
 
 Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the id of the run it replaces. The failed run keeps its folder and logs. The default [`counts`](#counts) rule skips it, so a retry doesn't add a repeat. When retries run out, the last run keeps its exit code. Stopping the runs cancels a waiting retry, and a stopped run never retries.
 
 With [`continues`](#continues), a retry runs again in the same folder instead, as another invocation of the same run, and there is no `"retry_of"`.
 
-With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from a retry exit code or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) doesn't count; one that was lost, timed out, or killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
+With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from a retry or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) doesn't count; one that was lost, timed out, or killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
 
 ### `retry_wait`
 
 - Type: number of seconds, 0 or more
 - Default: `[experiments] retry_wait` in `.labnotes.toml`, else `30`
 
-How long to wait before the first retry of a run. Each later retry waits twice as long as the one before, so `retry_wait = 5` waits 5, 10, then 20 seconds. `--retry-wait` on the command line overrides it.
+How long to wait before the first retry of a failed run. Each later retry waits twice as long as the one before, so `retry_wait = 5` waits 5, 10, then 20 seconds. `--retry-wait` on the command line overrides it.
 
-### `retry_exit_codes`
+### `retryable`
 
-- Type: list of exit codes, 1 to 255
-- Default: `[experiments] retry_exit_codes` in `.labnotes.toml`, else `[75]`
+- Type: string (shell command)
+- Default: `[experiments] retryable` in `.labnotes.toml`, else none
 
-Which exit codes earn a retry. A command can't always pick its exit code for a passing failure: a wrapper or subprocess may exit 1 when an SSH connection times out. List those codes here, such as `retry_exit_codes = [1, 75]`. The list replaces the default, so keep 75 in it if you still want exit 75 retried. `[]` retries nothing. `--retry-exit-code CODE` on the command line overrides it; repeat the flag for several codes.
+A command that decides whether a failed run is retried. Use it when the exit code alone can't tell: a wrapper may exit 1 both when SSH to a new machine times out, which is worth a retry, and when the code has a bug, which isn't.
+
+```toml
+retryable = "uv run retryable.py"
+```
+
+After a run exits with a non-zero code, labnotes runs the command from the experiment's folder, with the run's environment, and writes one JSON object to its stdin:
+
+| Key | Value |
+|---|---|
+| `experiment` | The experiment's name |
+| `run` | The run's id |
+| `params` | The run's params |
+| `command` | The command the run ran |
+| `attempt` | 1 for the first attempt, 2 for the first retry, and so on |
+| `max_retries` | [`retries`](#retries-1) |
+| `created_at`, `started_at`, `finished_at` | ISO 8601 UTC times. With [`continues`](#continues), `started_at` is this invocation's start |
+| `duration_s` | Seconds the attempt took |
+| `exit_code` | The attempt's exit code |
+| `run_folder` | Absolute path to the run folder |
+| `stdout`, `stderr` | Absolute paths to this attempt's logs |
+
+Exit 0 retries the run, with the usual [`retry_wait`](#retry-wait-1) backoff, until `retries` runs out. Any other exit, or a command that can't start or crashes, gives up. The command's own output goes to `retryable.log` in the run folder.
+
+Once `retryable` is set it decides for every failed exit, 75 included, so return 0 for 75 too if you still want those retried. A run that didn't start, exited 0, or was stopped never runs it. With no `retryable`, labnotes retries exit 75 only.
+
+```python
+import json
+import sys
+from pathlib import Path
+
+attempt = json.load(sys.stdin)
+stderr = Path(attempt["stderr"]).read_text()
+sys.exit(0 if attempt["exit_code"] == 75 or "timed out" in stderr else 1)
+```
 
 ### `memory_interval`
 

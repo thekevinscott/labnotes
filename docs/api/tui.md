@@ -12,9 +12,9 @@ Each table numbers its rows from 1 down the left edge. The numbers follow the ro
 | spinner | Running |
 | `✓` | Passed |
 | `✗`, red | Failed, with the exit code or error |
-| `✗ exited 75, retry in 30s`, yellow | Exited with a [retry exit code](config#retry-exit-codes-1); retries when the countdown ends |
-| `✗ exited 75, retried`, red | Exited with a retry exit code and was retried in a new row |
-| `✗ gave up (exit 75)`, red | Exited with a retry exit code with no retries left |
+| `✗ exited 1, retry in 30s`, yellow | Failed with a retryable exit (75, or one [`retryable`](config#retryable-1) approved); retries when the countdown ends |
+| `✗ exited 1, retried`, red | Failed with a retryable exit and was retried in a new row |
+| `✗ gave up (exit 1)`, red | Failed with a retryable exit and no retries left |
 | `–` | Skipped |
 
 The header shows the experiment's name and how many runs go at once.

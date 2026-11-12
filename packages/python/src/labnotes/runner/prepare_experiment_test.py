@@ -41,7 +41,7 @@ def make_config(root: Path) -> mock.Mock:
         concurrency=3,
         retries=4,
         retry_wait=6,
-        retry_exit_codes=(1,),
+        retryable="check",
     )
 
 
@@ -62,7 +62,7 @@ def test_reads_the_experiment(
 
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}, 6, (1,)
+        path, "source", 3, 4, {}, 6, "check"
     )
     assert experiment is collaborators["read_experiment_config"].return_value
     assert concurrency == 2
@@ -110,7 +110,7 @@ def test_reads_the_named_experiment_config(
     prepare(tmp_path, path)
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}, 6, (1,)
+        path, "source", 3, 4, {}, 6, "check"
     )
 
 
@@ -122,7 +122,7 @@ def test_resolves_a_relative_experiment_config_before_reading(
     path = tmp_path / "alt/experiment.toml"
     collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
     collaborators["read_experiment_config"].assert_called_once_with(
-        path, "source", 3, 4, {}, 6, (1,)
+        path, "source", 3, 4, {}, 6, "check"
     )
 
 
@@ -174,7 +174,7 @@ def test_runs_from_the_defaults_alone(
     asyncio.run(prepare_experiment(config, "exp", None, None))
 
     collaborators["read_experiment_config"].assert_called_once_with(
-        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}, 6, (1,)
+        tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}, 6, "check"
     )
 
 
@@ -185,7 +185,6 @@ class Hooks:
     concurrency: int = 1
     retries: int = 3
     retry_wait: float = 30.0
-    retry_exit_codes: tuple[int, ...] = (75,)
     replace_capped: bool = False
 
 
@@ -264,21 +263,3 @@ def test_overrides_retry_wait_with_the_flag(
     )
 
     assert experiment.retry_wait == expected
-
-
-@pytest.mark.parametrize(("codes", "expected"), [(None, (75,)), ((1, 2), (1, 2))])
-def test_overrides_retry_exit_codes_with_the_flag(
-    tmp_path: Path,
-    collaborators: dict[str, mock.MagicMock],
-    codes: tuple[int, ...] | None,
-    expected: tuple[int, ...],
-) -> None:
-    collaborators["read_experiment_config"].return_value = Hooks("up", "down")
-
-    experiment, _ = asyncio.run(
-        prepare_experiment(
-            make_config(tmp_path), "exp", None, None, retry_exit_codes=codes
-        )
-    )
-
-    assert experiment.retry_exit_codes == expected

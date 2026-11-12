@@ -413,7 +413,10 @@ async def run_experiment(
         environment: dict[str, str],
     ) -> bool:
         if experiment.retryable is None:
-            return code == retries.RETRY_EXIT_CODE
+            match code:
+                case retries.RETRY_EXIT_CODE:
+                    return True
+            return False
         logs = {
             "started": result["created"],
             "stdout": "stdout.log",

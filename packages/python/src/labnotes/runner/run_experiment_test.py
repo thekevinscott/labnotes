@@ -1537,6 +1537,7 @@ def attempts(*codes: int, continues: bool = False) -> object:
         if continues:
             result["invocations"] = [
                 {"started": "s0", "stdout": "old.txt", "stderr": "old-err.txt"},
+                {"started": "s0", "stdout": "mid.txt", "stderr": "mid-err.txt"},
                 {"started": "s1", "stdout": "out.txt", "stderr": "err.txt"},
             ]
         return result
@@ -1551,9 +1552,15 @@ def test_asks_the_retryable_command_about_each_failure(
     collaborators["execute_run"].side_effect = attempts(1, 75)
     report = mock.Mock()
 
-    with mock.patch(
-        "labnotes.runner.run_experiment.is_retryable", side_effect=[True, False]
-    ) as is_retryable:
+    with (
+        mock.patch(
+            "labnotes.runner.run_experiment.is_retryable", side_effect=[True, False]
+        ) as is_retryable,
+        mock.patch(
+            "labnotes.runner.run_experiment.time",
+            mock.Mock(monotonic=mock.Mock(side_effect=[10.0, 12.5, 20.0, 21.0])),
+        ),
+    ):
         run(tmp_path, report, retries=3, retryable="check")
 
     assert started_runs(report) == ["r1", "r2"]
@@ -1573,7 +1580,7 @@ def test_asks_the_retryable_command_about_each_failure(
         "created_at": "2026-01-01T00:00:00Z",
         "started_at": "2026-01-01T00:00:00Z",
         "finished_at": "2026-01-01T00:00:05Z",
-        "duration_s": first[2]["duration_s"],
+        "duration_s": 2.5,
         "exit_code": 1,
         "run_folder": str(folder),
         "stdout": str(folder / "stdout.log"),
@@ -1599,7 +1606,7 @@ def test_points_the_retryable_command_at_a_continued_runs_latest_logs(
     ) as is_retryable:
         run(tmp_path, report, retryable="check")
 
-    attempt = is_retryable.await_args.args[2]
+    attempt = is_retryable.await_args_list[0].args[2]
     folder = (tmp_path / "exp" / "r1").resolve()
     assert (attempt["started_at"], attempt["stdout"], attempt["stderr"]) == (
         "s1",
@@ -1645,6 +1652,21 @@ def test_stopping_signals_a_running_retryable_command(
         run(tmp_path, report, listen=listen, retryable="check")
 
     collaborators["signal_tree"].assert_called_once_with(4242, SIGTERM, set())
+
+
+def test_asks_the_retryable_command_about_a_run_killed_by_a_signal(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(-9)
+    report = mock.Mock()
+
+    with mock.patch(
+        "labnotes.runner.run_experiment.is_retryable", return_value=False
+    ) as is_retryable:
+        run(tmp_path, report, retryable="check")
+
+    assert is_retryable.await_args_list[0].args[2]["exit_code"] == -9
 
 
 @pytest.mark.parametrize("code", [0, None])

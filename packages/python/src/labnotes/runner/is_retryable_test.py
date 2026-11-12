@@ -40,7 +40,7 @@ def test_gives_up_when_the_command_cannot_start(tmp_path: Path) -> None:
 
 
 def test_gives_up_when_the_command_dies(tmp_path: Path) -> None:
-    command = f"{sys.executable} -c 'import os; os.kill(os.getpid(), 9)'"
+    command = "kill -9 $$"
 
     assert not asyncio.run(
         is_retryable(command, tmp_path, {}, tmp_path / "log", {}, set())

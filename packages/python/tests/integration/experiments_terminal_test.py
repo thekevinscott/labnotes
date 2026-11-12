@@ -1,9 +1,13 @@
 import json
+import subprocess
 import sys
 from pathlib import Path
 
 import pytest
 from curtaincall import expect
+
+LABNOTES = Path(sys.executable).parent / "labnotes"
+ACTIONS = "runs, run, attach or stop"
 
 
 def write(path: Path, text: str) -> None:
@@ -18,29 +22,50 @@ def project(root: Path) -> Path:
         root / "alpha/runs/20261017-000000/first/run.json",
         json.dumps({"created": "2026-10-17T00:00:00Z", "exit_code": 0}),
     )
-    write(root / "beta/files/notes.md", "notes")
     return root
 
 
-@pytest.mark.parametrize(
-    ("argv", "shown"),
-    [
-        ("", ["display_name", "alpha", "beta"]),
-        ("alpha", ["last_run", "alpha", "2026-10-17T00:00:00Z"]),
-    ],
-)
-def test_prints_the_table_and_exits_in_a_terminal(
-    terminal, tmp_path: Path, argv: str, shown: list[str]
-) -> None:
-    root = project(tmp_path)
-    command = Path(sys.executable).parent / "labnotes"
+def in_terminal(terminal, root: Path, argv: str):
     term = terminal(
-        f"{command} -c {root / '.labnotes.toml'} experiments {argv}",
+        f"{LABNOTES} -c {root / '.labnotes.toml'} experiments {argv}",
         rows=30,
         cols=300,
     )
-
     expect(term).to_have_exited(timeout=30)
-    for text in shown:
-        assert term.get_by_text(text).is_visible(), term.to_snapshot()
+    return term
+
+
+@pytest.mark.parametrize("argv", ["", "alpha"])
+def test_a_bare_command_names_the_actions_in_a_terminal(
+    terminal, tmp_path: Path, argv: str
+) -> None:
+    term = in_terminal(terminal, project(tmp_path), argv)
+
+    assert term.get_by_text(ACTIONS).is_visible(), term.to_snapshot()
+    assert term.exit_code == 2, term.to_snapshot()
+
+
+@pytest.mark.parametrize("argv", [[], ["alpha"]])
+def test_a_bare_command_names_the_actions_when_piped(
+    tmp_path: Path, argv: list[str]
+) -> None:
+    root = project(tmp_path)
+    result = subprocess.run(
+        [str(LABNOTES), "-c", str(root / ".labnotes.toml"), "experiments", *argv],
+        capture_output=True,
+        text=True,
+        timeout=30,
+    )
+
+    assert result.returncode == 2, result.stdout + result.stderr
+    assert ACTIONS in result.stderr
+    assert result.stdout == ""
+
+
+def test_runs_prints_the_table_and_exits_in_a_terminal(
+    terminal, tmp_path: Path
+) -> None:
+    term = in_terminal(terminal, project(tmp_path), "alpha runs")
+
+    assert term.get_by_text("20261017-000000/first").is_visible(), term.to_snapshot()
     assert term.exit_code == 0, term.to_snapshot()

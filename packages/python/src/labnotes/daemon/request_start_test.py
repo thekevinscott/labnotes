@@ -34,10 +34,10 @@ def test_relays_steps_in_order_and_returns_the_accepted_reply() -> None:
             {"command": "start"},
         )
         progress("Preparing codebase")
-        return {"ok": True, "journal": "j.jsonl"}
+        return {"ok": True, "batch": "b1"}
 
     reply, steps = run(command)
-    assert reply == {"ok": True, "journal": "j.jsonl"}
+    assert reply == {"ok": True, "batch": "b1"}
     assert steps == ["Starting up", "ensured", "Preparing codebase"]
 
 

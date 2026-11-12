@@ -237,10 +237,10 @@ def experiments(
             raise click.UsageError(f"{action} takes no run or listing options.")
         case str(), "attach":
             try:
-                reply = daemon_command(config, name, {"command": "journals"})
+                reply = daemon_command(config, name, {"command": "batches"})
             except ValueError:
                 reply = {}
-            if not reply.get("journals"):
+            if not reply.get("batches"):
                 click.echo(f"Nothing is running for {name}.")
                 return
             if not sys.stdout.isatty() or not sys.stderr.isatty():

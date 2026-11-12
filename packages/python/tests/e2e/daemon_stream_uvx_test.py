@@ -28,7 +28,7 @@ def project(tmp_path: Path) -> tuple[Path, Path]:
     return root, release
 
 
-def test_uvx_run_tui_shows_state_without_reading_the_journal(
+def test_uvx_run_tui_shows_state_with_no_journal_on_disk(
     tmp_path: Path, tui: Tui
 ) -> None:
     root, release = project(tmp_path)
@@ -36,10 +36,7 @@ def test_uvx_run_tui_shows_state_without_reading_the_journal(
     term = tui(root, "experiments", "exp", "run", env={"XDG_STATE_HOME": str(state)})
     try:
         expect(term.get_by_text("working")).to_be_visible(timeout=60)
-        journals = list(state.glob("labnotes/run-state/*/*.jsonl"))
-        assert journals, "daemon wrote no journal"
-        for journal in journals:
-            journal.unlink()
+        assert not list(state.rglob("*.jsonl"))
         release.touch()
         expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=30)
     finally:

@@ -1,0 +1,1 @@
+Added daemon event streaming: attached TUIs replay recorded batch events and receive live updates, including restarted runs, without polling event journals. A lost connection displays `disconnected` and preserves the last visible state. Journals continue to be written.

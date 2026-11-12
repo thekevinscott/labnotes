@@ -34,7 +34,7 @@ class RunState:
             journal_folder(runs) / f"{stamp}-{os.getpid()}-{uuid4().hex[:8]}.jsonl"
         )
 
-    def record(self, event: dict[str, object]) -> None:
+    def record(self, event: dict[str, object]) -> dict[str, object]:
         """Write one event before callers display it."""
         at = time.time()
         stored = {**event, "at": at}
@@ -45,6 +45,7 @@ class RunState:
         self.path.touch(mode=0o600, exist_ok=True)
         with self.path.open("ab") as file:
             file.write(data)
+        return json.loads(data)  # Return the same JSON-safe values sent to disk.
 
     def read(self) -> list[dict[str, object]]:
         """Return only complete new events."""

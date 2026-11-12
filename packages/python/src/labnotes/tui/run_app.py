@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 import json
 import signal
 import socket
@@ -23,12 +24,12 @@ from labnotes.compose_experiment import compose_experiment
 from labnotes.daemon.command import command as daemon_command
 from labnotes.daemon.client import daemon_socket
 from labnotes.daemon.request_start import request_start
+from labnotes.daemon.ensure import ensure_daemon
 from labnotes.load_experiment import load_experiment
 from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
-from labnotes.runner.start_experiment import ExperimentStart
 from labnotes.runner.run_state import RunState
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.tables.open_tables import open_tables
@@ -532,13 +533,10 @@ class RunApp(ViewSwitcher, App[None]):
         self.daemon_request = daemon_request
         self.steps: list[str] = []
         self.startup_frame = 0
-        self.run_state = daemon_journal or (
-            start.run_state if isinstance(start, ExperimentStart) else None
-        )
         self.attach = attach
-        self.others: list[RunState] = []
-        self.busy_journals: set[Path] = set()
-        self.watching_state = False
+        self.busy_journals: set[str] = set()
+        self.restart_batches: set[str] = set()
+        self.disconnected = False
         self.attached: socket.socket | None = None
         self.farewell: str | None = None
         self.finishing_up = False
@@ -591,7 +589,8 @@ class RunApp(ViewSwitcher, App[None]):
             self.run_worker(self.drive())
 
     def step(self, step: str) -> None:
-        self.steps.append(step)
+        if self.steps[-1:] != [step]:
+            self.steps.append(step)
         self.spin_startup()
 
     def spin_startup(self) -> None:
@@ -604,11 +603,13 @@ class RunApp(ViewSwitcher, App[None]):
         assert self.config is not None
         assert self.daemon_request is not None
         try:
+            self.step("Starting up")
+            await ensure_daemon(self.config, self.experiment_name)
+            self.attach_daemon()
             reply = await request_start(
                 self.config, self.experiment_name, self.daemon_request, self.step
             )
             self.daemon_journal = RunState(Path(str(reply["journal"])))
-            self.run_state = self.daemon_journal
             self.follow_daemon()
         except (OSError, ValueError) as error:
             self.error = ValueError(str(error))
@@ -619,20 +620,18 @@ class RunApp(ViewSwitcher, App[None]):
         self.query_one(ContentSwitcher).display = True
         # Focus requests made while the views were hidden were dropped.
         if self.body_ready:
-            self.call_after_refresh(self.body.go, self.body.stage)
+            self.call_after_refresh(lambda: self.body.go(self.body.stage))
         else:
             self.call_after_refresh(self.screen.focus_next)
 
     def follow_daemon(self) -> None:
-        journals = self.attach_daemon()
+        journals = self.attach_daemon() if self.attached is None else []
         if self.attach:
             if not journals:
                 self.farewell = f"Nothing is running for {self.experiment_name}."
                 self.exit()
                 return
-            self.daemon_journal = self.run_state = RunState(Path(journals[0]))
-            self.add_journals(journals)
-            self.set_interval(1, self.queue_find_journals)
+            self.daemon_journal = RunState(Path(journals[0]))
         assert self.daemon_journal is not None
         journal = self.daemon_journal
         self.listen(
@@ -650,8 +649,7 @@ class RunApp(ViewSwitcher, App[None]):
                 lambda: self.queue_command({"command": "finish_up"}),
             )
         )
-        self.set_interval(0.25, self.refresh_state)
-        self.refresh_state()
+        self.run_worker(self.read_stream())
 
     def attach_daemon(self) -> list[str]:
         assert self.config is not None
@@ -663,7 +661,7 @@ class RunApp(ViewSwitcher, App[None]):
             client.settimeout(10)
             client.connect(str(path))
             client.sendall(b'{"command":"attach"}\n')
-            with client.makefile("r") as replies:
+            with socket.SocketIO(client, "rb") as replies:
                 reply = json.loads(replies.readline())
             if not reply.get("ok"):
                 raise ValueError(str(reply.get("error", "Daemon rejected attach")))
@@ -673,28 +671,28 @@ class RunApp(ViewSwitcher, App[None]):
         self.attached = client
         return cast(list[str], reply.get("journals", []))
 
-    def add_journals(self, journals: list[str]) -> None:
-        assert self.run_state is not None
-        known = {str(journal.path) for journal in [self.run_state, *self.others]}
-        self.others += [RunState(Path(path)) for path in journals if path not in known]
-
-    def queue_find_journals(self) -> None:
-        self.run_worker(
-            self.find_journals(), group="journals", exclusive=True, exit_on_error=False
-        )
-
-    async def find_journals(self) -> None:
-        assert self.config is not None
-        try:
-            reply = await asyncio.to_thread(
-                daemon_command,
-                self.config,
-                self.experiment_name,
-                {"command": "journals"},
-            )
-        except ValueError:
+    async def read_stream(self) -> None:
+        if self.attached is None:
             return
-        self.add_journals(cast(list[str], reply.get("journals", [])))
+        writer = None
+        try:
+            reader, writer = await asyncio.open_connection(
+                sock=self.attached, limit=16 * 1024 * 1024
+            )
+            while line := await reader.readline():
+                message = json.loads(line)
+                if self.body_ready:
+                    self.forward(str(message["journal"]), message["event"])
+        except (OSError, ValueError):
+            pass  # Keep the last visible state when the stream is lost.
+        finally:
+            if writer is not None:
+                writer.close()
+            self.disconnected = True
+            with contextlib.suppress(NoMatches):
+                self.query_one("#concurrency", FlashValue).update(
+                    f"{self.body.concurrency} at a time · disconnected"
+                )
 
     def on_unmount(self) -> None:
         if self.attached is not None:
@@ -705,13 +703,16 @@ class RunApp(ViewSwitcher, App[None]):
 
     async def send_command(self, message: dict[str, object]) -> None:
         assert self.config is not None
+        if self.disconnected:
+            self.body.show("disconnected")
+            return
         try:
             reply = await asyncio.to_thread(
                 daemon_command, self.config, self.experiment_name, message
             )
             if not reply.get("ok"):
                 raise ValueError(str(reply.get("error", "Daemon rejected command")))
-        except ValueError as error:
+        except (OSError, ValueError) as error:
             if self.body_ready:
                 self.body.show(str(error))
 
@@ -725,15 +726,16 @@ class RunApp(ViewSwitcher, App[None]):
 
     async def restart_daemon_run(self, run: str) -> None:
         assert self.config is not None
+        if self.disconnected:
+            self.body.show("disconnected")
+            return
         try:
-            reply = await request_start(
+            await request_start(
                 self.config,
                 self.experiment_name,
                 restart_request(run, self.experiment_config),
                 lambda step: self.body.show(f"Restarting {run}: {step}"),
             )
-            self.add_journals([str(reply["journal"])])
-            self.refresh_state()
             self.body.show(f"Restarted {run}.")
         except (OSError, ValueError) as error:
             self.body.show(f"Could not restart {run}: {error}")
@@ -796,23 +798,24 @@ class RunApp(ViewSwitcher, App[None]):
     def show_event(self, event: dict[str, object]) -> None:
         if event["event"] == "finishing up":
             self.finishing_up = True
-        if self.run_state is None:
-            if self.body_ready:
-                self.body.show_event(event)
-            return
-        if not self.watching_state:
-            self.watching_state = True
-            self.set_interval(0.25, self.refresh_state)
-        self.refresh_state()
+        if self.body_ready:
+            self.body.show_event(event)
 
-    def refresh_state(self) -> None:
-        if self.run_state is None or not self.body_ready:
-            return
-        for journal in [self.run_state, *self.others]:
-            for event in journal.read():
-                self.forward(journal.path, event)
-
-    def forward(self, journal: Path, event: dict[str, object]) -> None:
+    def forward(self, journal: str, event: dict[str, object]) -> None:
+        if (
+            not self.attach
+            and self.daemon_journal is not None
+            and journal != str(self.daemon_journal.path)
+            and journal not in self.restart_batches
+        ):
+            match event:
+                case {
+                    "event": "planned",
+                    "restart": str(run),
+                } if run in self.body.cells:
+                    self.restart_batches.add(journal)
+                case _:
+                    return
         match event:
             case {"event": "planned", "restart": str(run)} if run in self.body.cells:
                 [planned] = cast(list[dict[str, object]], event["runs"])

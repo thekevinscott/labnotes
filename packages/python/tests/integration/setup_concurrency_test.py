@@ -91,7 +91,10 @@ def test_a_concurrency_change_during_setup_waits_for_setup_to_end(
         await asyncio.sleep(1)
         assert started(events) == 0
         assert not (root / "running").exists()
-        assert {"event": "concurrency", "concurrency": to} in events
+        changes = [event for event in events if event["event"] == "concurrency"]
+        assert len(changes) == 1
+        assert changes[0]["concurrency"] == to
+        assert isinstance(changes[0]["at"], float)
         (root / "set-up").touch()
         await until(lambda: started(events) == to)
         await asyncio.sleep(0.5)

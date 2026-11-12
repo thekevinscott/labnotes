@@ -779,3 +779,138 @@ def test_attach_and_journals_list_active_invocations_in_start_order(
         }
 
     asyncio.run(drive())
+
+
+@pytest.mark.parametrize("buffer_size", [1024 * 1024, 1024 * 1024 + 1])
+def test_slow_subscriber_is_dropped_without_blocking_others(
+    tmp_path: Path, buffer_size: int
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    slow, fast = mock.Mock(), mock.Mock()
+    for writer in (slow, fast):
+        writer.is_closing.return_value = False
+    slow.transport.get_write_buffer_size.return_value = buffer_size
+    fast.transport.get_write_buffer_size.return_value = 0
+    daemon.subscribers.update((slow, fast))
+    event = {"event": "idle", "at": 12.0}
+    daemon.report("batch", event)
+    assert daemon.history["batch"].events == [event]
+    assert json.loads(fast.write.call_args.args[0]) == {
+        "journal": "batch",
+        "event": event,
+    }
+    assert (slow in daemon.subscribers) is (buffer_size == 1024 * 1024)
+    assert slow.transport.abort.call_count == (buffer_size > 1024 * 1024)
+    assert fast in daemon.subscribers
+
+
+@pytest.mark.parametrize("closing", [True, False])
+def test_broken_subscriber_does_not_break_recording(
+    tmp_path: Path, closing: bool
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    writer = mock.Mock()
+    writer.is_closing.return_value = closing
+    writer.write.side_effect = BrokenPipeError()
+    daemon.subscribers.add(writer)
+    daemon.report("batch", {"event": "idle"})
+    assert daemon.history["batch"].events == [{"event": "idle"}]
+    assert writer not in daemon.subscribers
+    assert writer.write.call_count == (not closing)
+    assert writer.transport.abort.call_count == (not closing)
+
+
+def test_attach_replays_finished_batches_then_new_batch_without_gaps(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        old = [{"event": "planned", "at": 1}, {"event": "idle", "at": 2}]
+        daemon.history["ended"] = Invocation(events=old)
+        server = await asyncio.start_unix_server(
+            daemon.handle, path=str(tmp_path / "s")
+        )
+        async with server:
+            reader, writer = await asyncio.open_unix_connection(str(tmp_path / "s"))
+            writer.write(b'{"command":"attach"}\n')
+            assert json.loads(await reader.readline()) == {"ok": True, "journals": []}
+            daemon.history["new"] = Invocation()
+            event = {"event": "planned", "at": 3}
+            daemon.report("new", event)
+            messages = [
+                json.loads(await asyncio.wait_for(reader.readline(), 1))
+                for _ in range(3)
+            ]
+            assert messages == [
+                *({"journal": "ended", "event": e} for e in old),
+                {"journal": "new", "event": event},
+            ]
+            writer.close()
+            await writer.wait_closed()
+            for _ in range(20):
+                if not daemon.clients:
+                    break
+                await asyncio.sleep(0.01)
+            assert not daemon.subscribers
+            assert daemon.clients == 0
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize("failure", ["drain", "read", "wait_closed"])
+def test_attach_transport_errors_release_the_subscription(
+    tmp_path: Path, failure: str
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    reader, writer = mock.Mock(), mock.Mock()
+    reader.readline = mock.AsyncMock(return_value=b'{"command":"attach"}\n')
+    reader.read = mock.AsyncMock(return_value=b"")
+    writer.drain = mock.AsyncMock()
+    writer.wait_closed = mock.AsyncMock()
+    target = reader if failure == "read" else writer
+    getattr(target, failure).side_effect = ConnectionResetError("client left")
+    asyncio.run(daemon.handle(reader, writer))
+    assert daemon.clients == 0
+    assert not daemon.subscribers
+    writer.close.assert_called_once_with()
+    writer.wait_closed.assert_awaited_once_with()
+
+
+def test_start_publishes_runner_events_and_retains_daemon_errors(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        path = str(tmp_path / "batch")
+        planned = {"event": "planned", "at": 1.0}
+        failed = {"event": "daemon error", "error": "oops", "at": 2.0}
+        selected = mock.Mock(run_state=mock.Mock(path=Path(path)))
+        selected.run_state.record.return_value = failed
+        writer = mock.Mock()
+        writer.is_closing.return_value = False
+        writer.transport.get_write_buffer_size.return_value = 0
+        daemon.subscribers.add(writer)
+
+        async def run(report, listen):
+            report(planned)
+            listen(mock.Mock())
+            raise ValueError("oops")
+
+        selected.side_effect = run
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ):
+            assert await daemon.start({}) == {"ok": True, "journal": path}
+        assert daemon.history[path].events == [planned, failed]
+        assert not daemon.active
+        assert [json.loads(call.args[0]) for call in writer.write.call_args_list] == [
+            {"journal": path, "event": planned},
+            {"journal": path, "event": failed},
+        ]
+        selected.run_state.record.assert_called_once_with(
+            {"event": "daemon error", "error": "oops"}
+        )
+
+    asyncio.run(drive())

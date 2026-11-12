@@ -1,17 +1,11 @@
-import asyncio
 import json
 import shlex
 import os
 import sys
 import time
 from pathlib import Path
-from unittest import mock
 
 from curtaincall import Terminal, expect
-
-from labnotes.runner.run_state import RunState
-from labnotes.runner.start_experiment import ExperimentStart
-from labnotes.tui.run_app import RunApp
 
 
 def test_running_invocation_can_be_reconstructed_from_disk(tmp_path: Path) -> None:
@@ -110,25 +104,13 @@ def test_concurrent_invocations_keep_separate_journals(tmp_path: Path) -> None:
         assert sorted(plan["runs"][0]["params"]["m"] for plan in plans) == ["a", "b"]
         assert all(len(plan["runs"]) == 1 for plan in plans)
 
-        async def shown_ids(path: Path) -> set[str]:
-            async def attach(report, listen):
-                report({"event": "wake up"})
-                await asyncio.Event().wait()
-                return []
-
-            config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
-            app = RunApp(
-                ExperimentStart(RunState(path), attach),
-                "exp",
-                ("run", "params", "status", "time"),
-                config,
-            )
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                return set(app.body.cells)
-
-        for path, plan in zip(journals, plans, strict=True):
-            assert asyncio.run(shown_ids(path)) == {plan["runs"][0]["run"]}
+        mine = {
+            plan["runs"][0]["params"]["m"]: plan["runs"][0]["run"] for plan in plans
+        }
+        for process, value in zip(processes, ("a", "b"), strict=True):
+            other = mine["b" if value == "a" else "a"]
+            expect(process.get_by_text(mine[value])).to_be_visible(timeout=15)
+            expect(process.get_by_text(other)).not_to_be_visible()
 
         for process in processes:
             expect(process.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=15)

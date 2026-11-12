@@ -74,7 +74,7 @@ def test_discovery_folder_defaults_to_local_state(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state_home: str | None
 ) -> None:
     if state_home is None:
-        monkeypatch.delenv("XDG_STATE_HOME")
+        monkeypatch.delenv("XDG_STATE_HOME", raising=False)
     else:
         monkeypatch.setenv("XDG_STATE_HOME", state_home)
     monkeypatch.setenv("HOME", str(tmp_path))

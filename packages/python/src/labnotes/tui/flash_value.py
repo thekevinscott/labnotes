@@ -10,7 +10,7 @@ FADE_SECONDS = 1.0
 
 
 class FlashValue(Static):
-    """Flash only live changes, so first draws and stream replays stay quiet."""
+    """Flash only live changes, so first draws and journal replays stay quiet."""
 
     def __init__(self, *, id: str | None = None) -> None:
         super().__init__(id=id)

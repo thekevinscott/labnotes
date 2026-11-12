@@ -4,9 +4,6 @@ import subprocess
 from pathlib import Path
 
 import pytest
-from curtaincall import expect
-
-from conftest import Tui
 
 
 def damaged_project(tmp_path: Path, contents: str) -> Path:
@@ -17,15 +14,6 @@ def damaged_project(tmp_path: Path, contents: str) -> Path:
     (root / ".labnotes.toml").write_text("", encoding="utf-8")
     (root / "exp/experiment.toml").write_text("", encoding="utf-8")
     return root
-
-
-@pytest.mark.parametrize("contents", ["{not json", ""])
-def test_uvx_browses_a_damaged_run_record(
-    tmp_path: Path, tui: Tui, contents: str
-) -> None:
-    term = tui(damaged_project(tmp_path, contents), "experiments", "exp")
-    expect(term.get_by_text("broken")).to_be_visible(timeout=60)
-    tui.quit(term)
 
 
 @pytest.mark.parametrize("contents", ["{not json", ""])

@@ -45,17 +45,12 @@ Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
 
 ```sh
-labnotes experiments            # name, last_run, created, files, runs
-labnotes experiments foo        # the same, plus config
 labnotes experiments foo runs   # foo's runs, oldest first
 ```
 
-Each takes `--format table` or `--format json`, which print rows and exit.
-Without `--format`, they open a browser in a terminal: the experiment list,
-Enter to open one, Escape to go back. `foo` and `foo runs` open straight on
-`foo`, which shows its runs, with runs that older versions nested in one invocation
-folder grouped under it; Enter expands or collapses
-one. Piped, they print a table.
+`runs` takes `--format table` (the default) or `--format json`.
+`labnotes experiments` and `labnotes experiments foo` with no action exit 2
+and name the actions: `runs`, `run`, `attach` or `stop`.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't

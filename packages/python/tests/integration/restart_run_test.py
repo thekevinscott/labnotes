@@ -1,7 +1,6 @@
 import json
 import fcntl
 import sys
-import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -9,8 +8,6 @@ import pytest
 import psutil
 
 from conftest import run_tui_command
-from labnotes.daemon.client import daemon_socket
-from labnotes.read_config import read_config
 
 
 @pytest.fixture(autouse=True)
@@ -111,85 +108,6 @@ def test_restarts_only_one_failed_run_with_its_recorded_args(
         assert after[new_id]["args"] == ["--token", "original"]
 
 
-def test_browse_key_restarts_the_selected_failed_run(terminal, tmp_path: Path) -> None:
-    from curtaincall import expect
-
-    root = project(tmp_path, False)
-    run(root, "--", "--token", "original")
-    before = records(root)
-    [failed_id] = [
-        run_id for run_id, record in before.items() if record["exit_code"] == 1
-    ]
-    [passed_id] = [
-        run_id for run_id, record in before.items() if record["exit_code"] == 0
-    ]
-    command = Path(sys.executable).parent / "labnotes"
-    term = terminal(
-        f"{command} -c {root / '.labnotes.toml'} experiments exp",
-        rows=30,
-        cols=120,
-    )
-    expect(term.get_by_text(failed_id)).to_be_visible()
-    rows = ["".join(row) for row in term.get_viewable_buffer()]
-    failed_row = next(i for i, row in enumerate(rows) if failed_id in row)
-    passed_row = next(i for i, row in enumerate(rows) if passed_id in row)
-    if failed_row > passed_row:
-        term.key_down()
-    term.write("r")
-    expect(term.get_by_text("Restarted")).to_be_visible(timeout=10)
-    assert [
-        json.loads(line)["m"]
-        for line in (root / "launches.jsonl").read_text().splitlines()
-    ] == ["a", "b", "a"]
-    term.key_ctrl_c()
-    term.wait()
-
-
-def test_browse_restart_finishes_after_tui_is_killed(terminal, tmp_path: Path) -> None:
-    from curtaincall import expect
-
-    root = tmp_path / "project"
-    (root / "exp").mkdir(parents=True)
-    (root / ".labnotes.toml").write_text("")
-    (root / "marker").write_text("")
-    (root / "script.py").write_text(
-        "import sys, time\nfrom pathlib import Path\n"
-        "if Path('marker').exists():\n"
-        "    Path('marker').unlink()\n    sys.exit(1)\n"
-        "time.sleep(2)\n"
-    )
-    (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} script.py"\ncontinues = false\nretries = 0\n'
-    )
-    run(root)
-    [failed_id] = records(root)
-    command = Path(sys.executable).parent / "labnotes"
-    term = terminal(
-        f"{command} -c {root / '.labnotes.toml'} experiments exp", rows=30, cols=120
-    )
-    try:
-        expect(term.get_by_text(failed_id)).to_be_visible()
-        term.write("r")
-        for _ in range(100):
-            current = records(root)
-            new_ids = current.keys() - {failed_id}
-            if new_ids and current[next(iter(new_ids))].get("pid"):
-                break
-            time.sleep(0.05)
-        assert len(new_ids) == 1
-        assert daemon_socket(read_config(root / ".labnotes.toml"), "exp") is not None
-        term.kill()
-        for _ in range(100):
-            current = records(root)
-            restarted = current[next(iter(new_ids))]
-            if restarted.get("ended"):
-                break
-            time.sleep(0.05)
-        assert restarted["exit_code"] == 0
-    finally:
-        term.kill()
-
-
 def test_rejects_a_passed_or_held_run(
     tmp_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -214,42 +132,6 @@ def test_rejects_a_passed_or_held_run(
         with pytest.raises(AssertionError):
             run(root, "--run-id", failed_id)
         assert "held by another run" in capsys.readouterr().err
-    assert len(records(root)) == 2
-
-
-def test_browse_explains_when_selected_run_is_held(terminal, tmp_path: Path) -> None:
-    from curtaincall import expect
-
-    root = project(tmp_path, False)
-    run(root, "--", "--token", "original")
-    before = records(root)
-    [failed_id] = [
-        run_id for run_id, record in before.items() if record["exit_code"] == 1
-    ]
-    [passed_id] = [
-        run_id for run_id, record in before.items() if record["exit_code"] == 0
-    ]
-    lock_path = (
-        next((root / "exp/runs").rglob(f"{failed_id}/run.json")).parent / "run.lock"
-    )
-    command = Path(sys.executable).parent / "labnotes"
-    with lock_path.open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
-        term = terminal(
-            f"{command} -c {root / '.labnotes.toml'} experiments exp",
-            rows=30,
-            cols=120,
-        )
-        expect(term.get_by_text(failed_id)).to_be_visible()
-        rows = ["".join(row) for row in term.get_viewable_buffer()]
-        if next(i for i, row in enumerate(rows) if failed_id in row) > next(
-            i for i, row in enumerate(rows) if passed_id in row
-        ):
-            term.key_down()
-        term.write("r")
-        expect(term.get_by_text("held by another run")).to_be_visible()
-        term.key_ctrl_c()
-        term.wait()
     assert len(records(root)) == 2
 
 

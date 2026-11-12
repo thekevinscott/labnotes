@@ -1,6 +1,6 @@
 # TUI
 
-`labnotes experiments NAME run` requires stdout and stderr to be terminals and opens the TUI. The listing forms open a read-only [browser](#browsing) the same way.
+`labnotes experiments NAME run` requires stdout and stderr to be terminals and opens the TUI.
 
 Each table numbers its rows from 1 down the left edge. The numbers follow the rows shown, so a filter renumbers them.
 
@@ -63,19 +63,3 @@ To stop one run, use `x` on its row.
 The daemon owns the runs. Quitting the TUI can stop or leave them running.
 
 Closing the terminal leaves the runs going.
-
-## Browsing
-
-`labnotes experiments`, `labnotes experiments NAME` and `labnotes experiments NAME runs` open the browser when `--format` is unset and stdout and stderr are both a terminal. Naming an experiment starts on its screen, with the list underneath.
-
-The experiments screen has the same columns as `--format table`. The experiment screen lists every run as its own row. Unlike the [frontend](../frontend), it doesn't group runs that older versions of labnotes nested in one invocation folder; their id shows that folder. Both screens update live and keep the cursor. An experiment removed while open empties its screen with a note in the header. A [runs view](views) adds columns to the experiment screen, and a line under the table reports when it fails or answers slowly.
-
-| Key | Action |
-| --- | --- |
-| `j` / `k` | Move the cursor down / up. |
-| `g` / `G` | Jump to the first / last row. |
-| Enter | Open the experiment. On an experiment, open a run's output. |
-| Escape | Back. |
-| Ctrl-C | Quit. |
-
-A run's output follows its `stdout.log` and `stderr.log` like the run view's, with the run id in the header.

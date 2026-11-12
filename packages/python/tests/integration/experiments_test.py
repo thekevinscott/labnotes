@@ -1,4 +1,5 @@
 import json
+import tomllib
 from typing import Any
 from pathlib import Path
 
@@ -54,30 +55,6 @@ def project(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_lists_experiments_from_their_files_runs_and_configs(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    rows = labnotes(project, ["experiments"], capsys)
-
-    assert [(r["name"], r["display_name"], r["files"], r["runs"]) for r in rows] == [
-        ("alpha", "Alpha study", 1, 1),
-        ("beta", "beta", 1, 0),
-        ("gamma", "gamma", 0, 1),
-    ]
-
-
-def test_shows_one_experiment_with_its_config(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    [row] = labnotes(project, ["experiments", "alpha"], capsys)
-
-    assert json.loads(row["config"]) == {
-        "name": "Alpha study",
-        "params": {"m": ["a", "b"]},
-    }
-    assert row["last_run"] == "2026-10-17T00:00:00Z"
-
-
 def test_lists_an_experiments_runs(
     project: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
@@ -108,8 +85,6 @@ def test_creates_a_new_experiment(
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(project / ".labnotes.toml"), "experiments", "new", "delta"])
     assert exit_info.value.code == 0
-    capsys.readouterr()
 
-    [row] = labnotes(project, ["experiments", "delta"], capsys)
-
-    assert json.loads(row["config"])["repeats"] == 1
+    text = (project / "notes/delta/experiment.toml").read_text(encoding="utf-8")
+    assert tomllib.loads(text)["repeats"] == 1

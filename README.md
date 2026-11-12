@@ -55,23 +55,9 @@ Change the paths to match how your files are organized.
 
 ## CLI
 
-All commands take a `--format` flag, with `table` (default) and `json`.
+`runs` takes a `--format` flag, with `table` (default) and `json`.
 
-View experiments with:
-
-```bash
-uvx labnotes experiments
-```
-
-Which returns name, last run, created, files (num), runs (num).
-
-View a particular experiment with:
-
-```bash
-uvx labnotes experiments foo
-```
-
-Which shows metadata about the experiment along with the above fields. You can see runs with:
+You can see an experiment's runs with:
 
 ```bash
 uvx labnotes experiments foo runs

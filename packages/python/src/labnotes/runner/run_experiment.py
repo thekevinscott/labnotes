@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import signal
+import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
@@ -25,6 +26,7 @@ from labnotes.runner.hook_folder import hook_folder
 from labnotes.runner.in_subset import in_subset
 from labnotes.runner.invocation_hook import invocation_hook
 from labnotes.runner.invocation_meta import invocation_meta
+from labnotes.runner.is_retryable import is_retryable
 from labnotes.runner.new_stamped_run_id import new_stamped_run_id
 from labnotes.runner.param_grid import param_grid
 from labnotes.runner.placeholders import PLACEHOLDERS
@@ -272,10 +274,10 @@ async def run_experiment(
         emit({"event": "retried", "run": run, "retry": again, "params": ended[run]})
         fill()
 
-    def retry_later(run: str) -> None:
+    def retry_later(run: str, code: int) -> None:
         tried = attempts.get(run, earlier.get(run, 0))
         if tried not in range(experiment.retries):
-            emit({"event": "gave up", "run": run, "retries": tried})
+            emit({"event": "gave up", "run": run, "retries": tried, "exit_code": code})
             return
         seconds = experiment.retry_wait * 2 ** (tried - earlier.get(run, 0))
 
@@ -291,6 +293,7 @@ async def run_experiment(
                 "attempt": tried + 1,
                 "retries": experiment.retries,
                 "seconds": seconds,
+                "exit_code": code,
             }
         )
 
@@ -346,6 +349,8 @@ async def run_experiment(
         dirs = dict.fromkeys(PLACEHOLDERS, str(folder.resolve()))
         running[run] = set()
         trees[run] = set()
+        environment = fill_experiment_env(experiment.env, inherited, dirs)
+        began = time.monotonic()
         result = await execute_run(
             command_root,
             folder,
@@ -365,11 +370,7 @@ async def run_experiment(
             args=args or (),
             state_file=state_file,
             memory_interval=experiment.memory_interval,
-            environment=fill_experiment_env(
-                experiment.env,
-                inherited,
-                dirs,
-            ),
+            environment=environment,
             git_info=(
                 {"commit": snapshot.sha, "dirty": bool(snapshot.diff)}
                 if snapshot is not None and snapshot.sha is not None
@@ -383,17 +384,72 @@ async def run_experiment(
             continues=experiment.continues,
             command_line=command_line,
         )
-        del running[run], trees[run]
+        duration = time.monotonic() - began
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
-        match result["exit_code"]:
-            case retries.RETRY_EXIT_CODE if not (
-                stopping.is_set() or finishing_up or run in stopped
-            ):
-                retry_later(run)
+        code = result["exit_code"]
+
+        def halted() -> bool:
+            return stopping.is_set() or finishing_up or run in stopped
+
+        if (
+            isinstance(code, int)
+            and code != 0
+            and not halted()
+            and await should_retry(run, folder, result, code, duration, environment)
+            and not halted()
+        ):
+            retry_later(run, code)
+        del running[run], trees[run]
         if run not in waiting:
             release(run)
+
+    async def should_retry(
+        run: str,
+        folder: Path,
+        result: dict[str, object],
+        code: int,
+        duration: float,
+        environment: dict[str, str],
+    ) -> bool:
+        if experiment.retryable is None:
+            match code:
+                case retries.RETRY_EXIT_CODE:
+                    return True
+            return False
+        logs = {
+            "started": result["created"],
+            "stdout": "stdout.log",
+            "stderr": "stderr.log",
+        }
+        if isinstance(invocations := result.get("invocations"), list):
+            logs = invocations[-1]
+        attempt = {
+            "experiment": name,
+            "run": run,
+            "params": result["params"],
+            "command": result["command"],
+            "attempt": attempts.get(run, earlier.get(run, 0)) + 1,
+            "max_retries": experiment.retries,
+            "created_at": result["created"],
+            "started_at": logs["started"],
+            "finished_at": result["ended"],
+            "duration_s": duration,
+            "exit_code": code,
+            "run_folder": str(folder.resolve()),
+            "stdout": str(folder.resolve() / str(logs["stdout"])),
+            "stderr": str(folder.resolve() / str(logs["stderr"])),
+        }
+        cwd = command_root / config.experiments.replace("{experiment}", name)
+        return await is_retryable(
+            experiment.retryable,
+            cwd,
+            attempt,
+            folder / "retryable.log",
+            environment,
+            running[run],
+        )
 
     async def run_hook(hook: str, command: str, announce: str) -> None:
         folder = hook_folder(config, name, hook, named)

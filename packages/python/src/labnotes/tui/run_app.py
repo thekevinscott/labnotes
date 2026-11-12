@@ -109,6 +109,7 @@ class RunLiveView(Widget):
         self.failed: set[str] = set()
         self.retried: set[str] = set()
         self.waiting: dict[str, float] = {}
+        self.exit_codes: dict[str, object] = {}
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
         self.sampling = False
@@ -177,6 +178,7 @@ class RunLiveView(Widget):
                 for column, cell in shown.items():
                     self.set_cell(run, column, cell)
             case "ended":
+                self.exit_codes[run] = event["exit_code"]
                 outcome = PASSED
                 style = ""
                 if event["error"] or event["exit_code"]:
@@ -200,17 +202,17 @@ class RunLiveView(Widget):
                 self.tick()
                 self.show(describe_event(event))
             case "gave up":
-                gave_up = f"{FAILED} gave up (exit {RETRY_EXIT_CODE})"
+                gave_up = f"{FAILED} gave up (exit {self.exit_code(run)})"
                 self.set_cell(run, "status", Text(gave_up, style="red"))
                 self.show(describe_event(event))
             case "retry cancelled":
                 del self.waiting[run]
-                outcome = f"{FAILED} exited {RETRY_EXIT_CODE}"
+                outcome = f"{FAILED} exited {self.exit_code(run)}"
                 self.set_cell(run, "status", Text(outcome, style="red"))
                 self.show(describe_event(event))
             case "retried":
                 if self.waiting.pop(run, None) is not None:
-                    outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retried"
+                    outcome = f"{FAILED} exited {self.exit_code(run)}, retried"
                     self.set_cell(run, "status", Text(outcome, style="red"))
                 again = str(event["retry"])
                 if again == run:
@@ -379,13 +381,16 @@ class RunLiveView(Widget):
             f"{self.concurrency} at a time", None if at is None else float(str(at))
         )
 
+    def exit_code(self, run: str) -> object:
+        return self.exit_codes.get(run, RETRY_EXIT_CODE)
+
     def tick(self) -> None:
         now = time.monotonic()
         for run, began in self.started.items():
             self.set_cell(run, "time", format_elapsed(now - began))
         for run, due in self.waiting.items():
             wait = format_elapsed(max(0, due - now))
-            outcome = f"{FAILED} exited {RETRY_EXIT_CODE}, retry in {wait}"
+            outcome = f"{FAILED} exited {self.exit_code(run)}, retry in {wait}"
             self.set_cell(run, "status", Text(outcome, style="yellow"))
         if self.started:
             self.measure()

@@ -24,6 +24,7 @@ SETTINGS = {
     "concurrency",
     "retries",
     "retry_wait",
+    "retryable",
     "meta",
     "memory_interval",
     "views",
@@ -44,6 +45,7 @@ def read_experiment_config(
     retries: int,
     defaults: dict[str, object] | None = None,
     retry_wait: float = RETRY_SECONDS,
+    retryable: str | None = None,
 ) -> ExperimentConfig:
     try:
         layer = tomllib.loads(source)
@@ -86,6 +88,11 @@ def read_experiment_config(
     retry_wait = values.get("retry_wait", retry_wait)
     if not is_non_negative_number(retry_wait):
         raise ValueError(f"{path}: retry_wait must be 0 or more seconds")
+    retryable = values.get("retryable", retryable)
+    if retryable is not None and (
+        not isinstance(retryable, str) or not retryable.strip()
+    ):
+        raise ValueError(f"{path}: retryable must be a command")
     meta = values.get("meta")
     if meta is not None and (not isinstance(meta, str) or not meta.strip()):
         raise ValueError(f"{path}: meta must be a string")
@@ -147,4 +154,5 @@ def read_experiment_config(
         values.get("teardown"),
         env,
         continues,
+        retryable,
     )

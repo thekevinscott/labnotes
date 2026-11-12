@@ -42,6 +42,10 @@ def param_args() -> Iterator[mock.MagicMock]:
             "r1 gave up (exit 75) after 2 retries.",
         ),
         (
+            {"event": "gave up", "run": "r1", "retries": 1, "exit_code": 1},
+            "r1 gave up (exit 1) after 1 retries.",
+        ),
+        (
             {"event": "capped", "runs": ["r1"], "retries": 3},
             "1 cell gave up after 3 retries.",
         ),

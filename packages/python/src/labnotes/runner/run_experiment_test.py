@@ -37,6 +37,7 @@ def experiment(
         env={},
         continues=continues,
         replace_capped=replace_capped,
+        retryable=None,
     )
     config.name = None
     return config
@@ -150,6 +151,7 @@ def run(
     continues: bool = False,
     run_id: str | None = None,
     replace_capped: bool = False,
+    retryable: str | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(
         root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
@@ -158,6 +160,7 @@ def run(
     configured = experiment(retries, continues, replace_capped)
     configured.env = env or {}
     configured.retry_wait = retry_seconds
+    configured.retryable = retryable
 
     def listening(controls: object) -> None:
         hear(controls)
@@ -1472,6 +1475,7 @@ def test_retries_a_tempfail_with_the_same_params(
         "attempt": 1,
         "retries": 2,
         "seconds": 0.01,
+        "exit_code": 75,
     }
     assert retrying in reported(report)
     assert {"event": "retried", "run": "r1", "retry": "r2", "params": A} in reported(
@@ -1497,7 +1501,7 @@ def test_doubles_the_wait_then_gives_up(
         ("r2", 2, 0.02),
     ]
     assert reported(report)[-2:] == [
-        {"event": "gave up", "run": "r3", "retries": 2},
+        {"event": "gave up", "run": "r3", "retries": 2, "exit_code": 75},
         {"event": "idle"},
     ]
 
@@ -1512,7 +1516,9 @@ def test_gives_up_at_once_with_no_retries(
     run(tmp_path, report, retries=0)
 
     assert started_runs(report) == ["r1"]
-    assert {"event": "gave up", "run": "r1", "retries": 0} in reported(report)
+    assert {"event": "gave up", "run": "r1", "retries": 0, "exit_code": 75} in reported(
+        report
+    )
 
 
 @pytest.mark.parametrize("code", [1, 74, 76, -15, 0])
@@ -1526,6 +1532,167 @@ def test_never_retries_other_exits(
     run(tmp_path, report)
 
     assert events(report) == ["planned", "started", "ended", "idle"]
+
+
+def attempts(*codes: int, continues: bool = False) -> object:
+    exits = iter(codes)
+
+    async def execute(*args: object, **_: object) -> dict[str, object]:
+        result: dict[str, object] = {
+            "exit_code": next(exits),
+            "error": None,
+            "params": A,
+            "command": "run",
+            "created": "2026-01-01T00:00:00Z",
+            "ended": "2026-01-01T00:00:05Z",
+        }
+        if continues:
+            result["invocations"] = [
+                {"started": "s0", "stdout": "old.txt", "stderr": "old-err.txt"},
+                {"started": "s0", "stdout": "mid.txt", "stderr": "mid-err.txt"},
+                {"started": "s1", "stdout": "out.txt", "stderr": "err.txt"},
+            ]
+        return result
+
+    return execute
+
+
+def test_asks_the_retryable_command_about_each_failure(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(1, 75)
+    report = mock.Mock()
+
+    with (
+        mock.patch(
+            "labnotes.runner.run_experiment.is_retryable", side_effect=[True, False]
+        ) as is_retryable,
+        mock.patch(
+            "labnotes.runner.run_experiment.time",
+            mock.Mock(monotonic=mock.Mock(side_effect=[4.0, 13.0, 20.0, 21.0])),
+        ),
+    ):
+        run(tmp_path, report, retries=3, retryable="check")
+
+    assert started_runs(report) == ["r1", "r2"]
+    assert [e["exit_code"] for e in reported(report) if e["event"] == "retrying"] == [1]
+    assert [e for e in reported(report) if e["event"] == "gave up"] == []
+    first, second = (c.args for c in is_retryable.await_args_list)
+    folder = (tmp_path / "exp" / "r1").resolve()
+    assert first[0] == "check"
+    assert first[1] == tmp_path / "exp"
+    assert first[2] == {
+        "experiment": "exp",
+        "run": "r1",
+        "params": A,
+        "command": "run",
+        "attempt": 1,
+        "max_retries": 3,
+        "created_at": "2026-01-01T00:00:00Z",
+        "started_at": "2026-01-01T00:00:00Z",
+        "finished_at": "2026-01-01T00:00:05Z",
+        "duration_s": 9.0,
+        "exit_code": 1,
+        "run_folder": str(folder),
+        "stdout": str(folder / "stdout.log"),
+        "stderr": str(folder / "stderr.log"),
+    }
+    assert first[3] == tmp_path / "exp" / "r1" / "retryable.log"
+    assert (second[2]["run"], second[2]["attempt"], second[2]["exit_code"]) == (
+        "r2",
+        2,
+        75,
+    )
+
+
+def test_points_the_retryable_command_at_a_continued_runs_latest_logs(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(1, continues=True)
+    report = mock.Mock()
+
+    with mock.patch(
+        "labnotes.runner.run_experiment.is_retryable", return_value=False
+    ) as is_retryable:
+        run(tmp_path, report, retryable="check")
+
+    attempt = is_retryable.await_args_list[0].args[2]
+    folder = (tmp_path / "exp" / "r1").resolve()
+    assert (attempt["started_at"], attempt["stdout"], attempt["stderr"]) == (
+        "s1",
+        str(folder / "out.txt"),
+        str(folder / "err.txt"),
+    )
+
+
+@pytest.mark.parametrize("halt", ["finish_up", "interrupt"])
+def test_does_not_retry_when_halted_while_the_retryable_command_runs(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], halt: str
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(1)
+
+    async def approve(*args: object) -> bool:
+        getattr(listen.call_args.args[0], halt)()
+        return True
+
+    with mock.patch("labnotes.runner.run_experiment.is_retryable", side_effect=approve):
+        run(tmp_path, report, listen=listen, retryable="check")
+
+    assert started_runs(report) == ["r1"]
+    assert [e for e in reported(report) if e["event"] == "retrying"] == []
+
+
+def test_stopping_signals_a_running_retryable_command(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(1)
+    check = mock.Mock(pid=4242)
+
+    async def approve(*args: object) -> bool:
+        running = args[5]
+        running.add(check)  # type: ignore[attr-defined]
+        listen.call_args.args[0].interrupt()
+        return False
+
+    with mock.patch("labnotes.runner.run_experiment.is_retryable", side_effect=approve):
+        run(tmp_path, report, listen=listen, retryable="check")
+
+    collaborators["signal_tree"].assert_called_once_with(4242, SIGTERM, set())
+
+
+def test_asks_the_retryable_command_about_a_run_killed_by_a_signal(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(-9)
+    report = mock.Mock()
+
+    with mock.patch(
+        "labnotes.runner.run_experiment.is_retryable", return_value=False
+    ) as is_retryable:
+        run(tmp_path, report, retryable="check")
+
+    assert is_retryable.await_args_list[0].args[2]["exit_code"] == -9
+
+
+@pytest.mark.parametrize("code", [0, None])
+def test_skips_the_retryable_command_without_a_failed_exit(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], code: int | None
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(code)  # type: ignore[arg-type]
+    report = mock.Mock()
+
+    with mock.patch("labnotes.runner.run_experiment.is_retryable") as is_retryable:
+        run(tmp_path, report, retryable="check")
+
+    is_retryable.assert_not_called()
 
 
 def test_never_retries_a_run_that_failed_to_start(
@@ -2088,7 +2255,12 @@ def test_a_resumed_run_spends_its_earlier_tries_from_its_retries(
     assert started_runs(report) == ["old", "old"]
     retrying = [e for e in reported(report) if e["event"] == "retrying"]
     assert [(e["attempt"], e["seconds"]) for e in retrying] == [(3, 0.01)]
-    assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+    assert {
+        "event": "gave up",
+        "run": "old",
+        "retries": 3,
+        "exit_code": 75,
+    } in reported(report)
 
 
 def test_a_resumed_run_with_no_tries_left_gives_up_on_its_first_retry_exit(
@@ -2105,7 +2277,12 @@ def test_a_resumed_run_with_no_tries_left_gives_up_on_its_first_retry_exit(
 
     assert started_runs(report) == ["old"]
     assert [e for e in reported(report) if e["event"] == "retrying"] == []
-    assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+    assert {
+        "event": "gave up",
+        "run": "old",
+        "retries": 3,
+        "exit_code": 75,
+    } in reported(report)
 
 
 def test_a_resumed_run_doubles_its_wait_from_this_session_only(

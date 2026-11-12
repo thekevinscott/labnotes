@@ -55,6 +55,11 @@ def read_config(path: Path) -> LabnotesConfig:
     retry_wait = experiments.get("retry_wait", RETRY_SECONDS)
     if not is_non_negative_number(retry_wait):
         raise ValueError(f"{path}: [experiments] retry_wait must be 0 or more seconds")
+    retryable = experiments.get("retryable")
+    if retryable is not None and (
+        not isinstance(retryable, str) or not retryable.strip()
+    ):
+        raise ValueError(f"{path}: [experiments] retryable must be a command")
     return LabnotesConfig(
         path.resolve(),
         root,
@@ -62,6 +67,7 @@ def read_config(path: Path) -> LabnotesConfig:
         concurrency=concurrency,
         retries=retries,
         retry_wait=retry_wait,
+        retryable=retryable,
         experiment=root.name if single else None,
         defaults=defaults,
     )

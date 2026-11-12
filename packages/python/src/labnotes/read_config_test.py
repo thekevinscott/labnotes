@@ -139,6 +139,31 @@ def test_rejects_a_bad_retry_wait(
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "command"),
+    [
+        ("", None),
+        ('[experiments]\nretryable = "uv run retryable.py"\n', "uv run retryable.py"),
+    ],
+)
+def test_reads_the_project_retryable_command(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, command: str | None
+) -> None:
+    assert read_config(write(tmp_path, text)).retryable == command
+
+
+@pytest.mark.parametrize("value", ["1", '""', '" "', '["a"]'])
+def test_rejects_a_bad_retryable_command(
+    tmp_path: Path, read_path: mock.MagicMock, value: str
+) -> None:
+    path = write(tmp_path, f"[experiments]\nretryable = {value}\n")
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == f"{path}: [experiments] retryable must be a command"
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 

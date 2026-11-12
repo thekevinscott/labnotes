@@ -40,6 +40,7 @@ async def prepare_experiment(
         config.retries,
         config.defaults,
         config.retry_wait,
+        config.retryable,
     )
     if setup is not None:
         experiment = dataclasses.replace(experiment, setup=setup)

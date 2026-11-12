@@ -128,6 +128,49 @@ def test_layers_retry_wait_over_the_defaults(source: str, retry_wait: float) -> 
     assert config.retry_wait == retry_wait
 
 
+@pytest.mark.parametrize(
+    ("source", "defaults", "command"),
+    [
+        ("", {}, "project"),
+        ('retryable = "mine"\n', {}, "mine"),
+        ("", {"retryable": "defaults"}, "defaults"),
+        ('retryable = "mine"\n', {"retryable": "defaults"}, "mine"),
+    ],
+)
+def test_layers_retryable_over_the_project(
+    source: str, defaults: dict[str, object], command: str
+) -> None:
+    config = read_experiment_config(
+        PATH,
+        source,
+        1,
+        2,
+        {"command": "run", "continues": False, **defaults},
+        retryable="project",
+    )
+
+    assert config.retryable == command
+
+
+def test_has_no_retryable_command_without_one_configured() -> None:
+    config = read_experiment_config(PATH, 'command = "run"\ncontinues = false\n', 1, 2)
+
+    assert config.retryable is None
+
+
+@pytest.mark.parametrize("value", ["1", '""', '" "', '["a"]'])
+def test_rejects_a_bad_retryable_command(value: str) -> None:
+    with pytest.raises(ValueError) as error:
+        read_experiment_config(
+            PATH,
+            f"command = 'run'\ncontinues = false\nretryable = {value}\n",
+            1,
+            2,
+        )
+
+    assert str(error.value) == f"{PATH}: retryable must be a command"
+
+
 @pytest.mark.parametrize("retries", [0, 3])
 def test_reads_retries_over_the_project_retries(retries: int) -> None:
     config = read_experiment_config(

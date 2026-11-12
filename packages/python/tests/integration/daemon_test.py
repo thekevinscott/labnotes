@@ -115,9 +115,7 @@ def test_concurrent_starters_reuse_one_daemon(
                 process.wait(timeout=15)
 
 
-def test_daemon_lists_running_cell_and_stop_command_stops_it(
-    tmp_path: Path, runtime: Path
-) -> None:
+def test_stop_command_stops_a_running_cell(tmp_path: Path, runtime: Path) -> None:
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
@@ -144,20 +142,6 @@ def test_daemon_lists_running_cell_and_stop_command_stops_it(
                 break
             time.sleep(0.05)
         assert records, "cell did not start"
-        stray = root / "exp/runs/stale/run.json"
-        stray.parent.mkdir()
-        stray.write_text(json.dumps({"created": "2026-01-01T00:00:00Z", "ended": None}))
-        listed = subprocess.run(
-            command(root, "experiments", "--format", "json"),
-            cwd=root,
-            env=env,
-            capture_output=True,
-            text=True,
-            check=True,
-        )
-        [row] = json.loads(listed.stdout)
-        assert row["daemon"] is True
-        assert row["running_cells"] == 1
         stopped = subprocess.run(
             command(root, "experiments", "exp", "stop"),
             cwd=root,

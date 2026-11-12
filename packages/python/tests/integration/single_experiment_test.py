@@ -39,16 +39,6 @@ def labnotes(
     return rows
 
 
-def test_lists_the_folder_as_the_one_experiment(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    rows = labnotes(project, ["experiments"], capsys)
-
-    assert [(r["name"], r["display_name"], r["files"], r["runs"]) for r in rows] == [
-        ("surprisals", "Surprisals", 1, 1)
-    ]
-
-
 def test_lists_its_runs(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
     [run] = labnotes(project, ["experiments", "surprisals", "runs"], capsys)
 

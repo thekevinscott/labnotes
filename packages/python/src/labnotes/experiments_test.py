@@ -30,28 +30,34 @@ def run(argv: list[str]) -> int | str | None:
     return exit_info.value.code
 
 
-@pytest.mark.parametrize(
-    ("argv", "name", "action"),
-    [([], None, None), (["a"], "a", None), (["a", "runs"], "a", "runs")],
-)
-def test_prints_the_rows_as_a_table(
-    argv: list[str],
-    name: str | None,
-    action: str | None,
+def test_prints_the_runs_as_a_table(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(argv) == 0
+    assert run(["a", "runs"]) == 0
 
     collaborators["experiment_rows"].assert_awaited_once_with(
-        collaborators["load_config"].return_value, name, action
+        collaborators["load_config"].return_value, "a", "runs"
     )
     collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")
 
 
 def test_prints_json(collaborators: dict[str, mock.MagicMock]) -> None:
-    assert run(["--format", "json"]) == 0
+    assert run(["a", "runs", "--format", "json"]) == 0
 
     collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "json")
+
+
+@pytest.mark.parametrize("argv", [[], ["a"], ["a", "--format", "json"]])
+def test_a_bare_command_names_the_actions(
+    argv: list[str],
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    assert run(argv) == 2
+
+    assert "action: runs, run, attach or stop." in capsys.readouterr().err
+    collaborators["experiment_rows"].assert_not_called()
+    collaborators["print_rows"].assert_not_called()
 
 
 def test_needs_a_config(
@@ -133,7 +139,7 @@ def test_reports_an_unknown_experiment(
 ) -> None:
     collaborators["experiment_rows"].return_value = None
 
-    assert run(["zz"]) == 1
+    assert run(["zz", "runs"]) == 1
 
     assert "No experiment named zz." in capsys.readouterr().err
     collaborators["print_rows"].assert_not_called()
@@ -178,7 +184,7 @@ def test_needs_run_for_params(
         (["a", "runs", "--run-id", "r1"], "--run-id needs run"),
         (["a", "runs", "--retries", "2"], "--retries needs run"),
         (["a", "runs", "--retry-wait", "1"], "--retry-wait needs run"),
-        (["a", "--replace-capped"], "--replace-capped needs run"),
+        (["a", "runs", "--replace-capped"], "--replace-capped needs run"),
         (
             ["a", "run", "--run-id", "r1", "--model=small"],
             "--run-id uses the run's recorded params",
@@ -199,85 +205,12 @@ def test_run_id_rejects_conflicting_inputs(
     assert expected in capsys.readouterr().err
 
 
-def test_help_says_format_prints_and_exits(
+def test_help_says_format_applies_to_runs(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
     assert run(["--help"]) == 0
 
-    assert "Print rows and exit." in capsys.readouterr().out
-
-
-@pytest.fixture
-def browse() -> Iterator[dict[str, mock.MagicMock]]:
-    with (
-        mock.patch("labnotes.experiments.browse_tui") as browse_tui,
-        mock.patch("labnotes.experiments.sys") as sys,
-    ):
-        sys.stdout.isatty.return_value = True
-        sys.stderr.isatty.return_value = True
-        yield {"browse_tui": browse_tui, "sys": sys}
-
-
-@pytest.mark.parametrize(
-    ("argv", "name"), [([], None), (["a"], "a"), (["a", "runs"], "a")]
-)
-def test_browses_in_a_terminal_when_format_is_unset(
-    argv: list[str],
-    name: str | None,
-    collaborators: dict[str, mock.MagicMock],
-    browse: dict[str, mock.MagicMock],
-) -> None:
-    assert run(argv) == 0
-
-    browse["browse_tui"].assert_called_once_with(
-        collaborators["load_config"].return_value, name
-    )
-    collaborators["experiment_rows"].assert_not_awaited()
-    collaborators["print_rows"].assert_not_called()
-
-
-@pytest.mark.parametrize("output_format", ["table", "json"])
-@pytest.mark.parametrize("argv", [[], ["a"], ["a", "runs"]])
-def test_prints_in_a_terminal_when_format_is_given(
-    argv: list[str],
-    output_format: str,
-    collaborators: dict[str, mock.MagicMock],
-    browse: dict[str, mock.MagicMock],
-) -> None:
-    assert run([*argv, "--format", output_format]) == 0
-
-    browse["browse_tui"].assert_not_called()
-    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], output_format)
-
-
-@pytest.mark.parametrize(("stdout", "stderr"), [(False, True), (True, False)])
-@pytest.mark.parametrize("argv", [[], ["a"], ["a", "runs"]])
-def test_prints_a_table_when_either_stream_is_not_a_terminal(
-    argv: list[str],
-    stdout: bool,
-    stderr: bool,
-    collaborators: dict[str, mock.MagicMock],
-    browse: dict[str, mock.MagicMock],
-) -> None:
-    browse["sys"].stdout.isatty.return_value = stdout
-    browse["sys"].stderr.isatty.return_value = stderr
-
-    assert run(argv) == 0
-
-    browse["browse_tui"].assert_not_called()
-    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")
-
-
-def test_reports_an_experiment_the_browser_cannot_find(
-    capsys: pytest.CaptureFixture[str],
-    collaborators: dict[str, mock.MagicMock],
-    browse: dict[str, mock.MagicMock],
-) -> None:
-    browse["browse_tui"].side_effect = ValueError("No experiment named zz.")
-
-    assert run(["zz"]) == 1
-
-    assert "No experiment named zz." in capsys.readouterr().err
+    assert "With runs: print rows as a table or as JSON." in capsys.readouterr().out
 
 
 @pytest.fixture

@@ -88,11 +88,12 @@ def test_runs_write_no_journals_and_leave_run_state_as_it_was(
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
-    (root / "exp/experiment.toml").write_text(
-        f'continues = false\ncommand = "{sys.executable} -c pass"\nrepeats = 2\n'
-    )
     seen = []
-    for _ in range(2):
+    for repeats in (2, 4):
+        (root / "exp/experiment.toml").write_text(
+            f'continues = false\ncommand = "{sys.executable} -c pass"\n'
+            f"repeats = {repeats}\n"
+        )
         term = terminal(
             " ".join(labnotes(root, "experiments", "exp", "run")),
             rows=30,
@@ -137,23 +138,22 @@ def test_daemon_names_each_batch_with_its_own_id(tmp_path: Path, runtime: Path) 
             observer.settimeout(30)
             observer.connect(str(path))
             observer.sendall(b'{"command":"attach"}\n')
-            stream = observer.makefile("r")
-            assert json.loads(stream.readline()) == {"ok": True, "batches": []}
+            with observer.makefile("r") as stream:
+                assert json.loads(stream.readline()) == {"ok": True, "batches": []}
 
-            started = request(path, {"command": "start", "options": {}})
-            assert started["ok"] is True, started
-            assert "journal" not in started
-            batch = started["batch"]
-            assert isinstance(batch, str) and batch
-            assert "/" not in batch and not batch.endswith(".jsonl")
+                started = request(path, {"command": "start", "options": {}})
+                assert started["ok"] is True, started
+                assert "journal" not in started
+                batch = started["batch"]
+                assert isinstance(batch, str) and batch
+                assert "/" not in batch and not batch.endswith(".jsonl")
 
-            listed = request(path, {"command": "batches"})
-            assert listed == {"ok": True, "batches": [batch]}
+                listed = request(path, {"command": "batches"})
+                assert listed == {"ok": True, "batches": [batch]}
 
-            first = json.loads(stream.readline())
-            assert first == {"batch": batch, "event": first["event"]}
-            assert first["event"]["event"] == "planned"
-            stream.close()
+                first = json.loads(stream.readline())
+                assert first == {"batch": batch, "event": first["event"]}
+                assert first["event"]["event"] == "planned"
 
         assert [p for p in run_state().rglob("*.jsonl")] == []
     finally:

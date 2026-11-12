@@ -54,11 +54,12 @@ def test_uvx_runs_write_no_journals_and_leave_run_state_as_it_was(
     root = tmp_path / "project"
     (root / "exp").mkdir(parents=True)
     (root / ".labnotes.toml").write_text("")
-    (root / "exp/experiment.toml").write_text(
-        f'continues = false\ncommand = "{sys.executable} -c pass"\nrepeats = 2\n'
-    )
     seen = []
-    for _ in range(2):
+    for repeats in (2, 4):
+        (root / "exp/experiment.toml").write_text(
+            f'continues = false\ncommand = "{sys.executable} -c pass"\n'
+            f"repeats = {repeats}\n"
+        )
         term = tui(
             root, "experiments", "exp", "run", env={"XDG_RUNTIME_DIR": str(runtime)}
         )

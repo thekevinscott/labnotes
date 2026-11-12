@@ -80,9 +80,7 @@ def test_uvx_frozen_tui_keeps_scheduling(tmp_path: Path, tui: Tui) -> None:
     expect(term.get_by_text("Filter params")).to_be_visible()
     term.key_escape()
     expect(term.get_by_text("Filter params")).not_to_be_visible()
-    # Ctrl-C after SIGSTOP/SIGCONT sometimes leaves the TUI open, so kill it.
-    tui.check(term)
-    tui.signal(term, signal.SIGKILL)
+    tui.quit(term)
 
 
 def test_uvx_second_tty_reuses_daemon_then_idle_daemon_exits(

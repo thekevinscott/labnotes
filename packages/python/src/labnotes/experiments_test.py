@@ -156,13 +156,17 @@ def test_reports_a_query_that_fails(
     collaborators["print_rows"].assert_not_called()
 
 
+@pytest.mark.parametrize("action", ["jump", "zap"])
 def test_rejects_an_unknown_action(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
+    action: str,
+    capsys: pytest.CaptureFixture[str],
+    collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    assert run(["a", "jump"]) == 2
+    assert run(["a", action]) == 2
 
     assert (
-        "Unknown action jump. Use runs, run, attach or stop." in capsys.readouterr().err
+        f"Unknown action {action}. Use runs, run, attach or stop."
+        in capsys.readouterr().err
     )
     collaborators["experiment_rows"].assert_not_called()
 

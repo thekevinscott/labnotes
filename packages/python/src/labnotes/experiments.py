@@ -273,15 +273,18 @@ def experiments(
         raise click.UsageError("--replace-capped needs run.")
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
-    if action is None:
-        raise click.UsageError(
-            "Give an experiment and an action: runs, run, attach or stop."
-            " Or new [NAME]."
-        )
-    if action != "runs":
-        raise click.UsageError(
-            f"Unknown action {action}. Use runs, run, attach or stop."
-        )
+    match action:
+        case None:
+            raise click.UsageError(
+                "Give an experiment and an action: runs, run, attach or stop."
+                " Or new [NAME]."
+            )
+        case "runs":
+            pass
+        case _:
+            raise click.UsageError(
+                f"Unknown action {action}. Use runs, run, attach or stop."
+            )
     try:
         rows = asyncio.run(experiment_rows(config, name, action))
     except ValueError as error:

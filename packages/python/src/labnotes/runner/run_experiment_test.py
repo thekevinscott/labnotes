@@ -1,6 +1,5 @@
 import asyncio
 import os
-import signal
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
 from typing import Any
@@ -1645,7 +1644,7 @@ def test_stopping_signals_a_running_retryable_command(
     with mock.patch("labnotes.runner.run_experiment.is_retryable", side_effect=approve):
         run(tmp_path, report, listen=listen, retryable="check")
 
-    collaborators["signal_tree"].assert_called_once_with(4242, signal.SIGTERM, set())
+    collaborators["signal_tree"].assert_called_once_with(4242, SIGTERM, set())
 
 
 @pytest.mark.parametrize("code", [0, None])

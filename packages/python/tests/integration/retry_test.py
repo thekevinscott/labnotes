@@ -241,3 +241,54 @@ def test_the_retry_wait_flag_overrides_the_config(tmp_path: Path) -> None:
 
     assert [run["exit_code"] for run in chain(root)] == [75, 0]
     assert 1 <= elapsed < 20
+
+
+@pytest.mark.parametrize(
+    ("project", "settings"),
+    [
+        ("", "retry_exit_codes = [1]\n"),
+        ("[experiments]\nretry_exit_codes = [1]\n", ""),
+        (
+            "[experiment]\nretry_exit_codes = [1]\n[experiments]\npath = '{experiment}'\n",
+            "",
+        ),
+    ],
+)
+def test_retries_an_exit_code_the_config_lists(
+    tmp_path: Path, project: str, settings: str
+) -> None:
+    root = make_project(tmp_path, "1", settings)
+    write(root / ".labnotes.toml", project)
+
+    run_now(root)
+
+    assert [run["exit_code"] for run in chain(root)] == [1, 0]
+
+
+def test_listing_exit_codes_replaces_the_default(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "75", "retry_exit_codes = [1]\n")
+
+    run_now(root)
+
+    [only] = runs(root)
+    assert only["exit_code"] == 75
+
+
+def test_the_retry_exit_code_flag_overrides_the_config(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "1 2", "retry_exit_codes = [3]\n")
+
+    flags = ["--retry-wait", "0", "--retry-exit-code", "1", "--retry-exit-code", "2"]
+    timed_run(root, *flags)
+
+    assert [run["exit_code"] for run in chain(root)] == [1, 2, 0]
+
+
+def test_gives_up_on_the_exit_code_it_retried(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    root = make_project(tmp_path, "1 1", "retries = 1\nretry_exit_codes = [1]\n")
+
+    assert labnotes(root, ["experiments", "exp", "run", "--retry-wait", "0"]) == 0
+
+    assert [run["exit_code"] for run in chain(root)] == [1, 1]
+    assert "gave up (exit 1)" in capsys.readouterr().out

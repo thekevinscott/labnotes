@@ -11,6 +11,7 @@ from textual.strip import Strip
 from labnotes.invocation_logs import invocation_logs
 from labnotes.line_index import LineIndex
 from labnotes.tui.banner import Banner
+from labnotes.tui.terminal_line import terminal_line
 
 BUFFER = 100
 
@@ -163,7 +164,7 @@ class StreamLog(ScrollView):
         if (strips := self.wrapped.get(line)) is not None:
             return strips
         width = self.view.width
-        text = Text.from_ansi(self.line(line), style=self.rich_style)
+        text = Text.from_ansi(terminal_line(self.line(line)), style=self.rich_style)
         selection = self.text_selection
         if selection is not None and (span := selection.get_span(line)) is not None:
             start, end = span

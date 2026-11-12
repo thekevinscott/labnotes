@@ -1,6 +1,4 @@
-import json
 import os
-import socket
 import sys
 import time
 from collections.abc import Iterator
@@ -8,6 +6,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import psutil
+import httpx2
 import pytest
 from curtaincall import expect
 
@@ -95,12 +94,12 @@ def test_uvx_attach_finds_the_live_batch_by_the_daemons_own_id(
         first = tui(root, "experiments", "exp", "run", env=env)
         expect(first.get_by_text("working")).to_be_visible(timeout=120)
         [path] = runtime.glob("labnotes/*.sock")
-        with socket.socket(socket.AF_UNIX) as client:
-            client.settimeout(30)
-            client.connect(str(path))
-            client.sendall(b'{"command":"batches"}\n')
-            with client.makefile("r") as replies:
-                reply = json.loads(replies.readline())
+        with httpx2.Client(
+            transport=httpx2.HTTPTransport(uds=str(path)),
+            base_url="http://labnotes",
+            timeout=30,
+        ) as client:
+            reply = client.get("/batches").json()
         assert reply["ok"] is True, reply
         [batch] = reply["batches"]
         assert "/" not in batch and not batch.endswith(".jsonl")

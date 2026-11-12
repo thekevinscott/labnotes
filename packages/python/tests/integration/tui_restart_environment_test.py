@@ -135,7 +135,7 @@ def daemon_from_another_shell(
     [path] = runtime.glob("labnotes/*.sock")
     attached = socket.socket(socket.AF_UNIX)
     attached.connect(str(path))
-    attached.sendall(b'{"command":"attach"}\n')
+    attached.sendall(b"GET /events HTTP/1.1\r\nhost: labnotes\r\n\r\n")
     return daemon, attached
 
 

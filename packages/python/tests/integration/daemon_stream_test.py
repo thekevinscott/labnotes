@@ -1,18 +1,17 @@
-import json
 import os
 import signal
-import socket
 import subprocess
 import sys
 import time
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
-from typing import IO
 
 import psutil
 import pytest
 from curtaincall import expect
+
+from conftest import DaemonEvents, daemon_request
 
 
 @pytest.fixture
@@ -80,38 +79,8 @@ def wait_for_socket(runtime: Path) -> Path:
     raise AssertionError("daemon socket did not appear")
 
 
-def request(path: Path, message: dict[str, object]) -> dict[str, object]:
-    with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(30)
-        client.connect(str(path))
-        client.sendall((json.dumps(message) + "\n").encode())
-        with client.makefile("r") as replies:
-            for line in replies:
-                reply = json.loads(line)
-                if "step" not in reply:
-                    return reply
-    raise AssertionError("daemon closed without a reply")
-
-
-class Attached:
-    """One attach connection, read line by line."""
-
-    def __init__(self, path: Path) -> None:
-        self.socket = socket.socket(socket.AF_UNIX)
-        self.socket.settimeout(10)
-        self.socket.connect(str(path))
-        self.socket.sendall(b'{"command":"attach"}\n')
-        self.lines: IO[str] = self.socket.makefile("r")
-        reply = json.loads(self.lines.readline())
-        assert reply["ok"] is True, reply
-
-    def next(self) -> dict[str, object]:
-        try:
-            line = self.lines.readline()
-        except TimeoutError:
-            raise AssertionError("daemon streamed nothing to the attached client")
-        assert line, "daemon closed the attach connection"
-        return json.loads(line)
+class Attached(DaemonEvents):
+    """One GET /events stream, read event by event."""
 
     def take(self, count: int) -> list[dict[str, object]]:
         messages = [self.next() for _ in range(count)]
@@ -131,10 +100,6 @@ class Attached:
             if message["batch"] == batch and event["event"] == name:
                 return seen
 
-    def close(self) -> None:
-        self.lines.close()
-        self.socket.close()
-
 
 def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) -> None:
     root, release = project(tmp_path, "[params]\nm = ['a', 'b', 'c']\n")
@@ -151,7 +116,7 @@ def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) 
     recorded: dict[str, list[object]] = {}
 
     def start(value: str) -> str:
-        reply = request(path, {"command": "start", "options": {"only": {"m": [value]}}})
+        reply = daemon_request(path, "POST", "/start", {"only": {"m": [value]}})
         assert reply["ok"] is True, reply
         batch = str(reply["batch"])
         assert observer is not None

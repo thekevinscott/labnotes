@@ -17,7 +17,20 @@ from labnotes.read_config import read_config
 from labnotes.tui.run_app import RunApp
 
 STREAM_LIMIT = 16 * 1024 * 1024
-ACCEPTED = b'{"ok":true,"batches":["b1"]}\n'
+STREAM_HEAD = (
+    b"HTTP/1.1 200 OK\r\n"
+    b"content-type: text/event-stream\r\n"
+    b"connection: close\r\n\r\n"
+)
+ACCEPTED = STREAM_HEAD + b'event: batches\ndata: {"batches": ["b1"]}\n\n'
+REJECTED = (
+    b"HTTP/1.1 409 Conflict\r\n"
+    b"content-type: application/json\r\n"
+    b"content-length: 29\r\n"
+    b"connection: close\r\n\r\n"
+    b'{"ok":false,"error":"busy"}\n\n'
+)
+REQUEST = b"GET /events HTTP/1.1\r\n"
 Daemon = Callable[..., Callable[[], list[bytes]]]
 
 
@@ -31,7 +44,7 @@ def config(tmp_path: Path) -> Iterator[LabnotesConfig]:
 
 @pytest.fixture
 def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
-    """Hold the daemon lock and answer one attach with fixed bytes."""
+    """Hold the daemon lock and answer one GET /events with fixed bytes."""
     path = socket_path(config, "exp")
     record = socket_record(config, "exp")
     record.parent.mkdir(parents=True, exist_ok=True)
@@ -56,7 +69,10 @@ def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
                 connection, _ = server.accept()
                 with connection:
                     connection.settimeout(10)
-                    received.append(connection.makefile("rb").readline())
+                    with connection.makefile("rb") as request:
+                        received.append(request.readline())
+                        while request.readline() not in (b"\r\n", b""):
+                            pass
                     connection.sendall(reply + b"".join(lines))
                     if until_closed and connection.recv(1) == b"":
                         lagging.wait(10)
@@ -86,11 +102,11 @@ def planned(run: str, size: int | None = None) -> bytes:
         "runs": [{"run": run, "params": {}}],
         "concurrency": 1,
     }
-    line = json.dumps({"batch": "b1", "event": {**event, "pad": ""}})
+    line = "data: " + json.dumps({"batch": "b1", "event": {**event, "pad": ""}})
     if size is not None:
         line = line.replace('"pad": ""', '"pad": "' + "x" * (size - len(line)) + '"')
         assert len(line) == size
-    return line.encode() + b"\n"
+    return line.encode() + b"\n\n"
 
 
 def attached(config: LabnotesConfig) -> RunApp:
@@ -107,17 +123,17 @@ def attached(config: LabnotesConfig) -> RunApp:
     return app
 
 
-def test_events_sent_with_the_attach_reply_are_not_lost(
+def test_events_sent_right_after_the_batches_event_are_not_lost(
     config: LabnotesConfig, daemon: Daemon
 ) -> None:
     served = daemon(planned("r1"), planned("r2"))
     app = attached(config)
-    assert served() == [b'{"command":"attach"}\n']
+    assert served() == [REQUEST]
     assert app.disconnected
     assert list(app.body.cells) == ["r1", "r2"]
 
 
-def test_stream_accepts_events_up_to_sixteen_mebibytes(
+def test_stream_accepts_event_lines_up_to_sixteen_mebibytes(
     config: LabnotesConfig, daemon: Daemon
 ) -> None:
     daemon(
@@ -142,13 +158,13 @@ def test_leaving_closes_the_attach_connection(
             assert app.attached is not None
 
     asyncio.run(drive())
-    assert served() == [b'{"command":"attach"}\n', b"closed"]
+    assert served() == [REQUEST, b"closed"]
 
 
 def test_a_rejected_attach_reports_the_error_and_closes(
     config: LabnotesConfig, daemon: Daemon
 ) -> None:
-    served = daemon(reply=b'{"ok":false,"error":"busy"}\n', until_closed=True)
+    served = daemon(reply=REJECTED, until_closed=True)
     app = attached(config)
     assert str(app.error) == "busy"
-    assert served() == [b'{"command":"attach"}\n', b"closed"]
+    assert served() == [REQUEST, b"closed"]

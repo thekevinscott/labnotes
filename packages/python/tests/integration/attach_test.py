@@ -1,7 +1,6 @@
 import json
 import os
 import shlex
-import socket
 import subprocess
 import sys
 import time
@@ -12,6 +11,8 @@ from tempfile import TemporaryDirectory
 from curtaincall import expect
 import psutil
 import pytest
+
+from conftest import daemon_request
 
 SCRIPT = """
 import sys, time
@@ -100,17 +101,9 @@ def launches(root: Path) -> list[str]:
     return log.read_text().splitlines() if log.exists() else []
 
 
-def send(runtime: Path, message: dict[str, object]) -> dict[str, object]:
+def send(runtime: Path, route: str, body: dict[str, object]) -> dict[str, object]:
     [path] = runtime.glob("labnotes/*.sock")
-    with socket.socket(socket.AF_UNIX) as client:
-        client.connect(str(path))
-        client.sendall((json.dumps(message) + "\n").encode())
-        with client.makefile("r") as replies:
-            for line in replies:
-                reply = json.loads(line)
-                if "step" not in reply:
-                    return reply  # type: ignore[no-any-return]
-    raise AssertionError("daemon closed without a reply")
+    return daemon_request(path, "POST", route, body)
 
 
 def failed_run(root: Path) -> str:
@@ -152,7 +145,7 @@ def test_several_attached_tuis_follow_the_batch_and_its_restart(
     daemon = subprocess.Popen(labnotes(root, "daemon", "exp"), cwd=root, env=env)
     wait_for(lambda: bool(list(runtime.glob("labnotes/*.sock"))))
     try:
-        assert send(runtime, {"command": "start", "options": {}})["ok"] is True
+        assert send(runtime, "/start", {})["ok"] is True
         failed = failed_run(root)
         wait_for(lambda: "hold" in launches(root))
         terms = [
@@ -167,7 +160,7 @@ def test_several_attached_tuis_follow_the_batch_and_its_restart(
         for term in terms:
             expect(term.get_by_text("✗ exited 1")).to_be_visible(timeout=30)
 
-        reply = send(runtime, {"command": "restart", "options": {"run_id": failed}})
+        reply = send(runtime, "/restart", {"run_id": failed})
         assert reply["ok"] is True
         wait_for(lambda: len(launches(root)) == 3)
         [restarted] = [

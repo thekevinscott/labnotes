@@ -193,3 +193,67 @@ def run_tui_command(
         )
     finally:
         term.kill()
+
+
+def daemon_request(
+    path: Path, method: str, route: str, body: object = None, timeout: float = 30
+) -> dict[str, object]:
+    """Send one HTTP request over a daemon socket; a start's reply is its last event."""
+    import httpx2
+
+    with httpx2.Client(
+        transport=httpx2.HTTPTransport(uds=str(path)),
+        base_url="http://labnotes",
+        timeout=timeout,
+    ) as client:
+        response = client.request(method, route, json=body)
+        if response.headers["content-type"].startswith("text/event-stream"):
+            events = [
+                line.removeprefix("data: ")
+                for line in response.text.splitlines()
+                if line.startswith("data: ")
+            ]
+            return json.loads(events[-1])  # type: ignore[no-any-return]
+        return response.json()  # type: ignore[no-any-return]
+
+
+class DaemonEvents:
+    """One open GET /events stream, read event by event."""
+
+    def __init__(self, path: Path, timeout: float = 10) -> None:
+        import httpx2
+
+        self.client = httpx2.Client(
+            transport=httpx2.HTTPTransport(uds=str(path)),
+            base_url="http://labnotes",
+            timeout=timeout,
+        )
+        self.response = self.client.send(
+            self.client.build_request("GET", "/events"), stream=True
+        )
+        assert self.response.status_code == 200, self.response.read()
+        self.events = iter(httpx2.EventSource(self.response))
+        first = next(self.events)
+        assert first.event == "batches", first
+        self.batches: list[str] = first.json()["batches"]
+
+    def next(self) -> dict[str, object]:
+        import httpx2
+
+        try:
+            event = next(self.events)
+        except httpx2.ReadTimeout:
+            raise AssertionError("daemon streamed nothing to the attached client")
+        except StopIteration:
+            raise AssertionError("daemon closed the event stream")
+        return event.json()  # type: ignore[no-any-return]
+
+    def close(self) -> None:
+        self.response.close()
+        self.client.close()
+
+    def __enter__(self) -> "DaemonEvents":
+        return self
+
+    def __exit__(self, *_: object) -> None:
+        self.close()

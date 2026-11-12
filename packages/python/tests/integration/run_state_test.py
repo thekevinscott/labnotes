@@ -1,6 +1,4 @@
-import json
 import os
-import socket
 import subprocess
 import sys
 import time
@@ -11,6 +9,8 @@ from tempfile import TemporaryDirectory
 import psutil
 import pytest
 from curtaincall import expect
+
+from conftest import DaemonEvents, daemon_request
 
 
 @pytest.fixture
@@ -69,19 +69,6 @@ def wait_until(check, timeout: float = 30) -> None:
         time.sleep(0.05)
 
 
-def request(path: Path, message: dict[str, object]) -> dict[str, object]:
-    with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(30)
-        client.connect(str(path))
-        client.sendall((json.dumps(message) + "\n").encode())
-        with client.makefile("r") as replies:
-            for line in replies:
-                reply = json.loads(line)
-                if "step" not in reply:
-                    return reply  # type: ignore[no-any-return]
-    raise AssertionError("daemon closed without a reply")
-
-
 def test_runs_write_no_journals_and_leave_run_state_as_it_was(
     terminal, tmp_path: Path, runtime: Path
 ) -> None:
@@ -134,26 +121,22 @@ def test_daemon_names_each_batch_with_its_own_id(tmp_path: Path, runtime: Path) 
     try:
         wait_until(lambda: bool(list(runtime.glob("labnotes/*.sock"))))
         [path] = runtime.glob("labnotes/*.sock")
-        with socket.socket(socket.AF_UNIX) as observer:
-            observer.settimeout(30)
-            observer.connect(str(path))
-            observer.sendall(b'{"command":"attach"}\n')
-            with observer.makefile("r") as stream:
-                assert json.loads(stream.readline()) == {"ok": True, "batches": []}
+        with DaemonEvents(path, timeout=30) as stream:
+            assert stream.batches == []
 
-                started = request(path, {"command": "start", "options": {}})
-                assert started["ok"] is True, started
-                assert "journal" not in started
-                batch = started["batch"]
-                assert isinstance(batch, str) and batch
-                assert "/" not in batch and not batch.endswith(".jsonl")
+            started = daemon_request(path, "POST", "/start", {})
+            assert started["ok"] is True, started
+            assert "journal" not in started
+            batch = started["batch"]
+            assert isinstance(batch, str) and batch
+            assert "/" not in batch and not batch.endswith(".jsonl")
 
-                listed = request(path, {"command": "batches"})
-                assert listed == {"ok": True, "batches": [batch]}
+            listed = daemon_request(path, "GET", "/batches")
+            assert listed == {"ok": True, "batches": [batch]}
 
-                first = json.loads(stream.readline())
-                assert first == {"batch": batch, "event": first["event"]}
-                assert first["event"]["event"] == "planned"
+            first = stream.next()
+            assert first == {"batch": batch, "event": first["event"]}
+            assert first["event"]["event"] == "planned"  # type: ignore[index]
 
         assert [p for p in run_state().rglob("*.jsonl")] == []
     finally:

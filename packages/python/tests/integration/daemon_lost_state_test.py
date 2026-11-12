@@ -55,7 +55,7 @@ def run_state() -> Path:
 def attach(path: Path) -> socket.socket:
     client = socket.socket(socket.AF_UNIX)
     client.connect(str(path))
-    client.sendall(b'{"command":"attach"}\n')
+    client.sendall(b"GET /events HTTP/1.1\r\nhost: labnotes\r\n\r\n")
     client.recv(4096)
     return client
 
@@ -69,11 +69,17 @@ def test_deleting_run_state_keeps_a_live_daemon_reachable(
     with attach(path):
         shutil.rmtree(run_state())
         assert daemon_socket(project, "exp") == path
-        assert command(project, "exp", {"command": "ping"}) == {"ok": True}
+        assert command(project, "exp", {"command": "batches"}) == {
+            "ok": True,
+            "batches": [],
+        }
         asyncio.run(ensure_daemon(project, "exp"))
         assert len(daemons(project.root)) == 1
         assert path.exists()
-        assert command(project, "exp", {"command": "ping"}) == {"ok": True}
+        assert command(project, "exp", {"command": "batches"}) == {
+            "ok": True,
+            "batches": [],
+        }
 
 
 def test_a_daemon_marks_run_state_as_live(project: LabnotesConfig) -> None:

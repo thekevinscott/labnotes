@@ -6,6 +6,7 @@ import socket
 import time
 import tomllib
 from collections.abc import Mapping, Sequence
+from dataclasses import replace
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, cast
@@ -31,6 +32,7 @@ from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
+from labnotes.sql_quote import quote_string
 from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.count_runs import count_runs
@@ -796,13 +798,28 @@ class RunApp(ViewSwitcher, App[None]):
             self.experiment_name,
             native_rows(loaded),
             MappingProxyType(cast(dict[str, Any], loaded["config"] or {})),
+            await self.run_files(tables),
         )
         self.deliver(self.shown)
+
+    async def run_files(self, tables: Any) -> tuple[str, ...]:
+        rows = await tables.query(
+            "SELECT path FROM run_files WHERE experiment = "
+            f"{quote_string(self.experiment_name)} ORDER BY path"
+        )
+        return tuple(str(row["path"]) for row in rows)
 
     async def watch_files(self, tables: Any) -> None:
         async for row in watch_rows(tables, {"run_files"}, self.experiment_name):
             if self.shown is not None:
-                self.deliver(self.shown, frozenset({str(row["path"])}))
+                path = str(row["path"])
+                if (
+                    path not in self.shown.files
+                    or not (self.shown.root / path).exists()
+                ):
+                    files = await self.run_files(tables)
+                    self.shown = replace(self.shown, files=files)
+                self.deliver(self.shown, frozenset({path}))
 
     async def drive(self) -> None:
         assert self.start is not None

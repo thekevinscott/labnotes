@@ -72,7 +72,7 @@ def test_shows_only_the_end_of_a_large_file(tmp_path: Path) -> None:
         tail.open(path)
         assert tail.lines[0] == "[skipped 11 bytes]"
         assert tail.lines[-2] == "last line"
-        assert tail.offset == path.stat().st_size
+        assert tail.read_to == path.stat().st_size
 
     drive(check)
 

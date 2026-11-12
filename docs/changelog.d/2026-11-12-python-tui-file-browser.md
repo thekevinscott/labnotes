@@ -1,0 +1,1 @@
+**Added** A file browser view for the run TUI. Add `files = "labnotes.tui.file_browser:FileBrowser"` under `[views]` to list each run's files and tail the one you select; it follows new lines, shows only the last 64 KiB of a large file, and shows a placeholder for binary files. Custom views get the same list as `Experiment.files`.

@@ -142,3 +142,34 @@ def test_selecting_a_file_tails_it_and_follows_its_changes(tmp_path: Path) -> No
         assert list(tail.lines) == ["step 1", "step 2", ""]
 
     drive(check)
+
+
+def test_keeps_each_runs_files_sorted(tmp_path: Path) -> None:
+    async def check(pilot: Any, browser: FileBrowser) -> None:
+        folders = ("alpha/runs/a",)
+        for files in [
+            ("alpha/runs/a/b.txt",),
+            ("alpha/runs/a/b.txt", "alpha/runs/a/d.txt"),
+            ("alpha/runs/a/a.txt", "alpha/runs/a/b.txt", "alpha/runs/a/d.txt"),
+            (
+                "alpha/runs/a/a.txt",
+                "alpha/runs/a/b.txt",
+                "alpha/runs/a/c.txt",
+                "alpha/runs/a/d.txt",
+            ),
+        ]:
+            await deliver(pilot, browser, Changed(experiment(tmp_path, folders, files)))
+        assert shown(browser) == [("a", ["a.txt", "b.txt", "c.txt", "d.txt"])]
+
+    drive(check)
+
+
+def test_relists_only_when_the_experiment_changes(tmp_path: Path) -> None:
+    async def check(pilot: Any, browser: FileBrowser) -> None:
+        shot = experiment(tmp_path, ("alpha/runs/a",), ("alpha/runs/a/x.txt",))
+        await deliver(pilot, browser, Changed(shot))
+        browser.query_one(Tree).root.children[0].remove_children()
+        await deliver(pilot, browser, Changed(shot, frozenset({"alpha/runs/a/x.txt"})))
+        assert shown(browser) == [("a", [])]
+
+    drive(check)

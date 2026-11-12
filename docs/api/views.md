@@ -45,8 +45,21 @@ The class must be constructible without arguments. `Changed.experiment` holds da
 - `name`: the experiment name.
 - `runs`: a tuple of rows, one per run, in display order. Each is the row the [runs table](#rows) gets, so `row["folder"]` locates the run and `row["status"]` says whether it is still going.
 - `config`: the experiment's config as labnotes resolved it, read-only.
+- `files`: every file in the experiment's run folders, relative to the project root, sorted by path.
 
 `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
+
+## File browser
+
+labnotes ships one view you can add: a browser of each run's files.
+
+```toml
+# experiment.toml
+[views]
+files = "labnotes.tui.file_browser:FileBrowser"
+```
+
+It lists every run with its files under it, and keeps the list current as runs write files. Select a file to tail it: the view shows its last 64 KiB and adds lines as they are written. A file with a NUL byte in its first 8 KiB shows as binary instead of its contents.
 
 ## Runs table columns
 

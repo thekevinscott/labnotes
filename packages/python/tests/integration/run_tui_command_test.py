@@ -44,3 +44,25 @@ def test_keeps_output_printed_after_the_tui_closes(
     out = capsys.readouterr().out
     assert "printed after close" in out
     assert out.endswith("1 passed, 0 failed.\n")
+
+
+def test_reports_what_the_cli_printed_before_it_exited(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / ".labnotes.toml").write_text("")
+
+    def exits_before_answering(self: curtaincall.Terminal) -> bool:
+        while self._child_alive():
+            time.sleep(0.01)
+        return False
+
+    monkeypatch.setattr(
+        curtaincall.Terminal, "is_alive", property(exits_before_answering)
+    )
+
+    code = run_tui_command(
+        tmp_path, ["experiments", "exp", "run", "--run-id", "x", "--", "y"]
+    )
+
+    assert code != 0
+    assert "--run-id uses the run's recorded params" in capsys.readouterr().err

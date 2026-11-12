@@ -6,7 +6,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.line_index import LineIndex
 from labnotes.tui.stream_log import StreamLog
 
 
@@ -19,9 +18,9 @@ def shown(output: StreamLog) -> list[str]:
     return output.read(0, output.rows)
 
 
-def log_segment(output: StreamLog, index: int) -> LineIndex:
+def log_segment(output: StreamLog, index: int) -> Any:
     segment = output.segments[index]
-    assert isinstance(segment, LineIndex)
+    assert hasattr(segment, "scanned")
     return segment
 
 

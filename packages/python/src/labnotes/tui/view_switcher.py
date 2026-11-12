@@ -11,7 +11,7 @@ MAX_VIEWS = 8
 
 
 class ViewSwitcher:
-    """Mount and switch the same view panes in browse and run screens."""
+    """Mount view panes and switch between them."""
 
     left: dict[str, Widget]
 

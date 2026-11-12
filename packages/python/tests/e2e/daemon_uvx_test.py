@@ -49,17 +49,6 @@ def test_installed_daemon_reuses_socket_and_stop_cli(
     )
     assert second.returncode == 0
     assert list(runtime.glob("labnotes/*.sock")) == [path]
-    listed = subprocess.run(
-        [*base, "experiments", "--format", "json"],
-        cwd=root,
-        env=env,
-        capture_output=True,
-        text=True,
-        check=True,
-    )
-    [row] = json.loads(listed.stdout)
-    assert row["daemon"] is True
-    assert row["running_cells"] == 1
     stopped = subprocess.run(
         [*base, "experiments", "exp", "stop"],
         cwd=root,

@@ -32,14 +32,11 @@ Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
 
 ```sh
-labnotes experiments --format json            # name, last_run, created, files, runs
-labnotes experiments foo --format json        # the same, plus config
 labnotes experiments foo runs --format json   # foo's runs, oldest first
 ```
 
-Always pass `--format json` (to parse) or `--format table`. Without `--format`,
-all three open an interactive browser when they find a terminal, and wait for
-keys that never come.
+`labnotes experiments` and `labnotes experiments foo` with no action exit 2
+and name the actions: `runs`, `run`, `attach` or `stop`.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't
@@ -63,7 +60,7 @@ effort = ["low", "high"]
 ```
 
 `name` is optional: a display name for the experiment, shown in the live view
-and as `display_name` in `experiments`. The folder name stays the key, so
+and the web app. The folder name stays the key, so
 renaming the experiment means editing `name`.
 Each combination of `[params]` needs `repeats` runs that count (1 if omitted).
 `run` plans only the combinations short of that, round-robin, so running again

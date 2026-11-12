@@ -2,33 +2,15 @@
 
 `labnotes` offers a CLI for managing and running experiments. Ensure that you've [first created a configuration file](../getting-started).
 
-## Viewing Experiments
+## Viewing Runs
 
-![Browsing experiments: an experiment and a run's output](/demos/experiments.gif)
-
-View experiments with:
+List an experiment's runs with:
 
 ```bash
-uvx labnotes experiments
+uvx labnotes experiments foo runs
 ```
 
-In a terminal, this opens a [browser](tui#browsing) that lists each experiment's name, last run, created, files (num) and runs (num). Open an experiment to see its runs, and open a run to read its output. The browser updates as runs start and finish.
-
-Start on a particular experiment with:
-
-```bash
-uvx labnotes experiments foo
-```
-
-Pass `--format table` or `--format json` to print instead. `foo runs` prints the experiment's runs:
-
-```bash
-uvx labnotes experiments foo runs --format table
-```
-
-Piped output and scripts always get a table, but agents may run under a terminal, so they should always pass `--format`.
-
-The list marks an experiment with a live daemon and shows its number of running cells. `--format json` exposes these as `daemon` and `running_cells`.
+It prints a table of the runs, oldest first, with each run's `memory` and `size`. Pass `--format json` to parse it. To read notes, configs and run output, use the [frontend](../frontend). `labnotes experiments` and `labnotes experiments foo` with no action exit 2 and name the actions.
 
 ## Creating Experiments
 

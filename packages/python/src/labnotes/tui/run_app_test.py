@@ -684,6 +684,32 @@ def test_finish_up_key_keeps_tui_open_and_skips_pending_runs() -> None:
     asyncio.run(drive())
 
 
+def test_finish_up_line_survives_leaving_the_output_view() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock())
+        report(planned("r1", "r2"))
+        report(
+            {
+                "event": "started",
+                "run": "r1",
+                "params": {"m": "a"},
+                "folder": "/runs/r1",
+            }
+        )
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            app.body.view("r1")
+            app.body.show_event({"event": "finishing up"})
+            app.body.action_leave()
+            assert status(app) == "said finishing up"
+
+    asyncio.run(drive())
+
+
 def test_in_process_tui_stays_open_after_finishing_up() -> None:
     finished_up = asyncio.Event()
 

@@ -34,19 +34,17 @@ labnotes experiments [NAME] [runs|run|attach|stop]
 
 | Form | Does |
 | --- | --- |
-| `labnotes experiments` | Lists experiments: name, last run, created, files, runs, live daemon and running cell count. |
-| `labnotes experiments NAME` | Shows one experiment, plus its config. |
 | `labnotes experiments NAME runs` | Lists the experiment's runs, oldest first, with each run's `memory` and `size`. |
 | `labnotes experiments NAME run` | Runs the experiment in the [TUI](tui). Requires stdout and stderr to be terminals. |
 | `labnotes experiments NAME attach` | Reopens the run [TUI](tui) on whatever the experiment's daemon is running, including restarts. Starts nothing: with nothing running it says so and exits. Any number of TUIs can attach at once, and every control acts on the daemon, so all of them see the result. |
 | `labnotes experiments NAME stop` | Asks the live daemon to stop all its cells. Exits non-zero with a clear message if no daemon is live. Daemons are keyed by the installed labnotes version, so after an upgrade or downgrade `stop` cannot see or stop a daemon started by the old version. |
 | `labnotes experiments new [NAME]` | Creates an experiment folder and writes its `experiment.toml`, from the starter or from `--from OTHER`, with any `--command`, `--param` and `--repeats` written in. Picks a random name if you give none. Refuses a folder that already exists. |
 
-With `--format` unset, the three listing forms open the [browser](tui#browsing) when stdout and stderr are both a terminal, starting on the experiment if you name one. Otherwise they print a table.
+With no action, `labnotes experiments` and `labnotes experiments NAME` exit 2 with a usage error that names the actions.
 
 | Option | Description |
 | --- | --- |
-| `--format table\|json` | Print the listing forms in this format and exit, even in a terminal. No default. |
+| `--format table\|json` | With `runs`: print the runs in this format. Default: `table`. |
 | `--concurrency N` | With `run`: how many runs at once. Overrides `experiment.toml` and `.labnotes.toml`; 1 if none sets it. |
 | `-e, --experiment-config FILE` | With `run`: read this file instead of the experiment's `experiment.toml`. |
 | `--PARAM=VALUE` | With `run`: run only the cells where that param has that value, like `--model=small`. PARAM must be a key in `[params]` and VALUE one of its values, written as `runs` shows it (`true`, `2`). Repeat a param to run any of several values (`--model=small --model=large`); different params narrow further. Counts, progress and `repeats` still cover every cell. |

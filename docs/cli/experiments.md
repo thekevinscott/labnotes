@@ -4,13 +4,7 @@
 
 ## Viewing Runs
 
-List an experiment's runs with:
-
-```bash
-uvx labnotes experiments foo runs
-```
-
-It prints a table of the runs, oldest first, with each run's `memory` and `size`. Pass `--format json` to parse it. To read notes, configs and run output, use the [frontend](../frontend). `labnotes experiments` and `labnotes experiments foo` with no action exit 2 and name the actions.
+Watch an experiment's runs in the run [TUI](tui): `labnotes experiments foo run` starts them, and `labnotes experiments foo attach` reopens the TUI on whatever is running. To read notes, configs and run output, use the [frontend](../frontend). `labnotes experiments` and `labnotes experiments foo` with no action exit 2 and name the actions.
 
 ## Creating Experiments
 

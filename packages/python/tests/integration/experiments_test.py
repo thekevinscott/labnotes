@@ -1,3 +1,4 @@
+import asyncio
 import json
 import tomllib
 from typing import Any
@@ -6,6 +7,10 @@ from pathlib import Path
 import pytest
 
 from labnotes.cli import main
+from labnotes.default_counts import DEFAULT_COUNTS
+from labnotes.read_config import read_config
+from labnotes.tables.list_experiment_runs import list_experiment_runs
+from labnotes.tables.open_tables import open_tables
 
 
 def write(path: Path, text: str) -> None:
@@ -13,14 +18,12 @@ def write(path: Path, text: str) -> None:
     path.write_text(text, encoding="utf-8")
 
 
-def labnotes(
-    project: Path, argv: list[str], capsys: pytest.CaptureFixture[str]
-) -> list[dict[str, Any]]:
-    with pytest.raises(SystemExit) as exit_info:
-        main(["-c", str(project / ".labnotes.toml"), *argv, "--format", "json"])
-    assert exit_info.value.code == 0
-    rows: list[dict[str, Any]] = json.loads(capsys.readouterr().out)
-    return rows
+def stored_runs(root: Path, name: str) -> list[dict[str, Any]]:
+    async def read() -> list[dict[str, Any]]:
+        tables = open_tables(read_config(root / ".labnotes.toml"))
+        return await list_experiment_runs(tables, name, DEFAULT_COUNTS)
+
+    return asyncio.run(read())
 
 
 @pytest.fixture
@@ -55,10 +58,8 @@ def project(tmp_path: Path) -> Path:
     return tmp_path
 
 
-def test_lists_an_experiments_runs(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
-    [run] = labnotes(project, ["experiments", "alpha", "runs"], capsys)
+def test_reads_an_experiments_runs(project: Path) -> None:
+    [run] = stored_runs(project, "alpha")
 
     assert run["id"] == "brave-fox"
     assert run["folder"] == "data/alpha/brave-fox"
@@ -66,12 +67,10 @@ def test_lists_an_experiments_runs(
 
 
 @pytest.mark.parametrize("contents", ["{not json", ""])
-def test_lists_a_damaged_run_record(
-    project: Path, capsys: pytest.CaptureFixture[str], contents: str
-) -> None:
+def test_reads_a_damaged_run_record(project: Path, contents: str) -> None:
     write(project / "data/alpha/broken/run.json", contents)
 
-    rows = labnotes(project, ["experiments", "alpha", "runs"], capsys)
+    rows = stored_runs(project, "alpha")
 
     assert {row["id"] for row in rows} == {"brave-fox", "broken"}
     [broken] = [row for row in rows if row["id"] == "broken"]

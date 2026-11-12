@@ -1,3 +1,4 @@
+import asyncio
 import json
 import sys
 from pathlib import Path
@@ -7,6 +8,10 @@ from typing import Any
 import pytest
 
 from labnotes.cli import main
+from labnotes.default_counts import DEFAULT_COUNTS
+from labnotes.read_config import read_config
+from labnotes.tables.list_experiment_runs import list_experiment_runs
+from labnotes.tables.open_tables import open_tables
 from conftest import run_tui_command
 from curtaincall import Terminal, expect
 
@@ -47,6 +52,14 @@ def labnotes(root: Path, argv: list[str]) -> int | str | None:
     with pytest.raises(SystemExit) as exit_info:
         main(["-c", str(root / ".labnotes.toml"), *argv])
     return exit_info.value.code
+
+
+def stored_runs(root: Path, name: str) -> list[dict[str, Any]]:
+    async def read() -> list[dict[str, Any]]:
+        tables = open_tables(read_config(root / ".labnotes.toml"))
+        return await list_experiment_runs(tables, name, DEFAULT_COUNTS)
+
+    return asyncio.run(read())
 
 
 def run(root: Path) -> None:
@@ -168,17 +181,13 @@ def old_nested_run(root: Path, group: str, name: str, m: str) -> None:
     )
 
 
-def test_lists_and_counts_old_runs_nested_in_group_folders(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_reads_and_counts_old_runs_nested_in_group_folders(tmp_path: Path) -> None:
     root = make_project(tmp_path)
     for group in ("20261020-065052-still-lake", "20261020-065110-quiet-pond"):
         old_nested_run(root, group, "a-1a2b", "a")
         old_nested_run(root, group, "b-3c4d", "b")
-    capsys.readouterr()
 
-    assert labnotes(root, ["experiments", "exp", "runs", "--format", "json"]) == 0
-    listed = sorted(row["id"] for row in json.loads(capsys.readouterr().out))
+    listed = sorted(str(row["id"]) for row in stored_runs(root, "exp"))
 
     assert listed == [
         "20261020-065052-still-lake/a-1a2b",

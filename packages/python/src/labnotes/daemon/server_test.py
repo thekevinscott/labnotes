@@ -1,5 +1,6 @@
 import asyncio
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
@@ -779,6 +780,31 @@ def test_attach_and_journals_list_active_invocations_in_start_order(
         }
 
     asyncio.run(drive())
+
+
+def test_server_never_unlinks_a_live_daemons_socket(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    _, live, record = paths
+    live.touch()
+    with (
+        mock.patch("labnotes.daemon.server.listening", return_value=True) as probe,
+        mock.patch("labnotes.daemon.server.asyncio.start_unix_server") as bind,
+    ):
+        asyncio.run(serve_daemon(config(tmp_path), "exp"))
+    probe.assert_called_once_with(live)
+    bind.assert_not_called()
+    assert live.exists()
+    assert not record.exists()
+
+
+def test_server_marks_run_state_as_live(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    with mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0):
+        asyncio.run(serve_daemon(config(tmp_path), "exp"))
+    marker = Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state/README"
+    assert "Do not delete" in marker.read_text()
 
 
 @pytest.mark.parametrize("buffer_size", [1024 * 1024, 1024 * 1024 + 1])

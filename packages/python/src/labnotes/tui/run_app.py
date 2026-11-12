@@ -39,7 +39,11 @@ from labnotes.tui.dim import dim
 from labnotes.tui.flash_value import FlashValue
 from labnotes.tui.format_elapsed import format_elapsed
 from labnotes.tui.hook_panel import HookPanel
-from labnotes.tui.leave_prompt import DetachedLeavePrompt, LeavePrompt
+from labnotes.tui.leave_prompt import (
+    DetachedLeavePrompt,
+    LeavePrompt,
+    LostDaemonNotice,
+)
 from labnotes.tui.log_blocks import LogBlocks
 from labnotes.tui.native_rows import native_rows
 from labnotes.tui.reload_on_change import reload_on_change
@@ -538,6 +542,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.restart_batches: set[str] = set()
         self.disconnected = False
         self.attached: socket.socket | None = None
+        self.leaving = False
         self.farewell: str | None = None
         self.finishing_up = False
 
@@ -693,8 +698,17 @@ class RunApp(ViewSwitcher, App[None]):
                 self.query_one("#concurrency", FlashValue).update(
                     f"{self.body.concurrency} at a time · disconnected"
                 )
+        if self.leaving:
+            return
+        notice = (
+            f"Lost the daemon for {self.experiment_name}. "
+            "This view is no longer live."
+        )
+        self.error = ValueError(notice)
+        self.push_screen(LostDaemonNotice(notice), lambda _: self.exit())
 
     def on_unmount(self) -> None:
+        self.leaving = True
         if self.attached is not None:
             self.attached.close()
 
@@ -885,6 +899,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.exit()
 
     async def stop_daemon_and_exit(self) -> None:
+        self.leaving = True
         await self.send_command({"command": "stop_all"})
         self.exit()
 

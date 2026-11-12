@@ -1,36 +1,42 @@
-"""Read the socket record and confirm its daemon owns the lock."""
+"""Find a live daemon's socket from its record, lock, or listener."""
 
 import fcntl
 import operator
 import os
 from pathlib import Path
 
-from labnotes.daemon.socket_path import lock_path, socket_record
+from labnotes.daemon.listening import listening
+from labnotes.daemon.socket_path import lock_path, socket_path, socket_record
 from labnotes.models import LabnotesConfig
 
 
 def daemon_socket(config: LabnotesConfig, name: str) -> Path | None:
-    """Return a socket only while its daemon owns the version-keyed lock."""
+    """Return a socket while its daemon owns the lock or still listens.
+
+    The record and lock live in the state folder, which a user can delete
+    under a live daemon; the listener is the last word.
+    """
     record = socket_record(config, name)
     try:
         path = Path(record.read_text().strip())
     except FileNotFoundError:
-        return None
-    lock = lock_path(config, name)
+        path = socket_path(config, name)
+        return path if listening(path) else None
     try:
-        descriptor = os.open(lock, os.O_RDONLY)
+        descriptor = os.open(lock_path(config, name), os.O_RDONLY)
     except FileNotFoundError:
-        path.unlink(missing_ok=True)
-        record.unlink(missing_ok=True)  # probe
-        return None
-    try:
+        descriptor = None
+    if descriptor is not None:
         try:
-            fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
-        except BlockingIOError:
-            return path
-        fcntl.flock(descriptor, fcntl.LOCK_UN)
-    finally:
-        os.close(descriptor)
+            try:
+                fcntl.flock(descriptor, operator.or_(fcntl.LOCK_EX, fcntl.LOCK_NB))
+            except BlockingIOError:
+                return path
+            fcntl.flock(descriptor, fcntl.LOCK_UN)
+        finally:
+            os.close(descriptor)
+    if listening(path):
+        return path
     path.unlink(missing_ok=True)
     record.unlink(missing_ok=True)  # probe
     return None

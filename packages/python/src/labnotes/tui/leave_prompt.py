@@ -45,3 +45,20 @@ class DetachedLeavePrompt(LeavePrompt):
             f"{self.busy} Stop (s) / leave running (enter or l) / cancel (esc).",
             id="prompt",
         )
+
+
+class LostDaemonNotice(ModalScreen[None]):
+    """Cover a view whose daemon is gone so it never reads as live."""
+
+    CSS = """
+    LostDaemonNotice { align: center middle; }
+    #prompt { width: auto; padding: 1 2; border: heavy $error; color: $error; }
+    """
+    BINDINGS = [Binding("q,enter,escape,ctrl+c", "dismiss", "Quit")]
+
+    def __init__(self, message: str) -> None:
+        super().__init__()
+        self.message = message
+
+    def compose(self) -> ComposeResult:
+        yield Static(f"{self.message} Quit (q).", id="prompt")

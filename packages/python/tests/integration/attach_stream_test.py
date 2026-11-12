@@ -18,7 +18,7 @@ from labnotes.tui.run_app import RunApp
 
 STREAM_LIMIT = 16 * 1024 * 1024
 ACCEPTED = b'{"ok":true,"journals":["j"]}\n'
-Daemon = Callable[..., list[bytes]]
+Daemon = Callable[..., Callable[[], list[bytes]]]
 
 
 @pytest.fixture
@@ -49,7 +49,7 @@ def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
 
         def start(
             *lines: bytes, reply: bytes = ACCEPTED, until_closed: bool = False
-        ) -> list[bytes]:
+        ) -> Callable[[], list[bytes]]:
             received: list[bytes] = []
 
             def serve() -> None:
@@ -65,7 +65,13 @@ def daemon(config: LabnotesConfig) -> Iterator[Daemon]:
             thread = threading.Thread(target=serve, daemon=True)
             thread.start()
             threads.append(thread)
-            return received
+
+            def served() -> list[bytes]:
+                lagging.set()
+                thread.join(timeout=10)
+                return received
+
+            return served
 
         yield start
         lagging.set()
@@ -104,9 +110,9 @@ def attached(config: LabnotesConfig) -> RunApp:
 def test_events_sent_with_the_attach_reply_are_not_lost(
     config: LabnotesConfig, daemon: Daemon
 ) -> None:
-    received = daemon(planned("r1"), planned("r2"))
+    served = daemon(planned("r1"), planned("r2"))
     app = attached(config)
-    assert received == [b'{"command":"attach"}\n']
+    assert served() == [b'{"command":"attach"}\n']
     assert app.disconnected
     assert list(app.body.cells) == ["r1", "r2"]
 
@@ -127,7 +133,7 @@ def test_stream_accepts_events_up_to_sixteen_mebibytes(
 def test_leaving_closes_the_attach_connection(
     config: LabnotesConfig, daemon: Daemon
 ) -> None:
-    received = daemon(until_closed=True)
+    served = daemon(until_closed=True)
     app = RunApp(None, "exp", ("run",), config, attach=True)
 
     async def drive() -> None:
@@ -136,13 +142,13 @@ def test_leaving_closes_the_attach_connection(
             assert app.attached is not None
 
     asyncio.run(drive())
-    assert received == [b'{"command":"attach"}\n', b"closed"]
+    assert served() == [b'{"command":"attach"}\n', b"closed"]
 
 
 def test_a_rejected_attach_reports_the_error_and_closes(
     config: LabnotesConfig, daemon: Daemon
 ) -> None:
-    received = daemon(reply=b'{"ok":false,"error":"busy"}\n', until_closed=True)
+    served = daemon(reply=b'{"ok":false,"error":"busy"}\n', until_closed=True)
     app = attached(config)
     assert str(app.error) == "busy"
-    assert received == [b'{"command":"attach"}\n', b"closed"]
+    assert served() == [b'{"command":"attach"}\n', b"closed"]

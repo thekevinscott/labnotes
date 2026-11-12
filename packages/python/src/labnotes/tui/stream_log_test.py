@@ -673,3 +673,93 @@ def test_renders_a_screen_row_or_a_blank_past_the_last() -> None:
         assert output.render_line(0) is row
         assert output.render_line(1) is strip.blank.return_value
         strip.blank.assert_called_once_with(4, output.rich_style)
+
+
+def record(folder: Path, *names: str) -> None:
+    invocations = [
+        {"started": f"s{number}", "stdout": name}
+        for number, name in enumerate(names, 1)
+    ]
+    (folder / "run.json").write_text(json.dumps({"invocations": invocations}))
+
+
+def banner(label: str) -> str:
+    return f"\x1b[2m── {label} ──\x1b[0m"
+
+
+def test_opens_every_invocation_with_a_label_above_each(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\nthird\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    assert shown(output) == [
+        banner("invocation 1 · s1"),
+        "first",
+        banner("invocation 2 · s2"),
+        "second",
+        "third",
+    ]
+    assert output.count == 3
+
+
+def test_watching_through_a_new_invocation_matches_a_fresh_open(
+    tmp_path: Path,
+) -> None:
+    watching = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\n")
+    record(tmp_path, "one.txt")
+    watching.follow(tmp_path)
+    (tmp_path / "one.txt").write_text("first\nlast words\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt", "two.txt")
+    watching.follow(tmp_path)
+    fresh = StreamLog("stdout")
+    fresh.follow(tmp_path)
+    assert (
+        shown(watching)
+        == shown(fresh)
+        == [
+            banner("invocation 1 · s1"),
+            "first",
+            "last words",
+            banner("invocation 2 · s2"),
+            "second",
+        ]
+    )
+
+
+def test_a_new_invocation_forgets_only_rows_that_can_change(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\npar")
+    record(tmp_path, "one.txt")
+    output.follow(tmp_path)
+    cached: dict[int, list[Any]] = {0: [], 1: [], 2: []}
+    output.wrapped.update(cached)
+    (tmp_path / "two.txt").write_text("")
+    record(tmp_path, "one.txt", "two.txt")
+    output.follow(tmp_path)
+    assert output.wrapped == {0: [], 1: []}
+    assert shown(output)[2:] == ["par", banner("invocation 2 · s2")]
+
+
+def test_waits_for_an_invocation_log_that_is_not_written_yet(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output.follow(tmp_path)
+    assert shown(output) == [banner("invocation 1 · s1"), "first"]
+    (tmp_path / "two.txt").write_text("second\n")
+    output.follow(tmp_path)
+    assert shown(output)[2:] == [banner("invocation 2 · s2"), "second"]
+
+
+def test_a_rewritten_invocation_list_starts_over(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt")
+    output.follow(tmp_path)
+    record(tmp_path, "two.txt")
+    output.follow(tmp_path)
+    assert shown(output) == [banner("invocation 1 · s1"), "second"]

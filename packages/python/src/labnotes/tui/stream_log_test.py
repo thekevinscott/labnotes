@@ -375,6 +375,36 @@ def test_an_older_segment_truncated_is_not_rechecked(tmp_path: Path) -> None:
     assert output.segments[1] is kept
 
 
+def test_only_the_newest_invocation_is_extended(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    with (
+        mock.patch.object(output.segments[1], "extend", return_value=False) as older,
+        mock.patch.object(output.segments[3], "extend", return_value=False) as newest,
+    ):
+        output.follow(tmp_path)
+    older.assert_not_called()
+    newest.assert_called_once_with()
+
+
+def test_nothing_new_keeps_the_caches_and_skips_settling(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("one\n")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    output.first, output.window = 0, ["one"]
+    output.wrapped[0] = []
+    with (
+        mock.patch.object(output.segments[0], "extend", return_value=False),
+        mock.patch.object(StreamLog, "settle") as settle,
+    ):
+        output.follow(tmp_path)
+    settle.assert_not_called()
+    assert (output.window, output.wrapped) == (["one"], {0: []})
+
+
 @pytest.fixture
 def drawing() -> Iterator[dict[str, Any]]:
     with mock.patch.multiple(

@@ -2,7 +2,7 @@ from pathlib import Path
 
 import pytest
 
-from labnotes.log_path import LOG_ENV, RUN_ENV, log_path
+from labnotes.log_path import INVOCATION_ENV, LOG_ENV, RUN_ENV, log_path
 
 
 def test_reads_the_runner_log_path(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -14,6 +14,10 @@ def test_reads_the_runner_log_path(monkeypatch: pytest.MonkeyPatch) -> None:
 
 def test_names_the_run_environment_variable() -> None:
     assert RUN_ENV == "LABNOTES_RUN"
+
+
+def test_names_the_invocation_environment_variable() -> None:
+    assert INVOCATION_ENV == "LABNOTES_INVOCATION"
 
 
 @pytest.mark.parametrize("value", [None, ""])

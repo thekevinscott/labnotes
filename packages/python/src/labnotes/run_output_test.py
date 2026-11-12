@@ -2,10 +2,12 @@ import asyncio
 import json
 from collections.abc import AsyncIterator, Callable, Iterator
 from pathlib import Path
+from typing import cast
 from unittest import mock
 
 import pytest
 
+import labnotes.run_output
 from labnotes.run_output import run_output
 
 RUN = {"folder": "alpha/runs/r1", "ended": None, "exit_code": None}
@@ -63,6 +65,15 @@ def append(path: Path, data: bytes) -> None:
 Step = Callable[[], object]
 
 
+@pytest.fixture(autouse=True)
+def opened() -> Iterator[mock.Mock]:
+    watched = mock.Mock(ready=mock.AsyncMock(), query=mock.AsyncMock(return_value=[]))
+    with mock.patch(
+        "labnotes.run_output.open_run_tables", return_value=watched
+    ) as opened:
+        yield opened
+
+
 def collect(
     root: Path, steps: list[tuple[Step, mock.Mock]], run: str = "r1"
 ) -> list[str]:
@@ -71,12 +82,14 @@ def collect(
             step()
             yield happened
 
-    tables = mock.Mock()
-    tables.watch.return_value = events()
+    opened = cast(mock.Mock, labnotes.run_output.open_run_tables)
+    opened.return_value.watch.return_value = events()
 
     async def drain() -> list[str]:
-        return [message async for message in run_output(tables, root, "alpha", run)]
+        config = mock.Mock(root=root)
+        return [message async for message in run_output(tables, config, "alpha", run)]
 
+    tables = mock.Mock()
     return asyncio.run(drain())
 
 
@@ -156,12 +169,39 @@ def test_ignores_other_runs_and_experiments(
 
 
 def test_sends_a_finished_run_without_waiting(
-    tmp_path: Path, folder: Path, loaded: mock.AsyncMock
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock, opened: mock.Mock
 ) -> None:
     loaded.return_value = {**RUN, "ended": "t", "exit_code": 1}
     (folder / "stderr.log").write_text("boom")
 
     assert collect(tmp_path, []) == [log(1, 0, "stderr", fresh=True), end(1)]
+    opened.assert_not_called()
+
+
+def test_watches_only_the_runs_folder_before_reading_it(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock, opened: mock.Mock
+) -> None:
+    collect(tmp_path, [])
+
+    [(config, watched_folder)] = [call.args for call in opened.call_args_list]
+    assert (config.root, watched_folder) == (tmp_path, folder)
+    watched = opened.return_value
+    watched.watch.assert_called_once_with()
+    watched.ready.assert_awaited_once_with()
+
+
+def test_sends_a_run_that_ended_before_the_watch_started_without_waiting(
+    tmp_path: Path, folder: Path, loaded: mock.AsyncMock, opened: mock.Mock
+) -> None:
+    (folder / "stdout.log").write_text("done\n")
+    opened.return_value.query.return_value = [{"ended": "t", "exit_code": 2}]
+
+    messages = collect(
+        tmp_path,
+        [(lambda: pytest.fail("waited for events"), mock.Mock(table="files"))],
+    )
+
+    assert messages == [log(1, 1, fresh=True), end(2)]
 
 
 def test_sends_nothing_for_an_unknown_run(

@@ -1,10 +1,11 @@
-import asyncio
 from collections.abc import AsyncIterator
+import gc
 from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 
 from starlette.applications import Starlette
+from starlette.background import BackgroundTask
 from starlette.exceptions import HTTPException
 from starlette.requests import Request
 from starlette.responses import (
@@ -20,7 +21,6 @@ from starlette.templating import Jinja2Templates
 
 from labnotes.asset_url import asset_url
 from labnotes.create_note import create_note
-from labnotes.drain_watch import drain_watch
 from labnotes.experiment_notes import experiment_notes
 from labnotes.file_changes import file_changes
 from labnotes.format_duration import format_duration
@@ -50,6 +50,9 @@ templates.env.filters["value"] = format_value
 templates.env.filters["duration"] = format_duration
 templates.env.filters["started"] = format_started
 templates.env.globals["asset"] = asset_url
+# A stream cancelled by a disconnect leaves its frames in a reference cycle, so
+# the folder's DirSQL, and its inotify watches, live on until a GC pass.
+RELEASE_WATCHER = BackgroundTask(gc.collect)
 
 
 def create_app(config: LabnotesConfig) -> Starlette:
@@ -60,9 +63,7 @@ def create_app(config: LabnotesConfig) -> Starlette:
     async def lifespan(app: Starlette) -> AsyncIterator[None]:
         app.state.tables = open_tables(config)
         await app.state.tables.ready()
-        watcher = asyncio.create_task(drain_watch(app.state.tables))
         yield
-        watcher.cancel()
         for kernel in kernels.values():
             await kernel.stop()
 
@@ -108,11 +109,12 @@ def create_app(config: LabnotesConfig) -> Starlette:
         return StreamingResponse(
             run_output(
                 request.app.state.tables,
-                config.root,
+                config,
                 request.path_params["name"],
                 request.path_params["run"],
             ),
             media_type="text/event-stream",
+            background=RELEASE_WATCHER,
         )
 
     async def lines(request: Request) -> Response:
@@ -174,8 +176,9 @@ def create_app(config: LabnotesConfig) -> Starlette:
 
     async def changes(request: Request) -> Response:
         return StreamingResponse(
-            file_changes(request.app.state.tables, request.path_params["name"]),
+            file_changes(config, request.path_params["name"]),
             media_type="text/event-stream",
+            background=RELEASE_WATCHER,
         )
 
     def note_file(request: Request) -> Path:

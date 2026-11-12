@@ -271,3 +271,17 @@ def test_reset_forgets_the_last_invocation(tmp_path: Path, blocks: LogBlocks) ->
         "[invocation 2026-11-12 10:00:00]",
         "new",
     ]
+
+
+def test_labels_only_invocations_labnotes_tagged(
+    tmp_path: Path, blocks: LogBlocks
+) -> None:
+    append(
+        tmp_path,
+        {"content": "one", "invocation": "mine"},
+        {"content": "two", "invocation": 7},
+    )
+
+    blocks.follow(tmp_path)
+
+    assert bodies(blocks) == ["one", "two"]

@@ -10,7 +10,7 @@ from pathlib import Path
 
 import psutil
 
-from labnotes.log_path import LOG_ENV, RUN_ENV
+from labnotes.log_path import INVOCATION_ENV, LOG_ENV, RUN_ENV
 from labnotes.runner.continue_run import continue_run
 from labnotes.runner.exit_signal import exit_signal
 from labnotes.runner.record_memory import record_memory
@@ -123,6 +123,7 @@ async def execute_run(
                         if not key.startswith("LABNOTES_")
                     },
                     LOG_ENV: str(folder / "log.jsonl"),
+                    **({INVOCATION_ENV: suffix[1:]} if continues else {}),
                     RUN_ENV: str(folder.resolve()),
                     "BOTBOX_LABELS": botbox_labels,
                     RUN_STATE_ENV: str(state_file),

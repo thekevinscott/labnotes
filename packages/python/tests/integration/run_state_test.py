@@ -1,125 +1,163 @@
 import json
-import shlex
 import os
+import socket
+import subprocess
 import sys
 import time
+from collections.abc import Iterator
 from pathlib import Path
+from tempfile import TemporaryDirectory
 
-from curtaincall import Terminal, expect
-
-
-def test_running_invocation_can_be_reconstructed_from_disk(tmp_path: Path) -> None:
-    (tmp_path / ".labnotes.toml").write_text("")
-    (tmp_path / "exp").mkdir()
-    (tmp_path / "exp/experiment.toml").write_text(
-        "continues = false\n"
-        f"command = \"{sys.executable} -c 'import time; time.sleep(2)'\"\n"
-        "repeats = 2\nconcurrency = 1\n"
-    )
-    term = Terminal(
-        shlex.join(
-            [
-                str(Path(sys.executable).parent / "labnotes"),
-                "-c",
-                str(tmp_path / ".labnotes.toml"),
-                "experiments",
-                "exp",
-                "run",
-            ]
-        ),
-        rows=30,
-        cols=120,
-    )
-    term.start()
-    state_dir = Path(os.environ["XDG_STATE_HOME"]) / "labnotes" / "run-state"
-    state = None
-    try:
-        events = []
-        for _ in range(80):
-            journals = list(state_dir.glob("*/*.jsonl"))
-            if journals:
-                state = journals[0]
-                events = [json.loads(line) for line in state.read_text().splitlines()]
-                if any(e["event"] == "started" for e in events):
-                    break
-            time.sleep(0.05)
-        assert events and events[0]["event"] == "planned"
-        planned = events[0]
-        assert len(planned["runs"]) == 2
-        assert planned["concurrency"] == 1
-        started = next(e for e in events if e["event"] == "started")
-        assert started["at"] <= time.time()
-        assert started["run"] in {r["run"] for r in planned["runs"]}
-        expect(term.get_by_text("2 passed, 0 failed.")).to_be_visible(timeout=15)
-        term.key_ctrl_c()
-        assert term.wait(timeout=10) == 0
-        assert state is not None
-        finished = [json.loads(line) for line in state.read_text().splitlines()]
-        assert len([e for e in finished if e["event"] == "ended"]) == 2
-        assert finished[-1]["event"] == "idle"
-    finally:
-        term.kill()
+import psutil
+import pytest
+from curtaincall import expect
 
 
-def test_concurrent_invocations_keep_separate_journals(tmp_path: Path) -> None:
-    (tmp_path / ".labnotes.toml").write_text("")
-    (tmp_path / "exp").mkdir()
-    (tmp_path / "exp/experiment.toml").write_text(
-        "continues = false\n"
-        f"command = \"{sys.executable} -c 'import time; time.sleep(3)'\"\n"
-        "repeats = 1\n[params]\nm = ['a', 'b']\n"
-    )
-    command = [
+@pytest.fixture
+def runtime() -> Iterator[Path]:
+    with TemporaryDirectory(prefix="ln-runtime-") as folder:
+        yield Path(folder)
+
+
+def daemons(root: Path) -> list[psutil.Process]:
+    config = str(root / ".labnotes.toml")
+    return [
+        process
+        for process in psutil.process_iter(["cmdline"])
+        if config in (cmdline := process.info["cmdline"] or []) and "daemon" in cmdline
+    ]
+
+
+@pytest.fixture(autouse=True)
+def cleanup_daemons(tmp_path: Path) -> Iterator[None]:
+    yield
+    (tmp_path / "release").touch()
+    owners = daemons(tmp_path / "project")
+    for process in owners:
+        try:
+            process.terminate()
+        except psutil.NoSuchProcess:
+            pass
+    psutil.wait_procs(owners, timeout=15)
+
+
+def labnotes(root: Path, *args: str) -> list[str]:
+    return [
         str(Path(sys.executable).parent / "labnotes"),
         "-c",
-        str(tmp_path / ".labnotes.toml"),
-        "experiments",
-        "exp",
-        "run",
+        str(root / ".labnotes.toml"),
+        *args,
     ]
-    processes = [
-        Terminal(shlex.join([*command, f"--m={value}"]), rows=30, cols=120)
-        for value in ("a", "b")
-    ]
-    for process in processes:
-        process.start()
+
+
+def run_state() -> Path:
+    return Path(os.environ["XDG_STATE_HOME"]) / "labnotes" / "run-state"
+
+
+def run_state_files() -> list[str]:
+    return sorted(
+        str(path.relative_to(run_state()))
+        for path in run_state().rglob("*")
+        if path.is_file()
+    )
+
+
+def wait_until(check, timeout: float = 30) -> None:
+    deadline = time.monotonic() + timeout
+    while not check():
+        assert time.monotonic() < deadline, "condition did not hold in time"
+        time.sleep(0.05)
+
+
+def request(path: Path, message: dict[str, object]) -> dict[str, object]:
+    with socket.socket(socket.AF_UNIX) as client:
+        client.settimeout(30)
+        client.connect(str(path))
+        client.sendall((json.dumps(message) + "\n").encode())
+        with client.makefile("r") as replies:
+            for line in replies:
+                reply = json.loads(line)
+                if "step" not in reply:
+                    return reply  # type: ignore[no-any-return]
+    raise AssertionError("daemon closed without a reply")
+
+
+def test_runs_write_no_journals_and_leave_run_state_as_it_was(
+    terminal, tmp_path: Path, runtime: Path
+) -> None:
+    root = tmp_path / "project"
+    (root / "exp").mkdir(parents=True)
+    (root / ".labnotes.toml").write_text("")
+    (root / "exp/experiment.toml").write_text(
+        f'continues = false\ncommand = "{sys.executable} -c pass"\nrepeats = 2\n'
+    )
+    seen = []
+    for _ in range(2):
+        term = terminal(
+            " ".join(labnotes(root, "experiments", "exp", "run")),
+            rows=30,
+            cols=120,
+            env={"XDG_RUNTIME_DIR": str(runtime)},
+        )
+        expect(term.get_by_text("2 passed, 0 failed.")).to_be_visible(timeout=30)
+        term.key_ctrl_c()
+        assert term.wait(timeout=10) == 0, term.to_snapshot()
+        wait_until(lambda: not daemons(root))
+        seen.append(run_state_files())
+
+    assert len(list(root.glob("exp/runs/*/run.json"))) == 4
+    assert [name for name in seen[0] if name.endswith(".jsonl")] == []
+    assert seen[1] == seen[0]
+
+
+def test_daemon_names_each_batch_with_its_own_id(tmp_path: Path, runtime: Path) -> None:
+    root = tmp_path / "project"
+    release = tmp_path / "release"
+    (root / "exp").mkdir(parents=True)
+    (root / ".labnotes.toml").write_text("")
+    hold = tmp_path / "hold.py"
+    hold.write_text(
+        "import pathlib, time\n"
+        f"while not pathlib.Path({str(release)!r}).exists():\n"
+        "    time.sleep(0.1)\n"
+    )
+    (root / "exp/experiment.toml").write_text(
+        f"continues = false\ncommand = '{sys.executable} {hold}'\n"
+    )
+    daemon = subprocess.Popen(
+        labnotes(root, "daemon", "exp"),
+        cwd=root,
+        env={**os.environ, "XDG_RUNTIME_DIR": str(runtime)},
+        stdout=subprocess.DEVNULL,
+    )
     try:
-        journals = []
-        for _ in range(100):
-            journals = list(
-                (Path(os.environ["XDG_STATE_HOME"]) / "labnotes/run-state").glob(
-                    "*/*.jsonl"
-                )
-            )
-            if len(journals) == 2 and all(
-                "started" in path.read_text() for path in journals
-            ):
-                break
-            time.sleep(0.05)
-        assert len(journals) == 2
-        plans = [
-            [json.loads(line) for line in path.read_text().splitlines()][0]
-            for path in journals
-        ]
-        assert sorted(plan["runs"][0]["params"]["m"] for plan in plans) == ["a", "b"]
-        assert all(len(plan["runs"]) == 1 for plan in plans)
+        wait_until(lambda: bool(list(runtime.glob("labnotes/*.sock"))))
+        [path] = runtime.glob("labnotes/*.sock")
+        with socket.socket(socket.AF_UNIX) as observer:
+            observer.settimeout(30)
+            observer.connect(str(path))
+            observer.sendall(b'{"command":"attach"}\n')
+            stream = observer.makefile("r")
+            assert json.loads(stream.readline()) == {"ok": True, "batches": []}
 
-        mine = {
-            plan["runs"][0]["params"]["m"]: plan["runs"][0]["run"] for plan in plans
-        }
-        for process, value in zip(processes, ("a", "b"), strict=True):
-            other = mine["b" if value == "a" else "a"]
-            expect(process.get_by_text(mine[value])).to_be_visible(timeout=15)
-            expect(process.get_by_text(other)).not_to_be_visible()
+            started = request(path, {"command": "start", "options": {}})
+            assert started["ok"] is True, started
+            assert "journal" not in started
+            batch = started["batch"]
+            assert isinstance(batch, str) and batch
+            assert "/" not in batch and not batch.endswith(".jsonl")
 
-        for process in processes:
-            expect(process.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=15)
-            process.key_ctrl_c()
-            assert process.wait(timeout=10) == 0
-        for path in journals:
-            events = [json.loads(line) for line in path.read_text().splitlines()]
-            assert len([event for event in events if event["event"] == "started"]) == 1
-            assert len([event for event in events if event["event"] == "ended"]) == 1
+            listed = request(path, {"command": "batches"})
+            assert listed == {"ok": True, "batches": [batch]}
+
+            first = json.loads(stream.readline())
+            assert first == {"batch": batch, "event": first["event"]}
+            assert first["event"]["event"] == "planned"
+            stream.close()
+
+        assert [p for p in run_state().rglob("*.jsonl")] == []
     finally:
-        for process in processes:
-            process.kill()
+        release.touch()
+        if daemon.poll() is None:
+            daemon.terminate()
+        daemon.wait(timeout=15)

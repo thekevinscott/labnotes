@@ -31,3 +31,22 @@ def test_visible_line_keeps_ansi_color_and_wraps(tmp_path: Path) -> None:
             assert not output.show_horizontal_scrollbar
 
     asyncio.run(drive())
+
+
+def test_plain_lines_and_blank_lines_share_the_log_background(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("para one\n\npara two\n")
+
+    async def drive() -> None:
+        app = OutputApp()
+        async with app.run_test(size=(40, 8)) as pilot:
+            app.query_one(RunOutput).follow(tmp_path)
+            output = app.query_one(RunOutput).logs["stdout"]
+            await pilot.pause()
+            backgrounds = {
+                segment.style and segment.style.bgcolor
+                for y in range(3)
+                for segment in output.render_line(y)
+            }
+            assert backgrounds == {output.rich_style.bgcolor}
+
+    asyncio.run(drive())

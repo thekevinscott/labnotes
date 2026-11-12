@@ -6,11 +6,9 @@ from textual.drivers.linux_driver import LinuxDriver
 
 
 class ThawDriver(LinuxDriver):
-    """Textual's SIGCONT handler re-enters application mode, assuming SIGTSTP
-    left it. A bare SIGSTOP runs no handler, so each thaw stacked an input
-    thread that could outlive Ctrl-C and kept raw mode as the mode to restore.
-    Closing joins the old writer so its restore output lands before the new
-    writer's; re-entering the alternate screen clears it, hence the repaint.
+    """Textual's SIGCONT handler assumes SIGTSTP already left application mode.
+    A bare SIGSTOP doesn't, so each thaw stacked an input thread that could
+    outlive Ctrl-C. Re-entering the alternate screen clears it; repaint.
     """
 
     def _sigcont_application(self, *_: Any) -> None:

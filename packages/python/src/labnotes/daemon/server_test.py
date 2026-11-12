@@ -349,7 +349,7 @@ def test_start_passes_progress_and_reports_a_queued_start(tmp_path: Path) -> Non
                 await asyncio.sleep(0)
             assert (await waiting)["ok"] is True
         assert steps == ["Waiting for an earlier start"]
-        assert start.call_args.args[-1] == steps.append
+        assert start.call_args.args[16] == steps.append
 
     asyncio.run(drive())
 

@@ -425,6 +425,19 @@ def test_an_empty_line_takes_one_row(tmp_path: Path, drawing: dict[str, Any]) ->
     assert wrapped == [strip.extend_cell_length.return_value.apply_offsets.return_value]
 
 
+@pytest.mark.usefixtures("sized")
+def test_renders_the_line_a_terminal_would_show(
+    tmp_path: Path, drawing: dict[str, Any]
+) -> None:
+    (tmp_path / "stdout.log").write_text("step 0\rstep 1\r\n")
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    drawing["Strip"].return_value.cell_length = 0
+    output.wrap(0)
+    drawing["Text"].from_ansi.assert_called_once_with("step 1", style=output.rich_style)
+
+
 @pytest.mark.parametrize("span", [None, (0, -1), (0, 0), (1, 2)])
 @pytest.mark.usefixtures("sized")
 def test_highlights_the_selected_part_of_a_line(

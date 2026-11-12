@@ -1558,7 +1558,7 @@ def test_asks_the_retryable_command_about_each_failure(
         ) as is_retryable,
         mock.patch(
             "labnotes.runner.run_experiment.time",
-            mock.Mock(monotonic=mock.Mock(side_effect=[10.0, 12.5, 20.0, 21.0])),
+            mock.Mock(monotonic=mock.Mock(side_effect=[4.0, 13.0, 20.0, 21.0])),
         ),
     ):
         run(tmp_path, report, retries=3, retryable="check")
@@ -1580,7 +1580,7 @@ def test_asks_the_retryable_command_about_each_failure(
         "created_at": "2026-01-01T00:00:00Z",
         "started_at": "2026-01-01T00:00:00Z",
         "finished_at": "2026-01-01T00:00:05Z",
-        "duration_s": 2.5,
+        "duration_s": 9.0,
         "exit_code": 1,
         "run_folder": str(folder),
         "stdout": str(folder / "stdout.log"),

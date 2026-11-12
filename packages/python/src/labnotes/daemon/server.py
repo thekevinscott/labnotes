@@ -96,7 +96,7 @@ class ExperimentDaemon:
                     reserved.update(
                         {
                             str(run["run"]): cast(dict[str, object], run["params"])
-                            for run in event["runs"]
+                            for run in cast(list[dict[str, object]], event["runs"])
                         }
                     )
                     break

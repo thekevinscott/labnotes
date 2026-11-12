@@ -1168,6 +1168,8 @@ def test_detached_leave_names_the_attach_and_stop_commands(tmp_path: Path) -> No
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
     with mock.patch.object(app, "exit") as exit_app:
+        app.answer(None)
+        exit_app.assert_not_called()
         app.answer("leave")
         exit_app.assert_called_once_with()
     assert app.farewell == (
@@ -2985,7 +2987,7 @@ def test_run_stream_filters_other_batches_but_follows_its_restarts(
     with mock.patch.object(app.body, "show_event") as show:
         app.forward("earlier", old)
         app.forward("unrelated", {**restart, "restart": "other"})
-        app.forward("own", own)
+        app.forward("".join(["o", "wn"]), own)
         app.forward("restart", restart)
         app.forward("restart", ended)
     expected = [

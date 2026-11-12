@@ -708,8 +708,14 @@ def test_server_creates_its_folder_and_waits_for_invocations(tmp_path: Path) -> 
 
 
 def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None:
-    planned = {"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]}
-    later = {"event": "planned", "runs": [{"run": "r9", "params": {"m": "z"}}]}
+    planned: dict[str, object] = {
+        "event": "planned",
+        "runs": [{"run": "r1", "params": {"m": "a"}}],
+    }
+    later: dict[str, object] = {
+        "event": "planned",
+        "runs": [{"run": "r9", "params": {"m": "z"}}],
+    }
     batches: dict[str, list[dict[str, object]]] = {
         "empty": [],
         "stopping": [

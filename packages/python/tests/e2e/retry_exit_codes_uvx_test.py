@@ -81,6 +81,10 @@ def test_uvx_gives_up_naming_the_exit_code(tmp_path: Path, tui: Tui) -> None:
 
     term = tui(root, "experiments", "exp", "run")
 
-    expect(term.get_by_text("gave up (exit 1)")).to_be_visible(timeout=120)
+    expect(term.get_by_text("0 passed, 1 failed. 1 retried.")).to_be_visible(
+        timeout=120
+    )
+    term.key_escape()
+    expect(term.get_by_text("gave up (exit 1)")).to_be_visible()
     tui.quit(term)
     assert exit_codes(root) == [1, 1]

@@ -35,7 +35,7 @@ def test_sends_the_attempt_as_json_on_stdin_and_logs_the_output(
 
 def test_gives_up_when_the_command_cannot_start(tmp_path: Path) -> None:
     assert not asyncio.run(
-        is_retryable("x", tmp_path / "missing", {}, tmp_path / "log", {})
+        is_retryable("x", tmp_path / "missing", {}, tmp_path / "log", {}, set())
     )
 
 

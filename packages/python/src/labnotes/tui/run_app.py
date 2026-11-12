@@ -132,7 +132,7 @@ class RunLiveView(Widget):
         self.query_one(Input).display = False
         self.query_one("#output", RunOutput).display = False
         table.focus()
-        table.set_interval(0.1, self.spin)
+        self.set_interval(0.1, self.spin)
         self.set_interval(1, self.tick)
         self.set_interval(0.25, self.follow)
 

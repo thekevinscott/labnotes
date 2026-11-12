@@ -862,10 +862,10 @@ def test_spins_the_status_of_running_runs() -> None:
 
     async def drive() -> None:
         app = RunApp(start, "exp", COLUMNS)
-        with mock.patch("labnotes.tui.run_app.DataTable.set_interval") as interval:
+        with mock.patch.object(app.body, "set_interval") as interval:
             async with app.run_test() as pilot:
                 await pilot.pause()
-                interval.assert_called_once_with(0.1, app.body.spin)
+                interval.assert_any_call(0.1, app.body.spin)
                 spun = []
                 for _ in range(4):
                     app.body.spin()
@@ -1414,6 +1414,7 @@ def test_ticks_every_second_and_follows_output_often() -> None:
             async with app.run_test() as pilot:
                 await pilot.pause()
         assert set_interval.call_args_list == [
+            mock.call(0.1, app.body.spin),
             mock.call(1, app.body.tick),
             mock.call(0.25, app.body.follow),
         ]
@@ -2284,6 +2285,21 @@ def test_busy_after_a_failed_setup_waits_only_for_teardown(
         assert app.query_one(RunLiveView).busy() == busy
 
     drive_hooks(steps)
+
+
+def test_spinning_stages_survive_the_table_outliving_them_at_shutdown() -> None:
+    prune = RunLiveView.on_prune
+
+    async def slow_prune(self: Any, event: Any) -> None:
+        await asyncio.sleep(0.3)
+        await prune(self, event)
+
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        await pilot.pause()
+
+    with mock.patch("labnotes.tui.run_app.DataTable.on_prune", slow_prune):
+        drive_hooks(steps)
 
 
 def hook_calls(app: RunApp, method: str) -> dict[str, bool]:

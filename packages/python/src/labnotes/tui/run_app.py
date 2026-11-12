@@ -12,7 +12,7 @@ from typing import Any, cast
 
 from rich.text import Text
 from starlette.datastructures import QueryParams
-from textual import work
+from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.css.query import NoMatches
@@ -81,8 +81,8 @@ class RunLiveView(Widget):
         Binding("escape", "leave", "Back"),
         Binding("plus,equals_sign", "concurrency(1)", "More at once", key_display="+"),
         Binding("minus", "concurrency(-1)", "Fewer at once", key_display="-"),
-        Binding("left_square_bracket", "stage(-1)", "Previous stage", key_display="["),
-        Binding("right_square_bracket", "stage(1)", "Next stage", key_display="]"),
+        Binding("left_square_bracket", "stage(-1)", "Previous stage", show=False),
+        Binding("right_square_bracket", "stage(1)", "Next stage", show=False),
     ]
 
     def __init__(self, columns: Sequence[str] = ()) -> None:
@@ -296,6 +296,12 @@ class RunLiveView(Widget):
         index = min(max(names.index(self.stage) + step, 0), len(names) - 1)
         self.moved = True
         self.go(names[index])
+
+    def on_click(self, event: events.Click) -> None:
+        picked = event.style.meta.get("stage")
+        if picked in self.stage_names():
+            self.moved = True
+            self.go(picked)
 
     def busy(self) -> str | None:
         torn = "teardown" in self.hooks

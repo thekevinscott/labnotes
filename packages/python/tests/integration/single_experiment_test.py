@@ -1,3 +1,4 @@
+import asyncio
 import json
 from collections.abc import Iterator
 from pathlib import Path
@@ -8,8 +9,11 @@ from conftest import write
 from starlette.testclient import TestClient
 
 from labnotes.cli import main
-from labnotes.create_app import create_app
+from labnotes.default_counts import DEFAULT_COUNTS
 from labnotes.read_config import read_config
+from labnotes.tables.list_experiment_runs import list_experiment_runs
+from labnotes.tables.open_tables import open_tables
+from labnotes.create_app import create_app
 
 
 @pytest.fixture
@@ -29,18 +33,16 @@ def project(tmp_path: Path) -> Path:
     return root
 
 
-def labnotes(
-    project: Path, argv: list[str], capsys: pytest.CaptureFixture[str]
-) -> list[dict[str, Any]]:
-    with pytest.raises(SystemExit) as exit_info:
-        main(["-c", str(project / ".labnotes.toml"), *argv, "--format", "json"])
-    assert exit_info.value.code == 0
-    rows: list[dict[str, Any]] = json.loads(capsys.readouterr().out)
-    return rows
+def stored_runs(root: Path, name: str) -> list[dict[str, Any]]:
+    async def read() -> list[dict[str, Any]]:
+        tables = open_tables(read_config(root / ".labnotes.toml"))
+        return await list_experiment_runs(tables, name, DEFAULT_COUNTS)
+
+    return asyncio.run(read())
 
 
-def test_lists_its_runs(project: Path, capsys: pytest.CaptureFixture[str]) -> None:
-    [run] = labnotes(project, ["experiments", "surprisals", "runs"], capsys)
+def test_reads_its_runs(project: Path) -> None:
+    [run] = stored_runs(project, "surprisals")
 
     assert (run["id"], run["folder"]) == ("brave-fox", "runs/brave-fox")
 

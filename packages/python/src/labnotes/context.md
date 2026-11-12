@@ -31,12 +31,8 @@ When `experiment.toml` sits next to `.labnotes.toml`, the root is the one experi
 Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
 
-```sh
-labnotes experiments foo runs --format json   # foo's runs, oldest first
-```
-
 `labnotes experiments` and `labnotes experiments foo` with no action exit 2
-and name the actions: `runs`, `run`, `attach` or `stop`.
+and name the actions: `run`, `attach` or `stop`.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't
@@ -136,8 +132,7 @@ A run counts when it exited 0 and its `run.json` doesn't hold
 `runs`, for example `counts = "exit_code = 0 AND created > '2026-10-01'"` to
 drop runs from before a script change. The default is
 `exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)`.
-`experiments foo runs` shows the rule's result as `counted`; queries over
-`runs` itself see every run, so apply the rule there too.
+Queries over `runs` see every run, so apply the rule there too.
 
 A script run by labnotes should:
 
@@ -161,7 +156,7 @@ shows a waiting retry as `retry in 30s` and the end as `gave up (exit 75)`;
 The live view reports `retrying`, `retried`, `gave up` and
 `retry cancelled` events.
 
-Runs can take a long time. Start `run` in a dedicated tmux window, then check on it with `labnotes experiments foo runs --format json`; a run with no `ended` is still going. Each run lists `size`, the bytes in its run folder, and a running run lists `memory`, the resident bytes of its command and everything it started.
+Runs can take a long time. Start `run` in a dedicated tmux window and watch it there; `labnotes experiments foo attach` reopens it. A run whose `run.json` has no `ended` is still going.
 
 While a run goes, labnotes appends a memory sample to `memory.jsonl` in its run
 folder every 5 seconds: one JSON line, `{"time": <unix seconds>, "rss": <bytes>,

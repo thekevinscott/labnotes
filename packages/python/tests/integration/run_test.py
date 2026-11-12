@@ -1,3 +1,4 @@
+import asyncio
 import json
 import re
 import shlex
@@ -12,6 +13,10 @@ import psutil
 import pytest
 
 from labnotes.cli import main
+from labnotes.default_counts import DEFAULT_COUNTS
+from labnotes.read_config import read_config
+from labnotes.tables.list_experiment_runs import list_experiment_runs
+from labnotes.tables.open_tables import open_tables
 from curtaincall import Terminal
 from conftest import run_tui_command
 
@@ -58,6 +63,14 @@ def labnotes(project: Path, argv: list[str]) -> int | str | None:
     return exit_info.value.code
 
 
+def stored_runs(root: Path, name: str) -> list[dict[str, Any]]:
+    async def read() -> list[dict[str, Any]]:
+        tables = open_tables(read_config(root / ".labnotes.toml"))
+        return await list_experiment_runs(tables, name, DEFAULT_COUNTS)
+
+    return asyncio.run(read())
+
+
 def runs(project: Path) -> list[dict[str, Any]]:
     return [
         json.loads(path.read_text(encoding="utf-8")) | {"folder": path.parent}
@@ -92,20 +105,15 @@ def test_reruns_only_the_runs_that_failed(
     assert sorted(run["params"]["m"] for run in recorded) == ["a", "a"] + ["b"] * 4
 
 
-def test_reruns_an_excluded_run(
-    project: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_reruns_an_excluded_run(project: Path) -> None:
     labnotes(project, ["experiments", "exp", "run"])
     [excluded, _] = [run for run in runs(project) if run["params"]["m"] == "a"]
     run_json = excluded["folder"] / "run.json"
     recorded = json.loads(run_json.read_text(encoding="utf-8"))
     run_json.write_text(json.dumps(recorded | {"excluded": True}))
     labnotes(project, ["experiments", "exp", "run"])
-    capsys.readouterr()
 
-    labnotes(project, ["experiments", "exp", "runs", "--format", "json"])
-
-    listed = json.loads(capsys.readouterr().out)
+    listed = stored_runs(project, "exp")
     a_runs = [run for run in listed if json.loads(run["params"]) == {"m": "a"}]
     assert sorted(run["counted"] for run in a_runs) == [0, 1, 1]
 

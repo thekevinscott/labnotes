@@ -9,19 +9,8 @@ from labnotes.experiments import experiments
 
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
-    with (
-        mock.patch("labnotes.experiments.load_config") as load_config,
-        mock.patch(
-            "labnotes.experiments.experiment_rows",
-            new=mock.AsyncMock(return_value=[{"name": "a"}]),
-        ) as experiment_rows,
-        mock.patch("labnotes.experiments.print_rows") as print_rows,
-    ):
-        yield {
-            "load_config": load_config,
-            "experiment_rows": experiment_rows,
-            "print_rows": print_rows,
-        }
+    with mock.patch("labnotes.experiments.load_config") as load_config:
+        yield {"load_config": load_config}
 
 
 def run(argv: list[str]) -> int | str | None:
@@ -30,24 +19,7 @@ def run(argv: list[str]) -> int | str | None:
     return exit_info.value.code
 
 
-def test_prints_the_runs_as_a_table(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    assert run(["a", "runs"]) == 0
-
-    collaborators["experiment_rows"].assert_awaited_once_with(
-        collaborators["load_config"].return_value, "a", "runs"
-    )
-    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "table")
-
-
-def test_prints_json(collaborators: dict[str, mock.MagicMock]) -> None:
-    assert run(["a", "runs", "--format", "json"]) == 0
-
-    collaborators["print_rows"].assert_called_once_with([{"name": "a"}], "json")
-
-
-@pytest.mark.parametrize("argv", [[], ["a"], ["a", "--format", "json"]])
+@pytest.mark.parametrize("argv", [[], ["a"]])
 def test_a_bare_command_names_the_actions(
     argv: list[str],
     capsys: pytest.CaptureFixture[str],
@@ -55,9 +27,7 @@ def test_a_bare_command_names_the_actions(
 ) -> None:
     assert run(argv) == 2
 
-    assert "action: runs, run, attach or stop." in capsys.readouterr().err
-    collaborators["experiment_rows"].assert_not_called()
-    collaborators["print_rows"].assert_not_called()
+    assert "action: run, attach or stop." in capsys.readouterr().err
 
 
 def test_needs_a_config(
@@ -68,7 +38,6 @@ def test_needs_a_config(
     assert run([]) == 1
 
     assert "No .labnotes.toml here. Run labnotes init" in capsys.readouterr().err
-    collaborators["experiment_rows"].assert_not_awaited()
 
 
 def test_stop_sends_command_and_reports_missing_daemon(
@@ -99,7 +68,6 @@ def test_stop_sends_command_and_reports_missing_daemon(
 @pytest.mark.parametrize(
     "option",
     [
-        ["--format", "json"],
         ["--concurrency", "2"],
         ["--run-id", "r"],
         ["--timeout", "3"],
@@ -113,14 +81,14 @@ def test_stop_sends_command_and_reports_missing_daemon(
     ],
 )
 @pytest.mark.parametrize("action", ["stop", "attach"])
-def test_stop_and_attach_reject_run_and_listing_options(
+def test_stop_and_attach_reject_run_options(
     action: str,
     option: list[str],
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
     assert run(["a", action, *option]) == 2
-    assert f"{action} takes no run or listing options" in capsys.readouterr().err
+    assert f"{action} takes no run options" in capsys.readouterr().err
 
 
 def test_stop_rejects_an_experiment_config_option(
@@ -131,32 +99,10 @@ def test_stop_rejects_an_experiment_config_option(
     path = tmp_path / "other.toml"
     path.touch()
     assert run(["a", "stop", "-e", str(path)]) == 2
-    assert "stop takes no run or listing options" in capsys.readouterr().err
+    assert "stop takes no run options" in capsys.readouterr().err
 
 
-def test_reports_an_unknown_experiment(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["experiment_rows"].return_value = None
-
-    assert run(["zz", "runs"]) == 1
-
-    assert "No experiment named zz." in capsys.readouterr().err
-    collaborators["print_rows"].assert_not_called()
-
-
-def test_reports_a_query_that_fails(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
-) -> None:
-    collaborators["experiment_rows"].side_effect = ValueError("a: counts broke")
-
-    assert run(["a", "runs"]) == 1
-
-    assert "Error: a: counts broke" in capsys.readouterr().err
-    collaborators["print_rows"].assert_not_called()
-
-
-@pytest.mark.parametrize("action", ["jump", "zap"])
+@pytest.mark.parametrize("action", ["jump", "zap", "runs"])
 def test_rejects_an_unknown_action(
     action: str,
     capsys: pytest.CaptureFixture[str],
@@ -165,30 +111,27 @@ def test_rejects_an_unknown_action(
     assert run(["a", action]) == 2
 
     assert (
-        f"Unknown action {action}. Use runs, run, attach or stop."
-        in capsys.readouterr().err
+        f"Unknown action {action}. Use run, attach or stop." in capsys.readouterr().err
     )
-    collaborators["experiment_rows"].assert_not_called()
 
 
 def test_needs_run_for_params(
     capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    assert run(["a", "runs", "--model=small", "--lang=en"]) == 2
+    assert run(["a", "jump", "--model=small", "--lang=en"]) == 2
 
     assert "Unexpected --model=small. --PARAM=VALUE needs run." in (
         capsys.readouterr().err
     )
-    collaborators["experiment_rows"].assert_not_called()
 
 
 @pytest.mark.parametrize(
     "argv,expected",
     [
-        (["a", "runs", "--run-id", "r1"], "--run-id needs run"),
-        (["a", "runs", "--retries", "2"], "--retries needs run"),
-        (["a", "runs", "--retry-wait", "1"], "--retry-wait needs run"),
-        (["a", "runs", "--replace-capped"], "--replace-capped needs run"),
+        (["a", "jump", "--run-id", "r1"], "--run-id needs run"),
+        (["a", "jump", "--retries", "2"], "--retries needs run"),
+        (["a", "jump", "--retry-wait", "1"], "--retry-wait needs run"),
+        (["a", "jump", "--replace-capped"], "--replace-capped needs run"),
         (
             ["a", "run", "--run-id", "r1", "--model=small"],
             "--run-id uses the run's recorded params",
@@ -207,14 +150,6 @@ def test_run_id_rejects_conflicting_inputs(
 ) -> None:
     assert run(argv) == 2
     assert expected in capsys.readouterr().err
-
-
-def test_help_says_format_applies_to_runs(
-    capsys: pytest.CaptureFixture[str], collaborators: dict[str, mock.MagicMock]
-) -> None:
-    assert run(["--help"]) == 0
-
-    assert "With runs: print rows as a table or as JSON." in capsys.readouterr().out
 
 
 @pytest.fixture
@@ -346,7 +281,7 @@ def test_sends_no_args_for_a_bare_double_dash(
     )
 
 
-@pytest.mark.parametrize("argv", [["a", "--", "--auth"], ["a", "runs", "--"]])
+@pytest.mark.parametrize("argv", [["a", "--", "--auth"], ["a", "jump", "--"]])
 def test_rejects_args_without_run(
     argv: list[str],
     capsys: pytest.CaptureFixture[str],
@@ -499,7 +434,6 @@ def test_creates_an_experiment(
         collaborators["load_config"].return_value, name, None, None, None, {}
     )
     assert capsys.readouterr().out == "Created notes/study/experiment.toml\n"
-    collaborators["experiment_rows"].assert_not_called()
 
 
 def test_creates_an_experiment_from_flags(
@@ -558,7 +492,6 @@ def test_new_flags_need_new(
     assert run([*argv, *flags]) == 2
 
     assert f"{flag} needs new." in capsys.readouterr().err
-    collaborators["experiment_rows"].assert_not_called()
 
 
 @pytest.mark.parametrize("given", ["0", "x"])
@@ -616,36 +549,6 @@ def test_help_says_runs_have_no_timeout_by_default(
     assert "--timeout SECONDS" in out
     assert "stop any run still going after this many seconds." in out
     assert "Unset, runs have no time limit." in out
-
-
-@pytest.mark.parametrize("flags", [[], ["--format", "table"]])
-def test_shows_memory_and_size_readably_in_a_table(
-    collaborators: dict[str, mock.MagicMock], flags: list[str]
-) -> None:
-    collaborators["experiment_rows"].return_value = [
-        {"id": "r", "memory": 3_200_000_000, "size": None}
-    ]
-
-    assert run(["a", "runs", *flags]) == 0
-
-    collaborators["print_rows"].assert_called_once_with(
-        [{"id": "r", "memory": "3.2 GB", "size": ""}], "table"
-    )
-
-
-def test_keeps_memory_and_size_in_bytes_in_json(
-    collaborators: dict[str, mock.MagicMock],
-) -> None:
-    collaborators["experiment_rows"].return_value = [
-        {"id": "r", "memory": 3_200_000_000, "size": 12}
-    ]
-
-    assert run(["a", "runs", "--format", "json"]) == 0
-
-    collaborators["print_rows"].assert_called_once_with(mock.ANY, "json")
-    [printed, _] = collaborators["print_rows"].call_args.args
-    assert printed == [{"id": "r", "memory": 3_200_000_000, "size": 12}]
-    assert [type(printed[0][key]) for key in ("memory", "size")] == [int, int]
 
 
 def test_passes_retries_and_replace_capped_to_the_run(

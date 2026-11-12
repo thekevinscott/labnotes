@@ -137,7 +137,7 @@ def test_daemon_lists_running_cell_and_stop_command_stops_it(
         path = wait_for_socket(runtime)
         answer = request(path, {"command": "start", "options": {}})
         assert answer["ok"] is True, answer
-        assert Path(str(answer["journal"])).exists() or answer["journal"]
+        assert answer["batch"]
         for _ in range(100):
             records = list(root.glob("exp/runs/*/run.json"))
             if records and json.loads(records[0].read_text()).get("pid"):
@@ -193,7 +193,7 @@ def test_stop_without_daemon_reports_error(tmp_path: Path) -> None:
     assert "no daemon" in result.stderr.lower()
 
 
-def test_two_starts_share_one_daemon_and_keep_journals_separate(
+def test_two_starts_share_one_daemon_and_keep_batches_separate(
     tmp_path: Path, runtime: Path
 ) -> None:
     root = tmp_path / "project"
@@ -214,7 +214,7 @@ def test_two_starts_share_one_daemon_and_keep_journals_separate(
         second = request(path, {"command": "start", "options": {"only": {"m": ["b"]}}})
         assert first["ok"] is True, first
         assert second["ok"] is True, second
-        assert first["journal"] != second["journal"]
+        assert first["batch"] != second["batch"]
         assert list(runtime.glob("labnotes/*.sock")) == [path]
         for _ in range(100):
             records = list(root.glob("exp/runs/*/run.json"))
@@ -225,15 +225,21 @@ def test_two_starts_share_one_daemon_and_keep_journals_separate(
             time.sleep(0.05)
         assert len(records) == 2
         plans = [
-            json.loads(Path(str(answer["journal"])).read_text().splitlines()[0])
-            for answer in (first, second)
+            json.loads(record.read_text())
+            for record in sorted(
+                records,
+                key=lambda record: json.loads(record.read_text())["params"]["m"],
+            )
         ]
-        assert [plan["runs"][0]["params"]["m"] for plan in plans] == ["a", "b"]
-        assert all(len(plan["runs"]) == 1 for plan in plans)
+        assert [plan["params"]["m"] for plan in plans] == ["a", "b"]
         assert request(path, {"command": "set_concurrency", "count": 2}) == {"ok": True}
         assert request(path, {"command": "restart", "options": {}})["ok"] is False
         assert request(path, {"command": "unknown"})["ok"] is False
-        first_run = plans[0]["runs"][0]["run"]
+        first_run = next(
+            record.parent.name
+            for record in records
+            if json.loads(record.read_text())["params"]["m"] == "a"
+        )
         first_record = next(
             record for record in records if record.parent.name == first_run
         )
@@ -290,7 +296,7 @@ def test_restart_command_runs_a_failed_cell_again(
             {"command": "restart", "options": {"run_id": records[0].parent.name}},
         )
         assert answer["ok"] is True, answer
-        assert answer["journal"] != first["journal"]
+        assert answer["batch"] != first["batch"]
         for _ in range(100):
             records = list(root.glob("exp/runs/*/run.json"))
             if len(records) == 2 and all(
@@ -329,7 +335,7 @@ def test_attach_connection_keeps_idle_daemon_alive_until_disconnect(
             client.connect(str(path))
             client.sendall(b'{"command":"attach"}\n')
             with client.makefile("r") as reply:
-                assert json.loads(reply.readline()) == {"ok": True, "journals": []}
+                assert json.loads(reply.readline()) == {"ok": True, "batches": []}
             time.sleep(5.5)
             assert daemon.poll() is None
         assert daemon.wait(timeout=10) == 0
@@ -377,15 +383,8 @@ def test_two_starts_do_not_exceed_repeats_on_one_daemon(
         second = request(path, {"command": "start", "options": {}})
         assert first["ok"] is True, first
         assert second["ok"] is True, second
-        journals = [Path(str(first["journal"])), Path(str(second["journal"]))]
         for _ in range(200):
-            if all(
-                any(
-                    json.loads(line)["event"] == "idle"
-                    for line in journal.read_text().splitlines()
-                )
-                for journal in journals
-            ):
+            if request(path, {"command": "batches"}) == {"ok": True, "batches": []}:
                 break
             time.sleep(0.05)
         records = list(root.glob("exp/runs/*/run.json"))

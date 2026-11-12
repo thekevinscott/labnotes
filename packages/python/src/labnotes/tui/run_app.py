@@ -30,7 +30,6 @@ from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
-from labnotes.runner.run_state import RunState
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
 from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
@@ -512,7 +511,7 @@ class RunApp(ViewSwitcher, App[None]):
         columns: Sequence[str],
         config: LabnotesConfig | None = None,
         experiment_config: Path | None = None,
-        daemon_journal: RunState | None = None,
+        daemon_batch: str | None = None,
         daemon_request: dict[str, object] | None = None,
         attach: bool = False,
     ) -> None:
@@ -533,12 +532,12 @@ class RunApp(ViewSwitcher, App[None]):
         self.shown: Experiment | None = None
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
-        self.daemon_journal = daemon_journal
+        self.daemon_batch = daemon_batch
         self.daemon_request = daemon_request
         self.steps: list[str] = []
         self.startup_frame = 0
         self.attach = attach
-        self.busy_journals: set[str] = set()
+        self.busy_batches: set[str] = set()
         self.restart_batches: set[str] = set()
         self.disconnected = False
         self.attached: socket.socket | None = None
@@ -584,7 +583,7 @@ class RunApp(ViewSwitcher, App[None]):
             self.query_one(ContentSwitcher).display = False
             self.startup_timer = self.set_interval(0.1, self.spin_startup)  # probe
             self.run_worker(self.start_daemon_run())
-        elif self.daemon_journal is not None or self.attach:
+        elif self.daemon_batch is not None or self.attach:
             try:
                 self.follow_daemon()
             except (OSError, ValueError) as error:
@@ -614,7 +613,7 @@ class RunApp(ViewSwitcher, App[None]):
             reply = await request_start(
                 self.config, self.experiment_name, self.daemon_request, self.step
             )
-            self.daemon_journal = RunState(Path(str(reply["journal"])))
+            self.daemon_batch = str(reply["batch"])
             self.follow_daemon()
         except (OSError, ValueError) as error:
             self.error = ValueError(str(error))
@@ -630,15 +629,15 @@ class RunApp(ViewSwitcher, App[None]):
             self.call_after_refresh(self.screen.focus_next)
 
     def follow_daemon(self) -> None:
-        journals = self.attach_daemon() if self.attached is None else []
+        batches = self.attach_daemon() if self.attached is None else []
         if self.attach:
-            if not journals:
+            if not batches:
                 self.farewell = f"Nothing is running for {self.experiment_name}."
                 self.exit()
                 return
-            self.daemon_journal = RunState(Path(journals[0]))
-        assert self.daemon_journal is not None
-        journal = self.daemon_journal
+            self.daemon_batch = batches[0]
+        assert self.daemon_batch is not None
+        batch = self.daemon_batch
         self.listen(
             Controls(
                 lambda: self.queue_command({"command": "stop_all"}),
@@ -646,7 +645,7 @@ class RunApp(ViewSwitcher, App[None]):
                     {
                         "command": "set_concurrency",
                         "count": count,
-                        "journal": None if self.attach else str(journal.path),
+                        "batch": None if self.attach else batch,
                     }
                 ),
                 lambda run: self.queue_command({"command": "stop_one", "run": run}),
@@ -674,7 +673,7 @@ class RunApp(ViewSwitcher, App[None]):
             client.close()
             raise
         self.attached = client
-        return cast(list[str], reply.get("journals", []))
+        return cast(list[str], reply.get("batches", []))
 
     async def read_stream(self) -> None:
         if self.attached is None:
@@ -687,7 +686,7 @@ class RunApp(ViewSwitcher, App[None]):
             while line := await reader.readline():
                 message = json.loads(line)
                 if self.body_ready:
-                    self.forward(str(message["journal"]), message["event"])
+                    self.forward(str(message["batch"]), message["event"])
         except (OSError, ValueError):
             pass  # Keep the last visible state when the stream is lost.
         finally:
@@ -731,7 +730,7 @@ class RunApp(ViewSwitcher, App[None]):
                 self.body.show(str(error))
 
     def restart_run(self, run: str) -> None:
-        if self.daemon_journal is None:
+        if self.daemon_batch is None:
             return
         if run not in self.body.failed:
             self.body.show(f"{run} has not failed.")
@@ -805,7 +804,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.controls = controls
         if self.body_ready:
             self.body.controls = controls
-        if self.daemon_journal is None:
+        if self.daemon_batch is None:
             stop_then_kill(self.stop_runs, signal.SIGTERM)
             stop_then_kill(self.stop_runs, signal.SIGHUP)
 
@@ -815,19 +814,19 @@ class RunApp(ViewSwitcher, App[None]):
         if self.body_ready:
             self.body.show_event(event)
 
-    def forward(self, journal: str, event: dict[str, object]) -> None:
+    def forward(self, batch: str, event: dict[str, object]) -> None:
         if (
             not self.attach
-            and self.daemon_journal is not None
-            and journal != str(self.daemon_journal.path)
-            and journal not in self.restart_batches
+            and self.daemon_batch is not None
+            and batch != self.daemon_batch
+            and batch not in self.restart_batches
         ):
             match event:
                 case {
                     "event": "planned",
                     "restart": str(run),
                 } if run in self.body.cells:
-                    self.restart_batches.add(journal)
+                    self.restart_batches.add(batch)
                 case _:
                     return
         match event:
@@ -840,10 +839,10 @@ class RunApp(ViewSwitcher, App[None]):
                     "params": planned["params"],
                 }
             case {"event": "started"}:
-                self.busy_journals.add(journal)
+                self.busy_batches.add(batch)
             case {"event": "idle"}:
-                self.busy_journals.discard(journal)
-                if self.busy_journals:
+                self.busy_batches.discard(batch)
+                if self.busy_batches:
                     return
         self.body.show_event(event)
 
@@ -857,12 +856,12 @@ class RunApp(ViewSwitcher, App[None]):
             self.controls.interrupt()
 
     def action_interrupt(self) -> None:
-        if self.daemon_request is not None and self.daemon_journal is None:
+        if self.daemon_request is not None and self.daemon_batch is None:
             name = self.experiment_name
             self.farewell = f"{name} may still start. Stop it with: labnotes experiments {name} stop"
             self.exit()
             return
-        if self.daemon_journal is not None:
+        if self.daemon_batch is not None:
             busy = self.body.busy() if self.body_ready else "Still running."
             if busy is None:
                 self.exit()
@@ -884,12 +883,12 @@ class RunApp(ViewSwitcher, App[None]):
 
     def answer(self, choice: str | None) -> None:
         if choice == "stop":
-            if self.daemon_journal is None:
+            if self.daemon_batch is None:
                 self.controls.interrupt()
                 self.set_timer(GRACE_SECONDS, self.controls.interrupt)
             else:
                 self.run_worker(self.stop_daemon_and_exit(), exit_on_error=False)
-        elif choice == "leave" and self.daemon_journal is not None:
+        elif choice == "leave" and self.daemon_batch is not None:
             name = self.experiment_name
             self.farewell = (
                 f"{name} is still running.\n"

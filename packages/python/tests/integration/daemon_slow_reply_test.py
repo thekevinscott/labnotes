@@ -49,7 +49,7 @@ def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
                     assert json.loads(requests.readline())["command"] == action
                 time.sleep(10.5)
                 try:
-                    connection.sendall(b'{"ok":true,"journal":"running.jsonl"}\n')
+                    connection.sendall(b'{"ok":true,"batch":"running"}\n')
                 except BrokenPipeError:
                     pass  # The old client closes before the delayed reply.
 
@@ -58,7 +58,7 @@ def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
         try:
             assert command(config, "exp", {"command": action}) == {
                 "ok": True,
-                "journal": "running.jsonl",
+                "batch": "running",
             }
             assert path.exists()
             assert record.exists()

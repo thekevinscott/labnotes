@@ -57,7 +57,32 @@ def test_missing_runtime_dir_uses_owner_only_temp_folder(
     assert socket_path(config(tmp_path), "exp").parent == folder
 
 
-def test_discovery_records_live_with_journals(tmp_path: Path) -> None:
+def test_discovery_folder_is_stable_per_runs_folder(tmp_path: Path) -> None:
+    moved = mock.Mock(
+        root=tmp_path,
+        experiments="experiments/{experiment}",
+        runs="experiments/../experiments/{experiment}/runs/{run}",
+    )
+    assert discovery_folder(moved, "exp") == discovery_folder(config(tmp_path), "exp")
+    assert discovery_folder(config(tmp_path), "other") != discovery_folder(
+        config(tmp_path), "exp"
+    )
+
+
+@pytest.mark.parametrize("state_home", [None, ""])
+def test_discovery_folder_defaults_to_local_state(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch, state_home: str | None
+) -> None:
+    if state_home is None:
+        monkeypatch.delenv("XDG_STATE_HOME")
+    else:
+        monkeypatch.setenv("XDG_STATE_HOME", state_home)
+    monkeypatch.setenv("HOME", str(tmp_path))
+    folder = discovery_folder(config(tmp_path), "exp")
+    assert folder.parent == tmp_path / ".local/state/labnotes/run-state"
+
+
+def test_discovery_records_live_in_run_state(tmp_path: Path) -> None:
     project = config(tmp_path)
     runs = tmp_path / "experiments/exp/runs"
     key = hashlib.sha256(str(runs.resolve()).encode()).hexdigest()[:16]

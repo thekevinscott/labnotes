@@ -15,6 +15,7 @@ from labnotes.models import (
     Listen,
     Report,
 )
+from labnotes.runner.batch_id import batch_id
 from labnotes.runner.check_hook_placeholders import check_hook_placeholders
 from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.execute_run import execute_run
@@ -31,8 +32,8 @@ from labnotes.runner.plan_runs import plan_runs
 from labnotes.runner.project_snapshot import ProjectSnapshot
 from labnotes.runner.run_folder import run_folder
 from labnotes.runner.run_locked import run_locked
-from labnotes.runner.run_state import RunState
 from labnotes.runner.signal_tree import signal_tree
+from labnotes.runner.stamp_event import stamp_event
 from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
@@ -56,14 +57,14 @@ async def run_experiment(
     snapshot: ProjectSnapshot | None = None,
     command_line: str | None = None,
     run_id: str | None = None,
-    run_state: RunState | None = None,
+    batch: str | None = None,
     reserved: dict[str, dict[str, object]] | None = None,
 ) -> list[dict[str, object]]:
-    state = run_state or RunState.create(config, name)
+    named = batch or batch_id()
     forward = report
 
     def emit(event: dict[str, object]) -> None:
-        forward(state.record(event))
+        forward(stamp_event(event))
 
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
@@ -395,7 +396,7 @@ async def run_experiment(
             release(run)
 
     async def run_hook(hook: str, command: str, announce: str) -> None:
-        folder = hook_folder(config, name, hook, state.path.stem)
+        folder = hook_folder(config, name, hook, named)
         emit({"event": announce, "hook": hook, "folder": folder})
         try:
             await invocation_hook(

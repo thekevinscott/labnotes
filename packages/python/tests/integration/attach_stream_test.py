@@ -17,7 +17,7 @@ from labnotes.read_config import read_config
 from labnotes.tui.run_app import RunApp
 
 STREAM_LIMIT = 16 * 1024 * 1024
-ACCEPTED = b'{"ok":true,"journals":["j"]}\n'
+ACCEPTED = b'{"ok":true,"batches":["b1"]}\n'
 Daemon = Callable[..., list[bytes]]
 
 
@@ -76,7 +76,7 @@ def planned(run: str, size: int | None = None) -> bytes:
         "runs": [{"run": run, "params": {}}],
         "concurrency": 1,
     }
-    line = json.dumps({"journal": "j", "event": {**event, "pad": ""}})
+    line = json.dumps({"batch": "b1", "event": {**event, "pad": ""}})
     if size is not None:
         line = line.replace('"pad": ""', '"pad": "' + "x" * (size - len(line)) + '"')
         assert len(line) == size

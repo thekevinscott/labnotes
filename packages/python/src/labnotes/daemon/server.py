@@ -20,6 +20,7 @@ from labnotes.daemon.socket_path import (
     socket_record,
 )
 from labnotes.models import Controls, LabnotesConfig
+from labnotes.runner.stamp_event import stamp_event
 from labnotes.runner.start_experiment import start_experiment
 
 IDLE_SECONDS = 5.0
@@ -32,7 +33,7 @@ MAX_STREAM_BUFFER = 1024 * 1024
 
 @dataclass
 class Invocation:
-    """Keep controls with the one invocation that produced a journal."""
+    """Keep controls and replayable events with one invocation's batch."""
 
     events: list[dict[str, object]] = field(default_factory=list)
     task: asyncio.Task[None] | None = None
@@ -84,13 +85,8 @@ class ExperimentDaemon:
         self, options: dict[str, object], progress: Callable[[str], None]
     ) -> dict[str, object]:
         reserved: dict[str, dict[str, object]] = {}
-        for path in self.active:
-            try:
-                events = [
-                    json.loads(line) for line in Path(path).read_text().splitlines()
-                ]
-            except FileNotFoundError:
-                continue
+        for active in self.active.values():
+            events = active.events
             if any(
                 event.get("event") in ("stopping", "finishing up") for event in events
             ):
@@ -125,10 +121,10 @@ class ExperimentDaemon:
             cast(dict[str, str] | None, options.get("environment")),
             progress,
         )
-        path = str(selected.run_state.path)
+        batch = selected.batch
         invocation = Invocation()
-        self.active[path] = invocation
-        self.history[path] = invocation
+        self.active[batch] = invocation
+        self.history[batch] = invocation
         ready: asyncio.Future[None] = asyncio.get_running_loop().create_future()
 
         def listen(controls: Controls) -> None:
@@ -143,19 +139,17 @@ class ExperimentDaemon:
 
         async def run() -> None:
             try:
-                await selected(lambda event: self.report(path, event), listen)
+                await selected(lambda event: self.report(batch, event), listen)
             except Exception as error:
                 if not ready.done():
                     ready.set_exception(error)
                 else:
                     self.report(
-                        path,
-                        selected.run_state.record(
-                            {"event": "daemon error", "error": str(error)}
-                        ),
+                        batch,
+                        stamp_event({"event": "daemon error", "error": str(error)}),
                     )
             finally:
-                self.active.pop(path, None)
+                self.active.pop(batch, None)
                 if not ready.done():
                     ready.set_exception(ValueError("Start ended before any run"))
 
@@ -165,7 +159,7 @@ class ExperimentDaemon:
             await ready
         except ValueError as error:
             return {"ok": False, "error": str(error)}
-        return {"ok": True, "journal": path}
+        return {"ok": True, "batch": batch}
 
     async def dispatch(
         self,
@@ -202,12 +196,12 @@ class ExperimentDaemon:
             count = message.get("count")
             if not isinstance(count, int) or count < 1:
                 return {"ok": False, "error": "count must be positive"}
-            journal = message.get("journal")
+            batch = message.get("batch")
             targets = (
-                [self.active[str(journal)]]
-                if journal is not None and str(journal) in self.active
+                [self.active[str(batch)]]
+                if batch is not None and str(batch) in self.active
                 else list(self.active.values())
-                if journal is None
+                if batch is None
                 else []
             )
             if not targets:
@@ -216,21 +210,19 @@ class ExperimentDaemon:
                 if invocation.controls is not None:
                     invocation.controls.set_concurrency(count)
             return {"ok": True}
-        if action in ("attach", "journals"):
-            return {"ok": True, "journals": list(self.active)}
+        if action in ("attach", "batches"):
+            return {"ok": True, "batches": list(self.active)}
         return {"ok": False, "error": f"Unknown command {action}"}
 
     def write_event(
-        self, writer: asyncio.StreamWriter, path: str, event: dict[str, object]
+        self, writer: asyncio.StreamWriter, batch: str, event: dict[str, object]
     ) -> None:
         """Drop slow consumers without blocking the runner."""
         if writer.is_closing():
             self.subscribers.discard(writer)
             return
         try:
-            writer.write(
-                (json.dumps({"journal": path, "event": event}) + "\n").encode()
-            )
+            writer.write((json.dumps({"batch": batch, "event": event}) + "\n").encode())
         except ConnectionError:
             self.subscribers.discard(writer)
             writer.transport.abort()
@@ -239,11 +231,11 @@ class ExperimentDaemon:
             self.subscribers.discard(writer)
             writer.transport.abort()
 
-    def report(self, path: str, event: dict[str, object]) -> None:
+    def report(self, batch: str, event: dict[str, object]) -> None:
         """Retain ordered replay and synchronously publish each stored event."""
-        self.history[path].events.append(event)
+        self.history[batch].events.append(event)
         for writer in tuple(self.subscribers):
-            self.write_event(writer, path, event)
+            self.write_event(writer, batch, event)
 
     async def handle(
         self, reader: asyncio.StreamReader, writer: asyncio.StreamWriter
@@ -271,9 +263,9 @@ class ExperimentDaemon:
             writer.write((json.dumps(reply) + "\n").encode())
             if isinstance(message, dict) and message.get("command") == "attach":
                 self.subscribers.add(writer)
-                for path, invocation in self.history.items():
+                for batch, invocation in self.history.items():
                     for event in invocation.events:
-                        self.write_event(writer, path, event)
+                        self.write_event(writer, batch, event)
                 await writer.drain()
                 await reader.read()
             else:

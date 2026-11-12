@@ -214,7 +214,7 @@ def test_restart_key_ignores_an_empty_table(
 @pytest.mark.parametrize(
     "reply,expected",
     [
-        ({"ok": True, "journal": "/state/run.jsonl"}, "Restarted lone"),
+        ({"ok": True, "batch": "b1"}, "Restarted lone"),
         ({"ok": False, "error": "locked"}, "Could not restart lone: locked"),
     ],
 )

@@ -7,7 +7,6 @@ from importlib.metadata import version
 from pathlib import Path
 
 from labnotes.models import LabnotesConfig
-from labnotes.runner.run_state import journal_folder
 from labnotes.runner.runs_parent import runs_parent
 
 
@@ -37,8 +36,11 @@ def socket_path(config: LabnotesConfig, name: str) -> Path:
 
 
 def discovery_folder(config: LabnotesConfig, name: str) -> Path:
-    """Find daemon metadata alongside the experiment's run journals."""
-    return journal_folder(runs_parent(config.root, config.runs, name))
+    """Keep daemon metadata out of the runs folder, where scripts expect only runs."""
+    runs = runs_parent(config.root, config.runs, name)
+    home = os.environ.get("XDG_STATE_HOME") or Path.home() / ".local" / "state"
+    key = hashlib.sha256(str(runs.resolve()).encode()).hexdigest()[:16]
+    return Path(home) / "labnotes" / "run-state" / key
 
 
 def socket_record(config: LabnotesConfig, name: str) -> Path:

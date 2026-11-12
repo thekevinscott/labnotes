@@ -788,43 +788,43 @@ def test_run_without_a_terminal_is_a_usage_error(
 
 
 @pytest.fixture
-def journals() -> Iterator[mock.MagicMock]:
+def batches() -> Iterator[mock.MagicMock]:
     with mock.patch("labnotes.experiments.daemon_command") as command:
-        command.return_value = {"ok": True, "journals": ["/state/one.jsonl"]}
+        command.return_value = {"ok": True, "batches": ["b1"]}
         yield command
 
 
 def test_attach_opens_the_tui_on_what_the_daemon_runs(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    journals: mock.MagicMock,
+    batches: mock.MagicMock,
 ) -> None:
     assert run(["a", "attach"]) == 0
 
     config = collaborators["load_config"].return_value
-    journals.assert_called_once_with(config, "a", {"command": "journals"})
+    batches.assert_called_once_with(config, "a", {"command": "batches"})
     drivers["run_tui"].assert_called_once_with(None, "a", config, attach=True)
 
 
 def test_attach_from_a_built_argument_attaches_and_stops_nothing(
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    journals: mock.MagicMock,
+    batches: mock.MagicMock,
 ) -> None:
     built = "".join(["att", "ach"])
 
     assert run(["a", built]) == 0
 
     config = collaborators["load_config"].return_value
-    journals.assert_called_once_with(config, "a", {"command": "journals"})
+    batches.assert_called_once_with(config, "a", {"command": "batches"})
     drivers["run_tui"].assert_called_once_with(None, "a", config, attach=True)
 
 
 @pytest.mark.parametrize(
     "reply",
     [
-        {"ok": True, "journals": []},
-        {"ok": False, "error": "Unknown command journals"},
+        {"ok": True, "batches": []},
+        {"ok": False, "error": "Unknown command batches"},
         ValueError("No daemon is running for a."),
     ],
 )
@@ -833,12 +833,12 @@ def test_attach_with_nothing_running_says_so_and_opens_nothing(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    journals: mock.MagicMock,
+    batches: mock.MagicMock,
 ) -> None:
     if isinstance(reply, Exception):
-        journals.side_effect = reply
+        batches.side_effect = reply
     else:
-        journals.return_value = reply
+        batches.return_value = reply
     drivers["sys"].stdout.isatty.return_value = False
 
     assert run(["a", "attach"]) == 0
@@ -854,7 +854,7 @@ def test_attach_without_a_terminal_is_a_usage_error(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    journals: mock.MagicMock,
+    batches: mock.MagicMock,
 ) -> None:
     drivers["sys"].stdout.isatty.return_value = stdout
     drivers["sys"].stderr.isatty.return_value = stderr
@@ -869,7 +869,7 @@ def test_attach_reports_a_tui_error(
     capsys: pytest.CaptureFixture[str],
     collaborators: dict[str, mock.MagicMock],
     drivers: dict[str, mock.MagicMock],
-    journals: mock.MagicMock,
+    batches: mock.MagicMock,
 ) -> None:
     drivers["run_tui"].side_effect = ValueError("No daemon is running for a.")
 

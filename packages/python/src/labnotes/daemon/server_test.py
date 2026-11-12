@@ -48,7 +48,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
             kill=kill,
             finish=finish,
         )
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+        selected = mock.Mock(batch="one")
 
         async def run(report, listen):
             listen(controls)
@@ -70,7 +70,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
             }
             assert await daemon.dispatch({"command": "start"}) == {
                 "ok": True,
-                "journal": str(tmp_path / "one.jsonl"),
+                "batch": "one",
             }
             assert await daemon.dispatch({"command": "stop_one"}) == {
                 "ok": False,
@@ -85,14 +85,14 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
             ] is False
             assert (
                 await daemon.dispatch(
-                    {"command": "set_concurrency", "count": 2, "journal": "missing"}
+                    {"command": "set_concurrency", "count": 2, "batch": "missing"}
                 )
             )["ok"] is False
             assert await daemon.dispatch(
                 {
                     "command": "set_concurrency",
                     "count": 2,
-                    "journal": str(tmp_path / "one.jsonl"),
+                    "batch": "one",
                 }
             ) == {"ok": True}
             assert await daemon.dispatch(
@@ -104,7 +104,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
             ]
             assert await daemon.dispatch({"command": "attach"}) == {
                 "ok": True,
-                "journals": [str(tmp_path / "one.jsonl")],
+                "batches": ["one"],
             }
             assert await daemon.dispatch({"command": "finish_up"}) == {"ok": True}
             controls.finish_up.assert_called_once_with()
@@ -117,21 +117,18 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
     asyncio.run(drive())
 
 
-def test_finished_up_journal_releases_planned_runs_from_reservations(
+def test_finished_up_batch_releases_planned_runs_from_reservations(
     tmp_path: Path,
 ) -> None:
-    journal = tmp_path / "finished_up.jsonl"
-    journal.write_text(
-        json.dumps({"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]})
-        + "\n"
-        + json.dumps({"event": "finishing up"})
-        + "\n"
-    )
+    events: list[dict[str, object]] = [
+        {"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]},
+        {"event": "finishing up"},
+    ]
 
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        daemon.active[str(journal)] = Invocation()
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
+        daemon.active["finished_up"] = Invocation(events=events)
+        selected = mock.Mock(batch="new")
 
         async def fail_early(report, listen):
             raise ValueError("stop here")
@@ -151,7 +148,7 @@ def test_finish_up_command_decoded_from_socket_json_reaches_controls(
 ) -> None:
     daemon = ExperimentDaemon(config(tmp_path), "exp")
     controls = mock.Mock()
-    daemon.active[str(tmp_path / "active.jsonl")] = Invocation(controls=controls)
+    daemon.active["active"] = Invocation(controls=controls)
 
     reply = asyncio.run(daemon.dispatch(json.loads('{"command": "finish_up"}')))
 
@@ -168,7 +165,7 @@ def test_finish_up_requested_during_preparation_reaches_new_controls(
         ready = asyncio.Event()
         done = asyncio.Event()
         controls = mock.Mock(finish_up=mock.Mock(side_effect=done.set))
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
+        selected = mock.Mock(batch="new")
 
         async def run(report, listen):
             preparing.set()
@@ -208,7 +205,7 @@ def test_start_passes_retries_retry_wait_and_replace_capped(
 ) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+        selected = mock.Mock(batch="one")
 
         async def fail_early(report, listen):
             raise ValueError("stop here")
@@ -229,7 +226,7 @@ def test_start_returns_preparation_error_and_records_late_error(
 ) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "bad.jsonl"))
+        selected = mock.Mock(batch="bad")
 
         async def fail_early(report, listen):
             raise ValueError("bad experiment")
@@ -254,9 +251,9 @@ def test_start_returns_preparation_error_and_records_late_error(
             assert (await daemon.start({}))["ok"] is True
         await asyncio.sleep(0)
         await asyncio.sleep(0)
-        selected.run_state.record.assert_called_once_with(
-            {"event": "daemon error", "error": "run failed"}
-        )
+        assert daemon.history["bad"].events == [
+            {"event": "daemon error", "error": "run failed", "at": mock.ANY}
+        ]
         assert not daemon.active
 
     asyncio.run(drive())
@@ -265,7 +262,7 @@ def test_start_returns_preparation_error_and_records_late_error(
 def test_start_waits_for_slow_preparation_without_a_deadline(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "slow.jsonl"))
+        selected = mock.Mock(batch="slow")
 
         async def run(report, listen):
             await asyncio.sleep(0.2)
@@ -278,7 +275,7 @@ def test_start_waits_for_slow_preparation_without_a_deadline(tmp_path: Path) -> 
         ):
             assert await daemon.start({}) == {
                 "ok": True,
-                "journal": str(tmp_path / "slow.jsonl"),
+                "batch": "slow",
             }
 
     asyncio.run(drive())
@@ -287,7 +284,7 @@ def test_start_waits_for_slow_preparation_without_a_deadline(tmp_path: Path) -> 
 def test_start_that_ends_before_any_run_reports_it(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "none.jsonl"))
+        selected = mock.Mock(batch="none")
 
         async def run(report, listen):
             return []
@@ -308,7 +305,7 @@ def test_start_that_ends_before_any_run_reports_it(tmp_path: Path) -> None:
 def test_start_passes_progress_and_reports_a_queued_start(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+        selected = mock.Mock(batch="one")
 
         async def run(report, listen):
             listen(mock.Mock())
@@ -334,7 +331,7 @@ def test_start_passes_progress_and_reports_a_queued_start(tmp_path: Path) -> Non
 def test_repeated_listen_callback_does_not_reply_twice(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+        selected = mock.Mock(batch="one")
 
         async def run(report, listen):
             controls = mock.Mock()
@@ -359,7 +356,7 @@ def test_stop_requested_while_start_is_preparing_reaches_controls(
         preparing = asyncio.Event()
         release = asyncio.Event()
         interrupted = mock.Mock()
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "pending.jsonl"))
+        selected = mock.Mock(batch="pending")
 
         async def run(report, listen):
             preparing.set()
@@ -412,7 +409,7 @@ def test_socket_replies_once_and_attach_holds_connection(tmp_path: Path) -> None
             await writer.drain()
             assert json.loads(await reader.readline()) == {
                 "ok": True,
-                "journals": [],
+                "batches": [],
             }
             assert daemon.clients == 1
             writer.close()
@@ -713,29 +710,21 @@ def test_server_creates_its_folder_and_waits_for_invocations(tmp_path: Path) -> 
 def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None:
     planned = {"event": "planned", "runs": [{"run": "r1", "params": {"m": "a"}}]}
     later = {"event": "planned", "runs": [{"run": "r9", "params": {"m": "z"}}]}
-    live = tmp_path / "live.jsonl"
-    live.write_text(
-        "\n".join(
-            json.dumps(e)
-            for e in ({"event": "meta"}, planned, later, {"event": "tearing down"})
-        )
-        + "\n"
-    )
-    unplanned = tmp_path / "unplanned.jsonl"
-    unplanned.write_text(json.dumps({"event": "setting up"}) + "\n")
-    stopping = tmp_path / "stopping.jsonl"
-    stopping.write_text(
-        json.dumps({**planned, "runs": [{"run": "r2", "params": {"m": "b"}}]})
-        + "\n"
-        + json.dumps({"event": "stopping"})
-        + "\n"
-    )
+    batches: dict[str, list[dict[str, object]]] = {
+        "empty": [],
+        "stopping": [
+            {**planned, "runs": [{"run": "r2", "params": {"m": "b"}}]},
+            {"event": "stopping"},
+        ],
+        "live": [{"event": "meta"}, planned, later, {"event": "tearing down"}],
+        "unplanned": [{"event": "setting up"}],
+    }
 
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        for path in (tmp_path / "gone.jsonl", stopping, live, unplanned):
-            daemon.active[str(path)] = Invocation()
-        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "new.jsonl"))
+        for batch, events in batches.items():
+            daemon.active[batch] = Invocation(events=events)
+        selected = mock.Mock(batch="new")
 
         async def fail_early(report, listen):
             raise ValueError("stop here")
@@ -762,21 +751,21 @@ def test_restart_with_a_run_id_starts_that_run(tmp_path: Path) -> None:
     start.assert_called_once_with(options, mock.ANY)
 
 
-@pytest.mark.parametrize("action", ["attach", "journals"])
-def test_attach_and_journals_list_active_invocations_in_start_order(
+@pytest.mark.parametrize("action", ["attach", "batches"])
+def test_attach_and_batches_list_active_invocations_in_start_order(
     tmp_path: Path, action: str
 ) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
         assert await daemon.dispatch({"command": action}) == {
             "ok": True,
-            "journals": [],
+            "batches": [],
         }
-        daemon.active["b.jsonl"] = Invocation()
-        daemon.active["a.jsonl"] = Invocation()
+        daemon.active["b"] = Invocation()
+        daemon.active["a"] = Invocation()
         assert await daemon.dispatch({"command": action}) == {
             "ok": True,
-            "journals": ["b.jsonl", "a.jsonl"],
+            "batches": ["b", "a"],
         }
 
     asyncio.run(drive())
@@ -823,7 +812,7 @@ def test_slow_subscriber_is_dropped_without_blocking_others(
     daemon.report("batch", event)
     assert daemon.history["batch"].events == [event]
     assert json.loads(fast.write.call_args.args[0]) == {
-        "journal": "batch",
+        "batch": "batch",
         "event": event,
     }
     assert (slow in daemon.subscribers) is (buffer_size == 1024 * 1024)
@@ -861,7 +850,7 @@ def test_attach_replays_finished_batches_then_new_batch_without_gaps(
         async with server:
             reader, writer = await asyncio.open_unix_connection(str(tmp_path / "s"))
             writer.write(b'{"command":"attach"}\n')
-            assert json.loads(await reader.readline()) == {"ok": True, "journals": []}
+            assert json.loads(await reader.readline()) == {"ok": True, "batches": []}
             daemon.history["new"] = Invocation()
             event = {"event": "planned", "at": 3}
             daemon.report("new", event)
@@ -870,8 +859,8 @@ def test_attach_replays_finished_batches_then_new_batch_without_gaps(
                 for _ in range(3)
             ]
             assert messages == [
-                *({"journal": "ended", "event": e} for e in old),
-                {"journal": "new", "event": event},
+                *({"batch": "ended", "event": e} for e in old),
+                {"batch": "new", "event": event},
             ]
             writer.close()
             await writer.wait_closed()
@@ -909,11 +898,10 @@ def test_start_publishes_runner_events_and_retains_daemon_errors(
 ) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        path = str(tmp_path / "batch")
+        batch = "b1"
         planned = {"event": "planned", "at": 1.0}
         failed = {"event": "daemon error", "error": "oops", "at": 2.0}
-        selected = mock.Mock(run_state=mock.Mock(path=Path(path)))
-        selected.run_state.record.return_value = failed
+        selected = mock.Mock(batch=batch)
         writer = mock.Mock()
         writer.is_closing.return_value = False
         writer.transport.get_write_buffer_size.return_value = 0
@@ -925,18 +913,21 @@ def test_start_publishes_runner_events_and_retains_daemon_errors(
             raise ValueError("oops")
 
         selected.side_effect = run
-        with mock.patch(
-            "labnotes.daemon.server.start_experiment", return_value=selected
+        with (
+            mock.patch(
+                "labnotes.daemon.server.start_experiment", return_value=selected
+            ),
+            mock.patch(
+                "labnotes.daemon.server.stamp_event", return_value=failed
+            ) as stamp,
         ):
-            assert await daemon.start({}) == {"ok": True, "journal": path}
-        assert daemon.history[path].events == [planned, failed]
+            assert await daemon.start({}) == {"ok": True, "batch": batch}
+        assert daemon.history[batch].events == [planned, failed]
         assert not daemon.active
         assert [json.loads(call.args[0]) for call in writer.write.call_args_list] == [
-            {"journal": path, "event": planned},
-            {"journal": path, "event": failed},
+            {"batch": batch, "event": planned},
+            {"batch": batch, "event": failed},
         ]
-        selected.run_state.record.assert_called_once_with(
-            {"event": "daemon error", "error": "oops"}
-        )
+        stamp.assert_called_once_with({"event": "daemon error", "error": "oops"})
 
     asyncio.run(drive())

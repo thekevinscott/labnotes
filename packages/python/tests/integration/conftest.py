@@ -181,7 +181,8 @@ def run_tui_command(
                 return term.wait(timeout=10)
             if not term.is_alive:
                 code = term.wait(timeout=2)
-                print(screen.strip(), file=sys.stderr)
+                term._drain_output()
+                print(term._get_screen_text().strip(), file=sys.stderr)
                 return code
             time.sleep(0.05)
         raise TimeoutError(

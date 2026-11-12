@@ -5,6 +5,9 @@ from typing import Any
 from unittest import mock
 
 import pytest
+from rich.color import Color
+from rich.console import Console
+from rich.style import Style
 
 from labnotes.tui.stream_log import StreamLog
 
@@ -673,3 +676,27 @@ def test_renders_a_screen_row_or_a_blank_past_the_last() -> None:
         assert output.render_line(0) is row
         assert output.render_line(1) is strip.blank.return_value
         strip.blank.assert_called_once_with(4, output.rich_style)
+
+
+@pytest.mark.usefixtures("sized")
+def test_text_takes_the_log_background_unless_it_sets_its_own(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("ab\n\x1b[41mc\x1b[0md\n")
+    output = StreamLog("stdout")
+    base = Style(color="white", bgcolor="#1e1e1e")
+    with (
+        mock.patch.multiple(
+            StreamLog,
+            app=mock.PropertyMock(return_value=mock.Mock(console=Console())),
+            rich_style=mock.PropertyMock(return_value=base),
+            text_selection=mock.PropertyMock(return_value=None),
+        ),
+        mock.patch.object(StreamLog, "settle"),
+    ):
+        output.follow(tmp_path)
+        rows = [output.wrap(0)[0], output.wrap(1)[0]]
+    assert [
+        [(cell.text, cell.style and cell.style.bgcolor) for cell in row] for row in rows
+    ] == [
+        [("ab", base.bgcolor), ("  ", base.bgcolor)],
+        [("c", Color.parse("color(1)")), ("d", base.bgcolor), ("  ", base.bgcolor)],
+    ]

@@ -1,0 +1,1 @@
+**Fixed:** The TUI output view shows every invocation of a run that `continues`, oldest first, with a `── invocation N · <started> ──` line above each. Earlier invocations' stdout and stderr were kept on disk but only the newest could be viewed, and whether you saw an earlier one depended on whether you were watching when the run restarted.

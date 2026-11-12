@@ -204,6 +204,7 @@ def test_finish_up_from_output_view_keeps_status_line_on_return(
         )
     ).to_be_visible()
     expect(term.get_by_text("–")).to_be_visible()
+    expect(term.get_by_text("1 passed, 0 failed")).to_be_visible(timeout=20)
     term.key_ctrl_c()
     term.wait()
 

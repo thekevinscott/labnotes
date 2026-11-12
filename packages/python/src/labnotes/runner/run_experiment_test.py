@@ -1,5 +1,6 @@
 import asyncio
 import os
+import signal
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
 from typing import Any
@@ -1606,6 +1607,45 @@ def test_points_the_retryable_command_at_a_continued_runs_latest_logs(
         str(folder / "out.txt"),
         str(folder / "err.txt"),
     )
+
+
+@pytest.mark.parametrize("halt", ["finish_up", "interrupt"])
+def test_does_not_retry_when_halted_while_the_retryable_command_runs(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], halt: str
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(1)
+
+    async def approve(*args: object) -> bool:
+        getattr(listen.call_args.args[0], halt)()
+        return True
+
+    with mock.patch("labnotes.runner.run_experiment.is_retryable", side_effect=approve):
+        run(tmp_path, report, listen=listen, retryable="check")
+
+    assert started_runs(report) == ["r1"]
+    assert [e for e in reported(report) if e["event"] == "retrying"] == []
+
+
+def test_stopping_signals_a_running_retryable_command(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = attempts(1)
+    check = mock.Mock(pid=4242)
+
+    async def approve(*args: object) -> bool:
+        running = args[5]
+        running.add(check)  # type: ignore[attr-defined]
+        listen.call_args.args[0].interrupt()
+        return False
+
+    with mock.patch("labnotes.runner.run_experiment.is_retryable", side_effect=approve):
+        run(tmp_path, report, listen=listen, retryable="check")
+
+    collaborators["signal_tree"].assert_called_once_with(4242, signal.SIGTERM, set())
 
 
 @pytest.mark.parametrize("code", [0, None])

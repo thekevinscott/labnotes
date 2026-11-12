@@ -384,18 +384,23 @@ async def run_experiment(
             command_line=command_line,
         )
         duration = time.monotonic() - began
-        del running[run], trees[run]
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
         code = result["exit_code"]
+
+        def halted() -> bool:
+            return stopping.is_set() or finishing_up or run in stopped
+
         if (
             isinstance(code, int)
             and code != 0
-            and not (stopping.is_set() or finishing_up or run in stopped)
+            and not halted()
             and await should_retry(run, folder, result, code, duration, environment)
+            and not halted()
         ):
             retry_later(run, code)
+        del running[run], trees[run]
         if run not in waiting:
             release(run)
 
@@ -434,7 +439,12 @@ async def run_experiment(
         }
         cwd = command_root / config.experiments.replace("{experiment}", name)
         return await is_retryable(
-            experiment.retryable, cwd, attempt, folder / "retryable.log", environment
+            experiment.retryable,
+            cwd,
+            attempt,
+            folder / "retryable.log",
+            environment,
+            running[run],
         )
 
     async def run_hook(hook: str, command: str, announce: str) -> None:

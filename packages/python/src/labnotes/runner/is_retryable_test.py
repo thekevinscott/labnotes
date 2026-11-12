@@ -17,7 +17,8 @@ def test_retries_only_when_the_command_exits_0(
     (tmp_path / "code").write_text(str(code))
 
     assert (
-        asyncio.run(is_retryable(ECHO, tmp_path, {}, tmp_path / "log", {})) is expected
+        asyncio.run(is_retryable(ECHO, tmp_path, {}, tmp_path / "log", {}, set()))
+        is expected
     )
 
 
@@ -27,7 +28,7 @@ def test_sends_the_attempt_as_json_on_stdin_and_logs_the_output(
     (tmp_path / "code").write_text("0")
     attempt = {"exit_code": 1, "run": "r"}
 
-    asyncio.run(is_retryable(ECHO, tmp_path, attempt, tmp_path / "log", {}))
+    asyncio.run(is_retryable(ECHO, tmp_path, attempt, tmp_path / "log", {}, set()))
 
     assert json.loads((tmp_path / "log").read_text()) == attempt
 
@@ -41,4 +42,22 @@ def test_gives_up_when_the_command_cannot_start(tmp_path: Path) -> None:
 def test_gives_up_when_the_command_dies(tmp_path: Path) -> None:
     command = f"{sys.executable} -c 'import os; os.kill(os.getpid(), 9)'"
 
-    assert not asyncio.run(is_retryable(command, tmp_path, {}, tmp_path / "log", {}))
+    assert not asyncio.run(
+        is_retryable(command, tmp_path, {}, tmp_path / "log", {}, set())
+    )
+
+
+def test_lists_the_command_as_running_until_it_exits(tmp_path: Path) -> None:
+    running: set[asyncio.subprocess.Process] = set()
+    seen: list[int] = []
+
+    async def check() -> bool:
+        task = asyncio.create_task(
+            is_retryable("sleep 0.2", tmp_path, {}, tmp_path / "log", {}, running)
+        )
+        await asyncio.sleep(0.1)
+        seen.append(len(running))
+        return await task
+
+    assert asyncio.run(check())
+    assert (seen, running) == ([1], set())

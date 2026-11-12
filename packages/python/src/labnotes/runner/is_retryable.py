@@ -4,7 +4,12 @@ from pathlib import Path
 
 
 async def is_retryable(
-    command: str, cwd: Path, attempt: dict[str, object], log: Path, env: dict[str, str]
+    command: str,
+    cwd: Path,
+    attempt: dict[str, object],
+    log: Path,
+    env: dict[str, str],
+    running: set[asyncio.subprocess.Process],
 ) -> bool:
     with log.open("ab") as output:
         try:
@@ -18,5 +23,9 @@ async def is_retryable(
             )
         except OSError:
             return False
-        await process.communicate(json.dumps(attempt).encode())
+        running.add(process)
+        try:
+            await process.communicate(json.dumps(attempt).encode())
+        finally:
+            running.discard(process)
     return process.returncode == 0

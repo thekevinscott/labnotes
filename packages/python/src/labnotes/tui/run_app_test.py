@@ -2224,6 +2224,22 @@ def test_clicking_a_stage_tab_moves_there_and_stops_auto_advance(
     drive_hooks(steps)
 
 
+def test_clicking_between_stage_tabs_stays_put(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        await pilot.pause()
+        line = shown_stages(app)
+        await pilot.click("#stages", offset=(line.index("›") + 1, 0))
+        await pilot.pause()
+        assert stage(app) == "setup"
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        assert stage(app) == "runs"
+
+    drive_hooks(steps)
+
+
 def test_stage_keys_stay_out_of_the_footer() -> None:
     async def steps(app: RunApp, pilot: Any, report: Report) -> None:
         report(hooked("setup"))

@@ -1,0 +1,1 @@
+Added: a `retry_exit_codes` config key, in `[experiments]` and `experiment.toml`, lists the exit codes that earn a retry, such as `[1, 75]`. The default stays `[75]`. `run --retry-exit-code CODE` overrides it for one run; repeat it for several codes. The TUI and messages now name the exit code a run retried or gave up on, not always 75.

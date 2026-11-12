@@ -12,7 +12,8 @@ from labnotes.is_non_negative_number import is_non_negative_number
 from labnotes.memory_interval import DEFAULT_MEMORY_INTERVAL
 from labnotes.is_positive_int import is_positive_int
 from labnotes.config_migration import MISSING_CONTINUES, REMOVED_MODE
-from labnotes.retries import RETRY_SECONDS
+from labnotes.is_exit_codes import is_exit_codes
+from labnotes.retries import RETRY_EXIT_CODES, RETRY_SECONDS
 
 SHELL_IDENTIFIER = re.compile(r"[A-Za-z_][A-Za-z0-9_]*\Z")
 SETTINGS = {
@@ -24,6 +25,7 @@ SETTINGS = {
     "concurrency",
     "retries",
     "retry_wait",
+    "retry_exit_codes",
     "meta",
     "memory_interval",
     "views",
@@ -44,6 +46,7 @@ def read_experiment_config(
     retries: int,
     defaults: dict[str, object] | None = None,
     retry_wait: float = RETRY_SECONDS,
+    retry_exit_codes: tuple[int, ...] = RETRY_EXIT_CODES,
 ) -> ExperimentConfig:
     try:
         layer = tomllib.loads(source)
@@ -86,6 +89,9 @@ def read_experiment_config(
     retry_wait = values.get("retry_wait", retry_wait)
     if not is_non_negative_number(retry_wait):
         raise ValueError(f"{path}: retry_wait must be 0 or more seconds")
+    retry_exit_codes = values.get("retry_exit_codes", list(retry_exit_codes))
+    if not is_exit_codes(retry_exit_codes):
+        raise ValueError(f"{path}: retry_exit_codes must be a list of exit codes 1-255")
     meta = values.get("meta")
     if meta is not None and (not isinstance(meta, str) or not meta.strip()):
         raise ValueError(f"{path}: meta must be a string")
@@ -147,4 +153,5 @@ def read_experiment_config(
         values.get("teardown"),
         env,
         continues,
+        retry_exit_codes=tuple(retry_exit_codes),
     )

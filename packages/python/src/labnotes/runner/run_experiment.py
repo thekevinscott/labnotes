@@ -7,7 +7,6 @@ from tempfile import TemporaryDirectory
 
 import psutil
 
-from labnotes import retries
 from labnotes.models import (
     Controls,
     ExperimentConfig,
@@ -165,7 +164,7 @@ async def run_experiment(
         run = new_stamped_run_id(taken) if resumed is None else resumed[0]
         planned.add(run)
         plan.append((run, params))
-    # A resumed run's earlier invocations spend the same retries as exit 75 does.
+    # A resumed run's earlier invocations spend retries like a retried exit does.
     earlier = {run: tries[run] for run, _ in plan if run in tries and run != run_id}
     hooks = {
         "setup": experiment.setup,
@@ -271,10 +270,10 @@ async def run_experiment(
         emit({"event": "retried", "run": run, "retry": again, "params": ended[run]})
         fill()
 
-    def retry_later(run: str) -> None:
+    def retry_later(run: str, code: int) -> None:
         tried = attempts.get(run, earlier.get(run, 0))
         if tried not in range(experiment.retries):
-            emit({"event": "gave up", "run": run, "retries": tried})
+            emit({"event": "gave up", "run": run, "retries": tried, "exit_code": code})
             return
         seconds = experiment.retry_wait * 2 ** (tried - earlier.get(run, 0))
 
@@ -290,6 +289,7 @@ async def run_experiment(
                 "attempt": tried + 1,
                 "retries": experiment.retries,
                 "seconds": seconds,
+                "exit_code": code,
             }
         )
 
@@ -386,11 +386,11 @@ async def run_experiment(
         emit({"event": "ended", "run": run, **result})
         ended[run] = params
         results[run] = {"run": run, **result}
-        match result["exit_code"]:
-            case retries.RETRY_EXIT_CODE if not (
-                stopping.is_set() or finishing_up or run in stopped
-            ):
-                retry_later(run)
+        code = result["exit_code"]
+        if code in experiment.retry_exit_codes and not (
+            stopping.is_set() or finishing_up or run in stopped
+        ):
+            retry_later(run, int(str(code)))
         if run not in waiting:
             release(run)
 

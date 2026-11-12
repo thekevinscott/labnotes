@@ -32,7 +32,8 @@ def describe_event(event: dict[str, object]) -> str:
             return f"{event['run']} retries in {wait} (retry {attempt})."
         case "gave up":
             tried = f"after {event['retries']} retries"
-            return f"{event['run']} gave up (exit {RETRY_EXIT_CODE}) {tried}."
+            code = event.get("exit_code", RETRY_EXIT_CODE)
+            return f"{event['run']} gave up (exit {code}) {tried}."
         case "capped":
             cells = len(event["runs"])  # type: ignore[arg-type]
             noun = "cell" if cells == 1 else "cells"

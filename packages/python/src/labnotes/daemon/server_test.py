@@ -223,6 +223,30 @@ def test_start_passes_retries_retry_wait_and_replace_capped(
     asyncio.run(drive())
 
 
+@pytest.mark.parametrize(
+    ("options", "expected"),
+    [({}, None), ({"retry_exit_codes": [1, 75]}, (1, 75))],
+)
+def test_start_passes_retry_exit_codes(
+    tmp_path: Path, options: dict[str, object], expected: object
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        selected = mock.Mock(run_state=mock.Mock(path=tmp_path / "one.jsonl"))
+
+        async def fail_early(report, listen):
+            raise ValueError("stop here")
+
+        selected.side_effect = fail_early
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment", return_value=selected
+        ) as start:
+            await daemon.start(options)
+        assert start.call_args.args[17] == expected
+
+    asyncio.run(drive())
+
+
 def test_start_returns_preparation_error_and_records_late_error(
     tmp_path: Path,
 ) -> None:

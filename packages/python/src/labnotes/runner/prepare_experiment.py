@@ -19,6 +19,7 @@ async def prepare_experiment(
     teardown: str | None = None,
     retries: int | None = None,
     retry_wait: float | None = None,
+    retry_exit_codes: tuple[int, ...] | None = None,
     replace_capped: bool = False,
 ) -> tuple[ExperimentConfig, int]:
     if config.experiment not in (None, name):
@@ -40,6 +41,7 @@ async def prepare_experiment(
         config.retries,
         config.defaults,
         config.retry_wait,
+        config.retry_exit_codes,
     )
     if setup is not None:
         experiment = dataclasses.replace(experiment, setup=setup)
@@ -49,6 +51,8 @@ async def prepare_experiment(
         experiment = dataclasses.replace(experiment, retries=retries)
     if retry_wait is not None:
         experiment = dataclasses.replace(experiment, retry_wait=retry_wait)
+    if retry_exit_codes is not None:
+        experiment = dataclasses.replace(experiment, retry_exit_codes=retry_exit_codes)
     if replace_capped:
         experiment = dataclasses.replace(experiment, replace_capped=True)
     if only:

@@ -65,7 +65,8 @@ class PassthroughCommand(click.Command):
 @click.option(
     "--retries",
     type=click.IntRange(min=0),
-    help="With run: how many times a failed run is tried again, on exit 75 or,"
+    help="With run: how many times a failed run is tried again, on a retry"
+    " exit code or,"
     " with continues, by a later run. Overrides experiment.toml and"
     " .labnotes.toml; 3 if none sets it.",
 )
@@ -73,9 +74,18 @@ class PassthroughCommand(click.Command):
     "--retry-wait",
     type=click.FloatRange(min=0),
     metavar="SECONDS",
-    help="With run: seconds before the first retry of an exit 75; each later"
+    help="With run: seconds before the first retry; each later"
     " retry waits twice as long. Overrides experiment.toml and .labnotes.toml;"
     " 30 if none sets it.",
+)
+@click.option(
+    "--retry-exit-code",
+    "retry_exit_codes",
+    multiple=True,
+    type=click.IntRange(min=1, max=255),
+    metavar="CODE",
+    help="With run: an exit code that earns a retry. Repeat it for several."
+    " Overrides experiment.toml and .labnotes.toml; 75 if none sets it.",
 )
 @click.option(
     "--replace-capped",
@@ -143,6 +153,7 @@ def experiments(
     run_id: str | None,
     retries: int | None,
     retry_wait: float | None,
+    retry_exit_codes: tuple[int, ...],
     replace_capped: bool,
     experiment_config: Path | None,
     timeout: int | None,
@@ -214,6 +225,7 @@ def experiments(
                             "run_id": run_id,
                             "retries": retries,
                             "retry_wait": retry_wait,
+                            "retry_exit_codes": list(retry_exit_codes) or None,
                             "replace_capped": replace_capped,
                             "environment": dict(os.environ),
                         },
@@ -228,6 +240,7 @@ def experiments(
             or run_id is not None
             or retries is not None
             or retry_wait is not None
+            or retry_exit_codes
             or replace_capped
             or experiment_config is not None
             or timeout is not None
@@ -271,6 +284,8 @@ def experiments(
         raise click.UsageError("--retries needs run.")
     if retry_wait is not None:
         raise click.UsageError("--retry-wait needs run.")
+    if retry_exit_codes:
+        raise click.UsageError("--retry-exit-code needs run.")
     if replace_capped:
         raise click.UsageError("--replace-capped needs run.")
     if ctx.args:

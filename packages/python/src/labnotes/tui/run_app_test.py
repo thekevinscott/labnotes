@@ -1941,6 +1941,35 @@ def test_shows_tempfail_retries_counting_down_then_their_outcome(
     asyncio.run(drive())
 
 
+def test_shows_the_exit_code_a_run_retried_on(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    reports: list[Report] = []
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        reports.append(report)
+        listen(mock.Mock())
+        report(planned("r1"))
+        report({"event": "started", "run": "r1", "params": {"m": "a"}, "folder": "/"})
+        report({"event": "ended", "run": "r1", "exit_code": 1, "error": None})
+        report({"event": "retrying", "run": "r1", "seconds": 30.0, "exit_code": 1})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert rows(app)[0][2] == "✗ exited 1, retry in 30 seconds"
+            report = reports[0]
+            report({"event": "retry cancelled", "run": "r1"})
+            assert rows(app)[0][2] == "✗ exited 1"
+            report({"event": "gave up", "run": "r1", "retries": 0, "exit_code": 1})
+            assert rows(app)[0][2] == "✗ gave up (exit 1)"
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())
+
+
 def test_a_manual_retry_keeps_the_runs_status() -> None:
     reports: list[Report] = []
 

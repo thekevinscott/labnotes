@@ -139,6 +139,34 @@ def test_rejects_a_bad_retry_wait(
     )
 
 
+@pytest.mark.parametrize(
+    ("text", "codes"),
+    [
+        ("", (75,)),
+        ("[experiments]\nretry_exit_codes = [1, 75]\n", (1, 75)),
+        ("[experiments]\nretry_exit_codes = []\n", ()),
+    ],
+)
+def test_reads_the_project_retry_exit_codes(
+    tmp_path: Path, read_path: mock.MagicMock, text: str, codes: tuple[int, ...]
+) -> None:
+    assert read_config(write(tmp_path, text)).retry_exit_codes == codes
+
+
+@pytest.mark.parametrize("value", ["1", "[0]", "[256]", '["1"]', "[true]"])
+def test_rejects_bad_retry_exit_codes(
+    tmp_path: Path, read_path: mock.MagicMock, value: str
+) -> None:
+    path = write(tmp_path, f"[experiments]\nretry_exit_codes = {value}\n")
+
+    with pytest.raises(ValueError) as error:
+        read_config(path)
+
+    assert str(error.value) == (
+        f"{path}: [experiments] retry_exit_codes must be a list of exit codes 1-255"
+    )
+
+
 def test_rejects_unknown_tables(tmp_path: Path, read_path: mock.MagicMock) -> None:
     path = write(tmp_path, "zz = 1\n[data]\n")
 

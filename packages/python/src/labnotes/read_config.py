@@ -8,7 +8,8 @@ from labnotes.is_positive_int import is_positive_int
 from labnotes.config_migration import REMOVED_MODE
 from labnotes.runner.read_experiment_config import SETTINGS
 from labnotes.read_path import DEFAULT_PATHS, read_path
-from labnotes.retries import DEFAULT_RETRIES, RETRY_SECONDS
+from labnotes.is_exit_codes import is_exit_codes
+from labnotes.retries import DEFAULT_RETRIES, RETRY_EXIT_CODES, RETRY_SECONDS
 
 CONFIG_FILE = ".labnotes.toml"
 
@@ -55,6 +56,11 @@ def read_config(path: Path) -> LabnotesConfig:
     retry_wait = experiments.get("retry_wait", RETRY_SECONDS)
     if not is_non_negative_number(retry_wait):
         raise ValueError(f"{path}: [experiments] retry_wait must be 0 or more seconds")
+    retry_exit_codes = experiments.get("retry_exit_codes", list(RETRY_EXIT_CODES))
+    if not is_exit_codes(retry_exit_codes):
+        raise ValueError(
+            f"{path}: [experiments] retry_exit_codes must be a list of exit codes 1-255"
+        )
     return LabnotesConfig(
         path.resolve(),
         root,
@@ -62,6 +68,7 @@ def read_config(path: Path) -> LabnotesConfig:
         concurrency=concurrency,
         retries=retries,
         retry_wait=retry_wait,
+        retry_exit_codes=tuple(retry_exit_codes),
         experiment=root.name if single else None,
         defaults=defaults,
     )

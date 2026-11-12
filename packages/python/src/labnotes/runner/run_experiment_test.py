@@ -37,6 +37,7 @@ def experiment(
         env={},
         continues=continues,
         replace_capped=replace_capped,
+        retry_exit_codes=(75,),
     )
     config.name = None
     return config
@@ -150,6 +151,7 @@ def run(
     continues: bool = False,
     run_id: str | None = None,
     replace_capped: bool = False,
+    retry_exit_codes: tuple[int, ...] = (75,),
 ) -> list[dict[str, object]]:
     config = mock.Mock(
         root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
@@ -158,6 +160,7 @@ def run(
     configured = experiment(retries, continues, replace_capped)
     configured.env = env or {}
     configured.retry_wait = retry_seconds
+    configured.retry_exit_codes = retry_exit_codes
 
     def listening(controls: object) -> None:
         hear(controls)
@@ -1460,6 +1463,7 @@ def test_retries_a_tempfail_with_the_same_params(
         "attempt": 1,
         "retries": 2,
         "seconds": 0.01,
+        "exit_code": 75,
     }
     assert retrying in reported(report)
     assert {"event": "retried", "run": "r1", "retry": "r2", "params": A} in reported(
@@ -1485,7 +1489,7 @@ def test_doubles_the_wait_then_gives_up(
         ("r2", 2, 0.02),
     ]
     assert reported(report)[-2:] == [
-        {"event": "gave up", "run": "r3", "retries": 2},
+        {"event": "gave up", "run": "r3", "retries": 2, "exit_code": 75},
         {"event": "idle"},
     ]
 
@@ -1500,7 +1504,9 @@ def test_gives_up_at_once_with_no_retries(
     run(tmp_path, report, retries=0)
 
     assert started_runs(report) == ["r1"]
-    assert {"event": "gave up", "run": "r1", "retries": 0} in reported(report)
+    assert {"event": "gave up", "run": "r1", "retries": 0, "exit_code": 75} in reported(
+        report
+    )
 
 
 @pytest.mark.parametrize("code", [1, 74, 76, -15, 0])
@@ -1514,6 +1520,36 @@ def test_never_retries_other_exits(
     run(tmp_path, report)
 
     assert events(report) == ["planned", "started", "ended", "idle"]
+
+
+def test_retries_the_exit_codes_the_experiment_lists(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(1, 2, 75)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=3, retry_exit_codes=(1, 2))
+
+    assert started_runs(report) == ["r1", "r2", "r3"]
+    assert [
+        e.get("exit_code") for e in reported(report) if e["event"] == "retrying"
+    ] == [1, 2]
+    assert events(report)[-2:] == ["ended", "idle"]
+
+
+def test_gives_up_naming_the_listed_exit_code(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    collaborators["plan_runs"].return_value = [A]
+    collaborators["execute_run"].side_effect = exiting(1)
+    report = mock.Mock()
+
+    run(tmp_path, report, retries=0, retry_exit_codes=(1,))
+
+    assert {"event": "gave up", "run": "r1", "retries": 0, "exit_code": 1} in reported(
+        report
+    )
 
 
 def test_never_retries_a_run_that_failed_to_start(
@@ -2076,7 +2112,12 @@ def test_a_resumed_run_spends_its_earlier_tries_from_its_retries(
     assert started_runs(report) == ["old", "old"]
     retrying = [e for e in reported(report) if e["event"] == "retrying"]
     assert [(e["attempt"], e["seconds"]) for e in retrying] == [(3, 0.01)]
-    assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+    assert {
+        "event": "gave up",
+        "run": "old",
+        "retries": 3,
+        "exit_code": 75,
+    } in reported(report)
 
 
 def test_a_resumed_run_with_no_tries_left_gives_up_on_its_first_retry_exit(
@@ -2093,7 +2134,12 @@ def test_a_resumed_run_with_no_tries_left_gives_up_on_its_first_retry_exit(
 
     assert started_runs(report) == ["old"]
     assert [e for e in reported(report) if e["event"] == "retrying"] == []
-    assert {"event": "gave up", "run": "old", "retries": 3} in reported(report)
+    assert {
+        "event": "gave up",
+        "run": "old",
+        "retries": 3,
+        "exit_code": 75,
+    } in reported(report)
 
 
 def test_a_resumed_run_doubles_its_wait_from_this_session_only(

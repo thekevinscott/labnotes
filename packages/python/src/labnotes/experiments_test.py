@@ -101,6 +101,7 @@ def test_stop_sends_command_and_reports_missing_daemon(
         ["--teardown", "echo ok"],
         ["--retries", "2"],
         ["--retry-wait", "1"],
+        ["--retry-exit-code", "1"],
         ["--replace-capped"],
         ["--", "arg"],
         ["--model=x"],
@@ -178,6 +179,7 @@ def test_needs_run_for_params(
         (["a", "runs", "--run-id", "r1"], "--run-id needs run"),
         (["a", "runs", "--retries", "2"], "--retries needs run"),
         (["a", "runs", "--retry-wait", "1"], "--retry-wait needs run"),
+        (["a", "runs", "--retry-exit-code", "1"], "--retry-exit-code needs run"),
         (["a", "--replace-capped"], "--replace-capped needs run"),
         (
             ["a", "run", "--run-id", "r1", "--model=small"],
@@ -526,6 +528,7 @@ def test_terminal_restart_sends_options_to_daemon(
                 "run_id": "failed",
                 "retries": None,
                 "retry_wait": None,
+                "retry_exit_codes": None,
                 "replace_capped": False,
                 "environment": {"KEY": "value"},
             },
@@ -747,6 +750,27 @@ def test_terminal_run_sends_retry_wait_to_daemon(
 
     options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
     assert options["retry_wait"] == 2.0
+
+
+def test_terminal_run_sends_retry_exit_codes_to_daemon(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+) -> None:
+    drivers["sys"].stdout.isatty.return_value = True
+    argv = ["a", "run", "--retry-exit-code", "1", "--retry-exit-code", "255"]
+    assert run(argv) == 0
+
+    options = drivers["run_tui"].call_args.kwargs["daemon_request"]["options"]
+    assert options["retry_exit_codes"] == [1, 255]
+
+
+@pytest.mark.parametrize("code", ["0", "256"])
+def test_rejects_a_retry_exit_code_out_of_range(
+    collaborators: dict[str, mock.MagicMock],
+    drivers: dict[str, mock.MagicMock],
+    code: str,
+) -> None:
+    assert run(["a", "run", "--retry-exit-code", code]) == 2
 
 
 def test_rejects_a_negative_retry_wait(

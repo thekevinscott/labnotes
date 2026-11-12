@@ -128,6 +128,52 @@ def test_layers_retry_wait_over_the_defaults(source: str, retry_wait: float) -> 
     assert config.retry_wait == retry_wait
 
 
+@pytest.mark.parametrize(
+    ("source", "defaults", "codes"),
+    [
+        ("", {}, (9,)),
+        ("retry_exit_codes = [1, 75]\n", {}, (1, 75)),
+        ("retry_exit_codes = []\n", {}, ()),
+        ("", {"retry_exit_codes": [2]}, (2,)),
+        ("retry_exit_codes = [3]\n", {"retry_exit_codes": [2]}, (3,)),
+    ],
+)
+def test_layers_retry_exit_codes_over_the_project(
+    source: str, defaults: dict[str, object], codes: tuple[int, ...]
+) -> None:
+    config = read_experiment_config(
+        PATH,
+        source,
+        1,
+        2,
+        {"command": "run", "continues": False, **defaults},
+        retry_exit_codes=(9,),
+    )
+
+    assert config.retry_exit_codes == codes
+
+
+def test_retries_exit_75_without_a_project_list() -> None:
+    config = read_experiment_config(PATH, 'command = "run"\ncontinues = false\n', 1, 2)
+
+    assert config.retry_exit_codes == (75,)
+
+
+@pytest.mark.parametrize("value", ["1", "[0]", "[256]", '["1"]', "[true]"])
+def test_rejects_bad_retry_exit_codes(value: str) -> None:
+    with pytest.raises(ValueError) as error:
+        read_experiment_config(
+            PATH,
+            f"command = 'run'\ncontinues = false\nretry_exit_codes = {value}\n",
+            1,
+            2,
+        )
+
+    assert str(error.value) == (
+        f"{PATH}: retry_exit_codes must be a list of exit codes 1-255"
+    )
+
+
 @pytest.mark.parametrize("retries", [0, 3])
 def test_reads_retries_over_the_project_retries(retries: int) -> None:
     config = read_experiment_config(

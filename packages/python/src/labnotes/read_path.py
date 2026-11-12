@@ -16,7 +16,9 @@ PLACEHOLDERS = {
 # experiments is missing: one experiment has no folder to point at.
 SINGLE_PLACEHOLDERS: dict[str, set[str]] = {"files": set(), "runs": {"run"}}
 # Keys other readers own, so the path check lets them through.
-OTHER_KEYS = {"experiments": {"mode", "concurrency", "retries", "retry_wait"}}
+OTHER_KEYS = {
+    "experiments": {"mode", "concurrency", "retries", "retry_wait", "retry_exit_codes"}
+}
 PLACEHOLDER = re.compile(r"\{([^}]*)\}")
 SINGLE = "experiment.toml sits next to .labnotes.toml, so this folder is the experiment"
 

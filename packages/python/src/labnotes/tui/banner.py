@@ -5,4 +5,6 @@ class Banner:
         self.rows = 1
 
     def read(self, first: int, count: int) -> list[bytes]:
-        return []
+        if first or not count:
+            return []
+        return [f"\x1b[2m── {self.label} ──\x1b[0m".encode()]

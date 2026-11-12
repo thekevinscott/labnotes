@@ -3,7 +3,7 @@ import json
 from pathlib import Path
 
 from textual.app import App, ComposeResult
-from textual.widgets import Tabs
+from textual.widgets import Tab
 
 from labnotes.tui.run_output import RunOutput
 
@@ -58,7 +58,7 @@ def test_output_view_labels_each_invocation_however_late_it_opens(
                 "── invocation 2 · 2026-11-02T02:00:00Z ──",
                 "resumed from step 20",
             ]
-            tab = late.query_one(Tabs).query_one("#stdout-tab")
-            assert str(tab.label) == "stdout (2)"
+            tab = late.query_one("#stdout-tab", Tab)
+            assert tab.label_text == "stdout (2)"
 
     asyncio.run(drive())

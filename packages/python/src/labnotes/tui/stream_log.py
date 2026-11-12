@@ -8,8 +8,9 @@ from textual.scroll_view import ScrollView
 from textual.selection import Selection
 from textual.strip import Strip
 
-from labnotes.latest_log import latest_log
+from labnotes.invocation_logs import invocation_logs
 from labnotes.line_index import LineIndex
+from labnotes.tui.banner import Banner
 
 BUFFER = 100
 
@@ -39,7 +40,7 @@ class StreamLog(ScrollView):
         self.reset()
 
     def reset(self) -> None:
-        self.segments: list[LineIndex] = []
+        self.segments: list[LineIndex | Banner] = []
         self.first = 0
         self.window: list[str] = []
         self.wrapped: dict[int, list[Strip]] = {}
@@ -58,25 +59,43 @@ class StreamLog(ScrollView):
 
     @property
     def count(self) -> int:
+        return sum(
+            segment.lines for segment in self.segments if isinstance(segment, LineIndex)
+        )
+
+    @property
+    def settled(self) -> int:
         if not self.segments:
             return 0
         last = self.segments[-1]
         return self.rows - last.rows + last.lines
 
     def follow(self, folder: Path) -> None:
-        path = latest_log(folder, self.stream)
-        if (
-            self.segments
-            and self.segments[-1].path == path
-            and (not path.exists() or path.stat().st_size < self.segments[-1].scanned)
+        wanted: list[str | Path] = []
+        for label, path in invocation_logs(folder, self.stream):
+            if path.exists():
+                wanted.extend([path] if label is None else [label, path])
+        have = [
+            segment.label if isinstance(segment, Banner) else segment.path
+            for segment in self.segments
+        ]
+        logs = [segment for segment in self.segments if isinstance(segment, LineIndex)]
+        if have != wanted[: len(have)] or (
+            logs and logs[-1].path.stat().st_size < logs[-1].scanned
         ):
             self.reset()
-        if not path.exists():
-            return
-        if not self.segments or self.segments[-1].path != path:
-            self.segments.append(LineIndex(path))
-        settled = self.count
-        if not self.segments[-1].extend():
+            have, logs = [], []
+        settled = self.settled
+        added = [
+            Banner(key) if isinstance(key, str) else LineIndex(key)
+            for key in wanted[len(have) :]
+        ]
+        self.segments.extend(added)
+        grew = False
+        for segment in [*logs[-1:], *added]:
+            if isinstance(segment, LineIndex):
+                grew = segment.extend() or grew
+        if not grew and not added:
             return
         del self.window[max(0, settled - self.first) :]
         for line in [line for line in self.wrapped if line >= settled]:

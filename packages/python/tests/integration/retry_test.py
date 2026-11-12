@@ -258,28 +258,43 @@ if left:
     print(f"error: {reason}", file=sys.stderr)
     sys.exit(int(code))
 """
-TIMED_OUT = "grep -q 'timed out' \"$LABNOTES_STDERR\""
+# Records what it was sent, then retries only an SSH timeout.
+RETRYABLE = """
+import json
+import sys
+from pathlib import Path
+
+attempt = json.load(sys.stdin)
+with Path("seen.jsonl").open("a") as seen:
+    seen.write(json.dumps(attempt) + "\\n")
+sys.exit(0 if "timed out" in Path(attempt["stderr"]).read_text() else 1)
+"""
+RETRYABLE_SETTING = f'retryable = "{sys.executable} retryable.py"\n'
 
 
-def check(command: str) -> str:
-    return f"retry_check = {json.dumps(command)}\n"
-
-
-def make_checked(root: Path, codes: list[str], settings: str = "") -> Path:
+def make_checked(
+    root: Path, codes: list[str], settings: str = RETRYABLE_SETTING
+) -> Path:
     make_project(root, "", settings)
     write(root / "script.py", FAILING)
     write(root / "codes.txt", "\n".join(codes))
+    write(root / "exp" / "retryable.py", RETRYABLE)
     return root
+
+
+def seen(root: Path) -> list[dict[str, Any]]:
+    lines = (root / "exp" / "seen.jsonl").read_text().splitlines()
+    return [json.loads(line) for line in lines]
 
 
 @pytest.mark.parametrize(
     ("project", "settings"),
     [
-        ("", check(TIMED_OUT)),
-        ("[experiments]\n" + check(TIMED_OUT), ""),
+        ("", RETRYABLE_SETTING),
+        ("[experiments]\n" + RETRYABLE_SETTING, ""),
         (
             "[experiment]\n"
-            + check(TIMED_OUT)
+            + RETRYABLE_SETTING
             + "[experiments]\npath = '{experiment}'\n",
             "",
         ),
@@ -300,56 +315,117 @@ def test_retries_a_failure_the_check_approves(
 def test_gives_up_on_a_failure_the_check_rejects(
     tmp_path: Path, codes: list[str]
 ) -> None:
-    root = make_checked(tmp_path, codes, check(TIMED_OUT))
+    root = make_checked(tmp_path, codes)
 
     events = run_now(root)
 
     [only] = runs(root)
     assert only["exit_code"] == int(codes[0].split()[0])
     assert [e for e in events if e["event"] in ("retrying", "gave up")] == []
+    assert len(seen(root)) == 1
 
 
-def test_the_check_sees_the_attempts_exit_code_and_output(tmp_path: Path) -> None:
-    seen = (
-        'echo "$LABNOTES_EXIT_CODE" > seen.txt;'
-        ' cat "$LABNOTES_STDOUT" "$LABNOTES_STDERR" >> seen.txt; exit 1'
+@pytest.mark.parametrize(
+    "command",
+    [
+        "no-such-retryable-command",
+        f"{sys.executable} -c 'raise RuntimeError(1)'",
+        f"{sys.executable} -c 'import os; os.kill(os.getpid(), 9)'",
+    ],
+)
+def test_a_crashing_check_gives_up(tmp_path: Path, command: str) -> None:
+    root = make_checked(
+        tmp_path, ["1 ssh timed out"], f"retryable = {json.dumps(command)}\n"
     )
-    root = make_checked(tmp_path, ["3 disk full"], check(seen))
+
+    events = run_now(root)
+
+    [only] = runs(root)
+    assert only["exit_code"] == 1
+    assert [e["event"] for e in events][-1] == "idle"
+    assert [e for e in events if e["event"] in ("retrying", "gave up")] == []
+
+
+def test_the_check_reads_the_attempt_as_json_on_stdin(tmp_path: Path) -> None:
+    root = make_checked(tmp_path, ["3 disk full"])
 
     run_now(root)
 
-    assert (root / "exp" / "seen.txt").read_text() == (
-        "3\nattempt says disk full\nerror: disk full\n"
-    )
+    [only] = runs(root)
+    [attempt] = seen(root)
+    folder = root / "exp" / "runs" / only["id"]
+    assert set(attempt) == {
+        "experiment",
+        "run",
+        "params",
+        "command",
+        "attempt",
+        "max_retries",
+        "created_at",
+        "started_at",
+        "finished_at",
+        "duration_s",
+        "exit_code",
+        "run_folder",
+        "stdout",
+        "stderr",
+    }
+    assert {
+        key: attempt[key]
+        for key in ("experiment", "run", "params", "attempt", "max_retries")
+    } == {
+        "experiment": "exp",
+        "run": only["id"],
+        "params": {"m": "a"},
+        "attempt": 1,
+        "max_retries": 3,
+    }
+    assert "script.py" in attempt["command"]
+    assert attempt["exit_code"] == 3
+    assert attempt["created_at"] == only["created"]
+    assert attempt["started_at"] == only["created"]
+    assert attempt["finished_at"] == only["ended"]
+    assert isinstance(attempt["duration_s"], float)
+    assert attempt["duration_s"] >= 0
+    assert Path(attempt["run_folder"]) == folder.resolve()
+    assert Path(attempt["stdout"]).read_text() == "attempt says disk full\n"
+    assert Path(attempt["stderr"]).read_text() == "error: disk full\n"
 
 
-def test_the_check_reads_a_continued_runs_latest_invocation(tmp_path: Path) -> None:
-    seen = 'cat "$LABNOTES_STDERR" >> seen.txt; ' + TIMED_OUT
-    root = make_checked(tmp_path, ["1 ssh timed out", "1 bug in the code"], check(seen))
+def test_the_check_reads_a_continued_runs_latest_attempt(tmp_path: Path) -> None:
+    root = make_checked(tmp_path, ["1 ssh timed out", "1 bug in the code"])
     toml = root / "exp" / "experiment.toml"
     toml.write_text(toml.read_text().replace("continues = false", "continues = true"))
 
     run_now(root)
 
     [only] = runs(root)
-    assert only["exit_code"] == 1
-    assert (root / "exp" / "seen.txt").read_text() == (
-        "error: ssh timed out\nerror: bug in the code\n"
-    )
+    first, second = seen(root)
+    assert (first["attempt"], second["attempt"]) == (1, 2)
+    assert first["run"] == second["run"] == only["id"]
+    assert Path(second["stderr"]).read_text() == "error: bug in the code\n"
+    assert second["started_at"] == only["invocations"][-1]["started"]
 
 
-def test_gives_up_on_the_exit_code_it_retried(tmp_path: Path) -> None:
+def test_approved_retries_keep_the_backoff_then_give_up_naming_the_exit_code(
+    tmp_path: Path,
+) -> None:
     root = make_checked(
         tmp_path,
-        ["1 ssh timed out", "1 ssh timed out"],
-        "retries = 1\n" + check(TIMED_OUT),
+        ["1 ssh timed out", "1 ssh timed out", "1 ssh timed out"],
+        "retries = 2\n" + RETRYABLE_SETTING,
     )
 
     events = run_now(root)
 
     recorded = chain(root)
-    assert [run["exit_code"] for run in recorded] == [1, 1]
+    assert [run["exit_code"] for run in recorded] == [1, 1, 1]
+    waits = [e for e in events if e["event"] == "retrying"]
+    assert [(e["attempt"], e["seconds"], e["exit_code"]) for e in waits] == [
+        (1, 0.01, 1),
+        (2, 0.02, 1),
+    ]
     [gave_up] = [event for event in events if event["event"] == "gave up"]
     assert describe_event(gave_up) == (
-        f"{recorded[1]['id']} gave up (exit 1) after 1 retries."
+        f"{recorded[2]['id']} gave up (exit 1) after 2 retries."
     )

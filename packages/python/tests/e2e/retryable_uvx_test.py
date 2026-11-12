@@ -20,7 +20,16 @@ if left:
     print(f"error: {reason}", file=sys.stderr)
     sys.exit(int(code))
 """
-CHECK = 'retry_check = "grep -q \'timed out\' \\"$LABNOTES_STDERR\\""\n'
+# Retries only an attempt whose stderr says the SSH connection timed out.
+RETRYABLE = """
+import json
+import sys
+from pathlib import Path
+
+attempt = json.load(sys.stdin)
+sys.exit(0 if "timed out" in Path(attempt["stderr"]).read_text() else 1)
+"""
+CHECK = f'retryable = "{sys.executable} retryable.py"\n'
 
 
 def make_project(root: Path, codes: list[str], project: str, experiment: str) -> None:
@@ -28,6 +37,7 @@ def make_project(root: Path, codes: list[str], project: str, experiment: str) ->
     (root / ".labnotes.toml").write_text(project)
     (root / "script.py").write_text(SCRIPT)
     (root / "codes.txt").write_text("\n".join(codes))
+    (root / "exp/retryable.py").write_text(RETRYABLE)
     (root / "exp/experiment.toml").write_text(
         f'continues = false\ncommand = "{sys.executable} script.py"\n'
         f"retry_wait = 0\n{experiment}"

@@ -32,9 +32,6 @@ Each flag must name a param in `[params]` and one of its values. Repeat a param
 to run several of its values (`--model=small --model=large`). Different params
 narrow further. The experiment's totals still count the full grid.
 
-Always pass `--format json` (or `--format table`) to `labnotes experiments`.
-Without it, a terminal gets an interactive browser that waits for keys.
-
 Watch runs in the tmux window. Stop them with Ctrl-C there, or close the
-window. To inspect saved runs from another shell, use
-`uvx labnotes experiments NAME runs --format json`.
+window. `uvx labnotes experiments NAME attach` reopens the run TUI. Saved runs
+are on disk: each run folder holds its `run.json`.

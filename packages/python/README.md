@@ -44,13 +44,8 @@ that `experiment.toml` layers over.
 Keys come from folder names, so renaming a folder renames its rows on the next
 read. Paths are relative to the root, and times are UTC ISO 8601.
 
-```sh
-labnotes experiments foo runs   # foo's runs, oldest first
-```
-
-`runs` takes `--format table` (the default) or `--format json`.
 `labnotes experiments` and `labnotes experiments foo` with no action exit 2
-and name the actions: `runs`, `run`, `attach` or `stop`.
+and name the actions: `run`, `attach` or `stop`.
 
 `labnotes experiments new [NAME]` creates an experiment folder with a starter
 `experiment.toml`, picking a random name if you give none. `new` itself can't

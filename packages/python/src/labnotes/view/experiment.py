@@ -11,10 +11,12 @@ class Experiment:
 
     `runs` holds one row per run in display order, each with its folder
     relative to `root`. `config` is the experiment's config as labnotes
-    resolved it.
+    resolved it. `files` lists every file in the runs' folders, relative to
+    `root`.
     """
 
     root: Path
     name: str
     runs: Sequence[Mapping[str, Any]]
     config: Mapping[str, Any] = field(default_factory=lambda: MappingProxyType({}))
+    files: Sequence[str] = ()

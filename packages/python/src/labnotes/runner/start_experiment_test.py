@@ -79,19 +79,20 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         snapshot=snapshot,
         command_line="labnotes experiments exp run",
         run_id=None,
-        run_state=start.run_state,
+        batch=start.batch,
         reserved=None,
         environment=None,
     )
 
 
-def test_invocation_keeps_its_journal_identity() -> None:
+def test_invocation_keeps_its_batch_identity() -> None:
     config = mock.Mock(root=Path("/tmp/project"), runs="{experiment}/runs/{run}")
     start = start_experiment(config, "exp", None, None, None, None, None, None, None)
-    original = start.run_state
+    original = start.batch
+    assert "/" not in original
     with pytest.raises(FrozenInstanceError):
-        setattr(start, "run_state", mock.sentinel.other)
-    assert start.run_state is original
+        setattr(start, "batch", mock.sentinel.other)
+    assert start.batch is original
 
 
 def test_reports_each_step_before_it_starts() -> None:

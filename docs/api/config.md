@@ -227,7 +227,7 @@ Like `setup`, it gets no folder placeholders and fails before setup if its comma
 - Type: string
 - Default: the folder name
 
-Display name, shown in the TUI and as `display_name` in `labnotes experiments`. The folder name stays the key.
+Display name, shown in the TUI and the [frontend](../frontend). The folder name stays the key.
 
 ### `repeats`
 

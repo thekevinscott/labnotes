@@ -565,6 +565,7 @@ def start_with_hooks(
     report: mock.Mock,
     listen: Callable[[Any], None] = lambda controls: controls.finish(),
     concurrency: int = 1,
+    batch: str | None = None,
 ) -> list[dict[str, object]]:
     configured = experiment()
     configured.setup = "up"
@@ -579,8 +580,19 @@ def start_with_hooks(
             concurrency,
             report,
             listen,
+            batch=batch,
         )
     )
+
+
+def test_hook_logs_are_named_for_the_batch(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    start_with_hooks(tmp_path, mock.Mock(), batch="b1")
+
+    folders = [c.args[4] for c in collaborators["invocation_hook"].await_args_list]
+    logs = tmp_path / "exp" / ".labnotes" / "logs"
+    assert folders == [logs / "setup" / "b1", logs / "teardown" / "b1"]
 
 
 def test_runs_no_hooks_when_none_are_configured(
@@ -2116,20 +2128,14 @@ def test_a_resumed_run_doubles_its_wait_from_this_session_only(
     ]
 
 
-def test_emit_forwards_the_exact_journal_records(
+def test_emit_reports_stamped_events_and_writes_no_journal(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    import json
-
     report = mock.Mock()
     collaborators["execute_run"].side_effect = exiting(75, 0, 0)
     run(tmp_path, report, retry_seconds=0.01)
-    journals = list(
-        Path(os.environ["XDG_STATE_HOME"]).glob("labnotes/run-state/*/*.jsonl")
-    )
-    assert len(journals) == 1
-    stored = [json.loads(line) for line in journals[0].read_text().splitlines()]
-    assert [call.args[0] for call in report.call_args_list] == stored
+    stored = [call.args[0] for call in report.call_args_list]
     assert all(isinstance(event["at"], float) for event in stored)
     retry = next(event for event in stored if event["event"] == "retrying")
     assert retry["retry_at"] == retry["at"] + retry["seconds"]
+    assert not list(Path(os.environ["XDG_STATE_HOME"]).rglob("*.jsonl"))

@@ -93,20 +93,6 @@ def request(path: Path, message: dict[str, object]) -> dict[str, object]:
     raise AssertionError("daemon closed without a reply")
 
 
-def journal_events(journal: Path) -> list[dict[str, object]]:
-    return [json.loads(line) for line in journal.read_text().splitlines()]
-
-
-def wait_for_event(journal: Path, name: str) -> list[dict[str, object]]:
-    for _ in range(200):
-        if journal.exists() and any(
-            event["event"] == name for event in journal_events(journal)
-        ):
-            return journal_events(journal)
-        time.sleep(0.05)
-    raise AssertionError(f"journal never recorded {name}")
-
-
 class Attached:
     """One attach connection, read line by line."""
 
@@ -130,19 +116,19 @@ class Attached:
     def take(self, count: int) -> list[dict[str, object]]:
         messages = [self.next() for _ in range(count)]
         for message in messages:
-            assert set(message) == {"journal", "event"}, message
+            assert set(message) == {"batch", "event"}, message
         return messages
 
-    def until(self, journal: str, name: str) -> list[dict[str, object]]:
+    def until(self, batch: str, name: str) -> list[dict[str, object]]:
         """Collect streamed events up to one with this name for this batch."""
         seen: list[dict[str, object]] = []
         while True:
             message = self.next()
-            assert set(message) == {"journal", "event"}, message
+            assert set(message) == {"batch", "event"}, message
             event = message["event"]
             assert isinstance(event, dict)
             seen.append(message)
-            if message["journal"] == journal and event["event"] == name:
+            if message["batch"] == batch and event["event"] == name:
                 return seen
 
     def close(self) -> None:
@@ -161,22 +147,27 @@ def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) 
         labnotes(root, "daemon", "exp"), cwd=root, env=env, stdout=subprocess.PIPE
     )
     clients: list[Attached] = []
+    observer: Attached | None = None
+    recorded: dict[str, list[object]] = {}
 
     def start(value: str) -> str:
         reply = request(path, {"command": "start", "options": {"only": {"m": [value]}}})
         assert reply["ok"] is True, reply
-        journal = str(reply["journal"])
-        wait_for_event(Path(journal), "started")
-        return journal
+        batch = str(reply["batch"])
+        assert observer is not None
+        for message in observer.until(batch, "started"):
+            recorded.setdefault(str(message["batch"]), []).append(message["event"])
+        return batch
 
-    def assert_replay(client: Attached, journals: list[str]) -> None:
-        recorded = {journal: journal_events(Path(journal)) for journal in journals}
-        replay = client.take(sum(len(events) for events in recorded.values()))
-        for journal, events in recorded.items():
-            assert [m["event"] for m in replay if m["journal"] == journal] == events
+    def assert_replay(client: Attached, batches: list[str]) -> None:
+        expected = {batch: recorded[batch] for batch in batches}
+        replay = client.take(sum(len(events) for events in expected.values()))
+        for batch, events in expected.items():
+            assert [m["event"] for m in replay if m["batch"] == batch] == events
 
     try:
         path = wait_for_socket(runtime)
+        observer = Attached(path)
         active = [start("a"), start("b")]
 
         clients = [Attached(path), Attached(path)]
@@ -186,7 +177,7 @@ def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) 
         later = start("c")
         for client in clients:
             streamed = client.until(later, "started")
-            names = [m["event"]["event"] for m in streamed if m["journal"] == later]  # type: ignore[index]
+            names = [m["event"]["event"] for m in streamed if m["batch"] == later]  # type: ignore[index]
             assert names[0] == "planned", names
 
         late = Attached(path)
@@ -199,19 +190,19 @@ def test_attached_clients_get_replay_then_deltas(tmp_path: Path, runtime: Path) 
             while ended != {*active, later}:
                 message = client.next()
                 if message["event"]["event"] == "idle":  # type: ignore[index]
-                    ended.add(str(message["journal"]))
+                    ended.add(str(message["batch"]))
     finally:
         release.touch()
         for client in clients:
             client.close()
+        if observer is not None:
+            observer.close()
         if daemon.poll() is None:
             daemon.terminate()
         daemon.communicate(timeout=15)
 
 
-def test_run_tui_shows_state_without_reading_the_journal(
-    terminal, tmp_path: Path
-) -> None:
+def test_run_tui_shows_state_with_no_journal_on_disk(terminal, tmp_path: Path) -> None:
     root, release = project(tmp_path)
     state = tmp_path / "state"
     term = terminal(
@@ -222,10 +213,7 @@ def test_run_tui_shows_state_without_reading_the_journal(
     )
     try:
         expect(term.get_by_text("working")).to_be_visible(timeout=30)
-        journals = list(state.glob("labnotes/run-state/*/*.jsonl"))
-        assert journals, "daemon wrote no journal"
-        for journal in journals:
-            journal.unlink()
+        assert not list(state.rglob("*.jsonl"))
         release.touch()
         expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=30)
         assert not term.get_by_text("Traceback").is_visible(), term.to_snapshot()

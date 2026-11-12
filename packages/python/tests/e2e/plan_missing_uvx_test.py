@@ -150,9 +150,9 @@ def test_uvx_lists_old_runs_nested_in_group_folders(tmp_path: Path, tui: Tui) ->
             )
         )
 
-    term = tui(root, "experiments", "exp")
+    term = tui(root, "experiments", "exp", "runs", cols=300)
 
+    assert tui.exited(term) == 0, term.to_snapshot()
     for run_id in ("a-1a2b", "b-3c4d"):
         shown = f"20261020-065052-still-lake/{run_id}"
-        expect(term.get_by_text(shown)).to_be_visible(timeout=60)
-    tui.quit(term)
+        assert term.get_by_text(shown).is_visible(), term.to_snapshot()

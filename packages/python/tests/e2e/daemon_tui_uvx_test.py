@@ -49,11 +49,7 @@ def test_uvx_tui_crash_keeps_run_alive(tmp_path: Path, tui: Tui, runtime: Path) 
     [record] = records(root)
     assert record["exit_code"] == 0
     [folder] = root.glob("exp/runs/*")
-    browser = tui(root, "experiments", "exp", env=env, cols=160)
-    expect(browser.get_by_text(folder.name)).to_be_visible(timeout=60)
-    browser.key_enter()
-    expect(browser.get_by_text("12345")).to_be_visible()
-    tui.quit(browser)
+    assert "12345" in (folder / "stdout.log").read_text()
 
 
 def test_uvx_frozen_tui_keeps_scheduling(tmp_path: Path, tui: Tui) -> None:
@@ -87,42 +83,6 @@ def test_uvx_frozen_tui_keeps_scheduling(tmp_path: Path, tui: Tui) -> None:
     # Ctrl-C after SIGSTOP/SIGCONT sometimes leaves the TUI open, so kill it.
     tui.check(term)
     tui.signal(term, signal.SIGKILL)
-
-
-def test_uvx_browse_restart_survives_tui_kill(tmp_path: Path, tui: Tui) -> None:
-    root = tmp_path / "project"
-    (root / "exp").mkdir(parents=True)
-    (root / ".labnotes.toml").write_text("")
-    (root / "marker").write_text("")
-    (root / "script.py").write_text(
-        "import sys, time\nfrom pathlib import Path\n"
-        "if Path('marker').exists():\n    Path('marker').unlink()\n    sys.exit(1)\n"
-        "print('restart running', flush=True)\ntime.sleep(3)\n"
-    )
-    (root / "exp/experiment.toml").write_text(
-        f'command = "{sys.executable} script.py"\ncontinues = false\nretries = 0\n'
-    )
-    first = tui(root, "experiments", "exp", "run", cols=160)
-    expect(first.get_by_text("0 passed, 1 failed.")).to_be_visible(timeout=60)
-    tui.quit(first)
-    [failed] = root.glob("exp/runs/*/run.json")
-
-    browser = tui(root, "experiments", "exp", cols=160)
-    expect(browser.get_by_text(failed.parent.name)).to_be_visible(timeout=60)
-    browser.write("r")
-    expect(browser.get_by_text("Restarted")).to_be_visible(timeout=30)
-    tui.signal(browser, signal.SIGKILL)
-    expect(browser).to_have_exited(timeout=10)
-
-    wait_for(
-        lambda: len(found := records(root)) == 2
-        and all(record.get("ended") for record in found)
-    )
-    assert sorted(record["exit_code"] for record in records(root)) == [0, 1]
-    [restarted] = [path for path in root.glob("exp/runs/*/run.json") if path != failed]
-    reopened = tui(root, "experiments", "exp", cols=160)
-    expect(reopened.get_by_text(restarted.parent.name)).to_be_visible(timeout=60)
-    tui.quit(reopened)
 
 
 def test_uvx_second_tty_reuses_daemon_then_idle_daemon_exits(

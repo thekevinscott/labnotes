@@ -7,14 +7,14 @@ from labnotes.runner.finalize_lost_runs import finalize_lost_runs
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.project_snapshot import project_snapshot
 from labnotes.runner.run_experiment import run_experiment
-from labnotes.runner.run_state import RunState
+from labnotes.runner.batch_id import batch_id
 
 
 @dataclass(frozen=True)
 class ExperimentStart:
-    """Keep a run invocation's journal path with its scheduler callback."""
+    """Keep a run invocation's batch id with its scheduler callback."""
 
-    run_state: RunState
+    batch: str
     start: Start
 
     async def __call__(self, report: Report, listen: Listen) -> list[dict[str, object]]:
@@ -40,7 +40,7 @@ def start_experiment(
     environment: dict[str, str] | None = None,
     progress: Callable[[str], None] = lambda step: None,
 ) -> ExperimentStart:
-    state = RunState.create(config, name)
+    batch = batch_id()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         progress("Preparing experiment")
@@ -74,9 +74,9 @@ def start_experiment(
                 snapshot=snapshot,
                 command_line=command_line,
                 run_id=run_id,
-                run_state=state,
+                batch=batch,
                 reserved=reserved,
                 environment=environment,
             )
 
-    return ExperimentStart(state, start)
+    return ExperimentStart(batch, start)

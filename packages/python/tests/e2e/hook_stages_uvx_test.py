@@ -1,4 +1,5 @@
 import json
+import re
 import sys
 from pathlib import Path
 
@@ -88,3 +89,24 @@ def test_uvx_ctrl_c_during_setup_stops_the_invocation(tmp_path: Path, tui: Tui) 
     assert not list(root.glob("exp/runs/*/run.json"))
     [teardown] = (root / "exp/.labnotes/logs/teardown").iterdir()
     assert (teardown / "stdout.log").read_text() == "down\n"
+
+
+def test_uvx_run_tui_switches_stage_by_clicking_its_tab(
+    tmp_path: Path, tui: Tui
+) -> None:
+    root = project(
+        tmp_path, "import time\nprint('pod up', flush=True)\ntime.sleep(4)\n"
+    )
+
+    term = tui(root, "experiments", "exp", "run")
+
+    expect(term.get_by_text("pod up")).to_be_visible(timeout=60)
+    expect(term.get_by_text("2 passed, 0 failed")).to_be_visible(timeout=30)
+    expect(term.get_by_text("Next stage")).not_to_be_visible()
+    expect(term.get_by_text("Previous stage")).not_to_be_visible()
+    term.get_by_text(re.compile(r" setup [✓✗] ")).click()
+    expect(term.get_by_text("pod up")).to_be_visible()
+    term.write("]")
+    expect(term.get_by_text("params")).to_be_visible()
+    expect(term.get_by_text("pod up")).not_to_be_visible()
+    tui.quit(term)

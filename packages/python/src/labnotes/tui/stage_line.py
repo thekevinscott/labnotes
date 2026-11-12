@@ -1,5 +1,6 @@
 from collections.abc import Sequence
 
+from rich.style import Style
 from rich.text import Text
 
 MARKS = {"waiting": ("○", "dim"), "passed": ("✓", ""), "failed": ("✗", "red")}
@@ -13,5 +14,7 @@ def stage_line(stages: Sequence[tuple[str, str]], current: str, spinner: str) ->
         mark, style = MARKS.get(state, (spinner, ""))
         if stage == current:
             style = f"{style} bold reverse".strip()
-        line.append(f" {stage} {mark} ", style=style)
+        line.append(
+            f" {stage} {mark} ", style=Style.parse(style) + Style(meta={"stage": stage})
+        )
     return line

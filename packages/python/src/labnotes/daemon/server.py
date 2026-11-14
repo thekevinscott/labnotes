@@ -337,12 +337,11 @@ class ExperimentDaemon:
 
         async def stream() -> AsyncIterator[str]:
             while True:
-                match await updates.get():
-                    case "reply", answer:
-                        yield sse(answer, "reply")
+                name, data = await updates.get()
+                yield sse(data, name)
+                match name:
+                    case "reply":
                         return
-                    case name, data:
-                        yield sse(data, name)
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 

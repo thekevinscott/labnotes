@@ -44,6 +44,8 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
       - run: uv run playwright install --with-deps chromium
+      - run: uv run --with coverage coverage run --branch --source=src --omit='*_test.py' -m pytest -q -p no:cacheprovider src
+      - run: uv run --with coverage coverage report -m --skip-covered
       - run: uv run pytest src/labnotes tests/integration
       - run: uv run pytest ../../scripts
       - run: uv run pytest tests/e2e

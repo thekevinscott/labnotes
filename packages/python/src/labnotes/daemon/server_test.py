@@ -3,11 +3,20 @@ import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
 
-from labnotes.daemon.server import ExperimentDaemon, Invocation, serve_daemon
+from labnotes.daemon.server import (
+    ExperimentDaemon,
+    Invocation,
+    Queued,
+    serve_daemon,
+)
+
+
+INVALID = {"ok": False, "error": "Invalid request"}
 
 
 def config(root: Path) -> mock.Mock:
@@ -59,7 +68,6 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
         with mock.patch(
             "labnotes.daemon.server.start_experiment", return_value=selected
         ):
-            assert await daemon.dispatch({"command": "ping"}) == {"ok": True}
             assert await daemon.dispatch({"command": "start", "options": []}) == {
                 "ok": False,
                 "error": "options must be an object",
@@ -102,7 +110,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
                 mock.call(2),
                 mock.call(3),
             ]
-            assert await daemon.dispatch({"command": "attach"}) == {
+            assert await daemon.dispatch({"command": "batches"}) == {
                 "ok": True,
                 "batches": ["one"],
             }
@@ -395,87 +403,6 @@ def test_commands_ignore_invocation_still_preparing(tmp_path: Path) -> None:
     asyncio.run(drive())
 
 
-def test_socket_replies_once_and_attach_holds_connection(tmp_path: Path) -> None:
-    async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
-        server = await asyncio.start_unix_server(
-            daemon.handle, path=str(tmp_path / "s.sock")
-        )
-        try:
-            reader, writer = await asyncio.open_unix_connection(
-                str(tmp_path / "s.sock")
-            )
-            writer.write(b'{"command":"attach"}\n')
-            await writer.drain()
-            assert json.loads(await reader.readline()) == {
-                "ok": True,
-                "batches": [],
-            }
-            assert daemon.clients == 1
-            writer.close()
-            await writer.wait_closed()
-            await asyncio.sleep(0)
-
-            for payload, expected in (
-                (b"[]\n", "Request must be an object"),
-                (b"not json\n", "Invalid request"),
-            ):
-                reader, writer = await asyncio.open_unix_connection(
-                    str(tmp_path / "s.sock")
-                )
-                writer.write(payload)
-                await writer.drain()
-                assert json.loads(await reader.readline()) == {
-                    "ok": False,
-                    "error": expected,
-                }
-                writer.close()
-                await writer.wait_closed()
-            reader, writer = await asyncio.open_unix_connection(
-                str(tmp_path / "s.sock")
-            )
-            writer.close()
-            await writer.wait_closed()
-            for _ in range(20):
-                if daemon.clients == 0:
-                    break
-                await asyncio.sleep(0.01)
-            assert daemon.clients == 0
-        finally:
-            server.close()
-            await server.wait_closed()
-
-    asyncio.run(drive())
-
-
-def test_socket_reports_handler_error(tmp_path: Path) -> None:
-    async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
-        server = await asyncio.start_unix_server(
-            daemon.handle, path=str(tmp_path / "s.sock")
-        )
-        try:
-            with mock.patch.object(
-                daemon, "dispatch", side_effect=ValueError("bad request")
-            ):
-                reader, writer = await asyncio.open_unix_connection(
-                    str(tmp_path / "s.sock")
-                )
-                writer.write(b'{"command":"start"}\n')
-                await writer.drain()
-                assert json.loads(await reader.readline()) == {
-                    "ok": False,
-                    "error": "bad request",
-                }
-                writer.close()
-                await writer.wait_closed()
-        finally:
-            server.close()
-            await server.wait_closed()
-
-    asyncio.run(drive())
-
-
 def test_attached_client_prevents_idle_exit(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
@@ -545,10 +472,46 @@ def test_server_retries_a_probe_lock_before_binding(
         ):
             await serve_daemon(project, "exp")
         assert flock.call_count == 2
-        sleep.assert_awaited_once_with(0.1)
+        assert sleep.await_args_list[0] == mock.call(0.1)
         assert not record.exists()
 
     asyncio.run(drive())
+
+
+def test_server_accepts_connections_before_its_http_server_starts(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    accepted: list[bool] = []
+
+    async def startup(sockets: list[object]) -> None:
+        _, path, _ = paths
+        _, writer = await asyncio.open_unix_connection(str(path))
+        writer.close()
+        accepted.append(True)
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.daemon.server.fcntl.flock"),
+            mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0),
+            mock.patch("uvicorn.Server") as server,
+            mock.patch("uvicorn.Config") as settings,
+        ):
+            server.return_value.startup = mock.AsyncMock(side_effect=startup)
+            server.return_value.shutdown = mock.AsyncMock()
+            await serve_daemon(config(tmp_path), "exp")
+        [(app,)] = [call.args for call in settings.call_args_list]
+        assert isinstance(app, ExperimentDaemon)
+        settings.assert_called_once_with(
+            app,
+            lifespan="off",
+            log_config=None,
+            access_log=False,
+            timeout_graceful_shutdown=1,
+        )
+        server.assert_called_once_with(settings.return_value)
+
+    asyncio.run(drive())
+    assert accepted == [True]
 
 
 def test_server_signal_stops_and_closes_early(
@@ -588,7 +551,6 @@ def test_commands_from_the_wire_reach_their_handlers(tmp_path: Path) -> None:
         async def send(line: str) -> dict[str, object]:
             return await daemon.dispatch(json.loads(line))
 
-        assert await send('{"command": "ping"}') == {"ok": True}
         assert await send('{"command": "restart", "options": {}}') == {
             "ok": False,
             "error": "restart needs run_id",
@@ -604,60 +566,6 @@ def test_commands_from_the_wire_reach_their_handlers(tmp_path: Path) -> None:
                 "ok": False,
                 "error": f"Unknown command {name}",
             }
-
-    asyncio.run(drive())
-
-
-def test_socket_closes_after_one_reply_unless_attached(tmp_path: Path) -> None:
-    async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
-        server = await asyncio.start_unix_server(
-            daemon.handle, path=str(tmp_path / "s.sock")
-        )
-        try:
-            for payload in (b'{"command":"ping"}\n', b'{"command":"aaa"}\n'):
-                reader, writer = await asyncio.open_unix_connection(
-                    str(tmp_path / "s.sock")
-                )
-                writer.write(payload)
-                await writer.drain()
-                await reader.readline()
-                assert await asyncio.wait_for(reader.read(), timeout=1) == b""
-                writer.close()
-                await writer.wait_closed()
-        finally:
-            server.close()
-            await server.wait_closed()
-
-    asyncio.run(drive())
-
-
-def test_start_steps_reach_the_wire_before_the_reply(tmp_path: Path) -> None:
-    async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
-
-        async def dispatch(message, progress):
-            progress("Snapshotting repo")
-            return {"ok": True}
-
-        server = await asyncio.start_unix_server(
-            daemon.handle, path=str(tmp_path / "s.sock")
-        )
-        try:
-            with mock.patch.object(daemon, "dispatch", new=dispatch):
-                reader, writer = await asyncio.open_unix_connection(
-                    str(tmp_path / "s.sock")
-                )
-                writer.write(b'{"command":"start","options":{}}\n')
-                await writer.drain()
-                assert await reader.read() == (
-                    b'{"step": "Snapshotting repo"}\n{"ok": true}\n'
-                )
-                writer.close()
-                await writer.wait_closed()
-        finally:
-            server.close()
-            await server.wait_closed()
 
     asyncio.run(drive())
 
@@ -757,19 +665,16 @@ def test_restart_with_a_run_id_starts_that_run(tmp_path: Path) -> None:
     start.assert_called_once_with(options, mock.ANY)
 
 
-@pytest.mark.parametrize("action", ["attach", "batches"])
-def test_attach_and_batches_list_active_invocations_in_start_order(
-    tmp_path: Path, action: str
-) -> None:
+def test_batches_lists_active_invocations_in_start_order(tmp_path: Path) -> None:
     async def drive() -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
-        assert await daemon.dispatch({"command": action}) == {
+        assert await daemon.dispatch({"command": "batches"}) == {
             "ok": True,
             "batches": [],
         }
         daemon.active["b"] = Invocation()
         daemon.active["a"] = Invocation()
-        assert await daemon.dispatch({"command": action}) == {
+        assert await daemon.dispatch({"command": "batches"}) == {
             "ok": True,
             "batches": ["b", "a"],
         }
@@ -784,7 +689,7 @@ def test_server_never_unlinks_a_live_daemons_socket(
     live.touch()
     with (
         mock.patch("labnotes.daemon.server.listening", return_value=True) as probe,
-        mock.patch("labnotes.daemon.server.asyncio.start_unix_server") as bind,
+        mock.patch("labnotes.daemon.server.uvicorn.Server") as bind,
     ):
         asyncio.run(serve_daemon(config(tmp_path), "exp"))
     probe.assert_called_once_with(live)
@@ -802,103 +707,6 @@ def test_server_marks_run_state_as_live(
     assert "Do not delete" in marker.read_text()
 
 
-@pytest.mark.parametrize("buffer_size", [1024 * 1024, 1024 * 1024 + 1])
-def test_slow_subscriber_is_dropped_without_blocking_others(
-    tmp_path: Path, buffer_size: int
-) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
-    daemon.history["batch"] = Invocation()
-    slow, fast = mock.Mock(), mock.Mock()
-    for writer in (slow, fast):
-        writer.is_closing.return_value = False
-    slow.transport.get_write_buffer_size.return_value = buffer_size
-    fast.transport.get_write_buffer_size.return_value = 0
-    daemon.subscribers.update((slow, fast))
-    event = {"event": "idle", "at": 12.0}
-    daemon.report("batch", event)
-    assert daemon.history["batch"].events == [event]
-    assert json.loads(fast.write.call_args.args[0]) == {
-        "batch": "batch",
-        "event": event,
-    }
-    assert (slow in daemon.subscribers) is (buffer_size == 1024 * 1024)
-    assert slow.transport.abort.call_count == (buffer_size > 1024 * 1024)
-    assert fast in daemon.subscribers
-
-
-@pytest.mark.parametrize("closing", [True, False])
-def test_broken_subscriber_does_not_break_recording(
-    tmp_path: Path, closing: bool
-) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
-    daemon.history["batch"] = Invocation()
-    writer = mock.Mock()
-    writer.is_closing.return_value = closing
-    writer.write.side_effect = BrokenPipeError()
-    daemon.subscribers.add(writer)
-    daemon.report("batch", {"event": "idle"})
-    assert daemon.history["batch"].events == [{"event": "idle"}]
-    assert writer not in daemon.subscribers
-    assert writer.write.call_count == (not closing)
-    assert writer.transport.abort.call_count == (not closing)
-
-
-def test_attach_replays_finished_batches_then_new_batch_without_gaps(
-    tmp_path: Path,
-) -> None:
-    async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
-        old = [{"event": "planned", "at": 1}, {"event": "idle", "at": 2}]
-        daemon.history["ended"] = Invocation(events=old)
-        server = await asyncio.start_unix_server(
-            daemon.handle, path=str(tmp_path / "s")
-        )
-        async with server:
-            reader, writer = await asyncio.open_unix_connection(str(tmp_path / "s"))
-            writer.write(b'{"command":"attach"}\n')
-            assert json.loads(await reader.readline()) == {"ok": True, "batches": []}
-            daemon.history["new"] = Invocation()
-            event = {"event": "planned", "at": 3}
-            daemon.report("new", event)
-            messages = [
-                json.loads(await asyncio.wait_for(reader.readline(), 1))
-                for _ in range(3)
-            ]
-            assert messages == [
-                *({"batch": "ended", "event": e} for e in old),
-                {"batch": "new", "event": event},
-            ]
-            writer.close()
-            await writer.wait_closed()
-            for _ in range(20):
-                if not daemon.clients:
-                    break
-                await asyncio.sleep(0.01)
-            assert not daemon.subscribers
-            assert daemon.clients == 0
-
-    asyncio.run(drive())
-
-
-@pytest.mark.parametrize("failure", ["drain", "read", "wait_closed"])
-def test_attach_transport_errors_release_the_subscription(
-    tmp_path: Path, failure: str
-) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
-    reader, writer = mock.Mock(), mock.Mock()
-    reader.readline = mock.AsyncMock(return_value=b'{"command":"attach"}\n')
-    reader.read = mock.AsyncMock(return_value=b"")
-    writer.drain = mock.AsyncMock()
-    writer.wait_closed = mock.AsyncMock()
-    target = reader if failure == "read" else writer
-    getattr(target, failure).side_effect = ConnectionResetError("client left")
-    asyncio.run(daemon.handle(reader, writer))
-    assert daemon.clients == 0
-    assert not daemon.subscribers
-    writer.close.assert_called_once_with()
-    writer.wait_closed.assert_awaited_once_with()
-
-
 def test_start_publishes_runner_events_and_retains_daemon_errors(
     tmp_path: Path,
 ) -> None:
@@ -908,10 +716,8 @@ def test_start_publishes_runner_events_and_retains_daemon_errors(
         planned = {"event": "planned", "at": 1.0}
         failed = {"event": "daemon error", "error": "oops", "at": 2.0}
         selected = mock.Mock(batch=batch)
-        writer = mock.Mock()
-        writer.is_closing.return_value = False
-        writer.transport.get_write_buffer_size.return_value = 0
-        daemon.subscribers.add(writer)
+        queue: Queued = asyncio.Queue()
+        daemon.subscribers.add(queue)
 
         async def run(report, listen):
             report(planned)
@@ -930,11 +736,339 @@ def test_start_publishes_runner_events_and_retains_daemon_errors(
             assert await daemon.start({}) == {"ok": True, "batch": batch}
         assert daemon.history[batch].events == [planned, failed]
         assert not daemon.active
-        assert [json.loads(call.args[0]) for call in writer.write.call_args_list] == [
-            {"batch": batch, "event": planned},
-            {"batch": batch, "event": failed},
+        assert [queue.get_nowait() for _ in range(queue.qsize())] == [
+            (batch, planned),
+            (batch, failed),
         ]
         stamp.assert_called_once_with({"event": "daemon error", "error": "oops"})
+
+    asyncio.run(drive())
+
+
+class Exchange:
+    """Drive the daemon's ASGI app for one request, as uvicorn would."""
+
+    def __init__(
+        self, daemon: ExperimentDaemon, method: str, path: str, body: bytes = b""
+    ) -> None:
+        self.body: bytes | None = body
+        self.sent: asyncio.Queue[Any] = asyncio.Queue()
+        self.left = asyncio.Event()
+        scope = {
+            "type": "http",
+            "asgi": {"version": "3.0", "spec_version": "2.3"},
+            "http_version": "1.1",
+            "method": method,
+            "scheme": "http",
+            "path": path,
+            "raw_path": path.encode(),
+            "query_string": b"",
+            "root_path": "",
+            "headers": [(b"host", b"labnotes")],
+            "server": ("labnotes", 80),
+            "client": None,
+        }
+        self.task = asyncio.create_task(daemon(scope, self.receive, self.sent.put))
+
+    async def receive(self) -> dict[str, object]:
+        if self.body is not None:
+            body, self.body = self.body, None
+            return {"type": "http.request", "body": body, "more_body": False}
+        await self.left.wait()
+        return {"type": "http.disconnect"}
+
+    async def start(self) -> tuple[int, str]:
+        message = await asyncio.wait_for(self.sent.get(), 1)
+        assert message["type"] == "http.response.start"
+        headers = dict(message["headers"])
+        return int(message["status"]), headers[b"content-type"].decode()
+
+    async def chunk(self) -> bytes:
+        message = await asyncio.wait_for(self.sent.get(), 1)
+        return bytes(message["body"])
+
+    async def json(self) -> tuple[int, object]:
+        status, kind = await self.start()
+        assert kind == "application/json"
+        body = await self.chunk()
+        await asyncio.wait_for(self.task, 1)
+        return status, json.loads(body)
+
+    async def rest(self) -> bytes:
+        await asyncio.wait_for(self.task, 1)
+        chunks = []
+        while not self.sent.empty():
+            chunks.append(bytes(self.sent.get_nowait()["body"]))
+        return b"".join(chunks)
+
+    async def leave(self) -> None:
+        self.left.set()
+        await asyncio.wait_for(self.task, 1)
+
+
+def test_routes_reply_with_json_and_status_by_outcome(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        controls = mock.Mock()
+        daemon.active["one"] = Invocation(controls=controls)
+
+        async def answer(
+            method: str, path: str, body: bytes = b""
+        ) -> tuple[int, object]:
+            return await Exchange(daemon, method, path, body).json()
+
+        assert await answer("GET", "/batches") == (
+            200,
+            {"ok": True, "batches": ["one"]},
+        )
+        assert await answer("POST", "/concurrency", b'{"count": 2}') == (
+            200,
+            {"ok": True},
+        )
+        controls.set_concurrency.assert_called_once_with(2)
+        assert await answer("POST", "/concurrency", b'{"count": 0}') == (
+            400,
+            {"ok": False, "error": "count must be positive"},
+        )
+        assert await answer("POST", "/concurrency", b"not json") == (400, INVALID)
+        assert await answer("POST", "/concurrency", b"[]") == (400, INVALID)
+        assert await answer("POST", "/concurrency") == (
+            400,
+            {"ok": False, "error": "count must be positive"},
+        )
+        assert await answer("POST", "/runs/r7/stop") == (200, {"ok": True})
+        controls.kill.assert_called_once_with("r7")
+        assert await answer("POST", "/runs/r8/start") == (200, {"ok": True})
+        controls.start_one.assert_called_once_with("r8")
+        assert await answer("POST", "/finish-up") == (200, {"ok": True})
+        controls.finish_up.assert_called_once_with()
+        assert await answer("POST", "/stop") == (200, {"ok": True})
+        controls.interrupt.assert_called_once_with()
+        assert daemon.clients == 0
+
+    asyncio.run(drive())
+
+
+def test_unknown_route_and_method_are_refused(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        for method, path, status in (
+            ("GET", "/nowhere", 404),
+            ("GET", "/stop", 405),
+            ("POST", "/batches", 405),
+        ):
+            exchange = Exchange(daemon, method, path)
+            assert (await exchange.start())[0] == status
+            await exchange.rest()
+
+    asyncio.run(drive())
+
+
+def test_handler_error_becomes_an_error_reply(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        with mock.patch.object(
+            daemon, "dispatch", side_effect=ValueError("bad request")
+        ):
+            assert await Exchange(daemon, "GET", "/batches").json() == (
+                400,
+                {"ok": False, "error": "bad request"},
+            )
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize("route", ["start", "restart"])
+def test_start_streams_steps_before_its_reply(tmp_path: Path, route: str) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        seen: list[dict[str, object]] = []
+
+        async def dispatch(message, progress):
+            seen.append(message)
+            progress("Snapshotting repo")
+            return {"ok": True, "batch": "b"}
+
+        with mock.patch.object(daemon, "dispatch", new=dispatch):
+            exchange = Exchange(daemon, "POST", f"/{route}", b'{"run_id": "r"}')
+            assert await exchange.start() == (200, "text/event-stream; charset=utf-8")
+            assert await exchange.rest() == (
+                b'event: step\ndata: "Snapshotting repo"\n\n'
+                b'event: reply\ndata: {"ok": true, "batch": "b"}\n\n'
+            )
+        assert seen == [{"command": route, "options": {"run_id": "r"}}]
+
+    asyncio.run(drive())
+
+
+def test_start_with_a_bad_body_is_refused(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        assert await Exchange(daemon, "POST", "/start", b"[1]").json() == (
+            400,
+            INVALID,
+        )
+        assert not daemon.starting
+
+    asyncio.run(drive())
+
+
+def test_start_continues_after_its_client_leaves(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        release = asyncio.Event()
+        finished: list[str] = []
+
+        async def dispatch(message, progress):
+            progress("Preparing")
+            await release.wait()
+            finished.append("start")
+            return {"ok": True}
+
+        with mock.patch.object(daemon, "dispatch", new=dispatch):
+            exchange = Exchange(daemon, "POST", "/start")
+            await exchange.start()
+            assert await exchange.chunk() == b'event: step\ndata: "Preparing"\n\n'
+            await exchange.leave()
+            [task] = daemon.starting
+            release.set()
+            await asyncio.wait_for(task, 1)
+        assert finished == ["start"]
+        assert not daemon.starting
+        assert daemon.clients == 0
+
+    asyncio.run(drive())
+
+
+def test_events_name_batches_then_replay_then_follow(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        old = [{"event": "planned", "at": 1}, {"event": "idle", "at": 2}]
+        daemon.history["ended"] = Invocation(events=old)
+        daemon.active["live"] = daemon.history["live"] = Invocation()
+        exchange = Exchange(daemon, "GET", "/events")
+        assert await exchange.start() == (200, "text/event-stream; charset=utf-8")
+        assert (
+            await exchange.chunk() == b'event: batches\ndata: {"batches": ["live"]}\n\n'
+        )
+        assert daemon.clients == 1
+        for event in old:
+            assert json.loads((await exchange.chunk()).removeprefix(b"data: ")) == {
+                "batch": "ended",
+                "event": event,
+            }
+        event = {"event": "planned", "at": 3}
+        daemon.report("live", event)
+        assert await exchange.chunk() == (
+            b'data: {"batch": "live", "event": {"event": "planned", "at": 3}}\n\n'
+        )
+        await exchange.leave()
+        assert not daemon.subscribers
+        assert daemon.clients == 0
+
+    asyncio.run(drive())
+
+
+def test_ended_streams_close_their_responses(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        exchange = Exchange(daemon, "GET", "/events")
+        await exchange.start()
+        await exchange.chunk()
+        assert len(daemon.subscribers) == 1
+        daemon.end_streams()
+        assert not daemon.subscribers
+        assert await exchange.rest() == b""
+        assert daemon.clients == 0
+
+    asyncio.run(drive())
+
+
+def test_full_subscriber_is_dropped_and_ended_without_blocking_others(
+    tmp_path: Path,
+) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    slow: Queued = asyncio.Queue()
+    fast: Queued = asyncio.Queue()
+    daemon.subscribers.update((slow, fast))
+    first: dict[str, object] = {"event": "planned"}
+    second: dict[str, object] = {"event": "idle"}
+    with mock.patch("labnotes.daemon.server.MAX_QUEUED_EVENTS", 2):
+        daemon.report("batch", first)
+        fast.get_nowait()
+        daemon.report("batch", second)
+        assert slow in daemon.subscribers
+        daemon.report("batch", second)
+    assert daemon.history["batch"].events == [first, second, second]
+    assert slow not in daemon.subscribers
+    assert [slow.get_nowait() for _ in range(4)] == [
+        ("batch", first),
+        ("batch", second),
+        ("batch", second),
+        None,
+    ]
+    assert fast in daemon.subscribers
+    assert fast.qsize() == 2
+
+
+def test_subscriber_is_dropped_past_the_real_cap(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    full: Queued = asyncio.Queue()
+    for _ in range(99_999):
+        full.put_nowait(None)
+    daemon.subscribers.add(full)
+    daemon.report("batch", {"event": "idle"})
+    assert full in daemon.subscribers
+    daemon.report("batch", {"event": "idle"})
+    assert full not in daemon.subscribers
+    assert full.qsize() == 100_002
+
+
+def test_subscriber_at_a_large_cap_is_dropped(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    full: Queued = asyncio.Queue()
+    for _ in range(300):
+        full.put_nowait(None)
+    daemon.subscribers.add(full)
+    with mock.patch("labnotes.daemon.server.MAX_QUEUED_EVENTS", 300):
+        daemon.report("batch", {"event": "idle"})
+    assert full not in daemon.subscribers
+
+
+def test_server_answers_http_on_its_socket_and_ends_streams_on_close(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    async def drive() -> None:
+        _, path, _ = paths
+        loop = asyncio.get_running_loop()
+        with (
+            mock.patch("labnotes.daemon.server.fcntl.flock"),
+            mock.patch.object(loop, "add_signal_handler") as handlers,
+            mock.patch("labnotes.daemon.server.IDLE_SECONDS", 100),
+        ):
+            serving = asyncio.create_task(serve_daemon(config(tmp_path), "exp"))
+            for _ in range(100):
+                if handlers.call_count == 3:
+                    break
+                await asyncio.sleep(0.01)
+            reader, writer = await asyncio.open_unix_connection(str(path))
+            writer.write(b"GET /batches HTTP/1.1\r\nhost: labnotes\r\n\r\n")
+            assert await reader.readline() == b"HTTP/1.1 200 OK\r\n"
+            await reader.readuntil(b"\r\n\r\n")
+            assert json.loads(await reader.readuntil(b"}")) == {
+                "ok": True,
+                "batches": [],
+            }
+            writer.write(b"GET /events HTTP/1.1\r\nhost: labnotes\r\n\r\n")
+            assert b"event: batches\n" in await reader.readuntil(b"\n\n")
+            handlers.call_args_list[0].args[1]()
+            await asyncio.wait_for(serving, timeout=0.9)
+            assert (await reader.read()).endswith(b"0\r\n\r\n")
+            writer.close()
+        assert not path.exists()
 
     asyncio.run(drive())
 

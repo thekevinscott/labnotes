@@ -2,7 +2,6 @@ import asyncio
 import fcntl
 import json
 import os
-import socket
 import subprocess
 import sys
 import time
@@ -14,6 +13,7 @@ from unittest import mock
 import pytest
 import psutil
 
+from conftest import DaemonEvents, daemon_request
 from labnotes.daemon.client import daemon_socket
 from labnotes.daemon.ensure import ensure_daemon
 from labnotes.daemon.socket_path import lock_path
@@ -48,19 +48,6 @@ def wait_for_socket(runtime: Path) -> Path:
             return sockets[0]
         time.sleep(0.05)
     raise AssertionError("daemon socket did not appear")
-
-
-def request(path: Path, message: dict[str, object]) -> dict[str, object]:
-    with socket.socket(socket.AF_UNIX) as client:
-        client.settimeout(5)
-        client.connect(str(path))
-        client.sendall((json.dumps(message) + "\n").encode())
-        with client.makefile("r") as replies:
-            for line in replies:
-                reply = json.loads(line)
-                if "step" not in reply:
-                    return reply
-    raise AssertionError("daemon closed without a reply")
 
 
 def test_concurrent_starters_reuse_one_daemon(
@@ -133,7 +120,7 @@ def test_stop_command_stops_a_running_cell(tmp_path: Path, runtime: Path) -> Non
     )
     try:
         path = wait_for_socket(runtime)
-        answer = request(path, {"command": "start", "options": {}})
+        answer = daemon_request(path, "POST", "/start", {})
         assert answer["ok"] is True, answer
         assert answer["batch"]
         for _ in range(100):
@@ -194,8 +181,8 @@ def test_two_starts_share_one_daemon_and_keep_batches_separate(
     )
     try:
         path = wait_for_socket(runtime)
-        first = request(path, {"command": "start", "options": {"only": {"m": ["a"]}}})
-        second = request(path, {"command": "start", "options": {"only": {"m": ["b"]}}})
+        first = daemon_request(path, "POST", "/start", {"only": {"m": ["a"]}})
+        second = daemon_request(path, "POST", "/start", {"only": {"m": ["b"]}})
         assert first["ok"] is True, first
         assert second["ok"] is True, second
         assert first["batch"] != second["batch"]
@@ -216,9 +203,11 @@ def test_two_starts_share_one_daemon_and_keep_batches_separate(
             )
         ]
         assert [plan["params"]["m"] for plan in plans] == ["a", "b"]
-        assert request(path, {"command": "set_concurrency", "count": 2}) == {"ok": True}
-        assert request(path, {"command": "restart", "options": {}})["ok"] is False
-        assert request(path, {"command": "unknown"})["ok"] is False
+        assert daemon_request(path, "POST", "/concurrency", {"count": 2}) == {
+            "ok": True
+        }
+        assert daemon_request(path, "POST", "/restart", {})["ok"] is False
+        assert daemon_request(path, "POST", "/concurrency", {"count": 0})["ok"] is False
         first_run = next(
             record.parent.name
             for record in records
@@ -228,14 +217,14 @@ def test_two_starts_share_one_daemon_and_keep_batches_separate(
             record for record in records if record.parent.name == first_run
         )
         second_record = next(record for record in records if record != first_record)
-        assert request(path, {"command": "stop_one", "run": first_run}) == {"ok": True}
+        assert daemon_request(path, "POST", f"/runs/{first_run}/stop") == {"ok": True}
         for _ in range(100):
             if json.loads(first_record.read_text()).get("ended"):
                 break
             time.sleep(0.05)
         assert json.loads(first_record.read_text())["ended_by"] == "stop"
         assert json.loads(second_record.read_text()).get("ended") is None
-        assert request(path, {"command": "stop_all"}) == {"ok": True}
+        assert daemon_request(path, "POST", "/stop") == {"ok": True}
         for _ in range(100):
             if all(json.loads(record.read_text()).get("ended") for record in records):
                 break
@@ -265,7 +254,7 @@ def test_restart_command_runs_a_failed_cell_again(
     )
     try:
         path = wait_for_socket(runtime)
-        first = request(path, {"command": "start", "options": {}})
+        first = daemon_request(path, "POST", "/start", {})
         assert first["ok"] is True, first
         for _ in range(100):
             records = list(root.glob("exp/runs/*/run.json"))
@@ -275,9 +264,8 @@ def test_restart_command_runs_a_failed_cell_again(
         assert len(records) == 1
         failed = json.loads(records[0].read_text())
         assert failed["exit_code"] == 1
-        answer = request(
-            path,
-            {"command": "restart", "options": {"run_id": records[0].parent.name}},
+        answer = daemon_request(
+            path, "POST", "/restart", {"run_id": records[0].parent.name}
         )
         assert answer["ok"] is True, answer
         assert answer["batch"] != first["batch"]
@@ -314,12 +302,8 @@ def test_attach_connection_keeps_idle_daemon_alive_until_disconnect(
     )
     try:
         path = wait_for_socket(runtime)
-        with socket.socket(socket.AF_UNIX) as client:
-            client.settimeout(5)
-            client.connect(str(path))
-            client.sendall(b'{"command":"attach"}\n')
-            with client.makefile("r") as reply:
-                assert json.loads(reply.readline()) == {"ok": True, "batches": []}
+        with DaemonEvents(path) as events:
+            assert events.batches == []
             time.sleep(5.5)
             assert daemon.poll() is None
         assert daemon.wait(timeout=10) == 0
@@ -363,12 +347,12 @@ def test_two_starts_do_not_exceed_repeats_on_one_daemon(
     )
     try:
         path = wait_for_socket(runtime)
-        first = request(path, {"command": "start", "options": {}})
-        second = request(path, {"command": "start", "options": {}})
+        first = daemon_request(path, "POST", "/start", {})
+        second = daemon_request(path, "POST", "/start", {})
         assert first["ok"] is True, first
         assert second["ok"] is True, second
         for _ in range(200):
-            if request(path, {"command": "batches"}) == {"ok": True, "batches": []}:
+            if daemon_request(path, "GET", "/batches") == {"ok": True, "batches": []}:
                 break
             time.sleep(0.05)
         records = list(root.glob("exp/runs/*/run.json"))

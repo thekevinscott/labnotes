@@ -3,7 +3,7 @@ import json
 import time
 from collections.abc import Awaitable, Callable, Iterator
 from pathlib import Path
-from typing import Any, cast
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -1007,49 +1007,37 @@ def test_detached_stop_waits_for_daemon_reply_before_exit(tmp_path: Path) -> Non
     asyncio.run(drive())
 
 
-def test_detached_attach_replies_and_closes(tmp_path: Path) -> None:
+def test_detached_attach_opens_the_event_stream_and_closes_it(
+    tmp_path: Path,
+) -> None:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
-    with (
-        mock.patch(
-            "labnotes.tui.run_app.daemon_socket", return_value=tmp_path / "run.sock"
-        ),
-        mock.patch("labnotes.tui.run_app.socket.socket") as socket_factory,
-        mock.patch("labnotes.tui.run_app.socket.SocketIO") as socket_io,
-    ):
-        client = cast(mock.MagicMock, socket_factory.return_value)
-        socket_io.return_value.__enter__.return_value.readline.return_value = (
-            '{"ok":true,"batches":["b1","b2"]}\n'
-        )
-        assert app.attach_daemon() == ["b1", "b2"]
-        assert app.attached is client
-        client.connect.assert_called_once_with(str(tmp_path / "run.sock"))
-        client.sendall.assert_called_once_with(b'{"command":"attach"}\n')
-        socket_io.assert_called_once_with(client, "rb")
-        app.on_unmount()
-        client.close.assert_called_once_with()
+    attachment = mock.Mock(batches=["b1", "b2"], aclose=mock.AsyncMock())
+
+    async def drive() -> None:
+        with mock.patch(
+            "labnotes.tui.run_app.Attachment.open",
+            new=mock.AsyncMock(return_value=attachment),
+        ) as opened:
+            assert await app.attach_daemon() == ["b1", "b2"]
+            opened.assert_awaited_once_with(config, "exp")
+        assert app.attached is attachment
+        await app.on_unmount()
+        attachment.aclose.assert_awaited_once_with()
+
+    asyncio.run(drive())
 
 
 def test_detached_attach_reports_missing_or_rejected_daemon(tmp_path: Path) -> None:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
-    with mock.patch("labnotes.tui.run_app.daemon_socket", return_value=None):
-        with pytest.raises(ValueError, match="No daemon"):
-            app.attach_daemon()
-    with (
-        mock.patch(
-            "labnotes.tui.run_app.daemon_socket", return_value=tmp_path / "run.sock"
-        ),
-        mock.patch("labnotes.tui.run_app.socket.socket") as socket_factory,
-        mock.patch("labnotes.tui.run_app.socket.SocketIO") as socket_io,
+    with mock.patch(
+        "labnotes.tui.run_app.Attachment.open",
+        new=mock.AsyncMock(side_effect=ValueError("busy")),
     ):
-        client = cast(mock.MagicMock, socket_factory.return_value)
-        socket_io.return_value.__enter__.return_value.readline.return_value = (
-            '{"ok":false,"error":"busy"}\n'
-        )
         with pytest.raises(ValueError, match="busy"):
-            app.attach_daemon()
-        client.close.assert_called_once_with()
+            asyncio.run(app.attach_daemon())
+    assert app.attached is None
 
 
 def test_detached_command_errors_are_visible(tmp_path: Path) -> None:
@@ -2694,7 +2682,7 @@ def test_following_the_daemon_starts_stream_worker(tmp_path: Path) -> None:
         mock.patch.object(app, "read_stream", new=mock.Mock()) as stream,
         mock.patch.object(app, "run_worker") as worker,
     ):
-        app.follow_daemon()
+        asyncio.run(app.follow_daemon())
         interval.assert_not_called()
         worker.assert_called_once_with(stream.return_value)
     attach.assert_called_once_with()
@@ -2816,42 +2804,58 @@ def test_attached_app_with_nothing_running_says_so_and_exits(tmp_path: Path) -> 
     assert app.daemon_batch is None
 
 
-def attached_app(tmp_path: Path) -> tuple[RunApp, asyncio.Event, mock.AsyncMock]:
+class Stream:
+    """Stand in for an Attachment: yield events, then end as told."""
+
+    def __init__(
+        self,
+        events: list[tuple[str, dict[str, object]]] | None = None,
+        ending: Exception | None = None,
+        closed: asyncio.Event | None = None,
+    ) -> None:
+        self.events = events or []
+        self.ending = ending
+        self.closed = closed
+        self.aclose = mock.AsyncMock()
+
+    async def __aiter__(self):  # type: ignore[no-untyped-def]
+        for item in self.events:
+            yield item
+        if self.closed is not None:
+            await self.closed.wait()
+        if self.ending is not None:
+            raise self.ending
+
+
+def attached_app(tmp_path: Path) -> tuple[RunApp, asyncio.Event]:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
     closed = asyncio.Event()
-    reader = mock.Mock()
 
-    async def readline() -> bytes:
-        await closed.wait()
-        return b""
-
-    def attach() -> list[str]:
-        app.attached = mock.Mock()
+    async def attach() -> list[str]:
+        app.attached = Stream(closed=closed)  # type: ignore[assignment]
         return []
 
-    reader.readline = readline
     app.attach_daemon = attach  # type: ignore[method-assign]
-    return app, closed, mock.AsyncMock(return_value=(reader, mock.Mock()))
+    return app, closed
 
 
 def test_a_lost_daemon_is_a_fatal_error_without_a_keypress(tmp_path: Path) -> None:
     async def drive() -> None:
-        app, closed, connect = attached_app(tmp_path)
-        with mock.patch("labnotes.tui.run_app.asyncio.open_connection", new=connect):
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                assert app.screen is app.screen_stack[0]
-                closed.set()
-                for _ in range(50):
-                    await pilot.pause(0.02)
-                    if app.screen is not app.screen_stack[0]:
-                        break
-                assert prompt(app).startswith("Lost the daemon for exp.")
-                assert app.is_running
-                await pilot.press("q")
-                await pilot.pause()
-                assert not app.is_running
+        app, closed = attached_app(tmp_path)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.screen is app.screen_stack[0]
+            closed.set()
+            for _ in range(50):
+                await pilot.pause(0.02)
+                if app.screen is not app.screen_stack[0]:
+                    break
+            assert prompt(app).startswith("Lost the daemon for exp.")
+            assert app.is_running
+            await pilot.press("q")
+            await pilot.pause()
+            assert not app.is_running
         assert str(app.error).startswith("Lost the daemon for exp.")
 
     asyncio.run(drive())
@@ -2859,7 +2863,7 @@ def test_a_lost_daemon_is_a_fatal_error_without_a_keypress(tmp_path: Path) -> No
 
 def test_leaving_the_tui_does_not_report_a_lost_daemon(tmp_path: Path) -> None:
     async def drive() -> None:
-        app, closed, connect = attached_app(tmp_path)
+        app, closed = attached_app(tmp_path)
         loop = asyncio.get_running_loop()
 
         def stop_all(*_: object) -> dict[str, object]:
@@ -2869,7 +2873,6 @@ def test_leaving_the_tui_does_not_report_a_lost_daemon(tmp_path: Path) -> None:
 
         with (
             mock.patch("labnotes.tui.run_app.daemon_command", side_effect=stop_all),
-            mock.patch("labnotes.tui.run_app.asyncio.open_connection", new=connect),
         ):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -2889,51 +2892,47 @@ def test_leaving_the_tui_does_not_report_a_lost_daemon(tmp_path: Path) -> None:
 
 def test_a_stream_closed_by_unmounting_is_not_a_lost_daemon() -> None:
     app = RunApp(None, "exp", COLUMNS)
-    app.attached = mock.Mock()
-    app.on_unmount()
-    reader = mock.Mock(readline=mock.AsyncMock(return_value=b""))
+    stream = Stream()
+    app.attached = stream  # type: ignore[assignment]
+    asyncio.run(app.on_unmount())
     with (
-        mock.patch(
-            "labnotes.tui.run_app.asyncio.open_connection",
-            new=mock.AsyncMock(return_value=(reader, mock.Mock())),
-        ),
         mock.patch.object(app, "query_one"),
         mock.patch.object(app, "push_screen") as notice,
     ):
         asyncio.run(app.read_stream())
     notice.assert_not_called()
     assert app.error is None
+    assert stream.aclose.await_count == 2
+
+
+def test_reading_without_an_attachment_does_nothing() -> None:
+    app = RunApp(None, "exp", COLUMNS)
+    with mock.patch.object(app, "push_screen") as notice:
+        asyncio.run(app.read_stream())
+    notice.assert_not_called()
+    assert not app.disconnected
 
 
 @pytest.mark.parametrize("body_ready", [True, False])
-@pytest.mark.parametrize("ending", [b"", b"broken json\n", OSError("lost")])
-def test_stream_delivers_envelopes_and_keeps_state_on_disconnect(
-    body_ready: bool, ending: bytes | Exception
+@pytest.mark.parametrize("ending", [None, ValueError("lost")])
+def test_stream_delivers_events_and_keeps_state_on_disconnect(
+    body_ready: bool, ending: Exception | None
 ) -> None:
     app = RunApp(None, "exp", COLUMNS)
-    app.attached = mock.Mock()
+    event: dict[str, object] = {"event": "idle", "at": 123}
+    stream = Stream([("batch", event)], ending)
+    app.attached = stream  # type: ignore[assignment]
     app.body_ready = body_ready
     app.body.concurrency = 3
-    reader, writer, label = mock.Mock(), mock.Mock(), mock.Mock()
-    event = {"event": "idle", "at": 123}
-    reader.readline = mock.AsyncMock(
-        side_effect=[
-            json.dumps({"batch": "batch", "event": event}).encode() + b"\n",
-            ending,
-        ]
-    )
+    label = mock.Mock()
     with (
-        mock.patch(
-            "labnotes.tui.run_app.asyncio.open_connection",
-            new=mock.AsyncMock(return_value=(reader, writer)),
-        ),
         mock.patch.object(app, "query_one", return_value=label),
         mock.patch.object(app, "push_screen") as notice,
         mock.patch.object(app, "forward") as forward,
     ):
         asyncio.run(app.read_stream())
     assert app.disconnected
-    writer.close.assert_called_once_with()
+    stream.aclose.assert_awaited_once_with()
     label.update.assert_called_once_with("3 at a time · disconnected")
     assert str(app.error) == "Lost the daemon for exp. This view is no longer live."
     assert notice.call_args.args[0].message == str(app.error)
@@ -2943,54 +2942,15 @@ def test_stream_delivers_envelopes_and_keeps_state_on_disconnect(
         forward.assert_not_called()
 
 
-def test_stream_reads_lines_up_to_sixteen_mebibytes() -> None:
-    app = RunApp(None, "exp", COLUMNS)
-    app.attached = mock.Mock()
-    reader, writer = mock.Mock(), mock.Mock()
-    reader.readline = mock.AsyncMock(return_value=b"")
-    with (
-        mock.patch(
-            "labnotes.tui.run_app.asyncio.open_connection",
-            new=mock.AsyncMock(return_value=(reader, writer)),
-        ) as connect,
-        mock.patch.object(app, "query_one"),
-        mock.patch.object(app, "push_screen"),
-    ):
-        asyncio.run(app.read_stream())
-    connect.assert_awaited_once_with(sock=app.attached, limit=16 * 1024 * 1024)
-
-
 def test_stream_ending_after_the_screen_is_gone_does_not_crash() -> None:
     app = RunApp(None, "exp", COLUMNS)
-    app.attached = mock.Mock()
+    app.attached = Stream(ending=ValueError("closed"))  # type: ignore[assignment]
     with (
-        mock.patch(
-            "labnotes.tui.run_app.asyncio.open_connection",
-            new=mock.AsyncMock(side_effect=OSError("closed")),
-        ),
         mock.patch.object(app, "query_one", side_effect=NoMatches("gone")),
         mock.patch.object(app, "push_screen") as notice,
     ):
         asyncio.run(app.read_stream())
     assert app.disconnected
-    notice.assert_called_once()
-
-
-def test_stream_connection_error_is_shown_without_crashing() -> None:
-    app = RunApp(None, "exp", COLUMNS)
-    app.attached = mock.Mock()
-    label = mock.Mock()
-    with (
-        mock.patch(
-            "labnotes.tui.run_app.asyncio.open_connection",
-            new=mock.AsyncMock(side_effect=OSError("gone")),
-        ),
-        mock.patch.object(app, "query_one", return_value=label),
-        mock.patch.object(app, "push_screen") as notice,
-    ):
-        asyncio.run(app.read_stream())
-    assert app.disconnected
-    label.update.assert_called_once_with("1 at a time · disconnected")
     notice.assert_called_once()
 
 
@@ -3017,7 +2977,7 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
         assert app.steps == ["Starting up"]
         order.append("ensure")
 
-    def attach():
+    async def attach():
         order.append("attach")
         return []
 
@@ -3033,7 +2993,9 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
         mock.patch.object(app, "attach_daemon", new=attach),
         mock.patch("labnotes.tui.run_app.request_start", new=start),
         mock.patch.object(
-            app, "follow_daemon", side_effect=lambda: order.append("follow")
+            app,
+            "follow_daemon",
+            new=mock.AsyncMock(side_effect=lambda: order.append("follow")),
         ),
         mock.patch.object(app, "query_one"),
         mock.patch.object(app, "call_after_refresh"),

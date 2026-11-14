@@ -1,0 +1,216 @@
+import asyncio
+from collections.abc import Callable
+from pathlib import Path
+from unittest import mock
+
+import httpx2
+import pytest
+
+from labnotes.daemon.attachment import Attachment
+
+STREAM_LIMIT = 16 * 1024 * 1024
+
+Handler = Callable[[httpx2.Request], httpx2.Response]
+
+
+async def opened(path: Path | None, handler: Handler) -> Attachment:
+    # unit-lint only sees a patch target outside a `with` item.
+    patcher = mock.patch(
+        "httpx2.AsyncHTTPTransport", return_value=httpx2.MockTransport(handler)
+    )
+    transport = patcher.start()
+    try:
+        with mock.patch("labnotes.daemon.attachment.daemon_socket", return_value=path):
+            attachment = await Attachment.open(mock.Mock(), "exp")
+    finally:
+        patcher.stop()
+    transport.assert_called_once_with(uds=str(path))
+    return attachment
+
+
+def streaming(body: bytes, seen: list[httpx2.Request] | None = None) -> Handler:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        if seen is not None:
+            seen.append(request)
+        return httpx2.Response(
+            200, headers={"content-type": "text/event-stream"}, content=body
+        )
+
+    return handler
+
+
+async def collect(attachment: Attachment) -> list[tuple[str, dict[str, object]]]:
+    try:
+        return [item async for item in attachment]
+    finally:
+        await attachment.aclose()
+
+
+def test_attachment_names_batches_then_yields_events(tmp_path: Path) -> None:
+    seen: list[httpx2.Request] = []
+
+    async def drive() -> None:
+        attachment = await opened(
+            tmp_path / "d.sock",
+            streaming(
+                b'event: batches\ndata: {"batches": ["b1", "b2"]}\n\n'
+                b'data: {"batch": "b1", "event": {"event": "planned"}}\n\n'
+                b'data: {"batch": "b2", "event": {"event": "idle"}}\n\n',
+                seen,
+            ),
+        )
+        assert attachment.batches == ["b1", "b2"]
+        [request] = seen
+        assert (request.method, str(request.url)) == (
+            "GET",
+            "http://labnotes/events",
+        )
+        assert request.extensions["timeout"]["connect"] == 10
+        assert request.extensions["timeout"]["read"] is None
+        assert await collect(attachment) == [
+            ("b1", {"event": "planned"}),
+            ("b2", {"event": "idle"}),
+        ]
+        assert attachment.client.is_closed
+        assert attachment.response.is_closed
+
+    asyncio.run(drive())
+
+
+def test_attachment_reports_no_daemon() -> None:
+    with mock.patch("labnotes.daemon.attachment.daemon_socket", return_value=None):
+        with pytest.raises(ValueError, match="No daemon is running for exp."):
+            asyncio.run(Attachment.open(mock.Mock(), "exp"))
+
+
+@pytest.mark.parametrize(
+    ("body", "said"),
+    [
+        (b'{"ok": false, "error": "busy"}', "busy"),
+        (b'{"ok": false}', "Daemon rejected attach"),
+    ],
+)
+def test_a_rejected_attach_says_why_and_closes(
+    tmp_path: Path, body: bytes, said: str
+) -> None:
+    clients: list[httpx2.AsyncClient] = []
+    real = httpx2.AsyncClient
+
+    def client(**options: object) -> httpx2.AsyncClient:
+        clients.append(real(**options))  # type: ignore[arg-type]
+        return clients[-1]
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(409, content=body)
+
+    with mock.patch("httpx2.AsyncClient", new=client):
+        with pytest.raises(ValueError, match=f"^{said}$"):
+            asyncio.run(opened(tmp_path / "d.sock", handler))
+    assert clients[0].is_closed
+
+
+@pytest.mark.parametrize(
+    "handler",
+    [
+        streaming(b""),
+        streaming(b": comment only\n\n"),
+    ],
+)
+def test_a_stream_closed_before_naming_batches_says_so(
+    tmp_path: Path, handler: Handler
+) -> None:
+    with pytest.raises(ValueError, match="^Daemon for exp closed without a reply.$"):
+        asyncio.run(opened(tmp_path / "d.sock", handler))
+
+
+def test_open_returns_while_the_stream_stays_open(tmp_path: Path) -> None:
+    async def forever():
+        yield b'event: batches\ndata: {"batches": ["b1"]}\n\n'
+        await asyncio.Event().wait()
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
+            200, headers={"content-type": "text/event-stream"}, content=forever()
+        )
+
+    async def drive() -> None:
+        attachment = await asyncio.wait_for(opened(tmp_path / "d.sock", handler), 1)
+        assert attachment.batches == ["b1"]
+        await attachment.aclose()
+
+    asyncio.run(drive())
+
+
+def test_a_transport_error_on_open_is_reported(tmp_path: Path) -> None:
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        raise httpx2.ConnectError("refused")
+
+    with pytest.raises(ValueError, match="^refused$"):
+        asyncio.run(opened(tmp_path / "d.sock", handler))
+
+
+def test_a_bad_first_event_closes_the_client(tmp_path: Path) -> None:
+    clients: list[httpx2.AsyncClient] = []
+    real = httpx2.AsyncClient
+
+    def client(**options: object) -> httpx2.AsyncClient:
+        clients.append(real(**options))  # type: ignore[arg-type]
+        return clients[-1]
+
+    with mock.patch("httpx2.AsyncClient", new=client):
+        with pytest.raises(KeyError):
+            asyncio.run(opened(tmp_path / "d.sock", streaming(b"data: {}\n\n")))
+    assert clients[0].is_closed
+
+
+def test_events_up_to_the_stream_limit_are_read(tmp_path: Path) -> None:
+    head = b'data: {"batch": "b1", "event": {"pad": "'
+    tail = b'"}}'
+    pad = b"x" * (STREAM_LIMIT - len(head) - len(tail) - 1)
+
+    async def drive() -> list[tuple[str, dict[str, object]]]:
+        attachment = await opened(
+            tmp_path / "d.sock",
+            streaming(
+                b'event: batches\ndata: {"batches": []}\n\n'
+                + head
+                + pad
+                + tail
+                + b"\n\n"
+            ),
+        )
+        return await collect(attachment)
+
+    [(batch, event)] = asyncio.run(drive())
+    assert (batch, len(str(event["pad"]))) == ("b1", len(pad))
+
+
+def test_an_event_over_the_stream_limit_ends_with_an_error(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        attachment = await opened(
+            tmp_path / "d.sock",
+            streaming(
+                b'event: batches\ndata: {"batches": []}\n\n'
+                b"data: " + b"x" * (STREAM_LIMIT + 1) + b"\n\n"
+            ),
+        )
+        with pytest.raises(ValueError, match=f"the {STREAM_LIMIT} byte limit"):
+            await collect(attachment)
+
+    asyncio.run(drive())
+
+
+def test_open_quiets_wakeups_that_land_after_a_closed_read(tmp_path: Path) -> None:
+    async def drive() -> None:
+        loop = asyncio.get_running_loop()
+        with mock.patch("labnotes.daemon.attachment.quiet_late_wakeup") as quiet:
+            attachment = await opened(
+                tmp_path / "d.sock",
+                streaming(b'event: batches\ndata: {"batches": []}\n\n'),
+            )
+        await attachment.aclose()
+        assert loop.get_exception_handler() is quiet
+
+    asyncio.run(drive())

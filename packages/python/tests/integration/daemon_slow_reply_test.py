@@ -1,5 +1,4 @@
 import fcntl
-import json
 import os
 import socket
 import threading
@@ -45,13 +44,25 @@ def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
         def respond() -> None:
             connection, _ = server.accept()
             with connection:
-                with connection.makefile("r") as requests:
-                    assert json.loads(requests.readline())["command"] == action
+                with connection.makefile("rb") as requests:
+                    assert requests.readline().startswith(f"POST /{action} ".encode())
+                    length = 0
+                    for line in iter(requests.readline, b"\r\n"):
+                        name, _, value = line.partition(b":")
+                        if name.lower() == b"content-length":
+                            length = int(value)
+                    # Unread request bytes make close() reset the reply away.
+                    requests.read(length)
                 time.sleep(10.5)
                 try:
-                    connection.sendall(b'{"ok":true,"batch":"running"}\n')
+                    connection.sendall(
+                        b"HTTP/1.1 200 OK\r\n"
+                        b"content-type: text/event-stream\r\n"
+                        b"connection: close\r\n\r\n"
+                        b'event: reply\ndata: {"ok":true,"batch":"running"}\n\n'
+                    )
                 except BrokenPipeError:
-                    pass  # The old client closes before the delayed reply.
+                    pass  # A client with a reply deadline closes before this.
 
         worker = threading.Thread(target=respond, daemon=True)
         worker.start()

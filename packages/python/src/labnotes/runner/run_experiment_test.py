@@ -2403,3 +2403,72 @@ def test_emit_reports_stamped_events_and_writes_no_journal(
     retry = next(event for event in stored if event["event"] == "retrying")
     assert retry["retry_at"] == retry["at"] + retry["seconds"]
     assert not list(Path(os.environ["XDG_STATE_HOME"]).rglob("*.jsonl"))
+
+
+def starting_one(listen: mock.Mock, by: str, target: str, widths: list[int]) -> object:
+    live = 0
+
+    async def execute(root: Path, folder: Path, *_: object, **__: object) -> object:
+        nonlocal live
+        live += 1
+        widths.append(live)
+        if folder.name == by:
+            listen.call_args.args[0].start_one(target)
+        await asyncio.sleep(0.01)
+        live -= 1
+        return {"exit_code": 0, "error": None}
+
+    return execute
+
+
+def test_start_one_starts_a_queued_run_now_above_the_limit(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    widths: list[int] = []
+    planning(collaborators, 4)
+    collaborators["execute_run"].side_effect = starting_one(listen, "r1", "r3", widths)
+
+    results = run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == ["r1", "r3", "r2", "r4"]
+    assert widths[:2] == [1, 2]
+    assert [r["run"] for r in results] == ["r1", "r3", "r2", "r4"]
+
+
+def test_start_one_ignores_a_run_that_is_not_queued(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    listen, report = mock.Mock(), mock.Mock()
+    widths: list[int] = []
+    planning(collaborators, 3)
+    collaborators["execute_run"].side_effect = starting_one(listen, "r2", "r1", widths)
+
+    run(tmp_path, report, listen=listen)
+
+    assert started_runs(report) == ["r1", "r2", "r3"]
+    assert widths == [1, 1, 1]
+
+
+def test_start_one_during_setup_puts_the_run_first(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    heard: list[Any] = []
+    planning(collaborators, 3)
+
+    async def setup_then_start(*args: object) -> None:
+        if args[1] == "setup":
+            heard[0].start_one("r3")
+            await asyncio.sleep(0.01)
+            assert collaborators["execute_run"].await_count == 0
+
+    collaborators["invocation_hook"].side_effect = setup_then_start
+    report = mock.Mock()
+
+    def listen(controls: Any) -> None:
+        heard.append(controls)
+        controls.finish()
+
+    start_with_hooks(tmp_path, report, listen)
+
+    assert started_runs(report) == ["r3", "r1", "r2"]

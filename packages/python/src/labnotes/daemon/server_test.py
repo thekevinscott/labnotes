@@ -937,3 +937,26 @@ def test_start_publishes_runner_events_and_retains_daemon_errors(
         stamp.assert_called_once_with({"event": "daemon error", "error": "oops"})
 
     asyncio.run(drive())
+
+
+def test_start_one_asks_every_active_invocation_to_start_that_run(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        first, second = mock.Mock(), mock.Mock()
+        daemon.active["one"] = Invocation(controls=first)
+        daemon.active["two"] = Invocation(controls=second)
+        daemon.active["three"] = Invocation()
+
+        assert await daemon.dispatch({"command": "start_one", "run": "r"}) == {
+            "ok": True
+        }
+        assert await daemon.dispatch({"command": "start_one"}) == {
+            "ok": False,
+            "error": "start_one needs a run id",
+        }
+        first.start_one.assert_called_once_with("r")
+        second.start_one.assert_called_once_with("r")
+
+    asyncio.run(drive())

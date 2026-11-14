@@ -423,3 +423,25 @@ def test_a_binary_rewritten_at_the_same_size_sends_state(tmp_path: Path) -> None
     assert events == [
         ("state", "5", {"name": "plot.png", "size": 5, "type": "image/png"})
     ]
+
+
+def test_a_cut_character_waits_for_its_last_byte(tmp_path: Path) -> None:
+    log = tmp_path / "out.log"
+    log.write_bytes(b"a\n")
+
+    def append(data: bytes) -> Callable[[], object]:
+        return lambda: log.open("ab").write(data)
+
+    events = follow_file(
+        tmp_path,
+        "out.log",
+        [
+            (append("é".encode()[:1]), change("run_files", "out.log")),
+            (append("é".encode()[1:]), change("run_files", "out.log")),
+        ],
+    )
+
+    assert events == [
+        ("state", "2", {"name": "out.log", "size": 2, "text": "a\n"}),
+        ("append", "4", {"text": "é"}),
+    ]

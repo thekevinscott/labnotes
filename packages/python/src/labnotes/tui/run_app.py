@@ -14,6 +14,8 @@ from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.css.query import NoMatches
+from textual.driver import Driver
+from textual.drivers.linux_driver import LinuxDriver
 from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
@@ -49,6 +51,7 @@ from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 from labnotes.tui.stage_line import stage_line
 from labnotes.tui.startup_steps import startup_steps
+from labnotes.tui.thaw_driver import ThawDriver
 from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
@@ -63,7 +66,7 @@ SKIPPED = "–"
 STAGES = ("setup", "runs", "teardown")
 HOOKS = ("setup", "teardown")
 VIEWING_ACTIONS = {"leave", "quit", "interrupt", "command_palette", "finish_up"}
-RUNS_ACTIONS = {"kill_run", "restart_run", "filter", "leave"}
+RUNS_ACTIONS = {"kill_run", "start_run", "restart_run", "filter", "leave"}
 BUILT_IN = "labnotes.tui.run_app:RunLiveView"
 
 
@@ -77,6 +80,7 @@ class RunLiveView(Widget):
     BINDINGS = [
         Binding("f", "finish_up", "Finish up"),
         Binding("x", "kill_run", "Stop run"),
+        Binding("s", "start_run", "Start now"),
         Binding("r", "restart_run", "Restart"),
         Binding("slash", "filter", "Filter", key_display="/"),
         Binding("escape", "leave", "Back"),
@@ -95,6 +99,7 @@ class RunLiveView(Widget):
             lambda run: None,
             lambda: None,
             lambda: None,
+            lambda run: None,
         )
         self.concurrency = 1
         self.idle = False
@@ -439,6 +444,14 @@ class RunLiveView(Widget):
         if (run := self.cursor_run()) is not None:
             self.controls.kill(run)
 
+    def action_start_run(self) -> None:
+        if (run := self.cursor_run()) is None:
+            return
+        if run in self.pending:
+            self.controls.start_one(run)
+        else:
+            self.show(f"{run} is not queued.")
+
     def action_finish_up(self) -> None:
         self.controls.finish_up()
 
@@ -514,6 +527,10 @@ class RunApp(ViewSwitcher, App[None]):
     #startup { height: 1fr; padding: 1 2; display: none; }
     """
     BINDINGS = [Binding("ctrl+c", "interrupt", "Quit")]
+
+    def get_driver_class(self) -> type[Driver]:
+        driver = super().get_driver_class()
+        return ThawDriver if driver is LinuxDriver else driver
 
     def __init__(
         self,
@@ -662,6 +679,7 @@ class RunApp(ViewSwitcher, App[None]):
                 lambda run: self.queue_command({"command": "stop_one", "run": run}),
                 lambda: None,
                 lambda: self.queue_command({"command": "finish_up"}),
+                lambda run: self.queue_command({"command": "start_one", "run": run}),
             )
         )
         self.run_worker(self.read_stream())

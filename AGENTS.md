@@ -13,6 +13,10 @@ to green.
 Proactive never means merging. Never merge or auto-merge a PR until Kevin
 approves that PR.
 
+A PR is ready for review when no more changes are planned, apart from
+fixes CI demands. CI state has nothing to do with it. Use draft only while
+the code is still being written.
+
 ## Where to read first
 
 - `docs/internals/repo.md` — cross-cutting rules (changelog/migration fragment philosophy, public-API surface, CI-logic-in-scripts).

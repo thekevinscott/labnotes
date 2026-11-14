@@ -1054,3 +1054,25 @@ def test_server_answers_http_on_its_socket_and_ends_streams_on_close(
         assert not path.exists()
 
     asyncio.run(drive())
+
+
+def test_start_one_asks_every_active_invocation_to_start_that_run(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        first, second = mock.Mock(), mock.Mock()
+        daemon.active["one"] = Invocation(controls=first)
+        daemon.active["two"] = Invocation(controls=second)
+        daemon.active["three"] = Invocation()
+
+        line = '{"command": "start_one", "run": "r"}'
+        assert await daemon.dispatch(json.loads(line)) == {"ok": True}
+        assert await daemon.dispatch({"command": "start_one"}) == {
+            "ok": False,
+            "error": "start_one needs a run id",
+        }
+        first.start_one.assert_called_once_with("r")
+        second.start_one.assert_called_once_with("r")
+
+    asyncio.run(drive())

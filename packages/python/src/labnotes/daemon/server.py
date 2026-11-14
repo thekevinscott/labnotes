@@ -222,6 +222,14 @@ class ExperimentDaemon:
                 if invocation.controls is not None:
                     invocation.controls.kill(run)
             return {"ok": True}
+        if action == "start_one":
+            run = message.get("run")
+            if not isinstance(run, str):
+                return {"ok": False, "error": "start_one needs a run id"}
+            for invocation in self.active.values():
+                if invocation.controls is not None:
+                    invocation.controls.start_one(run)
+            return {"ok": True}
         if action == "set_concurrency":
             count = message.get("count")
             if not isinstance(count, int) or count < 1:

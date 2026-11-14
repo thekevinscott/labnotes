@@ -1,0 +1,1 @@
+**Fixed**: after the run TUI is frozen and thawed (`kill -STOP` then `kill -CONT`, or a laptop sleep), Ctrl-C quits it again and the terminal comes back in its normal mode, instead of the TUI sometimes hanging open or leaving the shell in raw mode.

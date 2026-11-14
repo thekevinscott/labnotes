@@ -29,6 +29,10 @@ def test_finish_up_takes_no_arguments() -> None:
     assert typing.get_type_hints(Controls)["finish_up"] == Callable[[], None]
 
 
+def test_start_one_takes_a_run_id() -> None:
+    assert typing.get_type_hints(Controls)["start_one"] == Callable[[str], None]
+
+
 def test_a_config_holds_many_experiments_by_default() -> None:
     config = LabnotesConfig(Path("/p/.labnotes.toml"), Path("/p"), "e", "f", "r")
 

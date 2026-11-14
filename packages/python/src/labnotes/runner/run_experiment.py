@@ -338,6 +338,19 @@ async def run_experiment(
         live.remove(task)
         fill()
 
+    def start_one(run: str) -> None:
+        entry = next((entry for entry in plan if entry[0] == run), None)
+        if entry is None:
+            return
+        plan.remove(entry)
+        if not set_up:
+            plan.insert(0, entry)
+            return
+        task = asyncio.create_task(start(*entry))
+        task.add_done_callback(end)
+        live.add(task)
+        started.append(task)
+
     def set_concurrency(count: int) -> None:
         nonlocal limit
         limit = max(1, count)
@@ -499,7 +512,7 @@ async def run_experiment(
         if experiment.teardown is not None:
             await run_hook("teardown", experiment.teardown, "tearing down")
 
-    listen(Controls(interrupt, set_concurrency, kill, finish, finish_up))
+    listen(Controls(interrupt, set_concurrency, kill, finish, finish_up, start_one))
     with TemporaryDirectory(prefix="labnotes-state-") as state_dir:
         state_file = Path(state_dir) / "state.json"
         for hook in ("setup", "teardown"):

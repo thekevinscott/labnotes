@@ -2781,7 +2781,6 @@ def test_attached_app_follows_every_batch_and_controls_them_all(
                 queue.assert_called_once_with(
                     {"command": "set_concurrency", "count": 3, "batch": None}
                 )
-                app.exit()
 
     asyncio.run(drive())
 
@@ -3046,3 +3045,78 @@ def test_a_step_repeated_back_to_back_shows_once(tmp_path: Path) -> None:
         for step in ["Starting up", "Preparing", "Preparing", "Starting up"]:
             app.step(step)
     assert app.steps == ["Starting up", "Preparing", "Starting up"]
+
+
+def test_s_starts_the_queued_run_under_the_cursor() -> None:
+    start_one = mock.Mock()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(start_one=start_one))
+        report(planned("r1", "r2", "r3"))
+        report({"event": "started", "run": "r1", "params": {"m": "r1"}, "folder": "."})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.press("down", "down", "s")
+            start_one.assert_called_once_with("r3")
+            await pilot.press("up", "up", "s")
+            start_one.assert_called_once_with("r3")
+            assert status(app) == "r1 is not queued."
+
+    asyncio.run(drive())
+
+
+def test_detached_app_routes_start_one_to_the_daemon(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+
+    async def drive() -> None:
+        with (
+            mock.patch.object(app, "attach_daemon"),
+            mock.patch.object(app, "queue_command") as queue,
+        ):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.controls.start_one("r2")
+                queue.assert_called_once_with({"command": "start_one", "run": "r2"})
+
+    asyncio.run(drive())
+
+
+def test_s_does_nothing_without_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        with mock.patch.object(app.body, "controls") as controls:
+            async with app.run_test() as pilot:
+                await pilot.press("s")
+                assert status(app) == ""
+            controls.start_one.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def test_terminal_driver_survives_a_thaw(tmp_path: Path) -> None:
+    linux = mock.Mock()
+    with (
+        mock.patch("textual.app.App.get_driver_class", return_value=linux),
+        mock.patch("labnotes.tui.run_app.LinuxDriver", linux),
+        mock.patch("labnotes.tui.run_app.ThawDriver") as thaw,
+    ):
+        assert configured_app(tmp_path, None).driver_class is thaw
+
+
+def test_terminal_driver_override_is_kept_even_if_it_compares_equal(
+    tmp_path: Path,
+) -> None:
+    other = mock.MagicMock(**{"__eq__.return_value": True})
+    with (
+        mock.patch("textual.app.App.get_driver_class", return_value=other),
+        mock.patch("labnotes.tui.run_app.ThawDriver"),
+    ):
+        assert configured_app(tmp_path, None).driver_class is other

@@ -20,10 +20,17 @@ class FakeBlock:
 def blocks() -> Iterator[LogBlocks]:
     with (
         mock.patch("labnotes.tui.log_blocks.LogBlock", FakeBlock),
+        mock.patch("labnotes.tui.log_blocks.Static", FakeLabel, create=True),
         mock.patch.object(LogBlocks, "remove_children"),
         mock.patch.object(LogBlocks, "mount"),
     ):
         yield LogBlocks(id="blocks")
+
+
+class FakeLabel:
+    def __init__(self, text: str, classes: str = "") -> None:
+        self.body = f"[{text}]"
+        self.classes = classes
 
 
 def bodies(blocks: LogBlocks) -> list[str]:
@@ -192,3 +199,89 @@ def test_keeps_reading_past_invalid_utf8(tmp_path: Path, blocks: LogBlocks) -> N
     blocks.follow(tmp_path)
 
     assert bodies(blocks) == ["ok", "bad �", "after"]
+
+
+def test_labels_each_invocations_blocks(tmp_path: Path, blocks: LogBlocks) -> None:
+    append(
+        tmp_path,
+        {"content": "one", "invocation": "20261112-100000-000001"},
+        {"content": "two", "invocation": "20261112-100000-000001"},
+        {"content": "three", "invocation": "20261112-110500-000002"},
+    )
+
+    blocks.follow(tmp_path)
+
+    assert bodies(blocks) == [
+        "[invocation 2026-11-12 10:00:00]",
+        "one",
+        "two",
+        "[invocation 2026-11-12 11:05:00]",
+        "three",
+    ]
+
+
+def test_closes_a_block_a_dead_invocation_left_open(
+    tmp_path: Path, blocks: LogBlocks
+) -> None:
+    append(
+        tmp_path,
+        {
+            "id": "t1",
+            "phase": "start",
+            "content": "cut",
+            "invocation": "20261112-100000-000001",
+        },
+        {
+            "id": "t1",
+            "phase": "delta",
+            "content": "new",
+            "invocation": "20261112-110500-000002",
+        },
+        {
+            "id": "t1",
+            "phase": "delta",
+            "content": "er",
+            "invocation": "20261112-110500-000002",
+        },
+    )
+
+    blocks.follow(tmp_path)
+
+    assert bodies(blocks) == [
+        "[invocation 2026-11-12 10:00:00]",
+        "cut",
+        "[invocation 2026-11-12 11:05:00]",
+        "newer",
+    ]
+
+
+def test_reset_forgets_the_last_invocation(tmp_path: Path, blocks: LogBlocks) -> None:
+    append(tmp_path, {"content": "old", "invocation": "20261112-100000-000001"})
+    blocks.follow(tmp_path)
+
+    blocks.reset()
+    other = tmp_path / "other"
+    other.mkdir()
+    append(other, {"content": "new", "invocation": "20261112-100000-000001"})
+    blocks.follow(other)
+
+    assert bodies(blocks) == [
+        "[invocation 2026-11-12 10:00:00]",
+        "old",
+        "[invocation 2026-11-12 10:00:00]",
+        "new",
+    ]
+
+
+def test_labels_only_invocations_labnotes_tagged(
+    tmp_path: Path, blocks: LogBlocks
+) -> None:
+    append(
+        tmp_path,
+        {"content": "one", "invocation": "mine"},
+        {"content": "two", "invocation": 7},
+    )
+
+    blocks.follow(tmp_path)
+
+    assert bodies(blocks) == ["one", "two"]

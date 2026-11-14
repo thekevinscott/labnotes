@@ -1,0 +1,1 @@
+**Fixed** The TUI output view shows each line as a terminal would: the last non-empty overwrite. CRLF output and `print(..., end="\r")` progress lines no longer render blank, and an OSC window title ended by BEL no longer leaks into the text.

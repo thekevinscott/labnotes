@@ -1,0 +1,1 @@
+**Removed** **BREAKING** `labnotes experiments NAME runs` is gone, and with it the `--format` option. It now exits 2 as an unknown action, and the bare command names `run`, `attach` or `stop`. Run listings come from the run TUI, and later from the daemon's API (#454). See [the migration](../migrations.d/2026-11-12-python-remove-experiments-runs.md).

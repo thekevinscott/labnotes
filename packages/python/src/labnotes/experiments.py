@@ -1,4 +1,3 @@
-import asyncio
 import os
 import sys
 from pathlib import Path
@@ -8,16 +7,12 @@ import click
 from labnotes.command_line_group import COMMAND_LINE
 from labnotes.create_experiment import create_experiment
 from labnotes.daemon.command import command as daemon_command
-from labnotes.utils.format_bytes import format_bytes
 from labnotes.load_config import load_config
 from labnotes.parse_params import parse_params
 from labnotes.parse_subset import parse_subset
-from labnotes.print_rows import print_rows
 from labnotes.read_config import CONFIG_FILE
-from labnotes.tables.experiment_rows import experiment_rows
 from labnotes.tui.run_tui import run_tui
 
-BYTES = ("memory", "size")
 PASSTHROUGH = "labnotes.passthrough"
 
 
@@ -32,7 +27,7 @@ class PassthroughCommand(click.Command):
 
 @click.command(
     cls=PassthroughCommand,
-    help="List an experiment's runs, or run it. attach"
+    help="Run an experiment. attach"
     " reopens the run TUI on whatever the experiment is running."
     " `new [NAME]` creates one, from --command, --param, --repeats and"
     " --from OTHER if given. With run, --PARAM=VALUE runs only the"
@@ -43,13 +38,7 @@ class PassthroughCommand(click.Command):
     context_settings={"ignore_unknown_options": True, "allow_extra_args": True},
 )
 @click.argument("name", required=False)
-@click.argument("action", required=False, metavar="[runs|run|attach|stop]")
-@click.option(
-    "--format",
-    "output_format",
-    type=click.Choice(["table", "json"]),
-    help="With runs: print rows as a table or as JSON. Default: table.",
-)
+@click.argument("action", required=False, metavar="[run|attach|stop]")
 @click.option(
     "--concurrency",
     type=click.IntRange(min=1),
@@ -136,7 +125,6 @@ def experiments(
     ctx: click.Context,
     name: str | None,
     action: str | None,
-    output_format: str | None,
     concurrency: int | None,
     run_id: str | None,
     retries: int | None,
@@ -221,8 +209,7 @@ def experiments(
                 raise click.ClickException(str(error)) from error
             return
         case str(), "stop" | "attach" if (
-            output_format is not None
-            or concurrency is not None
+            concurrency is not None
             or run_id is not None
             or retries is not None
             or retry_wait is not None
@@ -234,7 +221,7 @@ def experiments(
             or passthrough is not None
             or ctx.args
         ):
-            raise click.UsageError(f"{action} takes no run or listing options.")
+            raise click.UsageError(f"{action} takes no run options.")
         case str(), "attach":
             try:
                 reply = daemon_command(config, name, {"command": "batches"})
@@ -273,27 +260,8 @@ def experiments(
         raise click.UsageError("--replace-capped needs run.")
     if ctx.args:
         raise click.UsageError(f"Unexpected {ctx.args[0]}. --PARAM=VALUE needs run.")
-    match action:
-        case None:
-            raise click.UsageError(
-                "Give an experiment and an action: runs, run, attach or stop."
-                " Or new [NAME]."
-            )
-        case "runs":
-            pass
-        case _:
-            raise click.UsageError(
-                f"Unknown action {action}. Use runs, run, attach or stop."
-            )
-    try:
-        rows = asyncio.run(experiment_rows(config, name, action))
-    except ValueError as error:
-        raise click.ClickException(str(error)) from error
-    if rows is None:
-        raise click.ClickException(f"No experiment named {name}.")
-    if output_format in (None, "table"):
-        rows = [
-            row | {key: format_bytes(row[key]) for key in BYTES if key in row}  # type: ignore[arg-type]
-            for row in rows
-        ]
-    print_rows(rows, output_format or "table")
+    if action is None:
+        raise click.UsageError(
+            "Give an experiment and an action: run, attach or stop. Or new [NAME]."
+        )
+    raise click.UsageError(f"Unknown action {action}. Use run, attach or stop.")

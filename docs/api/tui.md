@@ -39,7 +39,7 @@ The `memory` column shows how much memory a running run's processes hold: the re
 
 The output view follows the run's `stdout.log` and `stderr.log` as they're written, each in its own tab. A tab's label counts its complete lines, such as `stdout (33)` and `stderr (5)`, and updates while the run writes. The view opens on stdout. For a run that [continues](config#continues), it follows the latest invocation's logs. ANSI color and bold show as styled text; other escape codes are dropped. Long lines wrap. While you're scrolled to the bottom, the view follows new output; scroll up to read back, and scroll to the bottom again to follow. The view reads only the lines on screen, so a log of any size opens fast and uses little memory. Scrolling moves one log line at a time, however many rows it wraps to. A line longer than 64 KB shows its first 64 KB.
 
-Blocks the script writes with [`log`](sdk#log) show above the raw output, one line each, collapsed and cut off with an ellipsis (▸). Click a block to expand it to its full text (▾); click again to collapse it. A streaming block shows on `start` and grows in place as its deltas arrive. Without a `log.jsonl`, the raw output fills the view as before.
+Blocks the script writes with [`log`](sdk#log) show above the raw output, one line each, collapsed and cut off with an ellipsis (▸). Click a block to expand it to its full text (▾); click again to collapse it. A streaming block shows on `start` and grows in place as its deltas arrive. For a run that [continues](config#continues), each invocation's blocks sit under a line naming when it started, such as `invocation 2026-11-12 10:00:00`. A streaming block an earlier invocation left open stays as it was; the next invocation's deltas start a new block, even under the same `id`. Without a `log.jsonl`, the raw output fills the view as before.
 
 | Key | Action |
 | --- | --- |
@@ -55,7 +55,7 @@ Ctrl-C quits at once only when the experiment is done. While it is setting up, r
 | Key | Action |
 | --- | --- |
 | Enter or `l` | Quit and leave the experiment going. The TUI prints the `labnotes experiments NAME attach` and `labnotes experiments NAME stop` commands as it exits. |
-| `s` | Stop the experiment, the same as `labnotes experiments NAME stop`. No more runs start, running scripts are stopped and any still going 5 seconds later are killed, and teardown still runs. A setup hook that has begun finishes first. |
+| `s` | Stop the experiment, the same as `labnotes experiments NAME stop`. No more runs start, running scripts are stopped and any still going 5 seconds later are killed, and teardown still runs. A running setup hook is stopped the same way. |
 | Escape | Back to the table. |
 
 To stop one run, use `x` on its row.

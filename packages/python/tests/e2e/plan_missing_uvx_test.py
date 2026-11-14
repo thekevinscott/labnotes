@@ -139,7 +139,7 @@ def test_uvx_run_names_the_migration_for_mode_and_missing_continues(
     assert not (without_continues / "exp/runs").exists()
 
 
-def test_uvx_lists_old_runs_nested_in_group_folders(tmp_path: Path, tui: Tui) -> None:
+def test_uvx_counts_old_runs_nested_in_group_folders(tmp_path: Path, tui: Tui) -> None:
     root = make_project(tmp_path / "project", "continues = false\n")
     for name, m in (("a-1a2b", "a"), ("b-3c4d", "b")):
         folder = root / "exp/runs/20261020-065052-still-lake" / name
@@ -150,9 +150,9 @@ def test_uvx_lists_old_runs_nested_in_group_folders(tmp_path: Path, tui: Tui) ->
             )
         )
 
-    term = tui(root, "experiments", "exp", "runs", cols=300)
+    run(tui, root, "0 passed, 0 failed.")
 
-    assert tui.exited(term) == 0, term.to_snapshot()
-    for run_id in ("a-1a2b", "b-3c4d"):
-        shown = f"20261020-065052-still-lake/{run_id}"
-        assert term.get_by_text(shown).is_visible(), term.to_snapshot()
+    assert sorted(records(root)) == [
+        "20261020-065052-still-lake/a-1a2b",
+        "20261020-065052-still-lake/b-3c4d",
+    ]

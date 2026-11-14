@@ -18,6 +18,24 @@ def shown(output: StreamLog) -> list[str]:
     return output.read(0, output.rows)
 
 
+def log_segment(output: StreamLog, index: int) -> Any:
+    segment = output.segments[index]
+    assert hasattr(segment, "scanned")
+    return segment
+
+
+def record(folder: Path, *names: str) -> None:
+    invocations = [
+        {"started": f"s{number}", "stdout": name}
+        for number, name in enumerate(names, 1)
+    ]
+    (folder / "run.json").write_text(json.dumps({"invocations": invocations}))
+
+
+def banner(label: str) -> str:
+    return f"\x1b[2m── {label} ──\x1b[0m"
+
+
 @pytest.fixture
 def sized() -> Iterator[mock.Mock]:
     with (
@@ -51,7 +69,8 @@ def test_follows_its_own_stream_only(tmp_path: Path) -> None:
     output = StreamLog("stderr")
     output.follow(tmp_path)
     assert shown(output) == ["oops"]
-    assert [segment.path for segment in output.segments] == [tmp_path / "stderr.log"]
+    assert len(output.segments) == 1
+    assert log_segment(output, 0).path == tmp_path / "stderr.log"
 
 
 def test_reads_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
@@ -62,7 +81,7 @@ def test_reads_only_new_bytes_on_each_follow(tmp_path: Path) -> None:
     append(tmp_path / "stdout.log", "two\nthree\n")
     output.follow(tmp_path)
     assert shown(output) == ["one", "two", "three"]
-    assert (output.segments[0].scanned, output.virtual_size.height) == (14, 3)
+    assert (log_segment(output, 0).scanned, output.virtual_size.height) == (14, 3)
 
 
 def test_appending_keeps_already_rendered_lines(tmp_path: Path) -> None:
@@ -289,66 +308,101 @@ def test_window_boundary_and_tail_cache_do_not_use_bitwise_ranges(
         assert (output.first, len(output.window)) == (258, 208)
 
 
-def test_count_uses_the_newest_segment_lines(tmp_path: Path) -> None:
+def test_count_skips_labels_and_partial_lines(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("x\n" * 3)
+    (tmp_path / "two.txt").write_text("last\npartial")
+    record(tmp_path, "one.txt", "two.txt")
     output = StreamLog("stdout")
-    first = tmp_path / "first.log"
-    second = tmp_path / "second.log"
-    first.write_text("x\n" * 3)
-    second.write_text("last\npartial")
-    with mock.patch("labnotes.tui.stream_log.latest_log", side_effect=[first, second]):
-        output.follow(tmp_path)
-        output.follow(tmp_path)
-    assert (output.rows, output.count) == (5, 4)
+    output.follow(tmp_path)
+    assert (output.rows, output.count, output.settled) == (7, 4, 6)
 
 
 def test_read_limits_the_second_segment_to_the_remaining_count(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("a\nb\n")
+    (tmp_path / "two.txt").write_text("c\nd\ne\nf\n")
+    record(tmp_path, "one.txt", "two.txt")
     output = StreamLog("stdout")
-    first = tmp_path / "first.log"
-    second = tmp_path / "second.log"
-    first.write_text("a\nb\n")
-    second.write_text("c\nd\ne\nf\n")
-    with mock.patch("labnotes.tui.stream_log.latest_log", side_effect=[first, second]):
-        output.follow(tmp_path)
-        output.follow(tmp_path)
-    assert output.read(1, 2) == ["b", "c"]
-    assert output.read(1, 3) == ["b", "c", "d"]
-    assert output.read(3, 2) == ["d", "e"]
+    output.follow(tmp_path)
+    label = banner("invocation 2 · s2")
+    assert output.read(2, 2) == ["b", label]
+    assert output.read(2, 3) == ["b", label, "c"]
+    assert output.read(4, 2) == ["c", "d"]
 
 
 def test_read_skips_a_large_completed_segment(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("x\n" * 300)
+    (tmp_path / "two.txt").write_text("a\nb\nc\n")
+    record(tmp_path, "one.txt", "two.txt")
     output = StreamLog("stdout")
-    first = tmp_path / "first.log"
-    second = tmp_path / "second.log"
-    first.write_text("x\n" * 300)
-    second.write_text("a\nb\nc\n")
-    with mock.patch("labnotes.tui.stream_log.latest_log", side_effect=[first, second]):
-        output.follow(tmp_path)
-        output.follow(tmp_path)
-    assert output.read(301, 1) == ["b"]
+    output.follow(tmp_path)
+    assert output.read(303, 1) == ["b"]
     with mock.patch.object(
-        output.segments[0], "read", wraps=output.segments[0].read
+        output.segments[1], "read", wraps=output.segments[1].read
     ) as read:
-        assert output.read(300, 1) == ["a"]
+        assert output.read(302, 1) == ["a"]
     read.assert_not_called()
 
 
 def test_a_newer_segment_truncated_below_its_scanned_size_resets_all(
     tmp_path: Path,
 ) -> None:
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("long second line\n")
+    record(tmp_path, "one.txt", "two.txt")
     output = StreamLog("stdout")
-    first = tmp_path / "first.log"
-    second = tmp_path / "second.log"
-    first.write_text("first\n")
-    second.write_text("long second line\n")
-    with mock.patch(
-        "labnotes.tui.stream_log.latest_log", side_effect=[first, second, second]
+    output.follow(tmp_path)
+    output.first, output.window = 0, ["stale"]
+    (tmp_path / "two.txt").write_text("new\n")
+    output.follow(tmp_path)
+    assert shown(output) == [
+        banner("invocation 1 · s1"),
+        "first",
+        banner("invocation 2 · s2"),
+        "new",
+    ]
+    assert log_segment(output, 3).scanned == 4
+
+
+def test_an_older_segment_truncated_is_not_rechecked(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    kept = output.segments[1]
+    (tmp_path / "one.txt").write_text("")
+    output.follow(tmp_path)
+    assert output.segments[1] is kept
+
+
+def test_only_the_newest_invocation_is_extended(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    with (
+        mock.patch.object(output.segments[1], "extend", return_value=False) as older,
+        mock.patch.object(output.segments[3], "extend", return_value=False) as newest,
     ):
         output.follow(tmp_path)
+    older.assert_not_called()
+    newest.assert_called_once_with()
+
+
+def test_nothing_new_keeps_the_caches_and_skips_settling(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("one\n")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    output.first, output.window = 0, ["one"]
+    output.wrapped[0] = []
+    with (
+        mock.patch.object(output.segments[0], "extend", return_value=False),
+        mock.patch.object(StreamLog, "settle") as settle,
+    ):
         output.follow(tmp_path)
-        second.write_text("new\n")
-        output.follow(tmp_path)
-    assert shown(output) == ["new"]
-    assert len(output.segments) == 1
+    settle.assert_not_called()
+    assert (output.window, output.wrapped) == (["one"], {0: []})
 
 
 @pytest.fixture
@@ -384,7 +438,7 @@ def test_cuts_a_line_into_rows_of_the_view_width(
     output = StreamLog("stdout")
     with mock.patch.object(StreamLog, "settle"):
         output.follow(tmp_path)
-    strip = drawing["Strip"].return_value
+    strip = drawing["Strip"].return_value.apply_style.return_value
     strip.cell_length = length
     pieces = [piece("ab", "cd"), piece("e")]
     strip.divide.return_value = pieces
@@ -394,6 +448,7 @@ def test_cuts_a_line_into_rows_of_the_view_width(
     drawing["Strip"].assert_called_once_with(
         text.render.return_value, drawing["cell_len"].return_value
     )
+    drawing["Strip"].return_value.apply_style.assert_called_once_with(output.rich_style)
     strip.divide.assert_called_once_with(cuts)
     for each in pieces:
         each.extend_cell_length.assert_called_once_with(4, output.rich_style)
@@ -417,12 +472,25 @@ def test_an_empty_line_takes_one_row(tmp_path: Path, drawing: dict[str, Any]) ->
     output = StreamLog("stdout")
     with mock.patch.object(StreamLog, "settle"):
         output.follow(tmp_path)
-    strip = drawing["Strip"].return_value
+    strip = drawing["Strip"].return_value.apply_style.return_value
     strip.cell_length = 0
     strip.__iter__.return_value = []
     wrapped = output.wrap(0)
     strip.divide.assert_not_called()
     assert wrapped == [strip.extend_cell_length.return_value.apply_offsets.return_value]
+
+
+@pytest.mark.usefixtures("sized")
+def test_renders_the_line_a_terminal_would_show(
+    tmp_path: Path, drawing: dict[str, Any]
+) -> None:
+    (tmp_path / "stdout.log").write_text("step 0\rstep 1\r\n")
+    output = StreamLog("stdout")
+    with mock.patch.object(StreamLog, "settle"):
+        output.follow(tmp_path)
+    drawing["Strip"].return_value.cell_length = 0
+    output.wrap(0)
+    drawing["Text"].from_ansi.assert_called_once_with("step 1", style=output.rich_style)
 
 
 @pytest.mark.parametrize("span", [None, (0, -1), (0, 0), (1, 2)])
@@ -434,7 +502,7 @@ def test_highlights_the_selected_part_of_a_line(
     output = StreamLog("stdout")
     with mock.patch.object(StreamLog, "settle"):
         output.follow(tmp_path)
-    drawing["Strip"].return_value.cell_length = 0
+    drawing["Strip"].return_value.apply_style.return_value.cell_length = 0
     text = drawing["Text"].from_ansi.return_value
     text.__len__ = mock.Mock(return_value=3)
     selection = mock.Mock()
@@ -593,40 +661,28 @@ def test_reset_starts_over_for_another_folder(tmp_path: Path) -> None:
 
 def test_keeps_earlier_invocations_above_the_newest(tmp_path: Path) -> None:
     output = StreamLog("stdout")
-    (tmp_path / "stdout-20261102-090000-000000.txt").write_text("first\npar")
-    (tmp_path / "run.json").write_text(
-        json.dumps({"invocations": [{"stdout": "stdout-20261102-090000-000000.txt"}]})
-    )
+    (tmp_path / "one.txt").write_text("first\npar")
+    record(tmp_path, "one.txt")
     output.follow(tmp_path)
-    output.first, output.window = 0, ["first", "par"]
-    (tmp_path / "stdout-20261102-100000-000000.txt").write_text("next\n")
-    (tmp_path / "run.json").write_text(
-        json.dumps({"invocations": [{"stdout": "stdout-20261102-100000-000000.txt"}]})
-    )
+    output.first, output.window = 0, [banner("invocation 1 · s1"), "first", "par"]
+    (tmp_path / "two.txt").write_text("next\n")
+    record(tmp_path, "one.txt", "two.txt")
     output.follow(tmp_path)
     output.follow(tmp_path)
-    assert shown(output) == ["first", "par", "next"]
-    assert output.window == ["first", "par"]
-    assert (output.rows, output.count) == (3, 3)
-    assert output.read(1, 2) == ["par", "next"]
-    assert output.read(2, 5) == ["next"]
+    assert shown(output)[1:] == ["first", "par", banner("invocation 2 · s2"), "next"]
+    assert output.window == [banner("invocation 1 · s1"), "first"]
+    assert (output.rows, output.count) == (5, 2)
 
 
-def test_switches_to_a_log_path_that_sorts_before_the_previous_one(
+def test_follows_invocations_in_recorded_order_not_name_order(
     tmp_path: Path,
 ) -> None:
-    older_name = tmp_path / "z.log"
-    newer_name = tmp_path / "a.log"
-    older_name.write_text("first line\n")
-    newer_name.write_text("new\n")
+    (tmp_path / "z.txt").write_text("first line\n")
+    (tmp_path / "a.txt").write_text("new\n")
+    record(tmp_path, "z.txt", "a.txt")
     output = StreamLog("stdout")
-    with mock.patch(
-        "labnotes.tui.stream_log.latest_log",
-        side_effect=[older_name, newer_name],
-    ):
-        output.follow(tmp_path)
-        output.follow(tmp_path)
-    assert shown(output) == ["first line", "new"]
+    output.follow(tmp_path)
+    assert shown(output)[1::2] == ["first line", "new"]
 
 
 def test_rereads_a_log_that_was_truncated(tmp_path: Path) -> None:
@@ -637,7 +693,7 @@ def test_rereads_a_log_that_was_truncated(tmp_path: Path) -> None:
     log.write_text("new\n")
     output.follow(tmp_path)
     assert shown(output) == ["new"]
-    assert output.segments[0].scanned == 4
+    assert log_segment(output, 0).scanned == 4
 
 
 def test_a_deleted_log_clears_the_view(tmp_path: Path) -> None:
@@ -673,3 +729,81 @@ def test_renders_a_screen_row_or_a_blank_past_the_last() -> None:
         assert output.render_line(0) is row
         assert output.render_line(1) is strip.blank.return_value
         strip.blank.assert_called_once_with(4, output.rich_style)
+
+
+def test_opens_every_invocation_with_a_label_above_each(tmp_path: Path) -> None:
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\nthird\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output = StreamLog("stdout")
+    output.follow(tmp_path)
+    assert shown(output) == [
+        banner("invocation 1 · s1"),
+        "first",
+        banner("invocation 2 · s2"),
+        "second",
+        "third",
+    ]
+    assert output.count == 3
+
+
+def test_watching_through_a_new_invocation_matches_a_fresh_open(
+    tmp_path: Path,
+) -> None:
+    watching = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\n")
+    record(tmp_path, "one.txt")
+    watching.follow(tmp_path)
+    (tmp_path / "one.txt").write_text("first\nlast words\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt", "two.txt")
+    watching.follow(tmp_path)
+    fresh = StreamLog("stdout")
+    fresh.follow(tmp_path)
+    assert (
+        shown(watching)
+        == shown(fresh)
+        == [
+            banner("invocation 1 · s1"),
+            "first",
+            "last words",
+            banner("invocation 2 · s2"),
+            "second",
+        ]
+    )
+
+
+def test_a_new_invocation_forgets_only_rows_that_can_change(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\npar")
+    record(tmp_path, "one.txt")
+    output.follow(tmp_path)
+    cached: dict[int, list[Any]] = {0: [], 1: [], 2: []}
+    output.wrapped.update(cached)
+    (tmp_path / "two.txt").write_text("")
+    record(tmp_path, "one.txt", "two.txt")
+    output.follow(tmp_path)
+    assert output.wrapped == {0: [], 1: []}
+    assert shown(output)[2:] == ["par", banner("invocation 2 · s2")]
+
+
+def test_waits_for_an_invocation_log_that_is_not_written_yet(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\n")
+    record(tmp_path, "one.txt", "two.txt")
+    output.follow(tmp_path)
+    assert shown(output) == [banner("invocation 1 · s1"), "first"]
+    (tmp_path / "two.txt").write_text("second\n")
+    output.follow(tmp_path)
+    assert shown(output)[2:] == [banner("invocation 2 · s2"), "second"]
+
+
+def test_a_rewritten_invocation_list_starts_over(tmp_path: Path) -> None:
+    output = StreamLog("stdout")
+    (tmp_path / "one.txt").write_text("first\n")
+    (tmp_path / "two.txt").write_text("second\n")
+    record(tmp_path, "one.txt")
+    output.follow(tmp_path)
+    record(tmp_path, "two.txt")
+    output.follow(tmp_path)
+    assert shown(output) == [banner("invocation 1 · s1"), "second"]

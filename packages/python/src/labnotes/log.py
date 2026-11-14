@@ -1,7 +1,8 @@
 import json
+import os
 from datetime import UTC, datetime
 
-from labnotes.log_path import log_path
+from labnotes.log_path import INVOCATION_ENV, log_path
 
 
 def now() -> str:
@@ -18,6 +19,9 @@ def log(block: dict[str, object]) -> None:
         if "content" in block:
             print(block["content"])
         return
-    line = json.dumps({**block, "timestamp": now()})
+    tags: dict[str, object] = {"timestamp": now()}
+    if invocation := os.environ.get(INVOCATION_ENV):
+        tags = {"invocation": invocation, **tags}
+    line = json.dumps({**block, **tags})
     with path.open("a", encoding="utf-8") as file:
         file.write(f"{line}\n")

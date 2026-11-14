@@ -82,5 +82,5 @@ traceback or exits before the test quits it. End each test with `tui.quit`
 for commands that should exit by themselves. Use `tui.signal` only for tests
 that crash or freeze the TUI on purpose.
 
-Commands with no TUI (`init`, `daemon`, `experiments --format json`, the
+Commands with no TUI (`init`, `daemon`, `experiments new`, the
 refusal to run without a terminal) and browser tests use their own interface.

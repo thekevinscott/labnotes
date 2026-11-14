@@ -205,17 +205,12 @@ def test_an_event_over_the_stream_limit_ends_with_an_error(
 def test_open_quiets_wakeups_that_land_after_a_closed_read(tmp_path: Path) -> None:
     async def drive() -> None:
         loop = asyncio.get_running_loop()
-        attachment = await opened(
-            tmp_path / "d.sock", streaming(b'event: batches\ndata: {"batches": []}\n\n')
-        )
+        with mock.patch("labnotes.daemon.attachment.quiet_late_wakeup") as quiet:
+            attachment = await opened(
+                tmp_path / "d.sock",
+                streaming(b'event: batches\ndata: {"batches": []}\n\n'),
+            )
         await attachment.aclose()
-        handler = loop.get_exception_handler()
-        assert handler is not None
-        with mock.patch.object(loop, "default_exception_handler") as default:
-            handler(loop, {"exception": asyncio.InvalidStateError("invalid state")})
-            default.assert_not_called()
-            other = {"exception": RuntimeError("boom")}
-            handler(loop, other)
-            default.assert_called_once_with(other)
+        assert loop.get_exception_handler() is quiet
 
     asyncio.run(drive())

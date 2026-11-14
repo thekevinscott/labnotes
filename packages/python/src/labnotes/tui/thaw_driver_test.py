@@ -21,7 +21,7 @@ def signals(send: Callable[[ThawDriver], None]) -> list[object]:
             await asyncio.sleep(0)
 
     asyncio.run(run())
-    return calls.mock_calls
+    return list(calls.mock_calls)
 
 
 def test_thaw_after_a_bare_stop_restarts_application_mode_and_repaints() -> None:

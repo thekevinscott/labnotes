@@ -38,7 +38,11 @@ def test_thaw_after_ctrl_z_only_resumes() -> None:
         driver._sigtstp_application()
         driver._sigcont_application()
 
-    assert signals(suspend_then_thaw) == [mock.call.stop(), mock.call.start()]
+    assert signals(suspend_then_thaw) == [
+        mock.call.stop(),
+        mock.call.close(),
+        mock.call.start(),
+    ]
 
 
 def test_thaw_without_auto_restart_leaves_the_terminal_alone() -> None:

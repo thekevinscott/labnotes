@@ -7,11 +7,8 @@ from typing import Any, cast
 from unittest import mock
 
 import pytest
-from textual.app import App
-from textual.drivers.headless_driver import HeadlessDriver
 
 from labnotes.tui.run_app import NoMatches, RunApp, RunLiveView
-from labnotes.tui.thaw_driver import ThawDriver
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]
@@ -3090,9 +3087,19 @@ def test_a_step_repeated_back_to_back_shows_once(tmp_path: Path) -> None:
 
 
 def test_terminal_driver_survives_a_thaw(tmp_path: Path) -> None:
-    assert configured_app(tmp_path, None).driver_class is ThawDriver
+    linux = mock.Mock()
+    with (
+        mock.patch("textual.app.App.get_driver_class", return_value=linux),
+        mock.patch("labnotes.tui.run_app.LinuxDriver", linux),
+        mock.patch("labnotes.tui.run_app.ThawDriver") as thaw,
+    ):
+        assert configured_app(tmp_path, None).driver_class is thaw
 
 
 def test_terminal_driver_override_is_kept(tmp_path: Path) -> None:
-    with mock.patch.object(App, "get_driver_class", return_value=HeadlessDriver):
-        assert configured_app(tmp_path, None).driver_class is HeadlessDriver
+    other = mock.Mock()
+    with (
+        mock.patch("textual.app.App.get_driver_class", return_value=other),
+        mock.patch("labnotes.tui.run_app.ThawDriver"),
+    ):
+        assert configured_app(tmp_path, None).driver_class is other

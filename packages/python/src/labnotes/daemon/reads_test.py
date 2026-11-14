@@ -2,7 +2,7 @@ import asyncio
 import codecs
 import json
 import os
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
@@ -21,7 +21,7 @@ def change(table: str, path: str | None = None, old: str | None = None) -> Any:
 
 def fake(
     queries: list[object] | None = None,
-    steps: list[tuple[Callable[[], object], Any]] | None = None,
+    steps: Sequence[tuple[Callable[[], object], Any]] | None = None,
 ) -> mock.Mock:
     async def watch() -> AsyncIterator[Any]:
         for action, event in steps or []:
@@ -256,7 +256,7 @@ def test_a_run_id_may_hold_a_files_segment() -> None:
 def follow_file(
     tmp_path: Path,
     name: str,
-    steps: list[tuple[Callable[[], object], Any]],
+    steps: Sequence[tuple[Callable[[], object], Any]],
     last: str | None = None,
 ) -> list[tuple[str, str, Any]]:
     reads = Reads(tmp_path, fake(steps=steps))

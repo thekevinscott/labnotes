@@ -44,6 +44,14 @@ class HookPanel(Vertical):
     def start(self, folder: Path, began: float) -> None:
         self.folder = folder
         self.began = began
+        self.took = None
+        self.error = None
+        self.tick()
+
+    def reset(self) -> None:
+        self.began = None
+        self.took = None
+        self.error = None
         self.tick()
 
     def end(self, error: str | None, ended: float) -> None:

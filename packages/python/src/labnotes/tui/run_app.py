@@ -213,7 +213,7 @@ class RunLiveView(Widget):
                 outcome = f"{FAILED} exited {self.exit_code(run)}"
                 self.set_cell(run, "status", Text(outcome, style="red"))
                 self.show(describe_event(event))
-            case "retried":
+            case "retried" | "restarted":
                 if self.waiting.pop(run, None) is not None:
                     outcome = f"{FAILED} exited {self.exit_code(run)}, retried"
                     self.set_cell(run, "status", Text(outcome, style="red"))
@@ -229,6 +229,9 @@ class RunLiveView(Widget):
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
             case "setting up" | "tearing down" if "folder" in event:
+                if event["event"] == "setting up":
+                    self.idle = False
+                    self.panel("teardown").reset()
                 panel = self.panel(str(event["hook"]))
                 panel.start(Path(str(event["folder"])), self.since(event))
                 self.advance(panel.hook)

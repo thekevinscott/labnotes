@@ -1,4 +1,5 @@
 import asyncio
+import json
 import os
 from collections.abc import Callable, Coroutine, Iterator
 from pathlib import Path
@@ -152,6 +153,8 @@ def run(
     run_id: str | None = None,
     replace_capped: bool = False,
     retryable: str | None = None,
+    setup: str | None = None,
+    teardown: str | None = None,
 ) -> list[dict[str, object]]:
     config = mock.Mock(
         root=tmp_path, experiments="{experiment}", runs="{experiment}/{run}"
@@ -161,6 +164,8 @@ def run(
     configured.env = env or {}
     configured.retry_wait = retry_seconds
     configured.retryable = retryable
+    configured.setup = setup
+    configured.teardown = teardown
 
     def listening(controls: object) -> None:
         hear(controls)
@@ -2472,3 +2477,251 @@ def test_start_one_during_setup_puts_the_run_first(
     start_with_hooks(tmp_path, report, listen)
 
     assert started_runs(report) == ["r3", "r1", "r2"]
+
+
+def failed_row(tmp_path: Path, collaborators: dict[str, mock.MagicMock]) -> Path:
+    source = tmp_path / "exp" / "r1"
+    source.mkdir(parents=True, exist_ok=True)
+    (source / "run.json").write_text(json.dumps({"args": ["--x"]}))
+    collaborators["list_runs"].return_value = [
+        {
+            "id": "r1",
+            "folder": "exp/r1",
+            "params": '{"m": "a"}',
+            "ended": "now",
+            "exit_code": 1,
+            "error": None,
+            "counted": 0,
+        }
+    ]
+    return source
+
+
+def controls_of(listen: mock.Mock) -> Any:
+    return listen.call_args.args[0]
+
+
+def test_a_restart_joins_the_live_batch_and_teardown_waits_for_it(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    failed_row(tmp_path, collaborators)
+    listen = mock.Mock()
+    order: list[str] = []
+    joined: list[bool] = []
+    codes = {"r1": [1], "r2": [0], "r3": [75], "r4": [0]}
+
+    async def hook(root: Path, name: str, *_: object) -> None:
+        order.append(name)
+
+    async def execute(
+        root: Path, folder: Path, *rest: object, **_: object
+    ) -> dict[str, object]:
+        if folder.name == "r2":
+            joined.append(await controls_of(listen).restart("r1"))
+            await asyncio.sleep(0.01)
+        order.append(folder.name)
+        return {"exit_code": codes[folder.name].pop(0), "error": None}
+
+    collaborators["invocation_hook"].side_effect = hook
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock()
+
+    run(
+        tmp_path,
+        report,
+        concurrency=2,
+        listen=listen,
+        retries=1,
+        setup="up",
+        teardown="down",
+    )
+
+    assert joined == [True]
+    assert order[0] == "setup" and order[-1] == "teardown"
+    assert order.count("setup") == 1 and order.count("teardown") == 1
+    assert {"r3", "r4"} <= set(order)
+    assert {
+        "event": "restarted",
+        "run": "r1",
+        "retry": "r3",
+        "params": A,
+    } in reported(report)
+    calls = {c.args[1].name: c for c in collaborators["execute_run"].await_args_list}
+    assert calls["r3"].args[1] == tmp_path / "exp" / "r3"
+    assert calls["r3"].args[7] == "r1"
+    assert calls["r3"].kwargs["args"] == ["--x"]
+    assert calls["r4"].kwargs["args"] == ["--x"]
+    assert calls["r2"].kwargs["args"] == ()
+    assert collaborators["list_runs"].await_args == mock.call(
+        collaborators["open_tables"].return_value, "exp", "c"
+    )
+    first, again = collaborators["open_tables"].call_args_list
+    assert again == first
+
+
+@pytest.mark.parametrize("earlier", [False, True])
+def test_a_restart_in_its_folder_gets_a_fresh_retry_budget(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], earlier: bool
+) -> None:
+    failed_row(tmp_path, collaborators)
+    listen = mock.Mock()
+    codes = {"r1": [75, 0] if earlier else [75, 75, 75, 0], "r2": [0]}
+    gave_up = asyncio.Event()
+    if earlier:
+        collaborators["resumable"].return_value = [
+            {"id": "r1", "params": '{"m": "a"}', "invocations": 1}
+        ]
+        collaborators["new_stamped_run_id"].side_effect = iter(["r2"])
+
+    def on_event(event: dict[str, object]) -> None:
+        if event["event"] == "gave up":
+            gave_up.set()
+
+    async def execute(
+        root: Path, folder: Path, *rest: object, **_: object
+    ) -> dict[str, object]:
+        if folder.name == "r2":
+            await gave_up.wait()
+            assert await controls_of(listen).restart("r1")
+        return {"exit_code": codes[folder.name].pop(0), "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock(side_effect=on_event)
+
+    run(tmp_path, report, concurrency=2, listen=listen, retries=1, continues=True)
+
+    ran = [c.args[1].name for c in collaborators["execute_run"].await_args_list]
+    assert ran.count("r1") == (3 if earlier else 4)
+    assert events(report).count("gave up") == 1
+    assert {"event": "restarted", "run": "r1", "retry": "r1", "params": A} in (
+        reported(report)
+    )
+
+
+def test_a_restarted_run_that_was_stopped_stops_gently_again(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    failed_row(tmp_path, collaborators)
+    listen = mock.Mock()
+    ended = asyncio.Event()
+
+    def on_event(event: dict[str, object]) -> None:
+        if event == {**event, "event": "ended", "run": "r1"}:
+            ended.set()
+
+    async def execute(
+        root: Path,
+        folder: Path,
+        command: str,
+        params: object,
+        running: set[object],
+        *rest: object,
+        **_: object,
+    ) -> dict[str, object]:
+        if folder.name == "r2":
+            await ended.wait()
+            assert await controls_of(listen).restart("r1")
+            return {"exit_code": 0, "error": None}
+        running.add(mock.Mock(pid=1))
+        controls_of(listen).kill("r1")
+        await asyncio.sleep(0)
+        running.clear()
+        return {"exit_code": -15, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock(side_effect=on_event)
+
+    run(tmp_path, report, concurrency=2, listen=listen, continues=True)
+
+    assert events(report).count("stopping run") == 2
+    assert "killing run" not in events(report)
+
+
+@pytest.mark.parametrize("closing", ["interrupt", "finish_up"])
+def test_a_closing_batch_declines_a_restart(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock], closing: str
+) -> None:
+    failed_row(tmp_path, collaborators)
+    listen = mock.Mock()
+    joined: list[bool] = []
+    collaborators["plan_runs"].return_value = [A]
+
+    async def execute(*_: object, **__: object) -> dict[str, object]:
+        getattr(controls_of(listen), closing)()
+        joined.append(await controls_of(listen).restart("r1"))
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock()
+
+    run(tmp_path, report, listen=listen)
+
+    assert joined == [False]
+    assert collaborators["list_runs"].await_count == 1
+    assert "restarted" not in events(report)
+
+
+def test_a_finished_batch_declines_a_restart(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    failed_row(tmp_path, collaborators)
+    listen = mock.Mock()
+
+    run(tmp_path, mock.Mock(), listen=listen)
+
+    assert asyncio.run(controls_of(listen).restart("r1")) is False
+    assert collaborators["list_runs"].await_count == 1
+
+
+def test_a_batch_that_closes_while_checking_declines_the_restart(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    source = failed_row(tmp_path, collaborators)
+    rows = collaborators["list_runs"].return_value
+    listen = mock.Mock()
+    joined: list[bool] = []
+    collaborators["plan_runs"].return_value = [A]
+    checks = iter([False, True])
+
+    async def query(*_: object) -> list[dict[str, object]]:
+        if next(checks):
+            controls_of(listen).interrupt()
+        return rows
+
+    async def execute(*_: object, **__: object) -> dict[str, object]:
+        joined.append(await controls_of(listen).restart("r1"))
+        return {"exit_code": 0, "error": None}
+
+    collaborators["list_runs"].side_effect = query
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock()
+
+    run(tmp_path, report, listen=listen)
+
+    assert joined == [False]
+    assert collaborators["claim_run"].call_args_list.count(mock.call(source)) == 1
+    assert "restarted" not in events(report)
+
+
+def test_a_restart_of_an_unknown_run_fails_without_joining(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    failed_row(tmp_path, collaborators)
+    listen = mock.Mock()
+    errors: list[str] = []
+    collaborators["plan_runs"].return_value = [A]
+
+    async def execute(*_: object, **__: object) -> dict[str, object]:
+        try:
+            await controls_of(listen).restart("ghost")
+        except ValueError as error:
+            errors.append(str(error))
+        return {"exit_code": 0, "error": None}
+
+    collaborators["execute_run"].side_effect = execute
+    report = mock.Mock()
+
+    run(tmp_path, report, listen=listen)
+
+    assert errors == ["No run ghost in exp."]
+    assert "restarted" not in events(report)

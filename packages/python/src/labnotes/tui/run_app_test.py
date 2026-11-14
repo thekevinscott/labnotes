@@ -3120,3 +3120,66 @@ def test_terminal_driver_override_is_kept_even_if_it_compares_equal(
         mock.patch("labnotes.tui.run_app.ThawDriver"),
     ):
         assert configured_app(tmp_path, None).driver_class is other
+
+
+def test_a_restart_in_the_live_batch_shows_as_a_new_run() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock())
+        report(planned("r1", "r2"))
+        for run, code in (("r1", 1), ("r2", 0)):
+            report(
+                {"event": "started", "run": run, "params": {"m": run}, "folder": "/"}
+            )
+            report({"event": "ended", "run": run, "exit_code": code, "error": None})
+        report({"event": "restarted", "run": "r1", "retry": "r3", "params": {"m": "a"}})
+        report({"event": "started", "run": "r3", "params": {"m": "a"}, "folder": "/"})
+        report({"event": "ended", "run": "r3", "exit_code": 0, "error": None})
+        report({"event": "idle"})
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert [row[2] for row in rows(app)] == ["✗ exited 1", "✓", "✓"]
+            assert status(app) == "2 passed, 0 failed. 1 retried. Ctrl-C to quit."
+            await pilot.press("ctrl+c")
+
+    asyncio.run(drive())
+
+
+def test_setting_up_again_puts_teardown_back_to_waiting(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        busy = app.query_one(RunLiveView).busy
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "idle"})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "teardown", "error": None})
+        await pilot.pause()
+        assert "teardown ✓" in shown_stages(app)
+        assert busy() is None
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s2"})
+        await pilot.pause()
+        assert "teardown ○" in shown_stages(app)
+        assert "setup ✓" not in shown_stages(app)
+        assert busy() == "Setting up."
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        assert busy() == "Starting runs."
+
+    drive_hooks(steps)
+
+
+def test_tearing_down_keeps_the_setup_outcome(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "idle"})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert "setup ✓" in shown_stages(app)
+        assert app.query_one(RunLiveView).idle is True
+
+    drive_hooks(steps)

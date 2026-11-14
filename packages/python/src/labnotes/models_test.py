@@ -1,8 +1,15 @@
+import asyncio
 import typing
-from collections.abc import Callable
+from collections.abc import Awaitable, Callable
 from pathlib import Path
 
-from labnotes.models import Controls, ExperimentConfig, LabnotesConfig, RunView
+from labnotes.models import (
+    Controls,
+    ExperimentConfig,
+    LabnotesConfig,
+    RunView,
+    no_restart,
+)
 
 
 def test_a_run_view_starts_unsorted_and_unfiltered() -> None:
@@ -97,3 +104,19 @@ def test_configs_have_no_mode() -> None:
 
     assert not hasattr(project, "mode")
     assert not hasattr(experiment, "mode")
+
+
+def test_restart_takes_a_run_id_and_answers_whether_it_joined() -> None:
+    hint = typing.get_type_hints(Controls)["restart"]
+
+    assert hint == Callable[[str], Awaitable[bool]]
+
+
+def test_controls_decline_restarts_unless_given_a_handler() -> None:
+    def nothing(*_: object) -> None:
+        return None
+
+    controls = Controls(nothing, nothing, nothing, nothing, nothing, nothing)
+
+    assert controls.restart is no_restart
+    assert asyncio.run(no_restart("r1")) is False

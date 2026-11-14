@@ -196,7 +196,7 @@ def test_an_event_over_the_stream_limit_ends_with_an_error(
                 b"data: " + b"x" * (STREAM_LIMIT + 1) + b"\n\n"
             ),
         )
-        with pytest.raises(ValueError):
+        with pytest.raises(ValueError, match=f"the {STREAM_LIMIT} byte limit"):
             await collect(attachment)
 
     asyncio.run(drive())

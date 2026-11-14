@@ -3099,8 +3099,7 @@ def test_terminal_driver_survives_a_thaw(tmp_path: Path) -> None:
 def test_terminal_driver_override_is_kept_even_if_it_compares_equal(
     tmp_path: Path,
 ) -> None:
-    other = mock.MagicMock()
-    other.__eq__.return_value = True
+    other = mock.MagicMock(**{"__eq__.return_value": True})
     with (
         mock.patch("textual.app.App.get_driver_class", return_value=other),
         mock.patch("labnotes.tui.run_app.ThawDriver"),

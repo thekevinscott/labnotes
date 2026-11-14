@@ -1,8 +1,9 @@
 """Follow a live daemon's batches and events over its event stream."""
 
+import asyncio
 import json
 from collections.abc import AsyncIterator
-from typing import Self, cast
+from typing import Any, Self, cast
 
 import httpx2
 
@@ -32,6 +33,7 @@ class Attachment:
         path = daemon_socket(config, name)
         if path is None:
             raise ValueError(f"No daemon is running for {name}.")
+        asyncio.get_running_loop().set_exception_handler(cls.quiet_late_wakeup)
         client = httpx2.AsyncClient(
             transport=httpx2.AsyncHTTPTransport(uds=str(path)),
             base_url="http://labnotes",
@@ -56,6 +58,15 @@ class Attachment:
             await client.aclose()
             raise
         return cls(client, response, events, batches)
+
+    @staticmethod
+    def quiet_late_wakeup(
+        loop: asyncio.AbstractEventLoop, context: dict[str, Any]
+    ) -> None:
+        # anyio's socket streams can run a queued reader wakeup after the read
+        # was cancelled or closed, which asyncio logs over the TUI on exit.
+        if not isinstance(context.get("exception"), asyncio.InvalidStateError):
+            loop.default_exception_handler(context)
 
     async def __aiter__(self) -> AsyncIterator[tuple[str, dict[str, object]]]:
         try:

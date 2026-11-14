@@ -2217,6 +2217,54 @@ def test_stays_on_a_failed_setup(tmp_path: Path) -> None:
     drive_hooks(steps)
 
 
+def test_a_restarts_hooks_keep_the_runs_table_and_its_cursor(tmp_path: Path) -> None:
+    restart: dict[str, object] = {
+        "event": "planned",
+        "restart": "r2",
+        "runs": [{"run": "r3", "params": {"m": "r2"}}],
+    }
+
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        await pilot.press("down")
+        table: Any = app.query_one("DataTable")
+        app.forward("restart", restart)
+        app.forward(
+            "restart", {"event": "setting up", "hook": "setup", "folder": tmp_path}
+        )
+        await pilot.pause()
+        assert (stage(app), table.display, table.cursor_row) == ("runs", True, 1)
+        app.forward("restart", {"event": "hook ended", "hook": "setup", "error": None})
+        app.forward(
+            "restart", {"event": "tearing down", "hook": "teardown", "folder": tmp_path}
+        )
+        await pilot.pause()
+        assert (stage(app), table.display, table.cursor_row) == ("runs", True, 1)
+
+    drive_hooks(steps)
+
+
+def test_a_hook_that_may_not_advance_stays_on_its_stage(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        again = {"event": "setting up", "hook": "setup", "folder": tmp_path / "again"}
+        app.body.show_event(again, advance=False)
+        app.body.show_event(
+            {"event": "hook ended", "hook": "setup", "error": None}, advance=False
+        )
+        await pilot.pause()
+        assert stage(app) == "teardown"
+
+    drive_hooks(steps)
+
+
 def test_moving_by_hand_stops_auto_advance(tmp_path: Path) -> None:
     async def steps(app: RunApp, pilot: Any, report: Report) -> None:
         report(hooked("setup", "teardown"))
@@ -2751,7 +2799,8 @@ def test_a_restart_plan_shows_as_a_retry_of_its_known_run(tmp_path: Path) -> Non
         app.forward("own", {**restart, "restart": "r9"})
     assert show.call_args_list == [
         mock.call(
-            {"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}}
+            {"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "a"}},
+            advance=False,
         ),
         mock.call({**restart, "restart": "r9"}),
     ]
@@ -3068,14 +3117,19 @@ def test_run_stream_filters_other_batches_but_follows_its_restarts(
         app.forward("".join(["o", "wn"]), own)
         app.forward("restart", restart)
         app.forward("restart", ended)
+    retried = {"event": "retried", "run": "r1", "retry": "r2", "params": {}}
     expected = [
-        own,
-        {"event": "retried", "run": "r1", "retry": "r2", "params": {}},
-        ended,
+        mock.call(own),
+        mock.call(retried, advance=False),
+        mock.call(ended, advance=False),
     ]
     if attach:
-        expected = [old, {**restart, "restart": "other"}, *expected]
-    assert show.call_args_list == [mock.call(event) for event in expected]
+        expected = [
+            mock.call(old),
+            mock.call({**restart, "restart": "other"}),
+            *expected,
+        ]
+    assert show.call_args_list == expected
 
 
 def test_a_step_repeated_back_to_back_shows_once(tmp_path: Path) -> None:

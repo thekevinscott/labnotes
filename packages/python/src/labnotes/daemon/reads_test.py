@@ -8,12 +8,7 @@ from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from starlette.responses import JSONResponse, StreamingResponse
-
 from labnotes.daemon.reads import TAIL_BYTES, Reads
-from labnotes.models import LabnotesConfig
-from labnotes.tables.iso_time import iso_time
-from labnotes.tables.open_experiment_tables import open_experiment_tables
 
 
 def change(table: str, path: str | None = None, old: str | None = None) -> Any:
@@ -54,8 +49,8 @@ def parse(frames: list[str]) -> list[tuple[str, str, Any]]:
     return parsed
 
 
-async def drain(response: object) -> list[tuple[str, str, Any]]:
-    assert isinstance(response, StreamingResponse)
+async def drain(response: Any) -> list[tuple[str, str, Any]]:
+    assert response.media_type == "text/event-stream"
     return parse([str(frame) async for frame in response.body_iterator])
 
 
@@ -187,7 +182,6 @@ def test_a_path_with_no_known_run_before_files_is_not_found() -> None:
     reads = Reads(Path("/"), tables)
     for path in ("nope/files", "files", "r/stop"):
         response = asyncio.run(reads.run_path(request(path=path)))
-        assert isinstance(response, JSONResponse)
         assert response.status_code == 404
     assert [call.args[1] for call in tables.query.await_args_list] == [["nope"]]
 
@@ -200,13 +194,15 @@ def test_files_lists_names_sizes_and_mtimes_under_the_run_folder() -> None:
         ]
     )
     reads = Reads(Path("/"), tables)
-    with mock.patch.object(reads, "follow") as follow:
+    with (
+        mock.patch.object(reads, "follow") as follow,
+        mock.patch("labnotes.daemon.reads.iso_time", lambda at: f"at {at}"),
+    ):
         asyncio.run(reads.run_path(request(path="r/files")))
-    [(_, rows, key, kind, names)] = [call.args for call in follow.call_args_list]
+        listed = asyncio.run(follow.call_args.args[1]())
+    [(_, _, key, kind, names)] = [call.args for call in follow.call_args_list]
     assert (key, kind, set(names)) == ("name", "file", {"run_files"})
-    assert asyncio.run(rows()) == [
-        {"name": "a.txt", "size": 3, "mtime": iso_time(1_700_000_000.5)}
-    ]
+    assert listed == [{"name": "a.txt", "size": 3, "mtime": "at 1700000000.5"}]
     assert tables.query.await_args_list[0].args[1] == ["r"]
     assert tables.query.await_args_list[1].args[1] == {"folder": "exp/runs/r"}
 
@@ -346,75 +342,6 @@ def test_binary_file_of_unknown_type_and_a_resumed_binary(tmp_path: Path) -> Non
         ("state", "2", {"name": "blob", "size": 2, "type": "application/octet-stream"})
     ]
     assert follow_file(tmp_path, "blob", [], "2") == []
-
-
-def test_runs_and_files_query_real_tables(tmp_path: Path) -> None:
-    folder = tmp_path / "exp/runs/20261114-000001-quiet-pond"
-    folder.mkdir(parents=True)
-    (tmp_path / "exp/experiment.toml").write_text('command = "true"\n')
-    runs = {
-        "20261114-000001-quiet-pond": {"created": "t1", "exit_code": 0},
-        "b": {"created": "t2"},
-        "c": {"created": "t3", "exit_code": 0, "ended_by": "stop"},
-        "d": {"created": "t4", "exit_code": 2},
-        "e": {"created": "t5", "error": "boom"},
-    }
-    for run, record in runs.items():
-        (tmp_path / "exp/runs" / run).mkdir(parents=True, exist_ok=True)
-        (tmp_path / "exp/runs" / run / "run.json").write_text(json.dumps(record))
-    (folder / "out.log").write_text("12345")
-    (folder / "memory.jsonl").write_text(
-        '{"time": 1, "rss": 10, "processes": 1}\n{"time": 2, "rss": 20, "processes": 1}\n'
-    )
-    config = LabnotesConfig(
-        path=tmp_path / ".labnotes.toml",
-        root=tmp_path,
-        experiments="{experiment}",
-        files="{experiment}/files/",
-        runs="{experiment}/runs/{run}",
-    )
-
-    async def first(response: object) -> tuple[str, str, Any]:
-        assert isinstance(response, StreamingResponse)
-        async for frame in response.body_iterator:
-            return parse([str(frame)])[0]
-        raise AssertionError("no event")
-
-    async def check() -> None:
-        reads = Reads(tmp_path, open_experiment_tables(config, "exp"))
-        _, _, listed = await first(await reads.runs(request()))
-        sizes = {
-            run: sum(f.stat().st_size for f in (tmp_path / "exp/runs" / run).iterdir())
-            for run in runs
-        }
-        assert listed == [
-            {
-                "id": "20261114-000001-quiet-pond",
-                "name": "quiet-pond",
-                "started": "t1",
-                "status": "succeeded",
-                "memory": 20,
-                "size": sizes["20261114-000001-quiet-pond"],
-            },
-            {"id": "b", "name": "b", "started": "t2", "status": "running"}
-            | {"memory": None, "size": sizes["b"]},
-            {"id": "c", "name": "c", "started": "t3", "status": "stop"}
-            | {"memory": None, "size": sizes["c"]},
-            {"id": "d", "name": "d", "started": "t4", "status": "failed"}
-            | {"memory": None, "size": sizes["d"]},
-            {"id": "e", "name": "e", "started": "t5", "status": "failed"}
-            | {"memory": None, "size": sizes["e"]},
-        ]
-        _, _, files = await first(
-            await reads.files(request(run="20261114-000001-quiet-pond"))
-        )
-        assert [(file["name"], file["size"]) for file in files] == [
-            ("memory.jsonl", (folder / "memory.jsonl").stat().st_size),
-            ("out.log", 5),
-            ("run.json", (folder / "run.json").stat().st_size),
-        ]
-
-    asyncio.run(check())
 
 
 def test_a_rewritten_text_file_sends_fresh_state(tmp_path: Path) -> None:

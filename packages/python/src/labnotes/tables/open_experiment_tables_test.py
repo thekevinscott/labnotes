@@ -1,20 +1,24 @@
 from collections.abc import Iterator
-from functools import partial
+from contextlib import ExitStack
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
 
-from labnotes.tables.experiments_ddl import experiments_ddl
 from labnotes.tables.open_experiment_tables import open_experiment_tables
-from labnotes.tables.open_tables import BLOCKS, FILES, LOGS, MEMORY, RUN_FILES, RUNS
-from labnotes.tables.read_blocks import read_blocks
-from labnotes.tables.read_experiment import read_experiment
-from labnotes.tables.read_file import read_file
-from labnotes.tables.read_log import read_log
-from labnotes.tables.read_memory import read_memory
-from labnotes.tables.read_run import read_run
-from labnotes.tables.read_run_file import read_run_file
+
+MODULE = "labnotes.tables.open_experiment_tables"
+READERS = [
+    "read_blocks",
+    "read_experiment",
+    "read_file",
+    "read_log",
+    "read_memory",
+    "read_run",
+    "read_run_file",
+]
+DDLS = ["BLOCKS", "FILES", "LOGS", "MEMORY", "RUN_FILES", "RUNS"]
 
 
 def config(**paths: str) -> mock.Mock:
@@ -33,10 +37,16 @@ def config(**paths: str) -> mock.Mock:
 
 @pytest.fixture
 def dirsql() -> Iterator[mock.MagicMock]:
-    with (
-        mock.patch("labnotes.tables.open_experiment_tables.DirSQL") as dir_sql,
-        mock.patch("labnotes.tables.open_experiment_tables.Table", side_effect=dict),
-    ):
+    with ExitStack() as stack:
+        dir_sql = stack.enter_context(mock.patch(f"{MODULE}.DirSQL"))
+        stack.enter_context(mock.patch(f"{MODULE}.Table", side_effect=dict))
+        stack.enter_context(
+            mock.patch(f"{MODULE}.experiments_ddl", lambda config: "experiment ddl")
+        )
+        for name in READERS:
+            stack.enter_context(mock.patch(f"{MODULE}.{name}", mock.Mock(name=name)))
+        for name in DDLS:
+            stack.enter_context(mock.patch(f"{MODULE}.{name}", f"{name} ddl"))
         yield dir_sql
 
 
@@ -68,18 +78,21 @@ def test_globs_each_table_inside_the_experiment(dirsql: mock.MagicMock) -> None:
 
 
 def test_defines_every_table(dirsql: mock.MagicMock) -> None:
-    project = config()
-    open_experiment_tables(project, "exp")
+    open_experiment_tables(config(), "exp")
 
     assert {name: t["ddl"] for name, t in tables(dirsql).items()} == {
-        "files": FILES,
-        "runs": RUNS,
-        "logs": LOGS,
-        "blocks": BLOCKS,
-        "memory": MEMORY,
-        "experiment_configs": experiments_ddl(project),
-        "run_files": RUN_FILES,
+        "files": "FILES ddl",
+        "runs": "RUNS ddl",
+        "logs": "LOGS ddl",
+        "blocks": "BLOCKS ddl",
+        "memory": "MEMORY ddl",
+        "experiment_configs": "experiment ddl",
+        "run_files": "RUN_FILES ddl",
     }
+
+
+def reader(func: str, *args: object, **keywords: object) -> tuple[object, ...]:
+    return (func, args, keywords)
 
 
 def test_reads_each_table_against_the_named_experiment(
@@ -87,27 +100,23 @@ def test_reads_each_table_against_the_named_experiment(
 ) -> None:
     open_experiment_tables(config(), "exp")
 
-    readers = {name: t["on_file"] for name, t in tables(dirsql).items()}
+    readers: dict[str, Any] = {name: t["on_file"] for name, t in tables(dirsql).items()}
     root = Path("/p")
     expected = {
-        "files": partial(read_file, root, "exp/files/", experiment="exp"),
-        "runs": partial(read_run, root, "exp/runs/{run}", experiment="exp"),
-        "logs": partial(read_log, root, "exp/runs/{run}", experiment="exp"),
-        "blocks": partial(read_blocks, root, "exp/runs/{run}", experiment="exp"),
-        "memory": partial(read_memory, root, "exp/runs/{run}", experiment="exp"),
-        "experiment_configs": partial(
-            read_experiment, root, "exp", experiment="exp", defaults={"a": 1}
+        "files": reader("read_file", root, "exp/files/", experiment="exp"),
+        "runs": reader("read_run", root, "exp/runs/{run}", experiment="exp"),
+        "logs": reader("read_log", root, "exp/runs/{run}", experiment="exp"),
+        "blocks": reader("read_blocks", root, "exp/runs/{run}", experiment="exp"),
+        "memory": reader("read_memory", root, "exp/runs/{run}", experiment="exp"),
+        "experiment_configs": reader(
+            "read_experiment", root, "exp", experiment="exp", defaults={"a": 1}
         ),
-        "run_files": partial(read_run_file, root, "exp/runs/{run}", experiment="exp"),
+        "run_files": reader("read_run_file", root, "exp/runs/{run}", experiment="exp"),
     }
-    for name, reader in readers.items():
-        assert isinstance(reader, partial)
-        want = expected[name]
-        assert (reader.func, reader.args, reader.keywords) == (
-            want.func,
-            want.args,
-            want.keywords,
-        )
+    assert {
+        name: (found.func._extract_mock_name(), found.args, found.keywords)
+        for name, found in readers.items()
+    } == expected
 
 
 def test_roots_at_the_deepest_folder_every_path_shares(

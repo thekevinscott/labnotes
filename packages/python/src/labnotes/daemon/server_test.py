@@ -838,6 +838,8 @@ def test_routes_reply_with_json_and_status_by_outcome(tmp_path: Path) -> None:
         )
         assert await answer("POST", "/runs/r7/stop") == (200, {"ok": True})
         controls.kill.assert_called_once_with("r7")
+        assert await answer("POST", "/runs/r8/start") == (200, {"ok": True})
+        controls.start_one.assert_called_once_with("r8")
         assert await answer("POST", "/finish-up") == (200, {"ok": True})
         controls.finish_up.assert_called_once_with()
         assert await answer("POST", "/stop") == (200, {"ok": True})

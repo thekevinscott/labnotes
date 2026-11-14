@@ -85,6 +85,12 @@ STREAMED = (
             "/runs/r7/stop",
             b'{"run":"r7"}',
         ),
+        (
+            {"command": "start_one", "run": "r7"},
+            "POST",
+            "/runs/r7/start",
+            b'{"run":"r7"}',
+        ),
     ],
 )
 def test_command_maps_each_action_to_its_route(

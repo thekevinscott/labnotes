@@ -46,6 +46,13 @@ def test_start_waits_for_slow_daemon_reply_without_losing_discovery(
             with connection:
                 with connection.makefile("rb") as requests:
                     assert requests.readline().startswith(f"POST /{action} ".encode())
+                    length = 0
+                    for line in iter(requests.readline, b"\r\n"):
+                        name, _, value = line.partition(b":")
+                        if name.lower() == b"content-length":
+                            length = int(value)
+                    # Unread request bytes make close() reset the reply away.
+                    requests.read(length)
                 time.sleep(10.5)
                 try:
                     connection.sendall(

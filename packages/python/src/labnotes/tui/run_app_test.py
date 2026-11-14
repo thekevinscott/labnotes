@@ -8,7 +8,6 @@ from unittest import mock
 
 import pytest
 
-from labnotes.daemon.attachment import Attachment
 from labnotes.tui.run_app import NoMatches, RunApp, RunLiveView
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
@@ -1013,8 +1012,7 @@ def test_detached_attach_opens_the_event_stream_and_closes_it(
 ) -> None:
     config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
     app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
-    attachment = mock.create_autospec(Attachment, instance=True)
-    attachment.batches = ["b1", "b2"]
+    attachment = mock.Mock(batches=["b1", "b2"], aclose=mock.AsyncMock())
 
     async def drive() -> None:
         with mock.patch(
@@ -2980,7 +2978,7 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
         assert app.steps == ["Starting up"]
         order.append("ensure")
 
-    def attach():
+    async def attach():
         order.append("attach")
         return []
 
@@ -2996,7 +2994,9 @@ def test_start_attaches_before_requesting_a_fast_batch(tmp_path: Path) -> None:
         mock.patch.object(app, "attach_daemon", new=attach),
         mock.patch("labnotes.tui.run_app.request_start", new=start),
         mock.patch.object(
-            app, "follow_daemon", side_effect=lambda: order.append("follow")
+            app,
+            "follow_daemon",
+            new=mock.AsyncMock(side_effect=lambda: order.append("follow")),
         ),
         mock.patch.object(app, "query_one"),
         mock.patch.object(app, "call_after_refresh"),

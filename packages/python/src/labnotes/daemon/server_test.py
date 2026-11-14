@@ -5,7 +5,6 @@ from collections.abc import Iterator
 from pathlib import Path
 from unittest import mock
 
-import httpx2
 import pytest
 
 from labnotes.daemon.server import (
@@ -470,10 +469,35 @@ def test_server_retries_a_probe_lock_before_binding(
         ):
             await serve_daemon(project, "exp")
         assert flock.call_count == 2
-        sleep.assert_awaited_once_with(0.1)
+        assert sleep.await_args_list[0] == mock.call(0.1)
         assert not record.exists()
 
     asyncio.run(drive())
+
+
+def test_server_accepts_connections_before_its_http_server_starts(
+    tmp_path: Path, paths: tuple[Path, Path, Path]
+) -> None:
+    accepted: list[bool] = []
+
+    async def startup(sockets: list[object]) -> None:
+        _, path, _ = paths
+        _, writer = await asyncio.open_unix_connection(str(path))
+        writer.close()
+        accepted.append(True)
+
+    async def drive() -> None:
+        with (
+            mock.patch("labnotes.daemon.server.fcntl.flock"),
+            mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0),
+            mock.patch("uvicorn.Server") as server,
+        ):
+            server.return_value.startup = mock.AsyncMock(side_effect=startup)
+            server.return_value.shutdown = mock.AsyncMock()
+            await serve_daemon(config(tmp_path), "exp")
+
+    asyncio.run(drive())
+    assert accepted == [True]
 
 
 def test_server_signal_stops_and_closes_early(
@@ -987,17 +1011,20 @@ def test_server_answers_http_on_its_socket_and_ends_streams_on_close(
                 if handlers.call_count == 3:
                     break
                 await asyncio.sleep(0.01)
-            async with httpx2.AsyncClient(
-                transport=httpx2.AsyncHTTPTransport(uds=str(path)),
-                base_url="http://labnotes",
-            ) as client:
-                reply = await client.get("/batches")
-                assert reply.json() == {"ok": True, "batches": []}
-                async with client.stream("GET", "/events") as stream:
-                    lines = stream.aiter_lines()
-                    assert await anext(lines) == "event: batches"
-                    handlers.call_args_list[0].args[1]()
-                    await asyncio.wait_for(serving, timeout=0.9)
+            reader, writer = await asyncio.open_unix_connection(str(path))
+            writer.write(b"GET /batches HTTP/1.1\r\nhost: labnotes\r\n\r\n")
+            assert await reader.readline() == b"HTTP/1.1 200 OK\r\n"
+            await reader.readuntil(b"\r\n\r\n")
+            assert json.loads(await reader.readuntil(b"}")) == {
+                "ok": True,
+                "batches": [],
+            }
+            writer.write(b"GET /events HTTP/1.1\r\nhost: labnotes\r\n\r\n")
+            assert b"event: batches\n" in await reader.readuntil(b"\n\n")
+            handlers.call_args_list[0].args[1]()
+            await asyncio.wait_for(serving, timeout=0.9)
+            assert (await reader.read()).endswith(b"0\r\n\r\n")
+            writer.close()
         assert not path.exists()
 
     asyncio.run(drive())

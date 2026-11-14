@@ -388,6 +388,7 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
         daemon = ExperimentDaemon(config, name)
         listener = socket.socket(socket.AF_UNIX)
         listener.bind(str(path))
+        listener.listen()
         path.chmod(0o600)
         server = uvicorn.Server(
             uvicorn.Config(

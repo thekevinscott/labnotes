@@ -31,7 +31,7 @@ def run_command(
             return_value=record or path.with_suffix(".record"),
         ),
         mock.patch(
-            "labnotes.daemon.command.httpx2.HTTPTransport",
+            "httpx2.HTTPTransport",
             return_value=httpx2.MockTransport(handler),
         ) as transport,
     ):

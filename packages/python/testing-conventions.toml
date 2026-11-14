@@ -2,15 +2,3 @@
 path = "src/labnotes/daemon/socket_path.py"
 rules = ["one-function-per-file"]
 reason = "The small path helpers share one version key and journal location policy; keeping them together prevents the daemon lock, socket and discovery record from drifting apart"
-
-[[python.exempt]]
-path = "src/labnotes/daemon/command.py"
-rules = ["mutation"]
-lines = [47, 57, 63, 65]
-reason = "Equivalent mutants: methods are only GET or POST, events only step or reply, so <=/>= on those literals pick the same branch; is/is not on interned literals matches ==; a reply event always ends the stream, so setting reply on every event leaves the same last value"
-
-[[python.exempt]]
-path = "src/labnotes/daemon/server.py"
-rules = ["mutation"]
-lines = [40, 252, 260, 341]
-reason = "Equivalent mutants: the queue is dropped as soon as it reaches the cap, so < and != never differ (is not is killed by a test with an uncached cap); event names are only step or reply and commands come from literal routes, so <=/is on those interned literals match ==; the cap's size is a tuning value, its behavior is tested with a patched cap"

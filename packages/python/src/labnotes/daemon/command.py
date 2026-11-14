@@ -11,14 +11,10 @@ from labnotes.daemon.socket_path import socket_record
 from labnotes.models import LabnotesConfig
 
 ROUTES = {
-    "batches": ("GET", "/batches"),
-    "start": ("POST", "/start"),
-    "restart": ("POST", "/restart"),
-    "stop_all": ("POST", "/stop"),
-    "finish_up": ("POST", "/finish-up"),
-    "set_concurrency": ("POST", "/concurrency"),
+    "stop_all": "/stop",
+    "finish_up": "/finish-up",
+    "set_concurrency": "/concurrency",
 }
-RUN_ROUTES = {"stop_one": "stop", "start_one": "start"}
 
 
 def command(
@@ -36,34 +32,38 @@ def command(
     if path is None:
         raise ValueError(f"No daemon is running for {name}.")
     action = str(message.get("command"))
-    if action in RUN_ROUTES:
-        method, route = "POST", f"/runs/{message.get('run')}/{RUN_ROUTES[action]}"
-    else:
-        method, route = ROUTES[action]
-    starts = action in ("start", "restart")
-    body = (
-        message.get("options", {})
-        if starts
-        else {key: value for key, value in message.items() if key != "command"}
-    )
+    fields = dict(message)
+    fields.pop("command", None)
+    read: int | None = 10
+    body: object
+    match action:
+        case "batches":
+            method, route, body = "GET", "/batches", None
+        case "start" | "restart":
+            method, route, body = "POST", f"/{action}", message.get("options", {})
+            read = None
+        case "stop_one" | "start_one":
+            run, verb = message.get("run"), action.removesuffix("_one")
+            method, route, body = "POST", f"/runs/{run}/{verb}", fields
+        case _:
+            method, route, body = "POST", ROUTES[action], fields
     reply: object = None
     try:
         with httpx2.Client(
             transport=httpx2.HTTPTransport(uds=str(path)),
             base_url="http://labnotes",
-            timeout=httpx2.Timeout(10, read=None if starts else 10),
+            timeout=httpx2.Timeout(10, read=read),
         ) as client:
-            with client.stream(
-                method, route, json=None if method == "GET" else body
-            ) as response:
+            with client.stream(method, route, json=body) as response:
                 if response.headers.get("content-type", "").startswith(
                     "text/event-stream"
                 ):
                     for event in httpx2.EventSource(response):
-                        if event.event == "step" and progress is not None:
-                            progress(str(event.json()))
-                        if event.event == "reply":
-                            reply = event.json()
+                        match event.event:
+                            case "step" if progress is not None:
+                                progress(str(event.json()))
+                            case "reply":
+                                reply = event.json()
                 else:
                     reply = json.loads(response.read())
     except httpx2.ConnectTimeout as error:

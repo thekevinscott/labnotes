@@ -201,65 +201,66 @@ class ExperimentDaemon:
     ) -> dict[str, object]:
         """Apply one command and provide one success or error reply."""
         action = message.get("command")
-        if action in ("start", "restart"):
-            options = message.get("options", {})
-            if not isinstance(options, dict):
-                return {"ok": False, "error": "options must be an object"}
-            match action:
-                case "restart" if "run_id" not in options:
-                    return {"ok": False, "error": "restart needs run_id"}
-            return await self.start(options, progress)
-        if action == "stop_all":
-            self.stop_all()
-            return {"ok": True}
-        if action == "finish_up":
-            self.finish_up()
-            return {"ok": True}
-        if action == "stop_one":
-            run = message.get("run")
-            if not isinstance(run, str):
-                return {"ok": False, "error": "stop_one needs a run id"}
-            for invocation in self.active.values():
-                if invocation.controls is not None:
-                    invocation.controls.kill(run)
-            return {"ok": True}
-        if action == "start_one":
-            run = message.get("run")
-            if not isinstance(run, str):
-                return {"ok": False, "error": "start_one needs a run id"}
-            for invocation in self.active.values():
-                if invocation.controls is not None:
-                    invocation.controls.start_one(run)
-            return {"ok": True}
-        if action == "set_concurrency":
-            count = message.get("count")
-            if not isinstance(count, int) or count < 1:
-                return {"ok": False, "error": "count must be positive"}
-            batch = message.get("batch")
-            targets = (
-                [self.active[str(batch)]]
-                if batch is not None and str(batch) in self.active
-                else list(self.active.values())
-                if batch is None
-                else []
-            )
-            if not targets:
-                return {"ok": False, "error": "No active invocation"}
-            for invocation in targets:
-                if invocation.controls is not None:
-                    invocation.controls.set_concurrency(count)
-            return {"ok": True}
-        if action == "batches":
-            return {"ok": True, "batches": list(self.active)}
-        return {"ok": False, "error": f"Unknown command {action}"}
+        match action:
+            case "start" | "restart":
+                options = message.get("options", {})
+                if not isinstance(options, dict):
+                    return {"ok": False, "error": "options must be an object"}
+                match action:
+                    case "restart" if "run_id" not in options:
+                        return {"ok": False, "error": "restart needs run_id"}
+                return await self.start(options, progress)
+            case "stop_all":
+                self.stop_all()
+                return {"ok": True}
+            case "finish_up":
+                self.finish_up()
+                return {"ok": True}
+            case "stop_one":
+                run = message.get("run")
+                if not isinstance(run, str):
+                    return {"ok": False, "error": "stop_one needs a run id"}
+                for invocation in self.active.values():
+                    if invocation.controls is not None:
+                        invocation.controls.kill(run)
+                return {"ok": True}
+            case "start_one":
+                run = message.get("run")
+                if not isinstance(run, str):
+                    return {"ok": False, "error": "start_one needs a run id"}
+                for invocation in self.active.values():
+                    if invocation.controls is not None:
+                        invocation.controls.start_one(run)
+                return {"ok": True}
+            case "set_concurrency":
+                count = message.get("count")
+                if not isinstance(count, int) or count < 1:
+                    return {"ok": False, "error": "count must be positive"}
+                batch = message.get("batch")
+                targets = (
+                    [self.active[str(batch)]]
+                    if batch is not None and str(batch) in self.active
+                    else list(self.active.values())
+                    if batch is None
+                    else []
+                )
+                if not targets:
+                    return {"ok": False, "error": "No active invocation"}
+                for invocation in targets:
+                    if invocation.controls is not None:
+                        invocation.controls.set_concurrency(count)
+                return {"ok": True}
+            case "batches":
+                return {"ok": True, "batches": list(self.active)}
+            case _:
+                return {"ok": False, "error": f"Unknown command {action}"}
 
     def report(self, batch: str, event: dict[str, object]) -> None:
         """Retain ordered replay and synchronously publish each stored event."""
         self.history[batch].events.append(event)
         for queue in tuple(self.subscribers):
-            if queue.qsize() < MAX_QUEUED_EVENTS:
-                queue.put_nowait((batch, event))
-            else:
+            queue.put_nowait((batch, event))
+            if queue.qsize() > MAX_QUEUED_EVENTS:
                 self.subscribers.discard(queue)
                 queue.put_nowait(None)
 
@@ -336,10 +337,12 @@ class ExperimentDaemon:
 
         async def stream() -> AsyncIterator[str]:
             while True:
-                name, data = await updates.get()
-                yield sse(data, name)
-                if name == "reply":
-                    return
+                match await updates.get():
+                    case "reply", answer:
+                        yield sse(answer, "reply")
+                        return
+                    case name, data:
+                        yield sse(data, name)
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 

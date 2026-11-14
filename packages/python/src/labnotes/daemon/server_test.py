@@ -1002,13 +1002,28 @@ def test_full_subscriber_is_dropped_and_ended_without_blocking_others(
         daemon.report("batch", second)
     assert daemon.history["batch"].events == [first, second, second]
     assert slow not in daemon.subscribers
-    assert [slow.get_nowait() for _ in range(3)] == [
+    assert [slow.get_nowait() for _ in range(4)] == [
         ("batch", first),
+        ("batch", second),
         ("batch", second),
         None,
     ]
     assert fast in daemon.subscribers
     assert fast.qsize() == 2
+
+
+def test_subscriber_is_dropped_past_the_real_cap(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    full: Queued = asyncio.Queue()
+    for _ in range(99_999):
+        full.put_nowait(None)
+    daemon.subscribers.add(full)
+    daemon.report("batch", {"event": "idle"})
+    assert full in daemon.subscribers
+    daemon.report("batch", {"event": "idle"})
+    assert full not in daemon.subscribers
+    assert full.qsize() == 100_002
 
 
 def test_subscriber_at_a_large_cap_is_dropped(tmp_path: Path) -> None:

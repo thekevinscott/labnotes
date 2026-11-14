@@ -1093,3 +1093,124 @@ def test_start_one_asks_every_active_invocation_to_start_that_run(
         second.start_one.assert_called_once_with("r")
 
     asyncio.run(drive())
+
+
+def started(run: str) -> dict[str, object]:
+    return {"event": "started", "run": run}
+
+
+def joining(result: bool | Exception) -> mock.Mock:
+    restart = mock.AsyncMock(side_effect=[result])
+    return mock.Mock(restart=restart)
+
+
+def listening_start(batch: str) -> mock.Mock:
+    selected = mock.Mock(batch=batch)
+
+    async def run(report, listen):
+        listen(mock.Mock())
+        return []
+
+    selected.side_effect = run
+    return selected
+
+
+def test_lineage_names_the_invocation_a_run_started_in(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["b1"] = Invocation(
+        events=[{"event": "planned", "run": "r0"}, started("r1")], lineage="b1"
+    )
+    daemon.history["b2"] = Invocation(events=[started("r2")], lineage="b1")
+    run = "".join(["r", "2"])
+
+    assert daemon.lineage("r1") == "b1"
+    assert daemon.lineage(run) == "b1"
+    assert daemon.lineage("r0") is None
+    assert daemon.lineage("r3") is None
+    assert Invocation().lineage == ""
+
+
+def test_a_restart_joins_the_live_invocation_of_its_run(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
+        other = joining(True)
+        live = joining(True)
+        daemon.active["other"] = Invocation(controls=other, lineage="x")
+        daemon.active["b2"] = Invocation(controls=live, lineage="b1")
+        with mock.patch("labnotes.daemon.server.start_experiment") as start:
+            reply = await daemon.dispatch(
+                {"command": "restart", "options": {"run_id": "r1"}}
+            )
+        assert reply == {"ok": True, "batch": "b2"}
+        live.restart.assert_awaited_once_with("r1")
+        other.restart.assert_not_called()
+        start.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def test_a_restart_waits_out_a_closing_invocation_then_sets_it_up_again(
+    tmp_path: Path,
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
+        tearing = asyncio.create_task(asyncio.sleep(0.01))
+        closing = joining(False)
+        daemon.active["preparing"] = Invocation(lineage="b1")
+        daemon.active["b1"] = Invocation(controls=closing, task=tearing, lineage="b1")
+        daemon.active["taskless"] = Invocation(controls=joining(False), lineage="b1")
+        steps: list[str] = []
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment",
+            return_value=listening_start("b3"),
+        ) as start:
+            reply = await daemon.dispatch(
+                {"command": "restart", "options": {"run_id": "r1"}}, steps.append
+            )
+        assert reply == {"ok": True, "batch": "b3"}
+        assert tearing.done()
+        assert steps == ["Waiting for teardown"]
+        assert start.call_args.args[10] == "r1"
+        assert daemon.history["b3"].lineage == "b1"
+
+    asyncio.run(drive())
+
+
+@pytest.mark.parametrize("options", [{}, {"run_id": "elsewhere"}])
+def test_a_start_outside_any_live_lineage_begins_its_own(
+    tmp_path: Path, options: dict[str, object]
+) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
+        live = joining(True)
+        daemon.active["b1"] = Invocation(controls=live, lineage="b1")
+        with mock.patch(
+            "labnotes.daemon.server.start_experiment",
+            return_value=listening_start("b2"),
+        ):
+            reply = await daemon.start(options)
+        assert reply == {"ok": True, "batch": "b2"}
+        assert daemon.history["b2"].lineage == "b2"
+        live.restart.assert_not_called()
+
+    asyncio.run(drive())
+
+
+def test_a_rejected_restart_replies_with_its_error(tmp_path: Path) -> None:
+    async def drive() -> None:
+        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
+        daemon.active["b1"] = Invocation(
+            controls=joining(ValueError("Run r1 has not failed.")), lineage="b1"
+        )
+        with mock.patch("labnotes.daemon.server.start_experiment") as start:
+            reply = await daemon.dispatch(
+                {"command": "restart", "options": {"run_id": "r1"}}
+            )
+        assert reply == {"ok": False, "error": "Run r1 has not failed."}
+        start.assert_not_called()
+
+    asyncio.run(drive())

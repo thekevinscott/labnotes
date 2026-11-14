@@ -1,4 +1,4 @@
-from collections.abc import Callable, Coroutine
+from collections.abc import Awaitable, Callable, Coroutine
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, Protocol
@@ -10,6 +10,10 @@ from labnotes.retries import DEFAULT_RETRIES, RETRY_SECONDS
 Report = Callable[[dict[str, object]], None]
 
 
+async def no_restart(run: str) -> bool:
+    return False
+
+
 @dataclass(frozen=True)
 class Controls:
     interrupt: Callable[[], None]
@@ -18,6 +22,7 @@ class Controls:
     finish: Callable[[], None]
     finish_up: Callable[[], None]
     start_one: Callable[[str], None]
+    restart: Callable[[str], Awaitable[bool]] = no_restart
 
 
 Listen = Callable[[Controls], None]

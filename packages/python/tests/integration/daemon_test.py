@@ -264,6 +264,10 @@ def test_restart_command_runs_a_failed_cell_again(
         assert len(records) == 1
         failed = json.loads(records[0].read_text())
         assert failed["exit_code"] == 1
+        for _ in range(100):
+            if daemon_request(path, "GET", "/batches")["batches"] == []:
+                break
+            time.sleep(0.05)
         answer = daemon_request(
             path, "POST", "/restart", {"run_id": records[0].parent.name}
         )

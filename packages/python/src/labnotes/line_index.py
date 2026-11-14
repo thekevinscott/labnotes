@@ -40,7 +40,7 @@ class LineIndex:
         block = bisect_left(self.breaks, line) - 1
         offset = block * BLOCK
         file.seek(offset)
-        data = file.read(min(BLOCK, self.scanned - offset))  # probe
+        data = file.read(min(BLOCK, self.scanned - offset))
         at = -1
         for _ in range(line - self.breaks[block]):
             at = data.index(b"\n", at + 1)

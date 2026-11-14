@@ -611,7 +611,7 @@ class RunApp(ViewSwitcher, App[None]):
         if self.daemon_request is not None:
             self.query_one("#startup").display = True
             self.query_one(ContentSwitcher).display = False
-            self.startup_timer = self.set_interval(0.1, self.spin_startup)  # probe
+            self.startup_timer = self.set_interval(0.1, self.spin_startup)
             self.run_worker(self.start_daemon_run())
         elif self.daemon_batch is not None or self.attach:
             try:

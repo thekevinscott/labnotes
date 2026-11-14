@@ -1,6 +1,7 @@
 import asyncio
 import codecs
 import json
+import os
 from collections.abc import AsyncIterator, Callable
 from pathlib import Path
 from types import SimpleNamespace
@@ -181,11 +182,14 @@ def test_runs_names_each_run_without_its_stamp_and_follows_run_tables() -> None:
     ]
 
 
-def test_files_of_an_unknown_run_is_not_found() -> None:
-    reads = Reads(Path("/"), fake(queries=[[]]))
-    response = asyncio.run(reads.files(request(run="nope")))
-    assert isinstance(response, JSONResponse)
-    assert response.status_code == 404
+def test_a_path_with_no_known_run_before_files_is_not_found() -> None:
+    tables = fake(queries=[[], []])
+    reads = Reads(Path("/"), tables)
+    for path in ("nope/files", "files", "r/stop"):
+        response = asyncio.run(reads.run_path(request(path=path)))
+        assert isinstance(response, JSONResponse)
+        assert response.status_code == 404
+    assert [call.args[1] for call in tables.query.await_args_list] == [["nope"]]
 
 
 def test_files_lists_names_sizes_and_mtimes_under_the_run_folder() -> None:
@@ -197,7 +201,7 @@ def test_files_lists_names_sizes_and_mtimes_under_the_run_folder() -> None:
     )
     reads = Reads(Path("/"), tables)
     with mock.patch.object(reads, "follow") as follow:
-        asyncio.run(reads.files(request(run="r")))
+        asyncio.run(reads.run_path(request(path="r/files")))
     [(_, rows, key, kind, names)] = [call.args for call in follow.call_args_list]
     assert (key, kind, set(names)) == ("name", "file", {"run_files"})
     assert asyncio.run(rows()) == [
@@ -207,26 +211,49 @@ def test_files_lists_names_sizes_and_mtimes_under_the_run_folder() -> None:
     assert tables.query.await_args_list[1].args[1] == {"folder": "exp/runs/r"}
 
 
-def test_file_of_an_unknown_run_or_file_is_not_found() -> None:
-    missing_run = Reads(Path("/"), fake(queries=[[]]))
-    response = asyncio.run(missing_run.file(request(run="r", file="a")))
+def test_an_unlisted_file_is_not_found() -> None:
+    tables = fake(queries=[[{"folder": "exp/runs/r"}], []])
+    reads = Reads(Path("/"), tables)
+    response = asyncio.run(reads.run_path(request(path="r/files/a")))
     assert response.status_code == 404
-    missing_file = Reads(Path("/"), fake(queries=[[{"folder": "exp/runs/r"}], []]))
-    response = asyncio.run(missing_file.file(request(run="r", file="a")))
-    assert response.status_code == 404
-    assert missing_file.tables.query.await_args_list[1].args == (
+    assert tables.query.await_args_list[1].args == (
         "SELECT 1 FROM run_files WHERE path = ?",
         ["exp/runs/r/a"],
     )
 
 
-def test_file_streams_the_named_file(tmp_path: Path) -> None:
-    (tmp_path / "exp/runs/r").mkdir(parents=True)
-    (tmp_path / "exp/runs/r/out.log").write_text("hi\n")
-    reads = Reads(tmp_path, fake(queries=[[{"folder": "exp/runs/r"}], [{"1": 1}]]))
-    response = asyncio.run(reads.file(request(run="r", file="out.log")))
+def test_a_file_under_a_files_folder_belongs_to_the_first_known_run(
+    tmp_path: Path,
+) -> None:
+    (tmp_path / "exp/runs/r/artifacts/files").mkdir(parents=True)
+    (tmp_path / "exp/runs/r/artifacts/files/result.txt").write_text("hi\n")
+    tables = fake(queries=[[{"folder": "exp/runs/r"}], [{"1": 1}]])
+    reads = Reads(tmp_path, tables)
+    response = asyncio.run(
+        reads.run_path(request(path="r/files/artifacts/files/result.txt"))
+    )
     assert asyncio.run(drain(response)) == [
-        ("state", "3", {"name": "out.log", "size": 3, "text": "hi\n"})
+        (
+            "state",
+            "3",
+            {"name": "artifacts/files/result.txt", "size": 3, "text": "hi\n"},
+        )
+    ]
+    assert [call.args[1] for call in tables.query.await_args_list] == [
+        ["r"],
+        ["exp/runs/r/artifacts/files/result.txt"],
+    ]
+
+
+def test_a_run_id_may_hold_a_files_segment() -> None:
+    tables = fake(queries=[[], [{"folder": "exp/runs/a/files/b"}], [{"1": 1}]])
+    reads = Reads(Path("/"), tables)
+    with mock.patch.object(reads, "follow_file") as follow:
+        asyncio.run(reads.run_path(request("7", path="a/files/b/files/x")))
+    follow.assert_called_once_with("exp/runs/a/files/b/x", "x", "7")
+    assert [call.args[1] for call in tables.query.await_args_list][:2] == [
+        ["a"],
+        ["a/files/b"],
     ]
 
 
@@ -388,3 +415,84 @@ def test_runs_and_files_query_real_tables(tmp_path: Path) -> None:
         ]
 
     asyncio.run(check())
+
+
+def test_a_rewritten_text_file_sends_fresh_state(tmp_path: Path) -> None:
+    log = tmp_path / "run.json"
+    log.write_bytes(b"aaaa\n")
+
+    def replace(data: bytes) -> Callable[[], object]:
+        def swap() -> None:
+            fresh = tmp_path / "fresh"
+            fresh.write_bytes(data)
+            fresh.replace(log)
+
+        return swap
+
+    events = follow_file(
+        tmp_path,
+        "run.json",
+        [
+            (lambda: log.write_bytes(b"bbbb\n"), change("run_files", "run.json")),
+            (lambda: log.write_bytes(b"cccc\nmore\n"), change("run_files", "run.json")),
+            (replace(b"cccc\nmore\n"), change("run_files", "run.json")),
+        ],
+    )
+
+    assert events == [
+        ("state", "5", {"name": "run.json", "size": 5, "text": "aaaa\n"}),
+        ("state", "5", {"name": "run.json", "size": 5, "text": "bbbb\n"}),
+        ("state", "10", {"name": "run.json", "size": 10, "text": "cccc\nmore\n"}),
+        ("state", "10", {"name": "run.json", "size": 10, "text": "cccc\nmore\n"}),
+    ]
+
+
+def test_a_resumed_text_file_appends_what_it_missed_then_follows(
+    tmp_path: Path,
+) -> None:
+    log = tmp_path / "out.log"
+    log.write_bytes(b"one\ntwo\n")
+    events = follow_file(
+        tmp_path,
+        "out.log",
+        [(lambda: log.open("ab").write(b"three\n"), change("run_files", "out.log"))],
+        "4",
+    )
+    assert events == [
+        ("append", "8", {"text": "two\n"}),
+        ("append", "14", {"text": "three\n"}),
+    ]
+
+
+def test_a_removed_binary_file_says_so_and_ends(tmp_path: Path) -> None:
+    image = tmp_path / "plot.png"
+    image.write_bytes(b"\x89PNG\0")
+    events = follow_file(
+        tmp_path,
+        "plot.png",
+        [
+            (nothing, change("logs", "plot.png")),
+            (image.unlink, change("run_files", None, "plot.png")),
+            (nothing, change("run_files", "plot.png")),
+        ],
+    )
+    assert events == [
+        ("state", "5", {"name": "plot.png", "size": 5, "type": "image/png"}),
+        ("remove", "5", {"name": "plot.png"}),
+    ]
+
+
+def test_a_binary_rewritten_at_the_same_size_sends_state(tmp_path: Path) -> None:
+    image = tmp_path / "plot.png"
+    image.write_bytes(b"\x89PNG\0")
+
+    def rewrite() -> None:
+        image.write_bytes(b"\x89PNG\1")
+        os.utime(image, ns=(1, 1))
+
+    events = follow_file(
+        tmp_path, "plot.png", [(rewrite, change("run_files", "plot.png"))], "5"
+    )
+    assert events == [
+        ("state", "5", {"name": "plot.png", "size": 5, "type": "image/png"})
+    ]

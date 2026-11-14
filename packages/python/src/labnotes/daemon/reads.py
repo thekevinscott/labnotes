@@ -4,6 +4,7 @@ import codecs
 import hashlib
 import json
 import mimetypes
+import os
 import re
 from collections.abc import AsyncIterator, Awaitable, Callable, Collection
 from pathlib import Path
@@ -19,6 +20,7 @@ from labnotes.tables.iso_time import iso_time
 
 TAIL_BYTES = 64 * 1024
 SNIFF_BYTES = 8192
+MARK_BYTES = 64
 STAMP = re.compile(r"^\d{8}-\d{6}-")
 RUNS = """
 SELECT
@@ -54,8 +56,7 @@ class Reads:
         self.tables = tables
         self.routes = [
             Route("/runs", self.runs),
-            Route("/runs/{run:path}/files/{file:path}", self.file),
-            Route("/runs/{run:path}/files", self.files),
+            Route("/runs/{path:path}", self.run_path),
         ]
 
     async def runs(self, request: Request) -> Response:
@@ -68,11 +69,22 @@ class Reads:
 
         return self.follow(request, rows, "id", "run", {"runs", "memory", "run_files"})
 
-    async def files(self, request: Request) -> Response:
-        folder = await self.folder(request.path_params["run"])
-        if folder is None:
-            return JSONResponse(MISSING, 404)
+    async def run_path(self, request: Request) -> Response:
+        """Split the path at the first `files` segment that follows a known run."""
+        parts = request.path_params["path"].split("/")
+        for at in range(1, len(parts)):
+            if parts[at] != "files":
+                continue
+            folder = await self.folder("/".join(parts[:at]))
+            if folder is None:
+                continue
+            name = "/".join(parts[at + 1 :])
+            if not name:
+                return self.files(request, folder)
+            return await self.file(request, folder, name)
+        return JSONResponse(MISSING, 404)
 
+    def files(self, request: Request, folder: str) -> Response:
         async def rows() -> list[dict[str, Any]]:
             found = await self.tables.query(FILES, {"folder": folder})
             return [
@@ -86,11 +98,9 @@ class Reads:
 
         return self.follow(request, rows, "name", "file", {"run_files"})
 
-    async def file(self, request: Request) -> Response:
-        name = request.path_params["file"]
-        folder = await self.folder(request.path_params["run"])
+    async def file(self, request: Request, folder: str, name: str) -> Response:
         relative = f"{folder}/{name}"
-        if folder is None or not await self.tables.query(
+        if not await self.tables.query(
             "SELECT 1 FROM run_files WHERE path = ?", [relative]
         ):
             return JSONResponse(MISSING, 404)
@@ -136,61 +146,91 @@ class Reads:
         await self.tables.ready()
         changes = self.tables.watch()
         path = self.root / relative
-        size = path.stat().st_size
+        stat = path.stat()
         with path.open("rb") as handle:
             binary = self.binary(handle.read(SNIFF_BYTES))
-        kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
-        fed = size
+
+        async def touched() -> AsyncIterator[os.stat_result | None]:
+            async for change in changes:
+                if self.touches(change, relative):
+                    try:
+                        yield path.stat()
+                    except FileNotFoundError:
+                        yield None
+
         if binary:
-            if last != str(size):
+            kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
+            seen = (stat.st_size, stat.st_mtime_ns)
+            if last != str(stat.st_size):
                 yield sse(
-                    {"name": name, "size": size, "type": kind}, "state", str(size)
+                    {"name": name, "size": stat.st_size, "type": kind},
+                    "state",
+                    str(stat.st_size),
                 )
-        elif last is not None and last.isdigit() and int(last) <= size:
-            fed = int(last)
-            text = decoder.decode(self.read(path, fed, size))
-            fed = size
-            if text:
-                yield sse({"text": text}, "append", self.offset(fed, decoder))
+            async for found in touched():
+                if found is None:
+                    yield sse({"name": name}, "remove", str(seen[0]))
+                    return
+                if (found.st_size, found.st_mtime_ns) != seen:
+                    seen = (found.st_size, found.st_mtime_ns)
+                    yield sse(
+                        {"name": name, "size": found.st_size, "type": kind},
+                        "state",
+                        str(found.st_size),
+                    )
+            return
+        decoder = codecs.getincrementaldecoder("utf-8")("replace")
+        inode = stat.st_ino
+        start = int(last) if last is not None and last.isdigit() else -1
+        resumed = 0 <= start <= stat.st_size
+        if resumed:
+            fed = start
         else:
-            text = self.tail(path, size, decoder)
+            fed = stat.st_size
+            text = self.tail(path, fed, decoder)
             yield sse(
-                {"name": name, "size": size, "text": text},
+                {"name": name, "size": fed, "text": text},
                 "state",
                 self.offset(fed, decoder),
             )
-        async for change in changes:
-            if change.table != "run_files" or relative not in (
-                (change.row or {}).get("path"),
-                (change.old_row or {}).get("path"),
-            ):
-                continue
-            try:
-                grown = path.stat().st_size
-            except FileNotFoundError:
+        mark = self.read(path, max(0, fed - MARK_BYTES), fed)
+
+        async def updates() -> AsyncIterator[os.stat_result | None]:
+            if resumed:
+                yield stat
+            async for found in touched():
+                yield found
+
+        async for found in updates():
+            if found is None:
                 yield sse({"name": name}, "remove", self.offset(fed, decoder))
                 return
-            if binary:
-                if grown != size:
-                    size = grown
-                    yield sse(
-                        {"name": name, "size": size, "type": kind}, "state", str(size)
-                    )
-            elif grown < fed:
+            if (
+                found.st_ino != inode
+                or found.st_size < fed
+                or self.read(path, max(0, fed - MARK_BYTES), fed) != mark
+            ):
                 decoder.reset()
-                fed = grown
-                text = self.tail(path, grown, decoder)
+                inode, fed = found.st_ino, found.st_size
+                text = self.tail(path, fed, decoder)
                 yield sse(
-                    {"name": name, "size": grown, "text": text},
+                    {"name": name, "size": fed, "text": text},
                     "state",
                     self.offset(fed, decoder),
                 )
-            elif grown > fed:
-                text = decoder.decode(self.read(path, fed, grown))
-                fed = grown
+            elif found.st_size > fed:
+                text = decoder.decode(self.read(path, fed, found.st_size))
+                fed = found.st_size
                 if text:
                     yield sse({"text": text}, "append", self.offset(fed, decoder))
+            mark = self.read(path, max(0, fed - MARK_BYTES), fed)
+
+    @staticmethod
+    def touches(change: Any, relative: str) -> bool:
+        return change.table == "run_files" and relative in (
+            (change.row or {}).get("path"),
+            (change.old_row or {}).get("path"),
+        )
 
     def tail(self, path: Path, size: int, decoder: codecs.IncrementalDecoder) -> str:
         start = max(0, size - TAIL_BYTES)

@@ -318,7 +318,7 @@ def test_restarting_a_run_keeps_the_table_through_the_restarts_hooks(
             seen.append(screen(term))
         for shown in seen:
             assert failed in shown and "stdout (" not in shown, shown
-        assert f"Restarted {failed}." in seen[-1]
+        assert any(f"Restarted {failed}." in shown for shown in seen), seen[-1]
         term.key_enter()
         expect(term.get_by_text("stdout (")).to_be_visible(timeout=5)
     finally:

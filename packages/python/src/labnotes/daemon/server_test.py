@@ -1135,9 +1135,11 @@ def test_a_restart_joins_the_live_invocation_of_its_run(tmp_path: Path) -> None:
         daemon = ExperimentDaemon(config(tmp_path), "exp")
         daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
         other = joining(True)
+        earlier = joining(True)
         live = joining(True)
         daemon.active["other"] = Invocation(controls=other, lineage="x")
-        daemon.active["b2"] = Invocation(controls=live, lineage="b1")
+        daemon.active["earlier"] = Invocation(controls=earlier, lineage="a")
+        daemon.active["b2"] = Invocation(controls=live, lineage="".join(["b", "1"]))
         with mock.patch("labnotes.daemon.server.start_experiment") as start:
             reply = await daemon.dispatch(
                 {"command": "restart", "options": {"run_id": "r1"}}
@@ -1145,6 +1147,7 @@ def test_a_restart_joins_the_live_invocation_of_its_run(tmp_path: Path) -> None:
         assert reply == {"ok": True, "batch": "b2"}
         live.restart.assert_awaited_once_with("r1")
         other.restart.assert_not_called()
+        earlier.restart.assert_not_called()
         start.assert_not_called()
 
     asyncio.run(drive())

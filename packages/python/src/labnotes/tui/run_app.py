@@ -229,9 +229,10 @@ class RunLiveView(Widget):
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
             case "setting up" | "tearing down" if "folder" in event:
-                if event["event"] == "setting up":
-                    self.idle = False
-                    self.panel("teardown").reset()
+                match event["event"]:
+                    case "setting up":
+                        self.idle = False
+                        self.panel("teardown").reset()
                 panel = self.panel(str(event["hook"]))
                 panel.start(Path(str(event["folder"])), self.since(event))
                 self.advance(panel.hook)

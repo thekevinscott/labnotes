@@ -77,6 +77,7 @@ class ExperimentDaemon:
                 Route("/finish-up", self.finish_up_route, methods=["POST"]),
                 Route("/concurrency", self.concurrency, methods=["POST"]),
                 Route("/runs/{run}/stop", self.stop_one, methods=["POST"]),
+                Route("/runs/{run}/start", self.start_one, methods=["POST"]),
             ]
         )
 
@@ -301,6 +302,9 @@ class ExperimentDaemon:
 
     async def stop_one(self, request: Request) -> Response:
         return await self.reply({"command": "stop_one", **request.path_params})
+
+    async def start_one(self, request: Request) -> Response:
+        return await self.reply({"command": "start_one", **request.path_params})
 
     async def concurrency(self, request: Request) -> Response:
         body = await self.read_body(request)

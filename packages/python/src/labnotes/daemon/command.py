@@ -18,6 +18,7 @@ ROUTES = {
     "finish_up": ("POST", "/finish-up"),
     "set_concurrency": ("POST", "/concurrency"),
 }
+RUN_ROUTES = {"stop_one": "stop", "start_one": "start"}
 
 
 def command(
@@ -35,7 +36,10 @@ def command(
     if path is None:
         raise ValueError(f"No daemon is running for {name}.")
     action = str(message.get("command"))
-    method, route = ROUTES.get(action, ("POST", f"/runs/{message.get('run')}/stop"))
+    if action in RUN_ROUTES:
+        method, route = "POST", f"/runs/{message.get('run')}/{RUN_ROUTES[action]}"
+    else:
+        method, route = ROUTES[action]
     starts = action in ("start", "restart")
     body = (
         message.get("options", {})

@@ -13,3 +13,8 @@ def test_sse_names_the_event_when_given() -> None:
 
 def test_sse_keeps_newlines_inside_one_data_line() -> None:
     assert sse("a\nb") == 'data: "a\\nb"\n\n'
+
+
+def test_sse_carries_an_id_after_the_name() -> None:
+    assert sse([], "state", "ab12") == "event: state\nid: ab12\ndata: []\n\n"
+    assert sse(1, id="7") == "id: 7\ndata: 1\n\n"

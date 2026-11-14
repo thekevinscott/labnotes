@@ -21,6 +21,7 @@ from starlette.routing import Route
 from starlette.types import Receive, Scope, Send
 
 from labnotes.daemon.listening import listening
+from labnotes.daemon.reads import Reads
 from labnotes.daemon.sse import sse
 from labnotes.daemon.socket_path import (
     discovery_folder,
@@ -31,6 +32,7 @@ from labnotes.daemon.socket_path import (
 from labnotes.models import Controls, LabnotesConfig
 from labnotes.runner.stamp_event import stamp_event
 from labnotes.runner.start_experiment import start_experiment
+from labnotes.tables.open_experiment_tables import open_experiment_tables
 
 IDLE_SECONDS = 5.0
 LIVE_STATE_NOTE = (
@@ -56,7 +58,9 @@ class Invocation:
 class ExperimentDaemon:
     """Serve commands while cells run or a client remains attached."""
 
-    def __init__(self, config: LabnotesConfig, name: str) -> None:
+    def __init__(
+        self, config: LabnotesConfig, name: str, reads: Reads | None = None
+    ) -> None:
         self.config = config
         self.name = name
         self.active: dict[str, Invocation] = {}
@@ -78,6 +82,7 @@ class ExperimentDaemon:
                 Route("/concurrency", self.concurrency, methods=["POST"]),
                 Route("/runs/{run}/stop", self.stop_one, methods=["POST"]),
                 Route("/runs/{run}/start", self.start_one, methods=["POST"]),
+                *([] if reads is None else reads.routes),
             ]
         )
 
@@ -399,7 +404,9 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
         if listening(path):
             return
         path.unlink(missing_ok=True)
-        daemon = ExperimentDaemon(config, name)
+        daemon = ExperimentDaemon(
+            config, name, Reads(config.root, open_experiment_tables(config, name))
+        )
         listener = socket.socket(socket.AF_UNIX)
         listener.bind(str(path))
         listener.listen()

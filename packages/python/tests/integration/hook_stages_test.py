@@ -307,12 +307,13 @@ def test_restarting_a_run_keeps_the_table_through_the_restarts_hooks(
         expect(term.get_by_text("✗ exited 1")).to_be_visible(timeout=30)
         rows = screen(term).splitlines()
         [failed] = [row.split()[1] for row in rows if "✗ exited 1" in row]
+        before = {word for row in rows for word in row.split()}
         cursor = [row.split()[1] for row in rows if row.split()[:1] == ["1"]]
         if cursor != [failed]:
             term.key_down()
         term.write("r")
         seen = [screen(term)]
-        while not running_row(seen[-1], "3"):
+        while not running_new_run(seen[-1], before):
             assert len(seen) < 400, seen[-1]
             time.sleep(0.05)
             seen.append(screen(term))
@@ -329,8 +330,11 @@ def screen(term: Terminal) -> str:
     return "\n".join("".join(row) for row in term.get_viewable_buffer())
 
 
-def running_row(shown: str, label: str) -> bool:
+def running_new_run(shown: str, before: set[str]) -> bool:
     return any(
-        row.split()[:1] == [label] and any(spin in row.split() for spin in "|/-\\")
+        word[:8].isdigit()
+        and word not in before
+        and any(spin in row.split() for spin in "|/-\\")
         for row in shown.splitlines()
+        for word in row.split()
     )

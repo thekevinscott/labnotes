@@ -3,6 +3,7 @@ from pathlib import Path
 
 LOG_ENV = "LABNOTES_LOG"
 RUN_ENV = "LABNOTES_RUN"
+INVOCATION_ENV = "LABNOTES_INVOCATION"
 
 
 def log_path() -> Path | None:

@@ -11,9 +11,12 @@ from unittest import mock
 import pytest
 
 from labnotes.cli import main
+from labnotes.default_counts import DEFAULT_COUNTS
+from labnotes.read_config import read_config
+from labnotes.tables.list_experiment_runs import list_experiment_runs
+from labnotes.tables.open_tables import open_tables
 from conftest import run_tui_command
 from labnotes.models import Controls
-from labnotes.read_config import read_config
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
@@ -101,15 +104,15 @@ def labnotes(root: Path, argv: list[str]) -> int | str | None:
     return exit_info.value.code
 
 
-def counted(root: Path, capsys: pytest.CaptureFixture[str]) -> dict[str, object]:
-    capsys.readouterr()
-    labnotes(root, ["experiments", "exp", "runs", "--format", "json"])
-    return {run["id"]: run["counted"] for run in json.loads(capsys.readouterr().out)}
+def counted(root: Path) -> dict[str, object]:
+    async def read() -> list[dict[str, Any]]:
+        tables = open_tables(read_config(root / ".labnotes.toml"))
+        return await list_experiment_runs(tables, "exp", DEFAULT_COUNTS)
+
+    return {run["id"]: run["counted"] for run in asyncio.run(read())}
 
 
-def test_retries_a_tempfail_into_a_new_folder_that_links_back(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_retries_a_tempfail_into_a_new_folder_that_links_back(tmp_path: Path) -> None:
     root = make_project(tmp_path, "75")
 
     run_now(root)
@@ -119,7 +122,7 @@ def test_retries_a_tempfail_into_a_new_folder_that_links_back(
     assert first["params"] == second["params"] == {"m": "a"}
     assert "retry_of" not in first
     assert second["retry_of"] == first["id"]
-    assert counted(root, capsys) == {first["id"]: 0, second["id"]: 1}
+    assert counted(root) == {first["id"]: 0, second["id"]: 1}
 
 
 def test_summary_counts_a_retry_that_passes(
@@ -134,9 +137,7 @@ def test_summary_counts_a_retry_that_passes(
     assert capsys.readouterr().out.endswith("1 passed, 0 failed. 1 retried.\n")
 
 
-def test_retries_fill_a_matrix_without_extra_replicates(
-    tmp_path: Path, capsys: pytest.CaptureFixture[str]
-) -> None:
+def test_retries_fill_a_matrix_without_extra_replicates(tmp_path: Path) -> None:
     root = make_project(tmp_path, "75", "repeats = 2\n")
 
     run_now(root)
@@ -147,7 +148,7 @@ def test_retries_fill_a_matrix_without_extra_replicates(
     tempfail = {run["id"]: run["exit_code"] for run in recorded}
     assert sorted(tempfail.values()) == [0, 0, 75]
     assert tempfail[retry["retry_of"]] == 75
-    assert sorted(counted(root, capsys).values()) == [0, 1, 1]
+    assert sorted(counted(root).values()) == [0, 1, 1]
     assert [event["event"] for event in events] == ["planned", "idle"]
 
 

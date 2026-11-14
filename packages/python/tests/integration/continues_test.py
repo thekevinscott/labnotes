@@ -436,3 +436,30 @@ def test_each_invocation_keeps_the_commit_and_patch_it_ran_with(
         assert invocation["patch"] == f"git-diff-{stamp}.patch"
         assert (folder / f"git-sha-{stamp}.txt").read_text() == sha
     assert not (folder / "git-diff.patch").exists()
+
+
+def test_each_invocations_blocks_carry_its_invocation(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "1")
+    write(
+        root / "script.py",
+        "import os, sys\n"
+        "from pathlib import Path\n"
+        "from labnotes import log\n"
+        'state = Path(os.environ["LABNOTES_RUN"]) / "state.txt"\n'
+        "first = not state.exists()\n"
+        'state.write_text("x")\n'
+        'log({"id": "t1", "phase": "start" if first else "delta", "content": "x"})\n'
+        "sys.exit(1 if first else 0)\n",
+    )
+
+    run(root)
+    run(root)
+
+    [(folder, record)] = folders(root).items()
+    stamps = [
+        i["stdout"].removeprefix("stdout-").removesuffix(".txt")
+        for i in record["invocations"]
+    ]
+    lines = (folder / "log.jsonl").read_text().splitlines()
+    assert [json.loads(line)["invocation"] for line in lines] == stamps
+    assert stamps[0] != stamps[1]

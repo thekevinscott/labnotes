@@ -212,7 +212,7 @@ Setup gets no folder placeholders. `{run_dir}` or `{invocation_dir}` in the comm
 
 `--setup COMMAND` on the command line overrides it. Set it in [`[experiment]`](#experiment) in `.labnotes.toml` to apply it to every experiment; an `experiment.toml` that sets it wins.
 
-Stopping the invocation during setup doesn't stop the setup command. Once it finishes, no run starts and teardown runs.
+Stopping the invocation during setup sends the setup command SIGTERM, the same as a running script, and a second stop kills it. No run starts, and teardown runs once setup has exited.
 
 ### `teardown`
 
@@ -352,7 +352,7 @@ runs = "uv run views/runs.py"
 - Type: string, a SQL condition over `runs`
 - Default: `exit_code = 0 AND NOT coalesce(run ->> 'excluded', false)`
 
-Which runs count toward `repeats`. `labnotes experiments NAME runs --format table` shows the result as `counted`.
+Which runs count toward `repeats`.
 
 ### `from`
 

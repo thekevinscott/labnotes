@@ -91,3 +91,16 @@ def test_highlights_the_selected_part_of_a_line(
         )
 
     mounted("abcdef\n", check)(tmp_path)
+
+
+def test_shows_carriage_return_lines_as_a_terminal_would(tmp_path: Path) -> None:
+    def check(log: StreamLog) -> None:
+        assert log.count == 4
+        assert [texts(log.wrap(line)) for line in range(4)] == [
+            ["crlf"],
+            ["st 2"],
+            ["done"],
+            ["hi  "],
+        ]
+
+    mounted("crlf\r\nst 0\rst 1\rst 2\r\ndone\r\n\x1b]0;title\x07hi\n", check)(tmp_path)

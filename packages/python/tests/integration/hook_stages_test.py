@@ -1,6 +1,7 @@
 import re
 import shlex
 import sys
+import time
 from collections.abc import Iterator
 from pathlib import Path
 
@@ -277,3 +278,60 @@ def test_stop_during_setup_interrupts_the_setup_hook(terminal, tmp_path: Path) -
     assert (tmp_path / "term").exists()
     assert (tmp_path / "down").exists()
     assert not list(tmp_path.glob("exp/runs/*/run.json"))
+
+
+def test_restarting_a_run_keeps_the_table_through_the_restarts_hooks(
+    terminal, tmp_path: Path
+) -> None:
+    once = tmp_path / "fail-once"
+    once.write_text("")
+    release = tmp_path / "release"
+    command = script(
+        tmp_path,
+        "cell",
+        "from pathlib import Path\n"
+        "try:\n"
+        f"    Path({str(once)!r}).unlink()\n"
+        "    sys.exit(1)\n"
+        "except FileNotFoundError:\n"
+        "    pass\n"
+        f"while not Path({str(release)!r}).exists():\n"
+        "    time.sleep(0.05)\n",
+    )
+    setup = script(
+        tmp_path, "setup", "time.sleep(1)\nprint('setting up', flush=True)\n"
+    )
+    hooks = f"setup = '''{setup}'''\nteardown = '''{QUICK}'''\nconcurrency = 3\n"
+    term = run_tui(terminal, tmp_path, hooks, command)
+    try:
+        expect(term.get_by_text("✗ exited 1")).to_be_visible(timeout=30)
+        rows = screen(term).splitlines()
+        [failed] = [row.split()[1] for row in rows if "✗ exited 1" in row]
+        cursor = [row.split()[1] for row in rows if row.split()[:1] == ["1"]]
+        if cursor != [failed]:
+            term.key_down()
+        term.write("r")
+        seen = [screen(term)]
+        while not running_row(seen[-1], "3"):
+            assert len(seen) < 400, seen[-1]
+            time.sleep(0.05)
+            seen.append(screen(term))
+        for shown in seen:
+            assert failed in shown and "stdout (" not in shown, shown
+        assert f"Restarted {failed}." in seen[-1]
+        term.key_enter()
+        expect(term.get_by_text("stdout (")).to_be_visible(timeout=5)
+    finally:
+        release.write_text("")
+    quit_tui(term)
+
+
+def screen(term: Terminal) -> str:
+    return "\n".join("".join(row) for row in term.get_viewable_buffer())
+
+
+def running_row(shown: str, label: str) -> bool:
+    return any(
+        row.split()[:1] == [label] and any(spin in row.split() for spin in "|/-\\")
+        for row in shown.splitlines()
+    )

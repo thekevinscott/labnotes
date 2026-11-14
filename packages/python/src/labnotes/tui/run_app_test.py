@@ -2217,6 +2217,36 @@ def test_stays_on_a_failed_setup(tmp_path: Path) -> None:
     drive_hooks(steps)
 
 
+def test_a_restarts_hooks_keep_the_runs_table_and_its_cursor(tmp_path: Path) -> None:
+    restart: dict[str, object] = {
+        "event": "planned",
+        "restart": "r2",
+        "runs": [{"run": "r3", "params": {"m": "r2"}}],
+    }
+
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path / "s"})
+        report({"event": "hook ended", "hook": "setup", "error": None})
+        await pilot.pause()
+        await pilot.press("down")
+        table: Any = app.query_one("DataTable")
+        app.forward("restart", restart)
+        app.forward(
+            "restart", {"event": "setting up", "hook": "setup", "folder": tmp_path}
+        )
+        await pilot.pause()
+        assert (stage(app), table.display, table.cursor_row) == ("runs", True, 1)
+        app.forward("restart", {"event": "hook ended", "hook": "setup", "error": None})
+        app.forward(
+            "restart", {"event": "tearing down", "hook": "teardown", "folder": tmp_path}
+        )
+        await pilot.pause()
+        assert (stage(app), table.display, table.cursor_row) == ("runs", True, 1)
+
+    drive_hooks(steps)
+
+
 def test_moving_by_hand_stops_auto_advance(tmp_path: Path) -> None:
     async def steps(app: RunApp, pilot: Any, report: Report) -> None:
         report(hooked("setup", "teardown"))

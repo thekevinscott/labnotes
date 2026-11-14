@@ -314,6 +314,32 @@ def test_points_the_child_at_its_run_log(
     assert env["LABNOTES_LOG"] == str(tmp_path / "log.jsonl")
 
 
+def test_tags_a_continued_runs_blocks_with_its_invocation(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LABNOTES_INVOCATION", "parent")
+
+    run(tmp_path, continues=True)
+
+    kwargs = collaborators["spawn"].await_args.kwargs
+    stamp = Path(kwargs["stdout"].name).name.removeprefix("stdout-")
+    assert kwargs["env"]["LABNOTES_INVOCATION"] == stamp.removesuffix(".txt")
+
+
+def test_leaves_a_single_invocation_run_untagged(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("LABNOTES_INVOCATION", "parent")
+
+    run(tmp_path)
+
+    assert "LABNOTES_INVOCATION" not in collaborators["spawn"].await_args.kwargs["env"]
+
+
 def test_gives_the_child_its_own_run_id(
     tmp_path: Path,
     collaborators: dict[str, mock.MagicMock],

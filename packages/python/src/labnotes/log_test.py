@@ -49,6 +49,34 @@ def test_labnotes_sets_the_timestamp(tmp_path: Path, log_path: mock.MagicMock) -
     assert read_lines(path) == [{"content": "x", "timestamp": "mine"}]
 
 
+def test_tags_the_block_with_its_invocation(
+    tmp_path: Path, log_path: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "log.jsonl"
+    log_path.return_value = path
+    monkeypatch.setenv("LABNOTES_INVOCATION", "20261112-100000-000001")
+
+    with mock.patch("labnotes.log.now", return_value="t"):
+        log({"content": "x", "invocation": "theirs"})
+
+    assert read_lines(path) == [
+        {"content": "x", "invocation": "20261112-100000-000001", "timestamp": "t"}
+    ]
+
+
+def test_leaves_the_block_untagged_outside_a_continued_run(
+    tmp_path: Path, log_path: mock.MagicMock, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    path = tmp_path / "log.jsonl"
+    log_path.return_value = path
+    monkeypatch.delenv("LABNOTES_INVOCATION", raising=False)
+
+    with mock.patch("labnotes.log.now", return_value="t"):
+        log({"content": "x"})
+
+    assert read_lines(path) == [{"content": "x", "timestamp": "t"}]
+
+
 def test_keeps_one_block_on_one_line(tmp_path: Path, log_path: mock.MagicMock) -> None:
     path = tmp_path / "log.jsonl"
     log_path.return_value = path

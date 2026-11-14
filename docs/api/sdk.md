@@ -55,6 +55,8 @@ When labnotes [runs a script](../cli/experiments#running-experiments), it sets `
 {"id": "t1", "phase": "delta", "content": "chunk", "timestamp": "2026-10-21T09:15:02.481Z"}
 ```
 
+For a run that [continues](config#continues), every invocation appends to the same `log.jsonl`. labnotes sets `LABNOTES_INVOCATION` to the invocation's start stamp, the same one in its `stdout-<stamp>.txt`, and `log` adds it to each block as `invocation`.
+
 Each run gets its own `LABNOTES_LOG`. labnotes replaces any value the script inherits from outside, so a script started by another run still logs to its own run folder.
 
 labnotes also sets `LABNOTES_RUN` to the absolute run folder path, replacing any inherited value. Scripts can use it to [label Docker containers](../cli/experiments#running-experiments) so their memory is counted with the run. The path distinguishes runs across experiments and projects on the machine.

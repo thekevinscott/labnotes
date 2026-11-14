@@ -949,9 +949,8 @@ def test_start_one_asks_every_active_invocation_to_start_that_run(
         daemon.active["two"] = Invocation(controls=second)
         daemon.active["three"] = Invocation()
 
-        assert await daemon.dispatch({"command": "start_one", "run": "r"}) == {
-            "ok": True
-        }
+        line = '{"command": "start_one", "run": "r"}'
+        assert await daemon.dispatch(json.loads(line)) == {"ok": True}
         assert await daemon.dispatch({"command": "start_one"}) == {
             "ok": False,
             "error": "start_one needs a run id",

@@ -3122,3 +3122,18 @@ def test_detached_app_routes_start_one_to_the_daemon(tmp_path: Path) -> None:
                 queue.assert_called_once_with({"command": "start_one", "run": "r2"})
 
     asyncio.run(drive())
+
+
+def test_s_does_nothing_without_rows() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        with mock.patch.object(app.body, "controls") as controls:
+            async with app.run_test() as pilot:
+                await pilot.press("s")
+                assert status(app) == ""
+            controls.start_one.assert_not_called()
+
+    asyncio.run(drive())

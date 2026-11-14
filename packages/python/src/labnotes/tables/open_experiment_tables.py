@@ -1,6 +1,6 @@
+import posixpath
 import re
 from functools import partial
-from pathlib import PurePosixPath
 
 from dirsql import DirSQL, Table
 
@@ -24,17 +24,12 @@ def open_experiment_tables(config: LabnotesConfig, name: str) -> DirSQL:
     experiments = config.experiments.replace("{experiment}", name)
     files = config.files.replace("{experiment}", name)
     runs = config.runs.replace("{experiment}", name)
-    heads = [
-        PurePosixPath(head[: head.rfind("/") + 1]).parts
-        for template in (experiment_toml(experiments), files, runs)
-        for head in [PATTERN.split(template, maxsplit=1)[0]]
-    ]
-    shared: list[str] = []
-    for parts in zip(*heads):
-        if len(set(parts)) > 1:
-            break
-        shared.append(parts[0])
-    folder = "/".join(shared)
+    folder = posixpath.commonpath(
+        [
+            PATTERN.split(template)[0].rpartition("/")[0]
+            for template in (experiment_toml(experiments), files, runs)
+        ]
+    )
     root = config.root
 
     def glob(template: str) -> str:

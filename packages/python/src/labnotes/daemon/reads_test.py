@@ -117,7 +117,11 @@ def test_follow_sends_state_then_changes_and_ignores_other_tables() -> None:
     a, b = {"id": "a", "v": 1}, {"id": "b", "v": 1}
     a2, c = {"id": "a", "v": 2}, {"id": "c", "v": 1}
     rows = mock.AsyncMock(side_effect=[[a, b], [a2, c]])
-    steps = [(nothing, change("logs")), (nothing, change("runs"))]
+    steps = [
+        (nothing, change("logs")),
+        (nothing, change("runs")),
+        (nothing, change("memory")),
+    ]
     tables = fake(steps=steps)
     reads = Reads(Path("/"), tables)
 
@@ -135,7 +139,7 @@ def test_follow_sends_state_then_changes_and_ignores_other_tables() -> None:
 
 def test_follow_skips_the_state_a_resuming_client_holds() -> None:
     a = {"id": "a"}
-    rows = mock.AsyncMock(side_effect=[[a], [a]])
+    rows = mock.AsyncMock(side_effect=[[a], [dict(a)]])
     reads = Reads(Path("/"), fake(steps=[(nothing, change("runs"))]))
     held = Reads.state_id({"a": a})
 
@@ -183,6 +187,7 @@ def test_a_path_with_no_known_run_before_files_is_not_found() -> None:
     for path in ("nope/files", "files", "r/stop"):
         response = asyncio.run(reads.run_path(request(path=path)))
         assert response.status_code == 404
+        assert json.loads(bytes(response.body)) == {"ok": False, "error": "Not found"}
     assert [call.args[1] for call in tables.query.await_args_list] == [["nope"]]
 
 
@@ -305,6 +310,13 @@ def test_text_file_resumes_from_the_last_event_id(tmp_path: Path) -> None:
         ("append", "8", {"text": "two\n"})
     ]
     assert follow_file(tmp_path, "out.log", [], "8") == []
+
+
+def test_text_file_resumes_from_the_start(tmp_path: Path) -> None:
+    (tmp_path / "out.log").write_bytes(b"one\n")
+    assert follow_file(tmp_path, "out.log", [], "0") == [
+        ("append", "4", {"text": "one\n"})
+    ]
 
 
 def test_text_file_ignores_an_id_it_cannot_resume_from(tmp_path: Path) -> None:
@@ -444,4 +456,85 @@ def test_a_cut_character_waits_for_its_last_byte(tmp_path: Path) -> None:
     assert events == [
         ("state", "2", {"name": "out.log", "size": 2, "text": "a\n"}),
         ("append", "4", {"text": "é"}),
+    ]
+
+
+def test_tail_keeps_the_last_64_kib_from_the_first_whole_line(tmp_path: Path) -> None:
+    path = tmp_path / "big.log"
+    path.write_bytes(b"a\nb\n" + b"c" * 65534 + b"\n")
+    decoder = codecs.getincrementaldecoder("utf-8")()
+    text = Reads(tmp_path, fake()).tail(path, 65539, decoder)
+    assert text == "c" * 65534 + "\n"
+
+
+def test_binary_sniffing_reads_the_first_8_kib(tmp_path: Path) -> None:
+    (tmp_path / "late.dat").write_bytes(b"a" * 8192 + b"\0")
+    (tmp_path / "early.dat").write_bytes(b"a" * 8191 + b"\0")
+    [(_, _, late)] = follow_file(tmp_path, "late.dat", [])
+    [(_, _, early)] = follow_file(tmp_path, "early.dat", [])
+    assert "text" in late
+    assert set(early) == {"name", "size", "type"}
+
+
+def test_only_changes_to_this_files_row_are_followed(tmp_path: Path) -> None:
+    log = tmp_path / "out.log"
+    log.write_bytes(b"a\n")
+
+    def append(data: bytes) -> Callable[[], object]:
+        return lambda: log.open("ab").write(data)
+
+    events = follow_file(
+        tmp_path,
+        "out.log",
+        [
+            (append(b"x"), change("logs", "out.log")),
+            (append(b"y"), change("runs", "out.log")),
+            (append(b"z"), change("run_files", "other.log")),
+            (nothing, change("".join(["run_", "files"]), "out.log")),
+        ],
+    )
+
+    assert events == [
+        ("state", "2", {"name": "out.log", "size": 2, "text": "a\n"}),
+        ("append", "5", {"text": "xyz"}),
+    ]
+
+
+def edit_then_append(tmp_path: Path, at: int) -> list[tuple[str, str, Any]]:
+    log = tmp_path / "out.log"
+    log.write_bytes(b"a" * 199 + b"\n")
+
+    def edit() -> None:
+        with log.open("r+b") as handle:
+            handle.seek(at)
+            handle.write(b"A")
+        log.open("ab").write(b"c\n")
+
+    return follow_file(
+        tmp_path,
+        "out.log",
+        [
+            (lambda: log.open("ab").write(b"b\n"), change("run_files", "out.log")),
+            (edit, change("run_files", "out.log")),
+        ],
+    )
+
+
+def test_an_edit_in_the_last_64_delivered_bytes_sends_state(tmp_path: Path) -> None:
+    events = edit_then_append(tmp_path, 202 - 64)
+    assert [(kind, at) for kind, at, _ in events] == [
+        ("state", "200"),
+        ("append", "202"),
+        ("state", "204"),
+    ]
+    assert events[-1][2]["text"][138] == "A"
+
+
+def test_an_edit_before_the_last_64_delivered_bytes_is_not_seen(
+    tmp_path: Path,
+) -> None:
+    events = edit_then_append(tmp_path, 202 - 65)
+    assert events[1:] == [
+        ("append", "202", {"text": "b\n"}),
+        ("append", "204", {"text": "c\n"}),
     ]

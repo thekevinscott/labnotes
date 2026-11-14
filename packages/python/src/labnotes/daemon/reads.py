@@ -63,7 +63,7 @@ class Reads:
         async def rows() -> list[dict[str, Any]]:
             found = await self.tables.query(RUNS)
             return [
-                {**row, "name": STAMP.sub("", row["id"].rsplit("/", 1)[-1])}
+                {**row, "name": STAMP.sub("", row["id"].rpartition("/")[2])}
                 for row in found
             ]
 
@@ -111,7 +111,7 @@ class Reads:
 
     async def folder(self, run: str) -> str | None:
         found = await self.tables.query("SELECT folder FROM runs WHERE id = ?", [run])
-        return found[0]["folder"] if found else None
+        return next((row["folder"] for row in found), None)
 
     def follow(
         self, request: Request, rows: Rows, key: str, kind: str, names: Collection[str]
@@ -180,11 +180,11 @@ class Reads:
                     )
             return
         decoder = codecs.getincrementaldecoder("utf-8")("replace")
-        inode = stat.st_ino
-        start = int(last) if last is not None and last.isdigit() else -1
-        resumed = 0 <= start <= stat.st_size
+        known = stat
+        digits = last if last is not None and last.isdigit() else ""
+        resumed = bool(digits) and int(digits) <= stat.st_size
         if resumed:
-            fed = start
+            fed = int(digits)
         else:
             fed = stat.st_size
             text = self.tail(path, fed, decoder)
@@ -206,23 +206,24 @@ class Reads:
                 yield sse({"name": name}, "remove", self.offset(fed, decoder))
                 return
             if (
-                found.st_ino != inode
+                not os.path.samestat(found, known)
                 or found.st_size < fed
                 or self.read(path, max(0, fed - MARK_BYTES), fed) != mark
             ):
                 decoder.reset()
-                inode, fed = found.st_ino, found.st_size
+                fed = found.st_size
                 text = self.tail(path, fed, decoder)
                 yield sse(
                     {"name": name, "size": fed, "text": text},
                     "state",
                     self.offset(fed, decoder),
                 )
-            elif found.st_size > fed:
+            else:
                 text = decoder.decode(self.read(path, fed, found.st_size))
                 fed = found.st_size
                 if text:
                     yield sse({"text": text}, "append", self.offset(fed, decoder))
+            known = found
             mark = self.read(path, max(0, fed - MARK_BYTES), fed)
 
     @staticmethod

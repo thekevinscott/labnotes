@@ -29,6 +29,7 @@ The `memory` column shows how much memory a running run's processes hold: the re
 | `g` / `G` | Jump to the first / last row. |
 | `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
 | `x` | Stop the running run under the cursor. Press again to kill it. On a run waiting to retry, cancel the retry. |
+| `s` | Start the queued run under the cursor now, on top of the concurrency limit. The rest of the queue keeps its order. |
 | `f` | Finish up: drop queued runs and pending retries. Running runs finish normally; the TUI stays open. |
 | `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
 | Enter | Open the run's output. |

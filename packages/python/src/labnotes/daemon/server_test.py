@@ -3,6 +3,7 @@ import json
 import os
 from collections.abc import Iterator
 from pathlib import Path
+from typing import Any
 from unittest import mock
 
 import pytest
@@ -738,7 +739,7 @@ class Exchange:
         self, daemon: ExperimentDaemon, method: str, path: str, body: bytes = b""
     ) -> None:
         self.body: bytes | None = body
-        self.sent: asyncio.Queue[dict[str, object]] = asyncio.Queue()
+        self.sent: asyncio.Queue[Any] = asyncio.Queue()
         self.left = asyncio.Event()
         scope = {
             "type": "http",
@@ -766,12 +767,12 @@ class Exchange:
     async def start(self) -> tuple[int, str]:
         message = await asyncio.wait_for(self.sent.get(), 1)
         assert message["type"] == "http.response.start"
-        headers = dict(message["headers"])  # type: ignore[call-overload]
-        return int(message["status"]), headers[b"content-type"].decode()  # type: ignore[call-overload]
+        headers = dict(message["headers"])
+        return int(message["status"]), headers[b"content-type"].decode()
 
     async def chunk(self) -> bytes:
         message = await asyncio.wait_for(self.sent.get(), 1)
-        return bytes(message["body"])  # type: ignore[arg-type]
+        return bytes(message["body"])
 
     async def json(self) -> tuple[int, object]:
         status, kind = await self.start()
@@ -784,7 +785,7 @@ class Exchange:
         await asyncio.wait_for(self.task, 1)
         chunks = []
         while not self.sent.empty():
-            chunks.append(bytes(self.sent.get_nowait()["body"]))  # type: ignore[arg-type]
+            chunks.append(bytes(self.sent.get_nowait()["body"]))
         return b"".join(chunks)
 
     async def leave(self) -> None:
@@ -976,8 +977,8 @@ def test_full_subscriber_is_dropped_and_ended_without_blocking_others(
     slow: Queued = asyncio.Queue()
     fast: Queued = asyncio.Queue()
     daemon.subscribers.update((slow, fast))
-    first = {"event": "planned"}
-    second = {"event": "idle"}
+    first: dict[str, object] = {"event": "planned"}
+    second: dict[str, object] = {"event": "idle"}
     with mock.patch("labnotes.daemon.server.MAX_QUEUED_EVENTS", 2):
         daemon.report("batch", first)
         fast.get_nowait()

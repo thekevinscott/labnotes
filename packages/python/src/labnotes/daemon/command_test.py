@@ -24,18 +24,22 @@ def run_command(
     progress: Callable[[str], None] | None = None,
     record: Path | None = None,
 ) -> dict[str, object]:
-    with (
-        mock.patch("labnotes.daemon.command.daemon_socket", return_value=path),
-        mock.patch(
-            "labnotes.daemon.command.socket_record",
-            return_value=record or path.with_suffix(".record"),
-        ),
-        mock.patch(
-            "httpx2.HTTPTransport",
-            return_value=httpx2.MockTransport(handler),
-        ) as transport,
-    ):
-        reply = command(mock.Mock(), "exp", message, progress)
+    # unit-lint only sees a patch target outside a `with` item.
+    patcher = mock.patch(
+        "httpx2.HTTPTransport", return_value=httpx2.MockTransport(handler)
+    )
+    transport = patcher.start()
+    try:
+        with (
+            mock.patch("labnotes.daemon.command.daemon_socket", return_value=path),
+            mock.patch(
+                "labnotes.daemon.command.socket_record",
+                return_value=record or path.with_suffix(".record"),
+            ),
+        ):
+            reply = command(mock.Mock(), "exp", message, progress)
+    finally:
+        patcher.stop()
     transport.assert_called_once_with(uds=str(path))
     return reply
 

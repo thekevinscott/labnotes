@@ -12,14 +12,16 @@ Handler = Callable[[httpx2.Request], httpx2.Response]
 
 
 async def opened(path: Path | None, handler: Handler) -> Attachment:
-    with (
-        mock.patch("labnotes.daemon.attachment.daemon_socket", return_value=path),
-        mock.patch(
-            "httpx2.AsyncHTTPTransport",
-            return_value=httpx2.MockTransport(handler),
-        ) as transport,
-    ):
-        attachment = await Attachment.open(mock.Mock(), "exp")
+    # unit-lint only sees a patch target outside a `with` item.
+    patcher = mock.patch(
+        "httpx2.AsyncHTTPTransport", return_value=httpx2.MockTransport(handler)
+    )
+    transport = patcher.start()
+    try:
+        with mock.patch("labnotes.daemon.attachment.daemon_socket", return_value=path):
+            attachment = await Attachment.open(mock.Mock(), "exp")
+    finally:
+        patcher.stop()
     transport.assert_called_once_with(uds=str(path))
     return attachment
 

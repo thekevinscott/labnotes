@@ -282,6 +282,17 @@ def test_reconnecting_with_last_event_id_resumes(
     daemon: tuple[Path, int], root: Path
 ) -> None:
     path = daemon[0]
+    with Stream(path, "/runs") as runs:
+        _, seen, _ = runs.next()
+    with Stream(path, "/runs", seen) as runs:
+        time.sleep(0.5)
+        (root / "exp/runs" / DONE / "later.txt").write_text("x")
+        name, _, changed = runs.next()
+        assert name == "run"
+        assert changed["id"] == DONE  # type: ignore[index]
+    with Stream(path, "/runs", seen) as runs:
+        assert runs.next()[0] == "state"
+
     log = root / "exp/runs" / LIVE / "stdout.log"
     with Stream(path, f"/runs/{LIVE}/files/stdout.log") as tail:
         _, offset, _ = tail.next()
@@ -289,16 +300,6 @@ def test_reconnecting_with_last_event_id_resumes(
         out.write("while away\n")
     with Stream(path, f"/runs/{LIVE}/files/stdout.log", offset) as tail:
         assert tail.next() == ("append", "20", {"text": "while away\n"})
-
-    with Stream(path, "/runs") as runs:
-        _, seen, _ = runs.next()
-    with Stream(path, "/runs", seen) as runs:
-        (root / "exp/runs" / DONE / "later.txt").write_text("x")
-        name, _, changed = runs.next()
-        assert name == "run"
-        assert changed["id"] == DONE  # type: ignore[index]
-    with Stream(path, "/runs", seen) as runs:
-        assert runs.next()[0] == "state"
 
 
 def test_more_clients_add_no_watches_beyond_the_experiment(

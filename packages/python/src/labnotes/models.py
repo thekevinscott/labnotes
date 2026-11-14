@@ -17,6 +17,7 @@ class Controls:
     kill: Callable[[str], None]
     finish: Callable[[], None]
     finish_up: Callable[[], None]
+    start_one: Callable[[str], None]
 
 
 Listen = Callable[[Controls], None]

@@ -246,3 +246,25 @@ def test_ctrl_c_prompt_can_cancel_then_stop(terminal, tmp_path: Path) -> None:
     ]
     assert records
     assert any(record["ended_by"] == "stop" for record in records)
+
+
+def test_s_starts_a_queued_run_now_and_keeps_the_rest_of_the_queue(
+    terminal, tmp_path: Path
+) -> None:
+    command = f"{shlex.quote(sys.executable)} -c 'import time; time.sleep(4)'"
+    term = run_tui(terminal, tmp_path, 1, command, "[params]\nm = ['a', 'b', 'c']\n")
+    expect(term.get_by_text(re.compile(r"--m a +[|/\\-]"))).to_be_visible()
+    expect(term.get_by_text("Start now")).to_be_visible()
+    term.key_down()
+    term.key_down()
+    term.write("s")
+    expect(term.get_by_text(re.compile(r"--m c +[|/\\-]"))).to_be_visible()
+    expect(term.get_by_text(re.compile(r"--m a +[|/\\-]"))).to_be_visible()
+    expect(term.get_by_text(re.compile(r"--m b +○"))).to_be_visible()
+    expect(term.get_by_text("3 passed, 0 failed")).to_be_visible(timeout=30)
+    records = [
+        json.loads(path.read_text()) for path in tmp_path.glob("exp/runs/*/run.json")
+    ]
+    assert sorted(record["params"]["m"] for record in records) == ["a", "b", "c"]
+    term.key_ctrl_c()
+    term.wait()

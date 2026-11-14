@@ -6,7 +6,9 @@ from unittest import mock
 import httpx2
 import pytest
 
-from labnotes.daemon.attachment import STREAM_LIMIT, Attachment
+from labnotes.daemon.attachment import Attachment
+
+STREAM_LIMIT = 16 * 1024 * 1024
 
 Handler = Callable[[httpx2.Request], httpx2.Response]
 
@@ -119,6 +121,24 @@ def test_a_stream_closed_before_naming_batches_says_so(
 ) -> None:
     with pytest.raises(ValueError, match="^Daemon for exp closed without a reply.$"):
         asyncio.run(opened(tmp_path / "d.sock", handler))
+
+
+def test_open_returns_while_the_stream_stays_open(tmp_path: Path) -> None:
+    async def forever():
+        yield b'event: batches\ndata: {"batches": ["b1"]}\n\n'
+        await asyncio.Event().wait()
+
+    def handler(request: httpx2.Request) -> httpx2.Response:
+        return httpx2.Response(
+            200, headers={"content-type": "text/event-stream"}, content=forever()
+        )
+
+    async def drive() -> None:
+        attachment = await asyncio.wait_for(opened(tmp_path / "d.sock", handler), 1)
+        assert attachment.batches == ["b1"]
+        await attachment.aclose()
+
+    asyncio.run(drive())
 
 
 def test_a_transport_error_on_open_is_reported(tmp_path: Path) -> None:

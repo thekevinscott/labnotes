@@ -9,12 +9,14 @@ from unittest import mock
 import pytest
 
 from labnotes.daemon.server import (
-    INVALID,
     ExperimentDaemon,
     Invocation,
     Queued,
     serve_daemon,
 )
+
+
+INVALID = {"ok": False, "error": "Invalid request"}
 
 
 def config(root: Path) -> mock.Mock:
@@ -492,10 +494,21 @@ def test_server_accepts_connections_before_its_http_server_starts(
             mock.patch("labnotes.daemon.server.fcntl.flock"),
             mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0),
             mock.patch("uvicorn.Server") as server,
+            mock.patch("uvicorn.Config") as settings,
         ):
             server.return_value.startup = mock.AsyncMock(side_effect=startup)
             server.return_value.shutdown = mock.AsyncMock()
             await serve_daemon(config(tmp_path), "exp")
+        [(app,)] = [call.args for call in settings.call_args_list]
+        assert isinstance(app, ExperimentDaemon)
+        settings.assert_called_once_with(
+            app,
+            lifespan="off",
+            log_config=None,
+            access_log=False,
+            timeout_graceful_shutdown=1,
+        )
+        server.assert_called_once_with(settings.return_value)
 
     asyncio.run(drive())
     assert accepted == [True]
@@ -994,6 +1007,18 @@ def test_full_subscriber_is_dropped_and_ended_without_blocking_others(
     ]
     assert fast in daemon.subscribers
     assert fast.qsize() == 2
+
+
+def test_subscriber_at_a_large_cap_is_dropped(tmp_path: Path) -> None:
+    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon.history["batch"] = Invocation()
+    full: Queued = asyncio.Queue()
+    for _ in range(300):
+        full.put_nowait(None)
+    daemon.subscribers.add(full)
+    with mock.patch("labnotes.daemon.server.MAX_QUEUED_EVENTS", 300):
+        daemon.report("batch", {"event": "idle"})
+    assert full not in daemon.subscribers
 
 
 def test_server_answers_http_on_its_socket_and_ends_streams_on_close(

@@ -144,7 +144,10 @@ class ExperimentDaemon:
         run_id = options.get("run_id")
         lineage = None if run_id is None else self.lineage(str(run_id))
         if lineage is not None:
-            joined = await self.join(str(run_id), lineage, progress)
+            try:
+                joined = await self.join(str(run_id), lineage, progress)
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
             if joined is not None:
                 return {"ok": True, "batch": joined}
         reserved: dict[str, dict[str, object]] = {}

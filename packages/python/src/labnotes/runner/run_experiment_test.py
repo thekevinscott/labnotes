@@ -2565,7 +2565,7 @@ def test_a_restart_in_its_folder_gets_a_fresh_retry_budget(
 ) -> None:
     failed_row(tmp_path, collaborators)
     listen = mock.Mock()
-    codes = {"r1": [75, 0] if earlier else [75, 75, 75, 0], "r2": [0]}
+    codes = {"r1": [75, 75, 0] if earlier else [75, 75, 75, 0], "r2": [0]}
     gave_up = asyncio.Event()
     if earlier:
         collaborators["resumable"].return_value = [

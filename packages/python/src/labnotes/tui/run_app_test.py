@@ -3084,3 +3084,24 @@ def test_a_step_repeated_back_to_back_shows_once(tmp_path: Path) -> None:
         for step in ["Starting up", "Preparing", "Preparing", "Starting up"]:
             app.step(step)
     assert app.steps == ["Starting up", "Preparing", "Starting up"]
+
+
+def test_terminal_driver_survives_a_thaw(tmp_path: Path) -> None:
+    linux = mock.Mock()
+    with (
+        mock.patch("textual.app.App.get_driver_class", return_value=linux),
+        mock.patch("labnotes.tui.run_app.LinuxDriver", linux),
+        mock.patch("labnotes.tui.run_app.ThawDriver") as thaw,
+    ):
+        assert configured_app(tmp_path, None).driver_class is thaw
+
+
+def test_terminal_driver_override_is_kept_even_if_it_compares_equal(
+    tmp_path: Path,
+) -> None:
+    other = mock.MagicMock(**{"__eq__.return_value": True})
+    with (
+        mock.patch("textual.app.App.get_driver_class", return_value=other),
+        mock.patch("labnotes.tui.run_app.ThawDriver"),
+    ):
+        assert configured_app(tmp_path, None).driver_class is other

@@ -4,6 +4,8 @@ import pty
 import signal
 import subprocess
 import sys
+import termios
+import threading
 import time
 from collections.abc import Iterator
 from pathlib import Path
@@ -194,3 +196,50 @@ def test_second_tty_reuses_daemon_and_idle_disconnect_releases_it(
             os.close(second_master)
         if second_slave is not None:
             os.close(second_slave)
+
+
+def test_thawed_tui_quits_on_ctrl_c_and_restores_the_terminal(tmp_path: Path) -> None:
+    root = tmp_path / "project"
+    (root / "exp").mkdir(parents=True)
+    (root / ".labnotes.toml").write_text("")
+    (root / "exp/experiment.toml").write_text(
+        f"continues = false\ncommand = \"{sys.executable} -c 'import time; time.sleep(0.5)'\"\n"
+    )
+    master, slave = pty.openpty()
+    cooked = termios.tcgetattr(slave)
+    process = launch_tty(root, slave)
+    threading.Thread(target=drain, args=(master,), daemon=True).start()
+    try:
+        for _ in range(400):
+            if not termios.tcgetattr(slave)[3] & termios.ICANON:
+                break
+            time.sleep(0.05)
+        time.sleep(1)
+        for _ in range(3):
+            process.send_signal(signal.SIGSTOP)
+            time.sleep(0.2)
+            process.send_signal(signal.SIGCONT)
+            time.sleep(0.3)
+        for _ in range(200):
+            if records(root) and all(record.get("ended") for record in records(root)):
+                break
+            time.sleep(0.05)
+        time.sleep(1)
+        os.write(master, b"\x03")
+        assert process.wait(timeout=10) == 0
+        assert termios.tcgetattr(slave) == cooked
+    finally:
+        if process.poll() is None:
+            process.kill()
+            process.wait(timeout=10)
+        os.close(slave)
+        os.close(master)
+
+
+def drain(master: int) -> None:
+    while True:
+        try:
+            if not os.read(master, 65536):
+                return
+        except OSError:
+            return

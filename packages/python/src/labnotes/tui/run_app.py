@@ -16,6 +16,8 @@ from textual import events, work
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.css.query import NoMatches
+from textual.driver import Driver
+from textual.drivers.linux_driver import LinuxDriver
 from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
@@ -51,6 +53,7 @@ from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
 from labnotes.tui.stage_line import stage_line
 from labnotes.tui.startup_steps import startup_steps
+from labnotes.tui.thaw_driver import ThawDriver
 from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
@@ -516,6 +519,10 @@ class RunApp(ViewSwitcher, App[None]):
     #startup { height: 1fr; padding: 1 2; display: none; }
     """
     BINDINGS = [Binding("ctrl+c", "interrupt", "Quit")]
+
+    def get_driver_class(self) -> type[Driver]:
+        driver = super().get_driver_class()
+        return ThawDriver if driver is LinuxDriver else driver
 
     def __init__(
         self,

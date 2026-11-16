@@ -145,7 +145,11 @@ def screen(term) -> str:
 
 
 def restart(term, root: Path, run: str) -> dict[str, object]:
-    wait_for(lambda: run in screen(term))
+    wait_for(
+        lambda: any(
+            run in row and "exited 1" in row for row in screen(term).splitlines()
+        )
+    )
     rows = screen(term).splitlines()
     target = next(i for i, row in enumerate(rows) if run in row)
     others = [
@@ -155,15 +159,7 @@ def restart(term, root: Path, run: str) -> dict[str, object]:
     ]
     if others and others[0] < target:
         term.key_down()
-    # The live view may not have seen the failure yet; it says so and does nothing.
-    for _ in range(30):
-        term.write("r")
-        wait_for(
-            lambda: "Restarted" in screen(term) or "has not failed" in screen(term)
-        )
-        if "Restarted" in screen(term):
-            break
-        time.sleep(0.5)
+    term.write("r")
     wait_for(lambda: len(launches(root)) == 3)
     return launches(root)[2]
 

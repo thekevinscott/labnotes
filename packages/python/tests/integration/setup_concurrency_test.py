@@ -9,6 +9,7 @@ from labnotes.models import Controls
 from labnotes.read_config import read_config
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
+from labnotes.tables.open_experiment_tables import open_experiment_tables
 
 WAIT = """
 import sys, time
@@ -71,7 +72,15 @@ async def launch(
         controls.finish()
 
     task = asyncio.create_task(
-        run_experiment(config, "exp", experiment, concurrency, events.append, listen)
+        run_experiment(
+            config,
+            "exp",
+            experiment,
+            open_experiment_tables(config, "exp"),
+            concurrency,
+            events.append,
+            listen,
+        )
     )
     await until(lambda: heard)
     return task, heard[0]

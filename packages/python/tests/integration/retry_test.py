@@ -20,6 +20,7 @@ from labnotes.models import Controls
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
+from labnotes.tables.open_experiment_tables import open_experiment_tables
 
 # Exits with the next code in codes.txt, one per launch, then 0.
 SCRIPT = """
@@ -81,6 +82,7 @@ def run_now(root: Path) -> list[dict[str, object]]:
             config,
             "exp",
             experiment,
+            open_experiment_tables(config, "exp"),
             concurrency,
             events.append,
             listen,

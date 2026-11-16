@@ -2,7 +2,7 @@
 
 import asyncio
 import json
-from collections.abc import AsyncIterator, Awaitable, Callable
+from collections.abc import AsyncGenerator, Awaitable, Callable
 from typing import Any
 
 import httpx2
@@ -21,7 +21,7 @@ async def follow_route(
     name: str,
     route: str,
     ensure: Callable[[LabnotesConfig, str], Awaitable[None]] = ensure_daemon,
-) -> AsyncIterator[tuple[str, Any]]:
+) -> AsyncGenerator[tuple[str, Any], None]:
     """Yield each event as it arrives; on a dropped stream, reconnect and resume.
 
     Holds no events: the caller handles each one before the next is read.

@@ -95,7 +95,7 @@ def test_state_holds_name_config_views_and_native_rows(tmp_path: Path) -> None:
         ) as native,
     ):
         assert asyncio.run(reads.state()) == state(["passed"])
-    assert load.await_args.args[:3] == (found, tmp_path, "exp")
+    load.assert_awaited_once_with(found, tmp_path, "exp", mock.ANY)
     native.assert_called_once_with(LOADED)
 
 

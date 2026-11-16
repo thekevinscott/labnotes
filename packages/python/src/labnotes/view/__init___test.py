@@ -27,6 +27,8 @@ def test_names_on_either_side_of_an_export_are_unknown(name: str) -> None:
 def test_matches_an_export_by_value() -> None:
     assert getattr(view, "".join(["Chan", "ged"])).__name__ == "Changed"
     assert getattr(view, "".join(["Experi", "ment"])).__name__ == "Experiment"
+    assert getattr(view, "".join(["Dae", "mon"])).__name__ == "Daemon"
+    assert getattr(view, "".join(["Sel", "ected"])).__name__ == "Selected"
 
 
 def test_imports_the_contract_only_when_asked() -> None:

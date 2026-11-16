@@ -21,7 +21,7 @@ The config can also live in `.labnotes.toml` under [`[experiment]`](config#exper
 
 ## Custom view contract
 
-Views construct their own Textual widgets. labnotes provides only `labnotes.view.Experiment` and `labnotes.view.Changed` for data and notifications:
+Views construct their own Textual widgets. labnotes provides `labnotes.view.Experiment`, `labnotes.view.Changed`, `labnotes.view.Selected` and `labnotes.view.Daemon` for data and notifications:
 
 ```python
 # views/progress.py
@@ -47,6 +47,41 @@ The class must be constructible without arguments. `Changed.experiment` holds da
 - `config`: the experiment's config as labnotes resolved it, read-only.
 
 `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
+
+`Changed.daemon` reads the experiment's daemon. `daemon.follow(route)` is an async iterator of `(event, data)` pairs from one of its routes, such as `/runs/{id}/files`. It reconnects if the stream drops, and raises `ValueError` if the daemon rejects the route. Run it in a worker:
+
+```python
+from textual.widgets import Static
+from labnotes.view import Changed
+
+
+class RunCount(Static):
+    following = False
+
+    def on_labnotes_changed(self, message: Changed) -> None:
+        if not self.following:
+            self.following = True
+            self.run_worker(self.count(message.daemon))
+
+    async def count(self, daemon) -> None:
+        async for event, data in daemon.follow("/runs"):
+            if event == "state":
+                self.update(f"{len(data)} runs")
+```
+
+`labnotes.view.Selected` says which run is selected: `message.run` is its id, or `None`. labnotes sends it to every view when you move the runs table's cursor or open a run, and to a view when it loads if a run is already selected. Handle it as `on_labnotes_selected`. A view can post one to select a run for the other views; the runs table's cursor stays where it is.
+
+## File browser
+
+labnotes ships one view you can add: a browser of the selected run's files.
+
+```toml
+# experiment.toml
+[views]
+files = "labnotes.tui.file_browser:FileBrowser"
+```
+
+It lists the files in the selected run's folder with their sizes, and keeps the list current as the run writes files. Select a file to tail it: the view shows the last 64 KiB and adds text as it is written. If a file grows by more than 64 KiB at once, the view skips to its new last 64 KiB. The view keeps at most 10,000 lines. A binary file shows its type and size instead of its contents.
 
 ## Runs table columns
 

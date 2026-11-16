@@ -52,7 +52,9 @@ from labnotes.tui.thaw_driver import ThawDriver
 from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
+from labnotes.view.daemon import Daemon
 from labnotes.view.experiment import Experiment
+from labnotes.view.selected import Selected
 from labnotes.view_specs import view_specs
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
@@ -452,8 +454,14 @@ class RunLiveView(Widget):
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         self.view(str(event.row_key.value))
 
+    def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        # A redraw highlights its first row before restoring the cursor.
+        if (run := self.cursor_run()) is not None:
+            self.post_message(Selected(run))
+
     def view(self, run: str) -> None:
         self.viewing = run
+        self.post_message(Selected(run))
         self.query_one(LogBlocks).reset()
         self.query_one("#output", RunOutput).reset()
         self.query_one(DataTable).display = False
@@ -539,6 +547,10 @@ class RunApp(ViewSwitcher, App[None]):
         self.body_ready = True
         self.loaded_views = False
         self.shown: Experiment | None = None
+        self.selected: str | None = None
+        self.daemon = (
+            None if config is None else Daemon(config, title, self.ensure_daemon)
+        )
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
         self.daemon_batch = daemon_batch

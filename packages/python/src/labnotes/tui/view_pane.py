@@ -9,7 +9,9 @@ from textual.widgets import Static
 from labnotes.tui.guard_view import guard_view
 from labnotes.tui.load_view import load_view
 from labnotes.view.changed import Changed
+from labnotes.view.daemon import Daemon
 from labnotes.view.experiment import Experiment
+from labnotes.view.selected import Selected
 
 
 def failure(name: str, error: Exception) -> Static:
@@ -48,7 +50,14 @@ class ViewPane(Container):
         self.mount(failure(self.view_name, error))
 
     def deliver(
-        self, experiment: Experiment | None, paths: frozenset[str] = frozenset()
+        self,
+        experiment: Experiment | None,
+        paths: frozenset[str] = frozenset(),
+        daemon: Daemon | None = None,
     ) -> None:
         if self.view is not None:
-            self.view.post_message(Changed(experiment, paths))
+            self.view.post_message(Changed(experiment, paths, daemon))
+
+    def select(self, run: str | None) -> None:
+        if self.view is not None:
+            self.view.post_message(Selected(run))

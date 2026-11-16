@@ -208,6 +208,7 @@ class Reads:
             if (
                 not os.path.samestat(found, known)
                 or found.st_size < fed
+                or found.st_size - fed > TAIL_BYTES
                 or self.read(path, max(0, fed - MARK_BYTES), fed) != mark
             ):
                 decoder.reset()

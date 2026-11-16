@@ -48,6 +48,7 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
             2,
             1.5,
             True,
+            tables=mock.sentinel.tables,
         )
         assert asyncio.run(start(report, listen)) == results
 
@@ -64,12 +65,13 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         1.5,
         True,
     )
-    finalize.assert_awaited_once_with(config)
+    finalize.assert_awaited_once_with(config, mock.sentinel.tables)
     project_snapshot.assert_called_once_with(config.root)
     run.assert_awaited_once_with(
         config,
         "exp",
         experiment,
+        mock.sentinel.tables,
         3,
         report,
         listen,
@@ -87,7 +89,9 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
 
 def test_invocation_keeps_its_batch_identity() -> None:
     config = mock.Mock(root=Path("/tmp/project"), runs="{experiment}/runs/{run}")
-    start = start_experiment(config, "exp", None, None, None, None, None, None, None)
+    start = start_experiment(
+        config, "exp", None, None, None, None, None, None, None, tables=mock.Mock()
+    )
     original = start.batch
     assert "/" not in original
     with pytest.raises(FrozenInstanceError):
@@ -129,6 +133,7 @@ def test_reports_each_step_before_it_starts() -> None:
             None,
             None,
             progress=seen.append,
+            tables=mock.Mock(),
         )
         asyncio.run(start(mock.Mock(), mock.Mock()))
     assert seen == [

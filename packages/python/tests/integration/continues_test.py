@@ -18,6 +18,7 @@ from labnotes.models import Controls
 from labnotes.read_config import read_config
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.runner.run_experiment import run_experiment
+from labnotes.tables.open_experiment_tables import open_experiment_tables
 
 # Each launch adds an x to state.txt in its run folder, then exits with the
 # next code in codes.txt (0 once they run out).
@@ -231,6 +232,7 @@ def run_now(root: Path) -> list[dict[str, object]]:
             config,
             "exp",
             experiment,
+            open_experiment_tables(config, "exp"),
             concurrency,
             events.append,
             listen,

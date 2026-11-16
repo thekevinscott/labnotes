@@ -13,6 +13,7 @@ from labnotes.runner.run_experiment import run_experiment
 A: dict[str, object] = {"m": "a"}
 B: dict[str, object] = {"m": "b"}
 SIGKILL, SIGTERM = 9, 15
+TABLES = mock.sentinel.tables
 
 
 def settle[T](work: Coroutine[Any, Any, T]) -> T:
@@ -48,7 +49,6 @@ def experiment(
 def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
     ids = iter(["r1", "r2", "r3", "r4"])
     with (
-        mock.patch("labnotes.runner.run_experiment.open_tables") as open_tables,
         mock.patch(
             "labnotes.runner.run_experiment.list_experiment_runs",
             new=mock.AsyncMock(
@@ -119,7 +119,6 @@ def collaborators(tmp_path: Path) -> Iterator[dict[str, mock.MagicMock]]:
         ) as fill_dirs,
     ):
         yield {
-            "open_tables": open_tables,
             "list_runs": list_runs,
             "resumable": resumable,
             "claim_run": claim_run,
@@ -176,6 +175,7 @@ def run(
             config,
             "exp",
             configured,
+            TABLES,
             concurrency,
             report,
             listening,
@@ -349,9 +349,7 @@ def test_plans_the_runs_still_needed(
 ) -> None:
     run(tmp_path, mock.Mock())
 
-    collaborators["list_runs"].assert_awaited_once_with(
-        collaborators["open_tables"].return_value, "exp", "c"
-    )
+    collaborators["list_runs"].assert_awaited_once_with(TABLES, "exp", "c")
     collaborators["param_grid"].assert_called_once_with({"m": ["a", "b"]})
     collaborators["plan_runs"].assert_called_once_with([A, B], 2, [A])
     assert collaborators["in_subset"].call_args_list == [
@@ -373,7 +371,14 @@ def test_passes_snapshot_root_and_starting_git_info_to_cells(
 
     settle(
         run_experiment(
-            config, "exp", experiment(), 1, mock.Mock(), listening, snapshot=snapshot
+            config,
+            "exp",
+            experiment(),
+            TABLES,
+            1,
+            mock.Mock(),
+            listening,
+            snapshot=snapshot,
         )
     )
 
@@ -397,7 +402,14 @@ def test_passes_no_git_info_without_a_snapshot_commit(
 
     settle(
         run_experiment(
-            config, "exp", experiment(), 1, mock.Mock(), listening, snapshot=snapshot
+            config,
+            "exp",
+            experiment(),
+            TABLES,
+            1,
+            mock.Mock(),
+            listening,
+            snapshot=snapshot,
         )
     )
 
@@ -420,7 +432,14 @@ def test_passes_an_empty_patch_for_a_clean_snapshot(
 
     settle(
         run_experiment(
-            config, "exp", experiment(), 1, mock.Mock(), listening, snapshot=snapshot
+            config,
+            "exp",
+            experiment(),
+            TABLES,
+            1,
+            mock.Mock(),
+            listening,
+            snapshot=snapshot,
         )
     )
 
@@ -445,6 +464,7 @@ def test_passes_the_labnotes_command_line_to_each_run(
             config,
             "exp",
             experiment(),
+            TABLES,
             1,
             mock.Mock(),
             listening,
@@ -523,6 +543,7 @@ def start_with_meta(tmp_path: Path, report: mock.Mock) -> list[dict[str, object]
             ),
             "exp",
             configured,
+            TABLES,
             1,
             report,
             lambda controls: controls.finish(),  # type: ignore[attr-defined]
@@ -564,7 +585,6 @@ def test_fails_before_reporting_when_the_meta_command_fails(
         start_with_meta(tmp_path, report)
 
     report.assert_not_called()
-    collaborators["open_tables"].assert_called_once()
     collaborators["execute_run"].assert_not_awaited()
 
 
@@ -585,6 +605,7 @@ def start_with_hooks(
             ),
             "exp",
             configured,
+            TABLES,
             concurrency,
             report,
             listen,
@@ -807,6 +828,7 @@ def test_fills_hook_environments_without_folders_before_reporting(
                 ),
                 "exp",
                 configured,
+                TABLES,
                 1,
                 report,
                 mock.Mock(),
@@ -968,6 +990,7 @@ def test_titles_the_plan_with_the_experiments_name(
             ),
             "exp",
             named,
+            TABLES,
             1,
             report,
             lambda controls: controls.finish(),  # type: ignore[attr-defined]
@@ -1414,7 +1437,7 @@ def test_waits_for_finish_once_idle(
         )
         report = mock.Mock()
         task = asyncio.create_task(
-            run_experiment(config, "exp", experiment(), 1, report, heard.append)
+            run_experiment(config, "exp", experiment(), TABLES, 1, report, heard.append)
         )
         while {"event": "idle"} not in reported(report):
             await asyncio.sleep(0.001)
@@ -1436,6 +1459,7 @@ def test_passes_the_timeout_to_each_run(
             ),
             "exp",
             experiment(),
+            TABLES,
             1,
             mock.Mock(),
             lambda controls: controls.finish(),
@@ -1880,7 +1904,9 @@ def test_finish_up_finishes_in_process_runner_without_an_explicit_finish(
         return {"exit_code": 0, "error": None}
 
     collaborators["execute_run"].side_effect = execute
-    results = settle(run_experiment(config, "exp", configured, 1, report, listen))
+    results = settle(
+        run_experiment(config, "exp", configured, TABLES, 1, report, listen)
+    )
 
     assert len(results) == 1
     assert started_runs(report) == ["r1"]
@@ -2083,9 +2109,7 @@ def test_continues_a_failed_run_of_the_same_cell(
 
     results = run(tmp_path, report, continues=True)
 
-    collaborators["resumable"].assert_awaited_once_with(
-        collaborators["open_tables"].return_value, "exp", "c"
-    )
+    collaborators["resumable"].assert_awaited_once_with(TABLES, "exp", "c")
     assert reported(report)[0]["runs"] == [
         {"run": "old-a", "params": A},
         {"run": "r1", "params": A},
@@ -2227,7 +2251,9 @@ def test_releases_a_continuing_run_whose_retry_is_cancelled(
 
         configured = experiment(continues=True)
         configured.retry_wait = 60
-        await run_experiment(config, "exp", configured, 1, mock.Mock(), listening)
+        await run_experiment(
+            config, "exp", configured, TABLES, 1, mock.Mock(), listening
+        )
 
     settle(go())
 
@@ -2254,6 +2280,7 @@ def test_lets_go_of_claimed_runs_when_setup_fails(
                 ),
                 "exp",
                 configured,
+                TABLES,
                 1,
                 mock.Mock(),
                 lambda controls: controls.finish(),
@@ -2552,11 +2579,7 @@ def test_a_restart_joins_the_live_batch_and_teardown_waits_for_it(
     assert calls["r3"].kwargs["args"] == ["--x"]
     assert calls["r4"].kwargs["args"] == ["--x"]
     assert calls["r2"].kwargs["args"] == ()
-    assert collaborators["list_runs"].await_args == mock.call(
-        collaborators["open_tables"].return_value, "exp", "c"
-    )
-    first, again = collaborators["open_tables"].call_args_list
-    assert again == first
+    assert collaborators["list_runs"].await_args == mock.call(TABLES, "exp", "c")
 
 
 @pytest.mark.parametrize("earlier", [False, True])

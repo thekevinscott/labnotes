@@ -1,17 +1,17 @@
 import json
 import os
+
+from dirsql import DirSQL
+
 from labnotes.list_runs import UNFINISHED
 from labnotes.models import LabnotesConfig
 from labnotes.runner.claim_run import LOCK_FILE, claim_run
 from labnotes.runner.mark_lost import mark_lost
-from labnotes.tables.open_tables import open_tables
 from labnotes.utils.process_alive import process_alive
 
 
-async def finalize_lost_runs(config: LabnotesConfig) -> None:
-    rows = await open_tables(config).query(
-        f"SELECT folder, run FROM runs WHERE {UNFINISHED}"
-    )
+async def finalize_lost_runs(config: LabnotesConfig, tables: DirSQL) -> None:
+    rows = await tables.query(f"SELECT folder, run FROM runs WHERE {UNFINISHED}")
     for row in rows:
         folder = config.root / str(row["folder"])
         if (folder / LOCK_FILE).exists():

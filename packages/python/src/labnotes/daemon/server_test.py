@@ -17,6 +17,7 @@ from labnotes.daemon.server import (
 
 
 INVALID = {"ok": False, "error": "Invalid request"}
+TABLES = mock.sentinel.tables
 
 
 def config(root: Path) -> mock.Mock:
@@ -48,7 +49,7 @@ def test_commands_control_one_invocation_and_reply_to_bad_requests(
 ) -> None:
     async def drive() -> None:
         project = config(tmp_path)
-        daemon = ExperimentDaemon(project, "exp")
+        daemon = ExperimentDaemon(project, "exp", TABLES)
         done = asyncio.Event()
         set_concurrency = mock.Mock()
         kill = mock.Mock()
@@ -137,7 +138,7 @@ def test_finished_up_batch_releases_planned_runs_from_reservations(
     ]
 
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.active["finished_up"] = Invocation(events=events)
         selected = mock.Mock(batch="new")
 
@@ -157,7 +158,7 @@ def test_finished_up_batch_releases_planned_runs_from_reservations(
 def test_finish_up_command_decoded_from_socket_json_reaches_controls(
     tmp_path: Path,
 ) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
     controls = mock.Mock()
     daemon.active["active"] = Invocation(controls=controls)
 
@@ -171,7 +172,7 @@ def test_finish_up_requested_during_preparation_reaches_new_controls(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         preparing = asyncio.Event()
         ready = asyncio.Event()
         done = asyncio.Event()
@@ -215,7 +216,7 @@ def test_start_passes_retries_retry_wait_and_replace_capped(
     tmp_path: Path, options: dict[str, object], expected: tuple[object, ...]
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         selected = mock.Mock(batch="one")
 
         async def fail_early(report, listen):
@@ -236,7 +237,7 @@ def test_start_returns_preparation_error_and_records_late_error(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         selected = mock.Mock(batch="bad")
 
         async def fail_early(report, listen):
@@ -272,7 +273,7 @@ def test_start_returns_preparation_error_and_records_late_error(
 
 def test_start_waits_for_slow_preparation_without_a_deadline(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         selected = mock.Mock(batch="slow")
 
         async def run(report, listen):
@@ -294,7 +295,7 @@ def test_start_waits_for_slow_preparation_without_a_deadline(tmp_path: Path) -> 
 
 def test_start_that_ends_before_any_run_reports_it(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         selected = mock.Mock(batch="none")
 
         async def run(report, listen):
@@ -315,7 +316,7 @@ def test_start_that_ends_before_any_run_reports_it(tmp_path: Path) -> None:
 
 def test_start_passes_progress_and_reports_a_queued_start(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         selected = mock.Mock(batch="one")
 
         async def run(report, listen):
@@ -335,13 +336,14 @@ def test_start_passes_progress_and_reports_a_queued_start(tmp_path: Path) -> Non
             assert (await waiting)["ok"] is True
         assert steps == ["Waiting for an earlier start"]
         assert start.call_args.args[-1] == steps.append
+        assert start.call_args.kwargs == {"tables": TABLES}
 
     asyncio.run(drive())
 
 
 def test_repeated_listen_callback_does_not_reply_twice(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         selected = mock.Mock(batch="one")
 
         async def run(report, listen):
@@ -363,7 +365,7 @@ def test_stop_requested_while_start_is_preparing_reaches_controls(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         preparing = asyncio.Event()
         release = asyncio.Event()
         interrupted = mock.Mock()
@@ -391,7 +393,7 @@ def test_stop_requested_while_start_is_preparing_reaches_controls(
 
 def test_commands_ignore_invocation_still_preparing(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         pending = Invocation()
         daemon.active["pending"] = pending
         daemon.stop_all()
@@ -408,7 +410,7 @@ def test_commands_ignore_invocation_still_preparing(tmp_path: Path) -> None:
 
 def test_attached_client_prevents_idle_exit(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.clients = 1
         with mock.patch("labnotes.daemon.server.IDLE_SECONDS", 0):
             waiting = asyncio.create_task(daemon.wait_until_idle())
@@ -422,7 +424,7 @@ def test_attached_client_prevents_idle_exit(tmp_path: Path) -> None:
 
 def test_shutdown_exits_even_with_an_attached_client(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.clients = 1
         daemon.closing = True
         await asyncio.wait_for(daemon.wait_until_idle(), timeout=0.1)
@@ -547,7 +549,7 @@ def test_server_signal_stops_and_closes_early(
 
 def test_commands_from_the_wire_reach_their_handlers(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         controls = mock.Mock()
         daemon.active["one"] = Invocation(controls=controls)
 
@@ -575,7 +577,7 @@ def test_commands_from_the_wire_reach_their_handlers(tmp_path: Path) -> None:
 
 def test_idle_exit_waits_five_seconds_after_last_busy(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.last_busy = 3.0
         with (
             mock.patch(
@@ -638,7 +640,7 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
     }
 
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         for batch, events in batches.items():
             daemon.active[batch] = Invocation(events=events)
         selected = mock.Mock(batch="new")
@@ -660,7 +662,7 @@ def test_start_reserves_runs_planned_by_live_invocations(tmp_path: Path) -> None
 
 
 def test_restart_with_a_run_id_starts_that_run(tmp_path: Path) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
     options = {"run_id": "r"}
     with mock.patch.object(daemon, "start", return_value={"ok": True}) as start:
         reply = asyncio.run(daemon.dispatch({"command": "restart", "options": options}))
@@ -670,7 +672,7 @@ def test_restart_with_a_run_id_starts_that_run(tmp_path: Path) -> None:
 
 def test_batches_lists_active_invocations_in_start_order(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         assert await daemon.dispatch({"command": "batches"}) == {
             "ok": True,
             "batches": [],
@@ -714,7 +716,7 @@ def test_start_publishes_runner_events_and_retains_daemon_errors(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         batch = "b1"
         planned = {"event": "planned", "at": 1.0}
         failed = {"event": "daemon error", "error": "oops", "at": 2.0}
@@ -811,7 +813,7 @@ class Exchange:
 
 def test_routes_reply_with_json_and_status_by_outcome(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         controls = mock.Mock()
         daemon.active["one"] = Invocation(controls=controls)
 
@@ -854,7 +856,7 @@ def test_routes_reply_with_json_and_status_by_outcome(tmp_path: Path) -> None:
 
 def test_unknown_route_and_method_are_refused(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         for method, path, status in (
             ("GET", "/nowhere", 404),
             ("GET", "/stop", 405),
@@ -869,7 +871,7 @@ def test_unknown_route_and_method_are_refused(tmp_path: Path) -> None:
 
 def test_handler_error_becomes_an_error_reply(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         with mock.patch.object(
             daemon, "dispatch", side_effect=ValueError("bad request")
         ):
@@ -884,7 +886,7 @@ def test_handler_error_becomes_an_error_reply(tmp_path: Path) -> None:
 @pytest.mark.parametrize("route", ["start", "restart"])
 def test_start_streams_steps_before_its_reply(tmp_path: Path, route: str) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         seen: list[dict[str, object]] = []
 
         async def dispatch(message, progress):
@@ -906,7 +908,7 @@ def test_start_streams_steps_before_its_reply(tmp_path: Path, route: str) -> Non
 
 def test_start_with_a_bad_body_is_refused(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         assert await Exchange(daemon, "POST", "/start", b"[1]").json() == (
             400,
             INVALID,
@@ -918,7 +920,7 @@ def test_start_with_a_bad_body_is_refused(tmp_path: Path) -> None:
 
 def test_start_continues_after_its_client_leaves(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         release = asyncio.Event()
         finished: list[str] = []
 
@@ -945,7 +947,7 @@ def test_start_continues_after_its_client_leaves(tmp_path: Path) -> None:
 
 def test_events_name_batches_then_replay_then_follow(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         old = [{"event": "planned", "at": 1}, {"event": "idle", "at": 2}]
         daemon.history["ended"] = Invocation(events=old)
         daemon.active["live"] = daemon.history["live"] = Invocation()
@@ -974,7 +976,7 @@ def test_events_name_batches_then_replay_then_follow(tmp_path: Path) -> None:
 
 def test_ended_streams_close_their_responses(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         exchange = Exchange(daemon, "GET", "/events")
         await exchange.start()
         await exchange.chunk()
@@ -990,7 +992,7 @@ def test_ended_streams_close_their_responses(tmp_path: Path) -> None:
 def test_full_subscriber_is_dropped_and_ended_without_blocking_others(
     tmp_path: Path,
 ) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
     daemon.history["batch"] = Invocation()
     slow: Queued = asyncio.Queue()
     fast: Queued = asyncio.Queue()
@@ -1016,7 +1018,7 @@ def test_full_subscriber_is_dropped_and_ended_without_blocking_others(
 
 
 def test_subscriber_is_dropped_past_the_real_cap(tmp_path: Path) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
     daemon.history["batch"] = Invocation()
     full: Queued = asyncio.Queue()
     for _ in range(99_999):
@@ -1030,7 +1032,7 @@ def test_subscriber_is_dropped_past_the_real_cap(tmp_path: Path) -> None:
 
 
 def test_subscriber_at_a_large_cap_is_dropped(tmp_path: Path) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
     daemon.history["batch"] = Invocation()
     full: Queued = asyncio.Queue()
     for _ in range(300):
@@ -1080,7 +1082,7 @@ def test_start_one_asks_every_active_invocation_to_start_that_run(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         first, second = mock.Mock(), mock.Mock()
         daemon.active["one"] = Invocation(controls=first)
         daemon.active["two"] = Invocation(controls=second)
@@ -1119,7 +1121,7 @@ def listening_start(batch: str) -> mock.Mock:
 
 
 def test_lineage_names_the_invocation_a_run_started_in(tmp_path: Path) -> None:
-    daemon = ExperimentDaemon(config(tmp_path), "exp")
+    daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
     daemon.history["b1"] = Invocation(
         events=[{"event": "planned", "run": "r0"}, started("r1")], lineage="b1"
     )
@@ -1135,7 +1137,7 @@ def test_lineage_names_the_invocation_a_run_started_in(tmp_path: Path) -> None:
 
 def test_a_restart_joins_the_live_invocation_of_its_run(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
         other = joining(True)
         earlier = joining(True)
@@ -1160,7 +1162,7 @@ def test_a_restart_waits_out_a_closing_invocation_then_sets_it_up_again(
     tmp_path: Path,
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
         tearing = asyncio.create_task(asyncio.sleep(0.01))
         closing = joining(False)
@@ -1189,7 +1191,7 @@ def test_a_start_outside_any_live_lineage_begins_its_own(
     tmp_path: Path, options: dict[str, object]
 ) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
         live = joining(True)
         daemon.active["b1"] = Invocation(controls=live, lineage="b1")
@@ -1207,7 +1209,7 @@ def test_a_start_outside_any_live_lineage_begins_its_own(
 
 def test_a_rejected_restart_replies_with_its_error(tmp_path: Path) -> None:
     async def drive() -> None:
-        daemon = ExperimentDaemon(config(tmp_path), "exp")
+        daemon = ExperimentDaemon(config(tmp_path), "exp", TABLES)
         daemon.history["b1"] = Invocation(events=[started("r1")], lineage="b1")
         daemon.active["b1"] = Invocation(
             controls=joining(ValueError("Run r1 has not failed.")), lineage="b1"

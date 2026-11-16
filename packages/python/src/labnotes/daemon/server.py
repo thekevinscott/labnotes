@@ -14,6 +14,7 @@ from pathlib import Path
 from typing import cast
 
 import uvicorn
+from dirsql import DirSQL
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
@@ -59,11 +60,10 @@ class Invocation:
 class ExperimentDaemon:
     """Serve commands while cells run or a client remains attached."""
 
-    def __init__(
-        self, config: LabnotesConfig, name: str, reads: Reads | None = None
-    ) -> None:
+    def __init__(self, config: LabnotesConfig, name: str, tables: DirSQL) -> None:
         self.config = config
         self.name = name
+        self.tables = tables
         self.active: dict[str, Invocation] = {}
         self.history: dict[str, Invocation] = {}
         self.subscribers: set[Queued] = set()
@@ -83,7 +83,7 @@ class ExperimentDaemon:
                 Route("/concurrency", self.concurrency, methods=["POST"]),
                 Route("/runs/{run}/stop", self.stop_one, methods=["POST"]),
                 Route("/runs/{run}/start", self.start_one, methods=["POST"]),
-                *([] if reads is None else reads.routes),
+                *Reads(config.root, tables).routes,
             ]
         )
 
@@ -191,6 +191,7 @@ class ExperimentDaemon:
             reserved,
             cast(dict[str, str] | None, options.get("environment")),
             progress,
+            tables=self.tables,
         )
         batch = selected.batch
         invocation = Invocation(lineage=lineage or batch)
@@ -437,9 +438,7 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
         if listening(path):
             return
         path.unlink(missing_ok=True)
-        daemon = ExperimentDaemon(
-            config, name, Reads(config.root, open_experiment_tables(config, name))
-        )
+        daemon = ExperimentDaemon(config, name, open_experiment_tables(config, name))
         listener = socket.socket(socket.AF_UNIX)
         listener.bind(str(path))
         listener.listen()

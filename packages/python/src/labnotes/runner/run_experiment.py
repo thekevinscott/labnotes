@@ -8,6 +8,7 @@ from pathlib import Path
 from tempfile import TemporaryDirectory
 
 import psutil
+from dirsql import DirSQL
 
 from labnotes import retries
 from labnotes.models import (
@@ -42,7 +43,6 @@ from labnotes.state_path import STATE_ENV
 from labnotes.tables.experiment_run_ids import experiment_run_ids
 from labnotes.tables.list_experiment_runs import list_experiment_runs
 from labnotes.tables.list_resumable_runs import list_resumable_runs
-from labnotes.tables.open_tables import open_tables
 
 Entry = tuple[str, dict[str, object]]
 
@@ -51,6 +51,7 @@ async def run_experiment(
     config: LabnotesConfig,
     name: str,
     experiment: ExperimentConfig,
+    tables: DirSQL,
     concurrency: int,
     report: Report,
     listen: Listen,
@@ -72,7 +73,6 @@ async def run_experiment(
 
     command_root = snapshot.root if snapshot is not None else config.root
     inherited = dict(os.environ) if environment is None else environment
-    tables = open_tables(config)
     existing = await experiment_run_ids(tables, name)
     counted = await list_experiment_runs(tables, name, experiment.counts)
     held = [
@@ -483,7 +483,7 @@ async def run_experiment(
     async def restart(target: str) -> bool:
         if closed():
             return False
-        rows = await list_experiment_runs(open_tables(config), name, experiment.counts)
+        rows = await list_experiment_runs(tables, name, experiment.counts)
         if closed():
             return False
         again, params = restart_entry(target, rows)

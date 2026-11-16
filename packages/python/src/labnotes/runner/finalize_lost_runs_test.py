@@ -14,17 +14,16 @@ GOING: dict[str, object] = {"params": {"n": 1}, "ended": None, "exit_code": None
 @pytest.fixture
 def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
     with (
-        mock.patch("labnotes.runner.finalize_lost_runs.open_tables") as open_tables,
         mock.patch("labnotes.runner.finalize_lost_runs.process_alive") as alive,
         mock.patch("labnotes.runner.finalize_lost_runs.mark_lost") as mark,
         mock.patch("labnotes.runner.finalize_lost_runs.claim_run") as claim,
         mock.patch("labnotes.runner.finalize_lost_runs.os") as os_mod,
         mock.patch("labnotes.runner.finalize_lost_runs.UNFINISHED", "unfinished"),
     ):
-        open_tables.return_value.query = mock.AsyncMock(return_value=[])
+        tables = mock.Mock(query=mock.AsyncMock(return_value=[]))
         claim.return_value = 9
         yield {
-            "open_tables": open_tables,
+            "tables": tables,
             "alive": alive,
             "mark": mark,
             "claim": claim,
@@ -42,19 +41,18 @@ def finalize(
         (root / f"a/runs/r{n}").mkdir(parents=True)
         if lock:
             (root / f"a/runs/r{n}/run.lock").write_text("")
-    collaborators["open_tables"].return_value.query.return_value = [
+    collaborators["tables"].query.return_value = [
         {"folder": f"a/runs/r{n}", "run": json.dumps(run)} for n, run in enumerate(runs)
     ]
-    asyncio.run(finalize_lost_runs(mock.Mock(root=root)))
+    asyncio.run(finalize_lost_runs(mock.Mock(root=root), collaborators["tables"]))
 
 
 def test_reads_only_unfinished_runs(collaborators: dict[str, mock.MagicMock]) -> None:
     config = mock.Mock()
 
-    asyncio.run(finalize_lost_runs(config))
+    asyncio.run(finalize_lost_runs(config, collaborators["tables"]))
 
-    collaborators["open_tables"].assert_called_once_with(config)
-    collaborators["open_tables"].return_value.query.assert_awaited_once_with(
+    collaborators["tables"].query.assert_awaited_once_with(
         "SELECT folder, run FROM runs WHERE unfinished"
     )
     collaborators["mark"].assert_not_called()
@@ -147,11 +145,11 @@ def test_continues_after_a_locked_run_to_finalize_a_later_lost_run(
     (tmp_path / "a/runs/r0/run.lock").write_text("")
     (tmp_path / "a/runs/r1").mkdir(parents=True)
     collaborators["claim"].return_value = None
-    collaborators["open_tables"].return_value.query.return_value = [
+    collaborators["tables"].query.return_value = [
         {"folder": "a/runs/r0", "run": json.dumps(GOING)},
         {"folder": "a/runs/r1", "run": json.dumps(GOING)},
     ]
 
-    asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path)))
+    asyncio.run(finalize_lost_runs(mock.Mock(root=tmp_path), collaborators["tables"]))
 
     collaborators["mark"].assert_called_once_with(tmp_path / "a/runs/r1")

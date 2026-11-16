@@ -2,6 +2,8 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
+from dirsql import DirSQL
+
 from labnotes.models import LabnotesConfig, Listen, Report, Start
 from labnotes.runner.finalize_lost_runs import finalize_lost_runs
 from labnotes.runner.prepare_experiment import prepare_experiment
@@ -39,6 +41,8 @@ def start_experiment(
     reserved: dict[str, dict[str, object]] | None = None,
     environment: dict[str, str] | None = None,
     progress: Callable[[str], None] = lambda step: None,
+    *,
+    tables: DirSQL,
 ) -> ExperimentStart:
     batch = batch_id()
 
@@ -57,7 +61,7 @@ def start_experiment(
             retry_wait,
             replace_capped,
         )
-        await finalize_lost_runs(config)
+        await finalize_lost_runs(config, tables)
         progress("Preparing codebase")
         with project_snapshot(config.root) as snapshot:
             progress("Starting run")
@@ -65,6 +69,7 @@ def start_experiment(
                 config,
                 name,
                 experiment,
+                tables,
                 limit,
                 report,
                 listen,

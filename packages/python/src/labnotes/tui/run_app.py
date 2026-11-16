@@ -144,7 +144,7 @@ class RunLiveView(Widget):
         self.set_interval(1, self.tick)
         self.set_interval(0.25, self.follow)
 
-    def show_event(self, event: dict[str, object]) -> None:
+    def show_event(self, event: dict[str, object], advance: bool = True) -> None:
         table = self.query_one(DataTable)
         run = str(event.get("run"))
         match event["event"]:
@@ -235,14 +235,15 @@ class RunLiveView(Widget):
                         self.panel("teardown").reset()
                 panel = self.panel(str(event["hook"]))
                 panel.start(Path(str(event["folder"])), self.since(event))
-                self.advance(panel.hook)
+                if advance:
+                    self.advance(panel.hook)
                 self.show(describe_event(event))
             case "hook ended":
                 panel = self.panel(str(event["hook"]))
                 error = event["error"]
                 panel.end(None if error is None else str(error), self.since(event))
                 match panel.hook, panel.state:
-                    case "setup", "passed":
+                    case "setup", "passed" if advance:
                         self.advance("runs")
                 self.draw_stages()
                 if self.idle and error is None:
@@ -843,6 +844,7 @@ class RunApp(ViewSwitcher, App[None]):
                     return
         match event:
             case {"event": "planned", "restart": str(run)} if run in self.body.cells:
+                self.restart_batches.add(batch)
                 [planned] = cast(list[dict[str, object]], event["runs"])
                 event = {
                     "event": "retried",
@@ -856,7 +858,10 @@ class RunApp(ViewSwitcher, App[None]):
                 self.busy_batches.discard(batch)
                 if self.busy_batches:
                     return
-        self.body.show_event(event)
+        if batch in self.restart_batches:
+            self.body.show_event(event, advance=False)
+        else:
+            self.body.show_event(event)
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:

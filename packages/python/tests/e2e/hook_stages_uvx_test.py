@@ -64,6 +64,23 @@ def test_uvx_run_tui_shows_setup_logs_then_the_runs(tmp_path: Path, tui: Tui) ->
     tui.quit(term)
 
 
+def test_uvx_escape_leaves_a_failed_setup_for_the_runs(
+    tmp_path: Path, tui: Tui
+) -> None:
+    root = project(tmp_path, "import sys\nprint('pod broke')\nsys.exit(3)\n")
+
+    term = tui(root, "experiments", "exp", "run")
+
+    expect(term.get_by_text(re.compile(r"setup ✗"))).to_be_visible(timeout=120)
+    term.get_by_text(re.compile(r" setup ✗ ")).click()
+    expect(term.get_by_text("pod broke")).to_be_visible()
+    expect(term.get_by_text("esc Back")).to_be_visible()
+    term.key_escape()
+    expect(term.get_by_text("params")).to_be_visible()
+    expect(term.get_by_text("pod broke")).not_to_be_visible()
+    tui.quit(term)
+
+
 def test_uvx_ctrl_c_during_setup_stops_the_invocation(tmp_path: Path, tui: Tui) -> None:
     root = project(
         tmp_path, "import time\nprint('pod up', flush=True)\ntime.sleep(4)\n"

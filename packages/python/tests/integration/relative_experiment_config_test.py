@@ -5,6 +5,7 @@ from pathlib import Path
 from click.testing import CliRunner
 
 from labnotes.cli import main
+from labnotes.models import ExperimentConfig
 from labnotes.read_config import read_config
 from labnotes.runner.prepare_experiment import prepare_experiment
 from labnotes.tables.open_experiment_tables import open_experiment_tables
@@ -21,15 +22,18 @@ def test_relative_override_reads_the_file_in_the_project_folder(tmp_path: Path) 
     )
 
     config = read_config(tmp_path / ".labnotes.toml")
-    experiment, _ = asyncio.run(
-        prepare_experiment(
+
+    async def prepare() -> ExperimentConfig:
+        experiment, _ = await prepare_experiment(
             config,
             "exp",
             Path("alt/experiment.toml"),
             None,
             tables=open_experiment_tables(config, "exp"),
         )
-    )
+        return experiment
+
+    experiment = asyncio.run(prepare())
 
     assert experiment.command == command
 

@@ -7,6 +7,7 @@ from click.testing import CliRunner
 from labnotes.cli import main
 from labnotes.read_config import read_config
 from labnotes.runner.prepare_experiment import prepare_experiment
+from labnotes.tables.open_experiment_tables import open_experiment_tables
 
 
 def test_relative_override_reads_the_file_in_the_project_folder(tmp_path: Path) -> None:
@@ -19,12 +20,14 @@ def test_relative_override_reads_the_file_in_the_project_folder(tmp_path: Path) 
         f'command = "{command}"\ncontinues = false\n'
     )
 
+    config = read_config(tmp_path / ".labnotes.toml")
     experiment, _ = asyncio.run(
         prepare_experiment(
-            read_config(tmp_path / ".labnotes.toml"),
+            config,
             "exp",
             Path("alt/experiment.toml"),
             None,
+            tables=open_experiment_tables(config, "exp"),
         )
     )
 

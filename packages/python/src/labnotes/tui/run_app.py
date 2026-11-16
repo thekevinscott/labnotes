@@ -376,6 +376,8 @@ class RunLiveView(Widget):
         match action:
             case "stage":
                 return bool(self.hooks)
+            case "leave" if self.stage in HOOKS:
+                return True
             case _ if self.stage in HOOKS and action in RUNS_ACTIONS:
                 return False
             case "leave" if self.viewing is None:
@@ -497,6 +499,10 @@ class RunLiveView(Widget):
             self.query_one("#output", RunOutput).follow(self.folders[self.viewing])
 
     def action_leave(self) -> None:
+        if self.stage in HOOKS:
+            self.moved = True
+            self.go("runs")
+            return
         if self.viewing is not None:
             self.viewing = None
             self.query_one(LogBlocks).display = False

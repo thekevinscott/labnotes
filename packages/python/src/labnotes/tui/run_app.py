@@ -215,6 +215,7 @@ class RunLiveView(Widget):
                     out = f"{FAILED} capped {capped['tries']}/{event['retries']}"
                     status = Text(out, style="red")
                     self.cells[run] = {"run": run, "params": args, "status": status}
+                    self.folders[run] = Path(str(capped["folder"]))
                     self.ended.add(run)
                     self.failed.add(run)
                 self.redraw(table.cursor_row)

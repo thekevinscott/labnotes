@@ -95,12 +95,15 @@ async def run_experiment(
     resumable: list[Entry] = []
     capped: list[Entry] = []
     tries: dict[str, int] = {}
+    capped_folders: dict[str, str] = {}
     if experiment.continues:
         for row in await list_resumable_runs(tables, name, experiment.counts):
             entry = (str(row["id"]), json.loads(str(row["params"])))
             tries[entry[0]] = int(str(row["invocations"]))
             over = tries[entry[0]] > experiment.retries
             (capped if over else resumable).append(entry)
+            if over:
+                capped_folders[entry[0]] = str(config.root / str(row["folder"]))
     if not experiment.replace_capped:
         finished += [params for _, params in capped]
     planned: set[str] = set()
@@ -205,7 +208,12 @@ async def run_experiment(
     for row in held:
         emit({"event": "held", "run": str(row["id"])})
     gave_up = [
-        {"run": run, "params": params, "tries": tries[run]}
+        {
+            "run": run,
+            "params": params,
+            "tries": tries[run],
+            "folder": capped_folders[run],
+        }
         for run, params in capped
         if in_subset(params, only or {})
     ]

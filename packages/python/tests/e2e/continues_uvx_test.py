@@ -121,7 +121,7 @@ def test_uvx_caps_failed_retries_and_can_replace_the_run(
     [(folder, record)] = records(root).items()
     before = (folder / "run.json").read_bytes()
 
-    run(tui, root, "0 passed, 0 failed.")
+    run(tui, root, "0 passed, 1 failed.")
     assert records(root) == {folder: record}
     assert (folder / "run.json").read_bytes() == before
     assert (folder / "attempts").read_text() == "xxx"

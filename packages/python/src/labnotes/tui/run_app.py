@@ -149,12 +149,7 @@ class RunLiveView(Widget):
                 first = not self.cells
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
-                    self.cells[planned["run"]] = self.waiting_cells(
-                        planned["run"], args
-                    )
-                    self.pending.add(planned["run"])
-                    if planned["run"] in self.usage:
-                        self.show_usage(self.usage[planned["run"]])
+                    self.add_waiting(planned["run"], args)
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
                 self.hooks = tuple(cast(list[str], event.get("hooks", [])))
@@ -220,8 +215,7 @@ class RunLiveView(Widget):
                 else:
                     self.retried.add(run)
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                self.cells[again] = self.waiting_cells(again, args)
-                self.pending.add(again)
+                self.add_waiting(again, args)
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
             case "setting up" | "tearing down" if "folder" in event:
@@ -353,6 +347,12 @@ class RunLiveView(Widget):
                     label=str(table.row_count + 1),
                 )
         table.move_cursor(row=row)
+
+    def add_waiting(self, run: str, args: str) -> None:
+        self.cells[run] = self.waiting_cells(run, args)
+        self.pending.add(run)
+        if run in self.usage:
+            self.show_usage(self.usage[run])
 
     def waiting_cells(self, run: str, args: str) -> dict[str, object]:
         shown = {"run": run, "params": args, "status": PENDING}

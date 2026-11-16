@@ -211,10 +211,11 @@ def test_escape_leaves_a_failed_setup_for_the_runs(terminal, tmp_path: Path) -> 
     expect(term.get_by_text(re.compile("setup ✗"))).to_be_visible(timeout=15)
     expect(term.get_by_text("params")).not_to_be_visible()
     expect(term.get_by_text("esc Back")).to_be_visible()
+    expect(term.get_by_text("stderr (1)")).to_be_visible()
 
     term.key_escape()
     expect(term.get_by_text("params")).to_be_visible()
-    expect(term.get_by_text("setup broke")).not_to_be_visible()
+    expect(term.get_by_text("stderr (1)")).not_to_be_visible()
 
     quit_tui(term)
 

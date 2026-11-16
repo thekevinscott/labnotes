@@ -38,5 +38,5 @@ def daemon_socket(config: LabnotesConfig, name: str) -> Path | None:
     if listening(path):
         return path
     path.unlink(missing_ok=True)
-    record.unlink(missing_ok=True)  # probe
+    record.unlink(missing_ok=True)
     return None

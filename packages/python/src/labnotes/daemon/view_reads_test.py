@@ -112,14 +112,17 @@ def test_streams_state_then_changed_paths_then_reloads_only_when_it_changes(
     assert sent == ["exp/runs/a/stdout.log", "exp/runs/a/old.log"]
 
 
-def test_a_client_holding_the_current_id_skips_the_first_state(tmp_path: Path) -> None:
+def test_a_resuming_client_gets_state_again(tmp_path: Path) -> None:
     found = tables(change("run_files", {"path": "exp/runs/a/stdout.log"}))
     reads = ViewReads(tmp_path, found, "exp")
     shown = state(["running"])
     current = Reads.state_id({"state": shown})
     with mock.patch.object(reads, "state", new=mock.AsyncMock(return_value=shown)):
         frames = asyncio.run(drain(reads, current))
-    assert frames == [("paths", current, ["exp/runs/a/stdout.log"])]
+    assert frames == [
+        ("state", current, shown),
+        ("paths", current, ["exp/runs/a/stdout.log"]),
+    ]
 
 
 def test_closing_the_stream_stops_watching(tmp_path: Path) -> None:

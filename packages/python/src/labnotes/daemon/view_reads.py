@@ -44,8 +44,8 @@ class ViewReads:
         """Send state, then `paths` for changed run files and fresh state on reloads.
 
         Changes that land while a reload runs collapse into one more reload.
+        A resuming client gets state too: file changes it missed are not kept.
         """
-        last = request.headers.get("last-event-id")
 
         async def stream() -> AsyncIterator[str]:
             await self.tables.ready()
@@ -69,8 +69,7 @@ class ViewReads:
             marker.add_done_callback(lambda _: wake.set())
             try:
                 shown = await self.state()
-                if last != Reads.state_id({"state": shown}):
-                    yield sse(shown, "state", Reads.state_id({"state": shown}))
+                yield sse(shown, "state", Reads.state_id({"state": shown}))
                 while True:
                     await wake.wait()
                     wake.clear()

@@ -352,6 +352,7 @@ def test_experiment_streams_what_views_show_then_changes(
         assert statuses == {DONE: "passed", LIVE: "failed"}
 
     with Stream(daemon[0], "/experiment", second) as resumed:
+        assert resumed.next() == ("state", second, changed)
         (root / "exp/runs" / DONE / "stdout.log").write_text("one\ntwo\nthree\n")
         name, _, paths = resumed.next()
         assert (name, paths) == ("paths", [f"exp/runs/{DONE}/stdout.log"])

@@ -314,7 +314,9 @@ def test_shows_usage_that_arrived_before_its_runs_were_planned(
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         await measured.wait()
         report(planned("r1", "r2"))
+        report(began("r1"))
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        report(began("r2"))
         await done.wait()
         return []
 
@@ -358,8 +360,10 @@ def test_shows_usage_that_arrived_before_its_retry_was_created(
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         await measured.wait()
         report(planned("r1"))
+        report(began("r1"))
         report({"event": "ended", "run": "r1", "exit_code": 1, "error": None})
         report({"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "r1"}})
+        report(began("r2"))
         report({"event": "ended", "run": "r2", "exit_code": 0, "error": None})
         await done.wait()
         return []

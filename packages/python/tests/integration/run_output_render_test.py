@@ -2,6 +2,7 @@ import asyncio
 from pathlib import Path
 
 from textual.app import App, ComposeResult
+from textual.widgets import Input
 
 from labnotes.tui.run_output import RunOutput
 
@@ -48,5 +49,39 @@ def test_plain_lines_and_blank_lines_share_the_log_background(tmp_path: Path) ->
                 for segment in output.render_line(y)
             }
             assert backgrounds == {output.rich_style.bgcolor}
+
+    asyncio.run(drive())
+
+
+class FocusApp(App[None]):
+    def compose(self) -> ComposeResult:
+        yield RunOutput(id="output")
+        yield Input(id="elsewhere")
+
+
+def test_moving_focus_repaints_rows_without_the_old_tint(tmp_path: Path) -> None:
+    (tmp_path / "stdout.log").write_text("para one\n\npara two\n")
+
+    async def drive() -> None:
+        app = FocusApp()
+        async with app.run_test(size=(40, 12)) as pilot:
+            app.query_one(RunOutput).follow(tmp_path)
+            output = app.query_one(RunOutput).logs["stdout"]
+            output.focus()
+            await pilot.pause()
+            focused = output.rich_style.bgcolor
+            assert {s.style and s.style.bgcolor for s in output.render_line(0)} == {
+                focused
+            }
+            app.query_one("#elsewhere", Input).focus()
+            await pilot.pause()
+            blurred = output.rich_style.bgcolor
+            assert blurred != focused
+            backgrounds = {
+                segment.style and segment.style.bgcolor
+                for y in range(4)
+                for segment in output.render_line(y)
+            }
+            assert backgrounds == {blurred}
 
     asyncio.run(drive())

@@ -29,7 +29,11 @@ async def follow_route(
     asyncio.get_running_loop().set_exception_handler(quiet_late_wakeup)
     last: str | None = None
     while True:
-        await ensure(config, name)
+        try:
+            await ensure(config, name)
+        except (OSError, ValueError):
+            await asyncio.sleep(RETRY_SECONDS)
+            continue
         path = daemon_socket(config, name)
         if path is not None:
             async with httpx2.AsyncClient(

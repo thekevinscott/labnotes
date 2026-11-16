@@ -137,6 +137,23 @@ def test_follow_sends_state_then_changes_and_ignores_other_tables() -> None:
     tables.ready.assert_awaited_once()
 
 
+def test_follow_queries_once_for_changes_that_land_during_a_query() -> None:
+    a, a2 = {"id": "a", "v": 1}, {"id": "a", "v": 2}
+    rows = mock.AsyncMock(side_effect=[[a], [a2]])
+    tables = fake(steps=[(nothing, change("run_files"))] * 50)
+    reads = Reads(Path("/"), tables)
+
+    events = asyncio.run(
+        drain(reads.follow(request(), rows, "id", "run", {"run_files"}))
+    )
+
+    assert events == [
+        ("state", Reads.state_id({"a": a}), [a]),
+        ("run", Reads.state_id({"a": a2}), a2),
+    ]
+    assert rows.await_count == 2
+
+
 def test_follow_skips_the_state_a_resuming_client_holds() -> None:
     a = {"id": "a"}
     rows = mock.AsyncMock(side_effect=[[a], [dict(a)]])

@@ -130,14 +130,14 @@ def read_experiment_config(
     runs = views.get("runs")
     if runs is not None and (not isinstance(runs, str) or not runs.strip()):
         raise ValueError(f"{path}: views.runs must be a command")
-    shown = {name: spec for name, spec in views.items() if name != "runs"}
+    shown = {view: spec for view, spec in views.items() if view != "runs"}
     if len(shown) > MAX_VIEWS:
         raise ValueError(f"{path}: views holds at most {MAX_VIEWS} views besides runs")
-    for name, spec in shown.items():
+    for view, spec in shown.items():
         source, _, cls = spec.rpartition(":") if isinstance(spec, str) else ("", "", "")
         if not source.strip() or not cls.strip():
             raise ValueError(
-                f'{path}: views.{name} must be "path/to/file.py:ClassName"'
+                f'{path}: views.{view} must be "path/to/file.py:ClassName"'
             )
     return ExperimentConfig(
         command,

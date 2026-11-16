@@ -1,5 +1,7 @@
 from unittest import mock
 
+from textual.widgets.data_table import RowKey
+
 from labnotes.tui.runs_table import RunsTable
 
 
@@ -24,6 +26,6 @@ def test_drops_cached_rendering_before_measuring_new_rows() -> None:
             (len(table._row_renderable_cache), len(table._line_cache))
         ),
     ) as measure:
-        table._update_dimensions(["a"])
-    measure.assert_called_once_with(["a"])
+        table._update_dimensions([RowKey("a")])
+    measure.assert_called_once_with([RowKey("a")])
     assert cached_at_measure == [(0, 0)]

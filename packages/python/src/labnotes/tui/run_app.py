@@ -502,7 +502,8 @@ class RunLiveView(Widget):
         if self.stage in HOOKS:
             self.moved = True
             self.go("runs")
-            return
+            if self.viewing is None:
+                return
         if self.viewing is not None:
             self.viewing = None
             self.query_one(LogBlocks).display = False

@@ -14,7 +14,7 @@ class RunsTable(DataTable[object]):
     ]
 
     def _update_dimensions(self, new_rows: Iterable[RowKey]) -> None:
-        # Textual measures labels from a cache that a paint after clear() can
-        # fill with label-less rows, leaving the label column zero wide.
-        self._row_renderable_cache.clear()
+        # A paint between clear() and this idle pass caches label-less rows,
+        # which Textual then measures and redraws from: labels stay blank.
+        self._clear_caches()
         super()._update_dimensions(new_rows)

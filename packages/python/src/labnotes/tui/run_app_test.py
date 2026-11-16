@@ -9,9 +9,6 @@ from unittest import mock
 import pytest
 
 from labnotes.tui.run_app import NoMatches, RunApp, RunLiveView
-from labnotes.view.restart import Restart
-from labnotes.view.select import Select
-from labnotes.view.stop import Stop
 
 COLUMNS = ("run", "params", "status", "time", "memory", "size")
 Report = Callable[[dict[str, object]], None]
@@ -3341,9 +3338,9 @@ def test_readers_start_one_daemon_at_a_time(tmp_path: Path) -> None:
 def test_a_selection_reaches_every_view_once(tmp_path: Path) -> None:
     app = configured_app(tmp_path, None)
     with mock.patch.object(app, "select") as select:
-        app.on_labnotes_select(Select("a1"))
-        app.on_labnotes_select(Select("a1"))
-        app.on_labnotes_select(Select(None))
+        app.on_labnotes_select(mock.Mock(run="a1"))
+        app.on_labnotes_select(mock.Mock(run="a1"))
+        app.on_labnotes_select(mock.Mock(run=None))
     assert select.call_args_list == [mock.call("a1"), mock.call(None)]
     assert app.selected is None
 
@@ -3376,8 +3373,8 @@ def test_a_view_stops_and_restarts_runs_through_the_tui(tmp_path: Path) -> None:
     app = configured_app(tmp_path, None)
     app.controls = mock.Mock()
     with mock.patch.object(app, "restart_run") as restart:
-        app.on_labnotes_stop(Stop("a1"))
-        app.on_labnotes_restart(Restart("b2"))
+        app.on_labnotes_stop(mock.Mock(run="a1"))
+        app.on_labnotes_restart(mock.Mock(run="b2"))
     app.controls.kill.assert_called_once_with("a1")
     restart.assert_called_once_with("b2")
 

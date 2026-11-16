@@ -95,8 +95,14 @@ def test_run_app_mounts_configured_view_and_digits_switch(
         stop_daemons(tmp_path)
 
 
+@pytest.fixture
+def restart() -> Iterator[mock.MagicMock]:
+    with mock.patch.object(RunApp, "restart_run") as restart_run:
+        yield restart_run
+
+
 def test_views_share_the_selected_run_and_stop_and_restart_runs(
-    tmp_path: Path, runtime: Path
+    tmp_path: Path, runtime: Path, restart: mock.MagicMock
 ) -> None:
     async def drive() -> None:
         (tmp_path / ".labnotes.toml").write_text("")
@@ -139,20 +145,19 @@ def test_views_share_the_selected_run_and_stop_and_restart_runs(
             return []
 
         app = RunApp(start, "alpha", ("run", "status"), config=config)
-        with mock.patch.object(app, "restart_run") as restart:
-            async with app.run_test() as pilot:
-                for _ in range(300):
-                    await pilot.pause(0.05)
-                    if app.selected is not None:
-                        break
-                await pilot.pause(0.2)
-                assert app.selected == "first"
-                assert "selected first" in str(
-                    app.query_one("#view-3 Static", Static).content
-                )
-                controls.kill.assert_called_once_with("first")
-                restart.assert_called_once_with("first")
-                waiting.set()
+        async with app.run_test() as pilot:
+            for _ in range(300):
+                await pilot.pause(0.05)
+                if app.selected is not None:
+                    break
+            await pilot.pause(0.2)
+            assert app.selected == "first"
+            assert "selected first" in str(
+                app.query_one("#view-3 Static", Static).content
+            )
+            controls.kill.assert_called_once_with("first")
+            restart.assert_called_once_with("first")
+            waiting.set()
 
     try:
         asyncio.run(drive())

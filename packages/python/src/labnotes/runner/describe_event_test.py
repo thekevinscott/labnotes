@@ -27,6 +27,15 @@ def param_args() -> Iterator[mock.MagicMock]:
         ),
         ({"event": "retried", "run": "r1", "retry": "r2"}, "r1 retried as r2."),
         ({"event": "retried", "run": "r1", "retry": "r1"}, "r1 retried in its folder."),
+        ({"event": "restarted", "run": "r1", "retry": "r2"}, "r1 restarted as r2."),
+        (
+            {"event": "restarted", "run": "r1", "retry": "r1"},
+            "r1 restarted in its folder.",
+        ),
+        (
+            {"event": "restarted", "run": "r2", "retry": "r1"},
+            "r2 restarted as r1.",
+        ),
         (
             {
                 "event": "retrying",
@@ -112,4 +121,13 @@ def test_retried_uses_value_equality_for_ids() -> None:
 def test_retried_does_not_treat_a_smaller_id_as_the_same_run() -> None:
     assert describe_event({"event": "retried", "run": "r2", "retry": "r1"}) == (
         "r2 retried as r1."
+    )
+
+
+def test_restarted_uses_value_equality_for_ids() -> None:
+    run = "".join(["run", "-1"])
+    retry = "".join(["run-", "1"])
+    assert run == retry and run is not retry
+    assert describe_event({"event": "restarted", "run": run, "retry": retry}) == (
+        "run-1 restarted in its folder."
     )

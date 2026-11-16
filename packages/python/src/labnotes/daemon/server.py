@@ -51,6 +51,7 @@ class Invocation:
     controls: Controls | None = None
     stop_requested: bool = False
     finish_up_requested: bool = False
+    lineage: str = ""
 
 
 class ExperimentDaemon:
@@ -114,9 +115,41 @@ class ExperimentDaemon:
         async with self.start_lock:
             return await self._start(options, progress)
 
+    def lineage(self, run: str) -> str | None:
+        """Name the invocation a run started in, through any earlier restarts."""
+        for invocation in self.history.values():
+            for event in invocation.events:
+                match event:
+                    case {"event": "started", "run": started} if started == run:
+                        return invocation.lineage
+        return None
+
+    async def join(
+        self, run: str, lineage: str, progress: Callable[[str], None]
+    ) -> str | None:
+        """Hand a restart to its live invocation, or wait out its teardown."""
+        for batch, invocation in list(self.active.items()):
+            if invocation.lineage != lineage or invocation.controls is None:
+                continue
+            if await invocation.controls.restart(run):
+                return batch
+            if invocation.task is not None:
+                progress("Waiting for teardown")
+                await asyncio.wait({invocation.task})
+        return None
+
     async def _start(
         self, options: dict[str, object], progress: Callable[[str], None]
     ) -> dict[str, object]:
+        run_id = options.get("run_id")
+        lineage = None if run_id is None else self.lineage(str(run_id))
+        if lineage is not None:
+            try:
+                joined = await self.join(str(run_id), lineage, progress)
+            except ValueError as error:
+                return {"ok": False, "error": str(error)}
+            if joined is not None:
+                return {"ok": True, "batch": joined}
         reserved: dict[str, dict[str, object]] = {}
         for active in self.active.values():
             events = active.events
@@ -155,7 +188,7 @@ class ExperimentDaemon:
             progress,
         )
         batch = selected.batch
-        invocation = Invocation()
+        invocation = Invocation(lineage=lineage or batch)
         self.active[batch] = invocation
         self.history[batch] = invocation
         ready: asyncio.Future[None] = asyncio.get_running_loop().create_future()

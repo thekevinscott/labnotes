@@ -26,6 +26,10 @@ def describe_event(event: dict[str, object]) -> str:
             return f"{event['run']} retried in its folder."
         case "retried":
             return f"{event['run']} retried as {event['retry']}."
+        case "restarted" if event["retry"] == event["run"]:
+            return f"{event['run']} restarted in its folder."
+        case "restarted":
+            return f"{event['run']} restarted as {event['retry']}."
         case "retrying":
             wait = format_elapsed(event["seconds"])  # type: ignore[arg-type]
             attempt = f"{event['attempt']} of {event['retries']}"

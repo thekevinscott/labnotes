@@ -133,31 +133,36 @@ async def run_experiment(
 
     plan: list[Entry] = []
     parents: dict[str, str] = {}
-    target_folder: Path | None = None
-    if run_id is not None:
-        selected = next((row for row in counted if row["id"] == run_id), None)
+    folders: dict[str, Path] = {}
+    run_args: dict[str, list[str]] = {}
+
+    def restart_entry(target: str, rows: list[dict[str, object]]) -> Entry:
+        selected = next((row for row in rows if row["id"] == target), None)
         if selected is None:
-            raise ValueError(f"No run {run_id} in {name}.")
+            raise ValueError(f"No run {target} in {name}.")
         if selected["ended"] is None or (
             selected["exit_code"] == 0 and not selected["error"]
         ):
-            raise ValueError(f"Run {run_id} has not failed.")
+            raise ValueError(f"Run {target} has not failed.")
         source = config.root / str(selected["folder"])
         record = json.loads((source / "run.json").read_text())
-        args = record.get("args", [])
         params = json.loads(str(selected["params"]))
         lock = claim_run(source)
         if lock is None:
-            raise ValueError(f"Run {run_id} is held by another run.")
-        locks[run_id] = lock
+            raise ValueError(f"Run {target} is held by another run.")
+        locks[target] = lock
+        again = target
         if experiment.continues:
-            target_folder = source
-            plan.append((run_id, params))
+            folders[target] = source
         else:
-            new_id = new_stamped_run_id(taken)
-            planned.add(new_id)
-            parents[new_id] = run_id
-            plan.append((new_id, params))
+            again = new_stamped_run_id(taken)
+            planned.add(again)
+            parents[again] = target
+        run_args[again] = record.get("args", [])
+        return again, params
+
+    if run_id is not None:
+        plan.append(restart_entry(run_id, counted))
     for params in cells:
         resumed = next(
             (
@@ -276,6 +281,8 @@ async def run_experiment(
             planned.add(again)
             parents[again] = run
         attempts[again] = attempt
+        if run in run_args:
+            run_args[again] = run_args[run]
         plan.append((again, ended[run]))
         emit({"event": "retried", "run": run, "retry": again, "params": ended[run]})
         fill()
@@ -358,7 +365,7 @@ async def run_experiment(
         fill()
 
     async def start(run: str, params: dict[str, object]) -> None:
-        folder = target_folder or run_folder(config.root, config.runs, name, run)
+        folder = folders.get(run) or run_folder(config.root, config.runs, name, run)
         folder.mkdir(parents=True, exist_ok=True)
         if not claim(run):
             emit({"event": "held", "run": run})
@@ -386,7 +393,7 @@ async def run_experiment(
             stop=lambda: kill(run),
             stopped=lambda: run in stopped,
             meta=meta,
-            args=args or (),
+            args=run_args.get(run, args) or (),
             state_file=state_file,
             memory_interval=experiment.memory_interval,
             environment=environment,
@@ -470,6 +477,24 @@ async def run_experiment(
             running[run],
         )
 
+    def closed() -> bool:
+        return stopping.is_set() or finishing_up or done.is_set()
+
+    async def restart(target: str) -> bool:
+        if closed():
+            return False
+        rows = await list_experiment_runs(open_tables(config), name, experiment.counts)
+        if closed():
+            return False
+        again, params = restart_entry(target, rows)
+        earlier.pop(again, None)
+        attempts.pop(again, None)
+        stopped.discard(again)
+        plan.append((again, params))
+        emit({"event": "restarted", "run": target, "retry": again, "params": params})
+        fill()
+        return True
+
     def setup_started(process: asyncio.subprocess.Process) -> None:
         setting_up.add(process)
         if stopping.is_set():
@@ -512,7 +537,11 @@ async def run_experiment(
         if experiment.teardown is not None:
             await run_hook("teardown", experiment.teardown, "tearing down")
 
-    listen(Controls(interrupt, set_concurrency, kill, finish, finish_up, start_one))
+    listen(
+        Controls(
+            interrupt, set_concurrency, kill, finish, finish_up, start_one, restart
+        )
+    )
     with TemporaryDirectory(prefix="labnotes-state-") as state_dir:
         state_file = Path(state_dir) / "state.json"
         for hook in ("setup", "teardown"):

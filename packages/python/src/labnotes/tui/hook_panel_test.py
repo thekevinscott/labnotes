@@ -80,3 +80,25 @@ def test_shows_the_waiting_header_without_markup() -> None:
     header, _ = HookPanel("setup").compose()
     header.update("[b]setup")
     assert str(header.render()) == "[b]setup"
+
+
+def test_starting_again_clears_the_last_outcome(
+    panel: HookPanel, parts: dict[str, mock.Mock], tmp_path: Path
+) -> None:
+    panel.start(tmp_path, 100.0)
+    panel.end("broke", 102.0)
+    with mock.patch("labnotes.tui.hook_panel.time.monotonic", return_value=210.0):
+        panel.start(tmp_path, 200.0)
+    assert (panel.state, panel.took, panel.error) == ("running", None, None)
+    assert shown(parts["header"]) == "setup: running  10s"
+
+
+def test_reset_waits_for_the_hook_again(
+    panel: HookPanel, parts: dict[str, mock.Mock], tmp_path: Path
+) -> None:
+    panel.start(tmp_path, 100.0)
+    panel.end("broke", 102.0)
+    panel.reset()
+    assert (panel.began, panel.took, panel.error) == (None, None, None)
+    assert (panel.state, panel.running) == ("waiting", False)
+    assert shown(parts["header"]) == "setup: waiting"

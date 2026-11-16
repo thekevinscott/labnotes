@@ -195,8 +195,8 @@ def test_escape_returns_to_runs(tmp_path: Path) -> None:
 
 
 async def quiet(*_: object) -> AsyncIterator[tuple[str, Any]]:
+    yield "ignored", None
     await asyncio.Event().wait()
-    yield "never", None
 
 
 @pytest.fixture(autouse=True)

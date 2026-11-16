@@ -40,6 +40,7 @@ from pathlib import Path
 
 if Path("fail-once").exists():
     Path("fail-once").unlink()
+    print("checkpoint lost", flush=True)
     sys.exit(1)
 """
 
@@ -72,6 +73,10 @@ def test_capped_run_keeps_a_row_and_restarts_with_r(terminal, tmp_path: Path) ->
     expect(term.get_by_text("✗ capped 1/0")).to_be_visible()
     expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible()
 
+    term.key_enter()
+    expect(term.get_by_text("checkpoint lost")).to_be_visible(timeout=30)
+    term.key_escape()
+    expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible()
     term.write("r")
     expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=60)
     record = json.loads(record_path.read_text())

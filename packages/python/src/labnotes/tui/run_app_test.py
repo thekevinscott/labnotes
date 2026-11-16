@@ -622,7 +622,14 @@ def test_shows_a_capped_run_as_a_failed_row_out_of_retries() -> None:
         report(
             {
                 "event": "capped",
-                "runs": [{"run": "r1", "params": {"m": "a"}, "tries": 4}],
+                "runs": [
+                    {
+                        "run": "r1",
+                        "params": {"m": "a"},
+                        "tries": 4,
+                        "folder": "/runs/r1",
+                    }
+                ],
                 "retries": 3,
             }
         )
@@ -637,6 +644,7 @@ def test_shows_a_capped_run_as_a_failed_row_out_of_retries() -> None:
             assert rows(app) == [["r1", "--m a", "✗ capped 4/3", ""]]
             assert styles(app)[0][2] == "red"
             assert "r1" in app.body.failed
+            assert app.body.folders["r1"] == Path("/runs/r1")
             assert status(app) == "0 passed, 1 failed. Ctrl-C to quit."
 
     asyncio.run(drive())

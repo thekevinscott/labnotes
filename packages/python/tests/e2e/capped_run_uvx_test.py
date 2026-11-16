@@ -12,6 +12,7 @@ from pathlib import Path
 
 if Path("fail-once").exists():
     Path("fail-once").unlink()
+    print("checkpoint lost", flush=True)
     sys.exit(1)
 """
 
@@ -35,6 +36,10 @@ def test_uvx_shows_a_capped_run_and_restarts_it(tmp_path: Path, tui: Tui) -> Non
     term = tui(root, "experiments", "exp", "run")
     expect(term.get_by_text("✗ capped 1/0")).to_be_visible(timeout=120)
     expect(term.get_by_text(record_path.parent.name)).to_be_visible()
+    expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible()
+    term.key_enter()
+    expect(term.get_by_text("checkpoint lost")).to_be_visible(timeout=30)
+    term.key_escape()
     expect(term.get_by_text("0 passed, 1 failed.")).to_be_visible()
     term.write("r")
 

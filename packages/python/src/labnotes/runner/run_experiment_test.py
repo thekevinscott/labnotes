@@ -2390,7 +2390,12 @@ def test_an_explicit_restart_ignores_the_cap(
         }
     ]
     collaborators["resumable"].return_value = [
-        {"id": "target", "params": '{"m": "a"}', "invocations": 5},
+        {
+            "id": "target",
+            "params": '{"m": "a"}',
+            "invocations": 5,
+            "folder": "old/target",
+        },
     ]
     report = mock.Mock()
 

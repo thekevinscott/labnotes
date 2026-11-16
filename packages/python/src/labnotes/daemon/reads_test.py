@@ -538,3 +538,35 @@ def test_an_edit_before_the_last_64_delivered_bytes_is_not_seen(
         ("append", "202", {"text": "b\n"}),
         ("append", "204", {"text": "c\n"}),
     ]
+
+
+def test_a_jump_past_the_tail_window_sends_the_new_tail_not_every_byte(
+    tmp_path: Path,
+) -> None:
+    log = tmp_path / "out.log"
+    log.write_bytes(b"one\n")
+    burst = b"".join(b"line %d\n" % number for number in range(100_000))
+
+    events = follow_file(
+        tmp_path,
+        "out.log",
+        [(lambda: log.open("ab").write(burst), change("run_files", "out.log"))],
+    )
+
+    size = 4 + len(burst)
+    [first, (kind, offset, data)] = events
+    assert first[0] == "state"
+    assert (kind, offset, data["size"]) == ("state", str(size), size)
+    assert data["text"].endswith("line 99999\n")
+    assert len(data["text"]) <= TAIL_BYTES
+
+
+def test_a_resume_far_behind_sends_the_tail_not_every_byte(tmp_path: Path) -> None:
+    log = tmp_path / "out.log"
+    log.write_bytes(b"".join(b"line %d\n" % number for number in range(100_000)))
+
+    [(kind, _, data)] = follow_file(tmp_path, "out.log", [], "0")
+
+    assert kind == "state"
+    assert data["text"].endswith("line 99999\n")
+    assert len(data["text"]) <= TAIL_BYTES

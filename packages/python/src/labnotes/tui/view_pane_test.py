@@ -63,3 +63,30 @@ def test_fail_replaces_a_loaded_view_once() -> None:
     mount.assert_called_once()
     assert "bad view" in str(mount.call_args.args[0].content)
     assert pane.view is None
+
+
+def test_delivers_the_daemon_with_each_change() -> None:
+    pane = ViewPane(
+        "files", "labnotes.tui.file_browser:FileBrowser", Path("/p"), id="view-2"
+    )
+    pane.view = mock.Mock()
+    daemon = mock.Mock()
+
+    pane.deliver(None, frozenset(), daemon)
+
+    [message] = pane.view.post_message.call_args.args
+    assert message.daemon is daemon
+
+
+def test_select_tells_a_loaded_view_the_selected_run() -> None:
+    pane = ViewPane(
+        "files", "labnotes.tui.file_browser:FileBrowser", Path("/p"), id="view-2"
+    )
+
+    pane.select("first")
+    pane.view = shown = mock.Mock()
+    pane.select("second")
+
+    shown.post_message.assert_called_once()
+    [message] = shown.post_message.call_args.args
+    assert message.run == "second"

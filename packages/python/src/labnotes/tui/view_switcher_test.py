@@ -3,6 +3,7 @@ from pathlib import Path
 from unittest import mock
 
 from labnotes.tui.view_switcher import ViewSwitcher
+from labnotes.view.selected import Selected
 
 
 def test_add_views_mounts_ordered_panes_and_digit_bindings() -> None:
@@ -33,7 +34,7 @@ def test_no_extra_views_adds_no_digit_bindings() -> None:
     host._bindings.bind.assert_not_called()
 
 
-def test_deliver_sends_the_experiment_to_every_pane() -> None:
+def test_deliver_sends_the_experiment_and_daemon_to_every_pane() -> None:
     host = mock.Mock()
     panes = [mock.Mock(), mock.Mock()]
     host.query.return_value = panes
@@ -42,7 +43,9 @@ def test_deliver_sends_the_experiment_to_every_pane() -> None:
     ViewSwitcher.deliver(host, experiment, frozenset({"a/stdout.log"}))
 
     for pane in panes:
-        pane.deliver.assert_called_once_with(experiment, frozenset({"a/stdout.log"}))
+        pane.deliver.assert_called_once_with(
+            experiment, frozenset({"a/stdout.log"}), host.daemon
+        )
 
 
 def test_deliver_defaults_to_no_changed_paths() -> None:
@@ -52,7 +55,40 @@ def test_deliver_defaults_to_no_changed_paths() -> None:
 
     ViewSwitcher.deliver(host, None)
 
-    pane.deliver.assert_called_once_with(None, frozenset())
+    pane.deliver.assert_called_once_with(None, frozenset(), host.daemon)
+
+
+def test_a_newly_selected_run_reaches_every_pane_once() -> None:
+    host = mock.Mock(selected=None)
+    panes = [mock.Mock(), mock.Mock()]
+    host.query.return_value = panes
+
+    ViewSwitcher.on_labnotes_selected(host, Selected("first"))
+    ViewSwitcher.on_labnotes_selected(host, Selected("first"))
+
+    assert host.selected == "first"
+    for pane in panes:
+        pane.select.assert_called_once_with("first")
+
+
+def test_added_panes_learn_the_selected_run() -> None:
+    host = mock.Mock(selected="first")
+    host.query_one.return_value.mount_all = mock.AsyncMock()
+
+    with mock.patch("labnotes.tui.view_switcher.ViewPane") as pane:
+        asyncio.run(ViewSwitcher.add_views(host, {"files": "f.py:F"}, Path("/p")))
+
+    pane.return_value.select.assert_called_once_with("first")
+
+
+def test_added_panes_hear_nothing_before_a_run_is_selected() -> None:
+    host = mock.Mock(selected=None)
+    host.query_one.return_value.mount_all = mock.AsyncMock()
+
+    with mock.patch("labnotes.tui.view_switcher.ViewPane") as pane:
+        asyncio.run(ViewSwitcher.add_views(host, {"files": "f.py:F"}, Path("/p")))
+
+    pane.return_value.select.assert_not_called()
 
 
 def test_show_view_remembers_focus_and_switches() -> None:

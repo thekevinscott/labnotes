@@ -6,9 +6,11 @@ view = import_module("labnotes.view")
 
 
 def test_exports_the_view_contract() -> None:
-    assert view.__all__ == ["Changed", "Experiment", "serve"]
+    assert view.__all__ == ["Changed", "Daemon", "Experiment", "Selected", "serve"]
     assert view.Changed.__name__ == "Changed"
+    assert view.Daemon.__name__ == "Daemon"
     assert view.Experiment.__name__ == "Experiment"
+    assert view.Selected.__name__ == "Selected"
 
 
 def test_unknown_export_names_it() -> None:
@@ -30,3 +32,5 @@ def test_matches_an_export_by_value() -> None:
 def test_imports_the_contract_only_when_asked() -> None:
     assert "Changed" not in vars(view)
     assert "Experiment" not in vars(view)
+    assert "Daemon" not in vars(view)
+    assert "Selected" not in vars(view)

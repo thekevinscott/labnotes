@@ -3244,3 +3244,42 @@ def test_readers_start_one_daemon_at_a_time(tmp_path: Path) -> None:
     with mock.patch("labnotes.tui.run_app.ensure_daemon", new=slow):
         asyncio.run(drive())
     assert most == 1
+
+
+def test_the_runs_cursor_and_an_opened_run_select_that_run(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    done = asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        await done.wait()
+        return []
+
+    async def drive() -> None:
+        config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+        app = RunApp(start, "exp", COLUMNS, config)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert app.selected == "r1"
+            await pilot.press("down")
+            await pilot.pause()
+            assert app.selected == "r2"
+            app.body.view("r1")
+            await pilot.pause()
+            assert app.selected == "r1"
+            done.set()
+            await pilot.pause()
+            app.exit()
+
+    asyncio.run(drive())
+
+
+def test_views_read_from_this_experiments_daemon(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, None)
+
+    assert app.daemon is not None
+    assert (app.daemon.config, app.daemon.name) == (app.config, "alpha")
+    assert app.daemon.ensure == app.ensure_daemon
+    assert RunApp(None, "alpha", COLUMNS).daemon is None

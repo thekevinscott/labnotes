@@ -19,3 +19,9 @@ def test_defaults_to_no_paths() -> None:
 def test_is_handled_as_on_labnotes_changed_and_does_not_bubble() -> None:
     assert Changed(None).handler_name == "on_labnotes_changed"
     assert Changed.bubble is False
+
+
+def test_carries_the_daemon_views_read_from() -> None:
+    daemon = object()
+    assert Changed(None, daemon=daemon).daemon is daemon  # type: ignore[arg-type]
+    assert Changed(None).daemon is None

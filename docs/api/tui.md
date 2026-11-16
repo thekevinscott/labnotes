@@ -1,6 +1,8 @@
 # TUI
 
-`labnotes experiments NAME run` requires stdout and stderr to be terminals and opens the TUI.
+`labnotes experiments NAME run` requires stdout and stderr to be terminals and opens the TUI. `labnotes experiments NAME attach` opens the same TUI on whatever the experiment's daemon is running.
+
+While the daemon starts, the TUI lists its startup steps: Starting up, Preparing experiment, Preparing codebase, Starting run. Ctrl-C at that point quits at once and prints the `labnotes experiments NAME stop` command, since the experiment may still start.
 
 Each table numbers its rows from 1 down the left edge. The numbers follow the rows shown, so a filter renumbers them.
 
@@ -17,7 +19,9 @@ Each table numbers its rows from 1 down the left edge. The numbers follow the ro
 | `✗ gave up (exit 1)`, red | Failed with a retryable exit and no retries left |
 | `–` | Skipped |
 
-The header shows the experiment's name and how many runs go at once.
+The header shows the experiment's name and how many runs go at once. The count flashes when it changes, from `+`/`-` here or in another attached TUI.
+
+The TUI gets its state from the daemon. If the connection drops, the header adds `disconnected` and the table keeps its last state. If the daemon dies, a notice covers the view, and quitting exits with an error.
 
 The `memory` column shows how much memory a running run's processes hold: the resident memory of its command and everything it started, summed and sampled each second. The `size` column shows how much its run folder holds on disk. A finished run keeps its size and drops its memory. Both use units of 1000, like `3.2 GB`. Hidden files and folders (names starting with `.`) don't count toward the size. A symlink to a file counts as the size of the file it points to, even when that file lives outside the run folder; symlinked folders aren't followed.
 
@@ -30,15 +34,17 @@ The `memory` column shows how much memory a running run's processes hold: the re
 | `/` | Filter rows by params text. Enter keeps the filter, Escape clears it. |
 | `x` | Stop the running run under the cursor. Press again to kill it. On a run waiting to retry, cancel the retry. |
 | `s` | Start the queued run under the cursor now, on top of the concurrency limit. The rest of the queue keeps its order. |
+| `r` | Restart the failed run under the cursor, the same as `run --run-id`. It shows as a new row. While the invocation is live, the run joins it; after teardown, setup runs again first. |
 | `f` | Finish up: drop queued runs and pending retries. Running runs finish normally; the TUI stays open. |
 | `+` / `-` | Run more / fewer at once. Lowering it lets running runs finish. |
 | Enter | Open the run's output. |
+| `[` / `]` | Previous / next stage, when the experiment has [`setup`](config#setup) or [`teardown`](config#teardown). Clicking a stage tab works too. |
 | Ctrl-p | Open the command palette. |
 | Ctrl-C | Quit. While the experiment is still busy, it asks first. |
 
 ## Output keys
 
-The output view follows the run's `stdout.log` and `stderr.log` as they're written, each in its own tab. A tab's label counts its complete lines, such as `stdout (33)` and `stderr (5)`, and updates while the run writes. The view opens on stdout. For a run that [continues](config#continues), it follows the latest invocation's logs. ANSI color and bold show as styled text; other escape codes are dropped. Long lines wrap. While you're scrolled to the bottom, the view follows new output; scroll up to read back, and scroll to the bottom again to follow. The view reads only the lines on screen, so a log of any size opens fast and uses little memory. Scrolling moves one log line at a time, however many rows it wraps to. A line longer than 64 KB shows its first 64 KB.
+The output view follows the run's `stdout.log` and `stderr.log` as they're written, each in its own tab. A tab's label counts its complete lines, such as `stdout (33)` and `stderr (5)`, and updates while the run writes. The view opens on stdout. For a run that [continues](config#continues), it shows every invocation, oldest first, with a `── invocation N · <started> ──` line above each, and follows the latest. ANSI color and bold show as styled text; other escape codes are dropped. A line rewritten with a carriage return, like a progress bar, shows its last non-empty version. Long lines wrap. While you're scrolled to the bottom, the view follows new output; scroll up to read back, and scroll to the bottom again to follow. The view reads only the lines on screen, so a log of any size opens fast and uses little memory. Scrolling moves one log line at a time, however many rows it wraps to. A line longer than 64 KB shows its first 64 KB.
 
 Blocks the script writes with [`log`](sdk#log) show above the raw output, one line each, collapsed and cut off with an ellipsis (▸). Click a block to expand it to its full text (▾); click again to collapse it. A streaming block shows on `start` and grows in place as its deltas arrive. For a run that [continues](config#continues), each invocation's blocks sit under a line naming when it started, such as `invocation 2026-11-12 10:00:00`. A streaming block an earlier invocation left open stays as it was; the next invocation's deltas start a new block, even under the same `id`. Without a `log.jsonl`, the raw output fills the view as before.
 
@@ -51,7 +57,7 @@ Blocks the script writes with [`log`](sdk#log) show above the raw output, one li
 
 ## Quitting
 
-Ctrl-C quits at once only when the experiment is done. While it is setting up, running, waiting to retry, or tearing down, it asks first, and the prompt says which:
+Once the daemon has the experiment, Ctrl-C quits at once only when the experiment is done. While it is setting up, running, waiting to retry, or tearing down, it asks first, and the prompt says which:
 
 | Key | Action |
 | --- | --- |

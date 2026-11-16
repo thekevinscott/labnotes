@@ -91,6 +91,17 @@ def test_waits_for_a_daemon_socket_before_connecting(tmp_path: Path) -> None:
     assert ensure.await_count == 2
 
 
+def test_retries_when_starting_a_daemon_fails(tmp_path: Path) -> None:
+    handler, seen = replies((200, b"event: state\ndata: null\n\n"))
+    ensure = mock.AsyncMock(
+        side_effect=[OSError("busy"), ValueError("exited during startup"), None]
+    )
+    found = asyncio.run(take(handler, 1, [tmp_path / "d.sock"], ensure))
+    assert found == [("state", None)]
+    assert len(seen) == 1
+    assert ensure.await_count == 3
+
+
 def test_a_rejected_route_raises_its_error(tmp_path: Path) -> None:
     handler, _ = replies((404, b'{"error": "No experiment"}'))
     with pytest.raises(ValueError, match="No experiment"):

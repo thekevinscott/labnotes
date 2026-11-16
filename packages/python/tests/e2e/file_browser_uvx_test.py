@@ -30,7 +30,7 @@ def test_installed_tui_browses_the_open_runs_files_and_tails_one(
     (root / "writer.py").write_text(WRITER)
     release = root / "release"
     (root / "alpha/experiment.toml").write_text(
-        f'command = "python ../writer.py {{run_dir}} {release}"\n'
+        f'command = "python {root / "writer.py"} {{run_dir}} {release}"\n'
         "continues = false\n"
         '[views]\nfiles = "labnotes.tui.file_browser:FileBrowser"\n'
     )

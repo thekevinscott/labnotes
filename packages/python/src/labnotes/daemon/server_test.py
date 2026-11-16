@@ -23,7 +23,10 @@ def config(root: Path) -> mock.Mock:
     return mock.Mock(
         root=root,
         experiments="{experiment}",
+        files="{experiment}/files/",
         runs="{experiment}/runs/{run}",
+        experiment=None,
+        defaults={},
     )
 
 

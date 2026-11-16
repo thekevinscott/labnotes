@@ -208,6 +208,17 @@ class RunLiveView(Widget):
                 gave_up = f"{FAILED} gave up (exit {self.exit_code(run)})"
                 self.set_cell(run, "status", Text(gave_up, style="red"))
                 self.show(describe_event(event))
+            case "capped":
+                for capped in cast(list[dict[str, Any]], event["runs"]):
+                    run = str(capped["run"])
+                    args = " ".join(param_args(capped["params"]))
+                    out = f"{FAILED} capped {capped['tries']}/{event['retries']}"
+                    status = Text(out, style="red")
+                    self.cells[run] = {"run": run, "params": args, "status": status}
+                    self.ended.add(run)
+                    self.failed.add(run)
+                self.redraw(table.cursor_row)
+                self.show(describe_event(event))
             case "retry cancelled":
                 del self.waiting[run]
                 outcome = f"{FAILED} exited {self.exit_code(run)}"

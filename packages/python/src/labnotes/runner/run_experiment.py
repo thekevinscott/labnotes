@@ -204,7 +204,11 @@ async def run_experiment(
     )
     for row in held:
         emit({"event": "held", "run": str(row["id"])})
-    gave_up = [run for run, params in capped if in_subset(params, only or {})]
+    gave_up = [
+        {"run": run, "params": params, "tries": tries[run]}
+        for run, params in capped
+        if in_subset(params, only or {})
+    ]
     if gave_up and run_id is None and not experiment.replace_capped:
         emit({"event": "capped", "runs": gave_up, "retries": experiment.retries})
     running: dict[str, set[asyncio.subprocess.Process]] = {}

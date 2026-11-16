@@ -664,6 +664,8 @@ class RunApp(ViewSwitcher, App[None]):
         return self.attached.batches
 
     async def read_stream(self) -> None:
+        if self.attached is None:
+            return
         while self.attached is not None:
             try:
                 async for batch, event in self.attached:

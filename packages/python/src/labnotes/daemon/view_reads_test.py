@@ -1,13 +1,26 @@
 import asyncio
 import json
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
 
-from labnotes.daemon.reads import Reads
+import pytest
+
 from labnotes.daemon.view_reads import ViewReads
+
+
+def ident(value: object) -> str:
+    return json.dumps(value, sort_keys=True)
+
+
+@pytest.fixture(autouse=True)
+def state_ids() -> Iterator[mock.MagicMock]:
+    with mock.patch("labnotes.daemon.view_reads.Reads") as found:
+        found.state_id.side_effect = ident
+        yield found
+
 
 LOADED = {"config": {"command": "go"}, "views": {"progress": "p.py:P"}}
 
@@ -99,10 +112,11 @@ def test_streams_state_then_changed_paths_then_reloads_only_when_it_changes(
     )
     reads = ViewReads(tmp_path, found, "exp")
     shown = [state(["running"]), state(["passed"]), state(["passed"])]
-    with mock.patch.object(reads, "state", new=mock.AsyncMock(side_effect=shown)):
+    loads = [*shown, *[shown[-1]] * 3]
+    with mock.patch.object(reads, "state", new=mock.AsyncMock(side_effect=loads)):
         frames = asyncio.run(drain(reads))
-    first_id = Reads.state_id({"state": shown[0]})
-    second_id = Reads.state_id({"state": shown[1]})
+    first_id = ident({"state": shown[0]})
+    second_id = ident({"state": shown[1]})
     found.ready.assert_awaited_once_with()
     assert frames[0] == ("state", first_id, shown[0])
     assert ("paths", first_id, ["exp/runs/a/stdout.log"]) in frames
@@ -116,7 +130,7 @@ def test_a_resuming_client_gets_state_again(tmp_path: Path) -> None:
     found = tables(change("run_files", {"path": "exp/runs/a/stdout.log"}))
     reads = ViewReads(tmp_path, found, "exp")
     shown = state(["running"])
-    current = Reads.state_id({"state": shown})
+    current = ident({"state": shown})
     with mock.patch.object(reads, "state", new=mock.AsyncMock(return_value=shown)):
         frames = asyncio.run(drain(reads, current))
     assert frames == [

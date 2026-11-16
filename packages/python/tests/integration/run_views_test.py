@@ -1,8 +1,10 @@
 import asyncio
 import json
+import os
 from collections.abc import Iterator
 from pathlib import Path
 from tempfile import TemporaryDirectory
+from unittest import mock
 
 import psutil
 import pytest
@@ -13,10 +15,10 @@ from labnotes.tui.run_app import RunApp
 
 
 @pytest.fixture
-def runtime(monkeypatch: pytest.MonkeyPatch) -> Iterator[Path]:
+def runtime() -> Iterator[Path]:
     with TemporaryDirectory(prefix="ln-runtime-") as folder:
-        monkeypatch.setenv("XDG_RUNTIME_DIR", folder)
-        yield Path(folder)
+        with mock.patch.dict(os.environ, {"XDG_RUNTIME_DIR": folder}):
+            yield Path(folder)
 
 
 def stop_daemons(root: Path) -> None:

@@ -291,3 +291,23 @@ def test_tail_widget_keeps_at_most_max_lines() -> None:
         assert browser.query_one("#tail", Log).max_lines == FileBrowser.MAX_LINES
 
     browse(test)
+
+
+def test_the_cursor_stays_on_its_file_as_files_arrive_above_it() -> None:
+    async def test(
+        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
+    ) -> None:
+        browser.post_message(Changed(experiment("a"), daemon=daemon))  # type: ignore[arg-type]
+        browser.post_message(Selected("a"))
+        await settle(pilot)
+        files = [{"name": name, "size": 1, "mtime": "t"} for name in ("b.log", "c.log")]
+        daemon.send("/runs/a/files", "state", files)
+        await settle(pilot)
+        table = browser.query_one("#files", DataTable)
+        table.move_cursor(row=1)
+        daemon.send("/runs/a/files", "file", {"name": "a.log", "size": 1, "mtime": "t"})
+        await settle(pilot)
+        assert names(browser) == ["a.log", "b.log", "c.log"]
+        assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key == "c.log"
+
+    browse(test)

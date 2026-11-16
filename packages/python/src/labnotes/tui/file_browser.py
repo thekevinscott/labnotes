@@ -88,7 +88,9 @@ class FileBrowser(Horizontal):
                     case "state":
                         table.clear()
                         for row in data:
-                            self.put(row)
+                            table.add_row(
+                                row["name"], format_bytes(row["size"]), key=row["name"]
+                            )
                     case "file":
                         self.put(data)
                     case "remove" if data["name"] in table.rows:
@@ -103,8 +105,15 @@ class FileBrowser(Horizontal):
         if name in table.rows:
             table.update_cell(name, "size", size, update_width=True)
             return
+        cursor = (
+            table.coordinate_to_cell_key(table.cursor_coordinate).row_key
+            if table.row_count
+            else None
+        )
         table.add_row(name, size, key=name)
         table.sort("name")
+        if cursor is not None:
+            table.move_cursor(row=table.get_row_index(cursor), animate=False)
 
     def on_data_table_row_selected(self, event: DataTable.RowSelected) -> None:
         event.stop()

@@ -26,8 +26,9 @@ log, *args = sys.argv[1:]
 opened = dirsql._async.DirSQL.__init__
 
 def counted(self, root=None, **options):
-    with open(log, "a") as stream:
-        stream.write(os.path.abspath(os.getcwd() if root is None else root) + "\\n")
+    if options.get("tables"):
+        with open(log, "a") as stream:
+            stream.write(os.path.abspath(os.getcwd() if root is None else root) + "\\n")
     opened(self, root, **options)
 
 dirsql._async.DirSQL.__init__ = counted

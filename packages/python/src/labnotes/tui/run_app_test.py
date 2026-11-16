@@ -2225,6 +2225,21 @@ def test_escape_leaves_a_failed_setup_for_the_runs(tmp_path: Path) -> None:
     drive_hooks(steps)
 
 
+def test_escape_leaves_a_lone_runs_failed_setup_for_the_run_list(
+    tmp_path: Path,
+) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report({**planned("r1"), "hooks": ["setup"]})
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": "up broke"})
+        await pilot.pause()
+        await pilot.press("escape")
+        table: Any = app.query_one("DataTable")
+        assert (stage(app), app.body.viewing, table.display) == ("runs", None, True)
+
+    drive_hooks(steps)
+
+
 def test_a_restarts_hooks_keep_the_runs_table_and_its_cursor(tmp_path: Path) -> None:
     restart: dict[str, object] = {
         "event": "planned",

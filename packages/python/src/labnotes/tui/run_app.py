@@ -105,6 +105,7 @@ class RunLiveView(Widget):
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
         self.cells: dict[str, dict[str, object]] = {}
+        self.usage: dict[str, Mapping[str, Any]] = {}
         self.filter = ""
         self.failed: set[str] = set()
         self.retried: set[str] = set()
@@ -152,6 +153,8 @@ class RunLiveView(Widget):
                         planned["run"], args
                     )
                     self.pending.add(planned["run"])
+                    if planned["run"] in self.usage:
+                        self.show_usage(self.usage[planned["run"]])
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
                 self.hooks = tuple(cast(list[str], event.get("hooks", [])))
@@ -399,6 +402,7 @@ class RunLiveView(Widget):
 
     def show_usage(self, row: Mapping[str, Any]) -> None:
         run = str(row["id"])
+        self.usage[run] = row
         if run not in self.cells:
             return
         running = row["status"] == "running"

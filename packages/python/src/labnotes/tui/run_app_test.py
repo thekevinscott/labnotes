@@ -306,6 +306,50 @@ def test_shows_what_each_run_uses_from_the_daemon(
     asyncio.run(drive())
 
 
+def test_shows_usage_that_arrived_before_its_runs_were_planned(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    measured, done = asyncio.Event(), asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        await measured.wait()
+        report(planned("r1", "r2"))
+        report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        await done.wait()
+        return []
+
+    async def runs(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield (
+            "state",
+            [
+                {"id": "r1", "status": "passed", "memory": 9_000, "size": 5_000},
+                {
+                    "id": "r2",
+                    "status": "running",
+                    "memory": 3_200_000_000,
+                    "size": 2_000,
+                },
+            ],
+        )
+        measured.set()
+        await asyncio.Event().wait()
+
+    collaborators["follow_route"].side_effect = runs
+
+    async def drive() -> None:
+        config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+        app = RunApp(start, "exp", COLUMNS, config)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            await pilot.pause()
+            assert usage(app) == [["", "5.0 kB"], ["3.2 GB", "2.0 kB"]]
+            done.set()
+            await pilot.pause()
+            app.exit()
+
+    asyncio.run(drive())
+
+
 def test_follow_usage_waits_for_the_built_in_view(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:

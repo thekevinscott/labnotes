@@ -21,7 +21,7 @@ The config can also live in `.labnotes.toml` under [`[experiment]`](config#exper
 
 ## Custom view contract
 
-Views construct their own Textual widgets. labnotes provides only `labnotes.view.Experiment` and `labnotes.view.Changed` for data and notifications:
+Views construct their own Textual widgets. labnotes provides `labnotes.view.Experiment` and `labnotes.view.Changed` for data and notifications, and messages for the [selected run](#selected-run) and [run actions](#run-actions):
 
 ```python
 # views/progress.py
@@ -47,6 +47,50 @@ The class must be constructible without arguments. `Changed.experiment` holds da
 - `config`: the experiment's config as labnotes resolved it, read-only.
 
 `Changed.paths` contains changed run file paths, relative to the project root; it is empty for a run or config change. `Changed.experiment` is `None` if the experiment was removed. The message is sent on load and when run data or run files change.
+
+### Selected run
+
+The run TUI keeps one selected run, shared by every view. Opening a run with Enter in the runs view selects it. A view selects a run by posting `Select(run)`, where `run` is a run id (a row's `id`), or `None` for no run. Every view, including the one that posted, then gets `Selected(run)`, handled as `on_labnotes_selected`. A view that loads after a run was selected gets `Selected` once it loads.
+
+```python
+# views/picked.py
+from textual.widgets import Static
+from labnotes.view import Selected
+
+
+class Picked(Static):
+    def on_labnotes_selected(self, message: Selected) -> None:
+        self.update(f"Run {message.run}" if message.run else "No run selected")
+```
+
+### Run actions
+
+A view acts on runs by posting messages, which act as the runs view's keys do:
+
+- `Stop(run)` stops the run, like `x`. Posting it again kills the run.
+- `Restart(run)` restarts a failed run, like `r`.
+
+```python
+from textual.binding import Binding
+from textual.widgets import Static
+from labnotes.view import Restart, Selected, Stop
+
+
+class Control(Static, can_focus=True):
+    BINDINGS = [Binding("z", "stop", "Stop"), Binding("a", "restart", "Restart")]
+    run = None
+
+    def on_labnotes_selected(self, message: Selected) -> None:
+        self.run = message.run
+
+    def action_stop(self) -> None:
+        if self.run:
+            self.post_message(Stop(self.run))
+
+    def action_restart(self) -> None:
+        if self.run:
+            self.post_message(Restart(self.run))
+```
 
 ## Runs table columns
 

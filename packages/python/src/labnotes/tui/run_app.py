@@ -53,6 +53,9 @@ from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.view.experiment import Experiment
+from labnotes.view.restart import Restart
+from labnotes.view.select import Select
+from labnotes.view.stop import Stop
 from labnotes.view_specs import view_specs
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
@@ -460,6 +463,7 @@ class RunLiveView(Widget):
         self.query_one("#output", RunOutput).display = True
         self.query_one("#output", RunOutput).focus()
         self.app.sub_title = run
+        self.post_message(Select(run))
         self.show("")
         self.refresh_bindings()
         self.follow()
@@ -539,6 +543,7 @@ class RunApp(ViewSwitcher, App[None]):
         self.body_ready = True
         self.loaded_views = False
         self.shown: Experiment | None = None
+        self.selected: str | None = None
         self.left: dict[str, Widget] = {}
         self.controls = self.body.controls
         self.daemon_batch = daemon_batch
@@ -739,29 +744,46 @@ class RunApp(ViewSwitcher, App[None]):
             if self.body_ready:
                 self.body.show(str(error))
 
+    def report(self, text: str) -> None:
+        if self.body_ready:
+            self.body.show(text)
+        else:
+            self.notify(text)
+
     def restart_run(self, run: str) -> None:
         if self.daemon_batch is None:
             return
         if run not in self.body.failed:
-            self.body.show(f"{run} has not failed.")
+            self.report(f"{run} has not failed.")
             return
         self.run_worker(self.restart_daemon_run(run), exit_on_error=False)
 
     async def restart_daemon_run(self, run: str) -> None:
         assert self.config is not None
         if self.disconnected:
-            self.body.show("disconnected")
+            self.report("disconnected")
             return
         try:
             await request_start(
                 self.config,
                 self.experiment_name,
                 restart_request(run, self.experiment_config),
-                lambda step: self.body.show(f"Restarting {run}: {step}"),
+                lambda step: self.report(f"Restarting {run}: {step}"),
             )
-            self.body.show(f"Restarted {run}.")
+            self.report(f"Restarted {run}.")
         except (OSError, ValueError) as error:
-            self.body.show(f"Could not restart {run}: {error}")
+            self.report(f"Could not restart {run}: {error}")
+
+    def on_labnotes_select(self, message: Select) -> None:
+        if message.run != self.selected:
+            self.selected = message.run
+            self.select(message.run)
+
+    def on_labnotes_stop(self, message: Stop) -> None:
+        self.controls.kill(message.run)
+
+    def on_labnotes_restart(self, message: Restart) -> None:
+        self.restart_run(message.run)
 
     def configured_views(self) -> dict[str, str]:
         if self.config is None:
@@ -789,6 +811,8 @@ class RunApp(ViewSwitcher, App[None]):
                             cast(Mapping[str, str], data["views"]), root
                         )
                         self.loaded_views = True
+                        if self.selected is not None:
+                            self.select(self.selected)
                     self.shown = Experiment(
                         root, name, tuple(runs), MappingProxyType(config or {})
                     )

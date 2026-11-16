@@ -666,7 +666,7 @@ class RunApp(ViewSwitcher, App[None]):
     async def read_stream(self) -> None:
         if self.attached is None:
             return
-        while self.attached is not None:
+        while True:
             try:
                 async for batch, event in self.attached:
                     if self.body_ready:

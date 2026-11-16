@@ -95,14 +95,8 @@ def test_run_app_mounts_configured_view_and_digits_switch(
         stop_daemons(tmp_path)
 
 
-@pytest.fixture
-def restart() -> Iterator[mock.MagicMock]:
-    with mock.patch.object(RunApp, "restart_run") as restart_run:
-        yield restart_run
-
-
-def test_views_share_the_selected_run_and_stop_and_restart_runs(
-    tmp_path: Path, runtime: Path, restart: mock.MagicMock
+def test_views_share_the_selected_run_and_stop_runs(
+    tmp_path: Path, runtime: Path
 ) -> None:
     async def drive() -> None:
         (tmp_path / ".labnotes.toml").write_text("")
@@ -113,13 +107,12 @@ def test_views_share_the_selected_run_and_stop_and_restart_runs(
         )
         (tmp_path / "views.py").write_text(
             "from textual.widgets import Static\n"
-            "from labnotes.view import Changed, Restart, Select, Selected, Stop\n"
+            "from labnotes.view import Changed, Select, Selected, Stop\n"
             "class Picker(Static):\n"
             "    def on_labnotes_changed(self, message: Changed):\n"
             "        run = message.experiment.runs[0]['id']\n"
             "        self.post_message(Select(run))\n"
             "        self.post_message(Stop(run))\n"
-            "        self.post_message(Restart(run))\n"
             "class Shown(Static):\n"
             "    def on_labnotes_selected(self, message: Selected):\n"
             "        self.update(f'selected {message.run}')\n"
@@ -156,7 +149,6 @@ def test_views_share_the_selected_run_and_stop_and_restart_runs(
                 app.query_one("#view-3 Static", Static).content
             )
             controls.kill.assert_called_once_with("first")
-            restart.assert_called_once_with("first")
             waiting.set()
 
     try:

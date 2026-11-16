@@ -8,7 +8,7 @@ import os
 import signal
 import socket
 import time
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Sequence
 from dataclasses import dataclass, field
 from pathlib import Path
 from typing import cast
@@ -17,12 +17,13 @@ import uvicorn
 from starlette.applications import Starlette
 from starlette.requests import Request
 from starlette.responses import JSONResponse, Response, StreamingResponse
-from starlette.routing import Route
+from starlette.routing import BaseRoute, Route
 from starlette.types import Receive, Scope, Send
 
 from labnotes.daemon.listening import listening
 from labnotes.daemon.reads import Reads
 from labnotes.daemon.sse import sse
+from labnotes.daemon.view_reads import ViewReads
 from labnotes.daemon.socket_path import (
     discovery_folder,
     lock_path,
@@ -60,7 +61,7 @@ class ExperimentDaemon:
     """Serve commands while cells run or a client remains attached."""
 
     def __init__(
-        self, config: LabnotesConfig, name: str, reads: Reads | None = None
+        self, config: LabnotesConfig, name: str, routes: Sequence[BaseRoute] = ()
     ) -> None:
         self.config = config
         self.name = name
@@ -83,7 +84,7 @@ class ExperimentDaemon:
                 Route("/concurrency", self.concurrency, methods=["POST"]),
                 Route("/runs/{run}/stop", self.stop_one, methods=["POST"]),
                 Route("/runs/{run}/start", self.start_one, methods=["POST"]),
-                *([] if reads is None else reads.routes),
+                *routes,
             ]
         )
 
@@ -437,8 +438,14 @@ async def serve_daemon(config: LabnotesConfig, name: str) -> None:
         if listening(path):
             return
         path.unlink(missing_ok=True)
+        tables = open_experiment_tables(config, name)
         daemon = ExperimentDaemon(
-            config, name, Reads(config.root, open_experiment_tables(config, name))
+            config,
+            name,
+            [
+                *Reads(config.root, tables).routes,
+                *ViewReads(config.root, tables, name).routes,
+            ],
         )
         listener = socket.socket(socket.AF_UNIX)
         listener.bind(str(path))

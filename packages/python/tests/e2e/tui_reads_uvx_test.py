@@ -92,6 +92,7 @@ def test_installed_tuis_read_views_from_the_daemon_and_hold_no_watches(
     expect(run.get_by_text("1 at a time")).to_be_visible(timeout=60)
     run.write("2")
     expect(run.get_by_text("view runs: 1 running")).to_be_visible(timeout=30)
+    wait_for(lambda: len(processes(root, "daemon")) == 1)
     [daemon] = processes(root, "daemon")
     before = inotify_watches(daemon)
 
@@ -120,6 +121,7 @@ def test_installed_tui_starts_a_daemon_when_its_idle_daemon_is_gone(
     expect(term.get_by_text("1 passed, 0 failed.")).to_be_visible(timeout=60)
     term.write("2")
     expect(term.get_by_text("view runs: 1 passed")).to_be_visible(timeout=30)
+    wait_for(lambda: len(processes(root, "daemon")) == 1)
     [lost] = processes(root, "daemon")
     lost.send_signal(signal.SIGKILL)
     psutil.wait_procs([lost], timeout=10)

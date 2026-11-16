@@ -1,0 +1,1 @@
+Changed: with `continues = true`, an invocation lost when labnotes died (`"ended_by": "lost"`) no longer spends a retry, the same as one you stopped. A crash no longer uses up a retry on every run that was live. Failed exits and timeouts still count.

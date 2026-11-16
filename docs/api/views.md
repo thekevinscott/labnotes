@@ -21,7 +21,7 @@ The config can also live in `.labnotes.toml` under [`[experiment]`](config#exper
 
 ## Custom view contract
 
-Views construct their own Textual widgets. labnotes provides `labnotes.view.Experiment`, `labnotes.view.Changed`, `labnotes.view.Selected` and `labnotes.view.Daemon` for data and notifications:
+Views construct their own Textual widgets. labnotes provides `labnotes.view.Experiment`, `labnotes.view.Changed`, `labnotes.view.Daemon`, `labnotes.view.Select` and `labnotes.view.Selected` for data and notifications:
 
 ```python
 # views/progress.py
@@ -69,7 +69,7 @@ class RunCount(Static):
                 self.update(f"{len(data)} runs")
 ```
 
-`labnotes.view.Selected` says which run is selected: `message.run` is its id, or `None`. labnotes sends it to every view when you move the runs table's cursor or open a run, and to a view when it loads if a run is already selected. Handle it as `on_labnotes_selected`. A view can post one to select a run for the other views; the runs table's cursor stays where it is.
+The run TUI keeps one selected run, shared by every view. Moving the runs table's cursor or opening a run selects it. A view selects a run by posting `Select(run)`, where `run` is a run id, or `None` for no run; the runs table's cursor stays where it is. Every view then gets `Selected(run)`, handled as `on_labnotes_selected`. A view that loads after a run was selected gets `Selected` once it loads.
 
 ## File browser
 

@@ -54,7 +54,7 @@ from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
 from labnotes.view.daemon import Daemon
 from labnotes.view.experiment import Experiment
-from labnotes.view.selected import Selected
+from labnotes.view.select import Select
 from labnotes.view_specs import view_specs
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
@@ -457,11 +457,11 @@ class RunLiveView(Widget):
     def on_data_table_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         # A redraw highlights its first row before restoring the cursor.
         if (run := self.cursor_run()) is not None:
-            self.post_message(Selected(run))
+            self.post_message(Select(run))
 
     def view(self, run: str) -> None:
         self.viewing = run
-        self.post_message(Selected(run))
+        self.post_message(Select(run))
         self.query_one(LogBlocks).reset()
         self.query_one("#output", RunOutput).reset()
         self.query_one(DataTable).display = False

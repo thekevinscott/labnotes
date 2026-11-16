@@ -3,7 +3,6 @@ from pathlib import Path
 from unittest import mock
 
 from labnotes.tui.view_switcher import ViewSwitcher
-from labnotes.view.selected import Selected
 
 
 def test_add_views_mounts_ordered_panes_and_digit_bindings() -> None:
@@ -63,8 +62,8 @@ def test_a_newly_selected_run_reaches_every_pane_once() -> None:
     panes = [mock.Mock(), mock.Mock()]
     host.query.return_value = panes
 
-    ViewSwitcher.on_labnotes_selected(host, Selected("first"))
-    ViewSwitcher.on_labnotes_selected(host, Selected("first"))
+    ViewSwitcher.on_labnotes_select(host, mock.Mock(run="first"))
+    ViewSwitcher.on_labnotes_select(host, mock.Mock(run="first"))
 
     assert host.selected == "first"
     for pane in panes:

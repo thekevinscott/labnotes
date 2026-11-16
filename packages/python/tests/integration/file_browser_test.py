@@ -92,7 +92,7 @@ def test_file_browser_lists_the_open_runs_files_and_tails_the_selected_one(
             log = app.query_one("#view-2 #tail", Log)
 
             def names() -> list[str]:
-                return [str(table.get_row(key)[0]) for key in table.rows]
+                return [str(table.get_row_at(row)[0]) for row in range(table.row_count)]
 
             await until(
                 pilot,

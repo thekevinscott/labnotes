@@ -11,7 +11,14 @@ from labnotes.view.experiment import Experiment
 def test_is_exported_from_the_view_package() -> None:
     assert view.Changed is Changed
     assert view.Experiment is Experiment
-    assert view.__all__ == ["Changed", "Experiment", "serve"]
+    assert view.__all__ == [
+        "Changed",
+        "Daemon",
+        "Experiment",
+        "Select",
+        "Selected",
+        "serve",
+    ]
 
 
 def test_the_view_package_names_what_it_lacks() -> None:

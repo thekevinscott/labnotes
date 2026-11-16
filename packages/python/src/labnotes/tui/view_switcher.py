@@ -7,7 +7,7 @@ from textual.widgets import ContentSwitcher
 from labnotes.tui.view_pane import ViewPane
 from labnotes.view.daemon import Daemon
 from labnotes.view.experiment import Experiment
-from labnotes.view.selected import Selected
+from labnotes.view.select import Select
 
 MAX_VIEWS = 8
 
@@ -44,7 +44,7 @@ class ViewSwitcher:
         for pane in self.query(ViewPane):  # type: ignore[attr-defined]
             pane.deliver(experiment, paths, self.daemon)
 
-    def on_labnotes_selected(self, message: Selected) -> None:
+    def on_labnotes_select(self, message: Select) -> None:
         if message.run == self.selected:
             return
         self.selected = message.run

@@ -1,313 +1,318 @@
 import asyncio
-from collections import defaultdict
-from collections.abc import AsyncIterator, Awaitable, Callable
-from pathlib import Path
+from collections.abc import AsyncIterator
 from typing import Any
-
-from textual.app import App, ComposeResult
-from textual.pilot import Pilot
-from textual.widgets import DataTable, Log, Static
+from unittest import mock
 
 from labnotes.tui.file_browser import FileBrowser
-from labnotes.view.changed import Changed
-from labnotes.view.experiment import Experiment
-from labnotes.view.selected import Selected
 
 MISSING = object()
 
 
-class FakeDaemon:
-    def __init__(self) -> None:
-        self.routes: dict[str, asyncio.Queue[Any]] = defaultdict(asyncio.Queue)
-        self.followed: list[str] = []
-        self.open: set[str] = set()
-
-    def send(self, route: str, kind: str, data: Any) -> None:
-        self.routes[route].put_nowait((kind, data))
-
-    def reject(self, route: str) -> None:
-        self.routes[route].put_nowait(MISSING)
-
-    async def follow(self, route: str) -> AsyncIterator[tuple[str, Any]]:
-        self.followed.append(route)
-        self.open.add(route)
-        try:
-            while True:
-                event = await self.routes[route].get()
-                if event is MISSING:
-                    raise ValueError("Not found")
-                yield event
-        finally:
-            self.open.discard(route)
+def widgets() -> dict[str, mock.Mock]:
+    return {
+        name: mock.Mock(name=name)
+        for name in ("#files", "#tail", "#files-title", "#tail-title")
+    }
 
 
-class Host(App[None]):
-    def compose(self) -> ComposeResult:
-        yield FileBrowser()
+def host(**attrs: Any) -> mock.Mock:
+    found = widgets()
+    browser = mock.Mock(**attrs)
+    browser.query_one.side_effect = lambda name, kind=None: found[name]
+    browser.found = found
+    return browser
 
 
-def experiment(*runs: str) -> Experiment:
-    return Experiment(
-        Path("/p"),
-        "alpha",
-        tuple({"id": run, "folder": f"alpha/runs/{run}"} for run in runs),
+def daemon(*events: Any) -> mock.Mock:
+    routes: list[str] = []
+
+    async def follow(route: str) -> AsyncIterator[tuple[str, Any]]:
+        routes.append(route)
+        for event in events:
+            if event is MISSING:
+                raise ValueError("Not found")
+            yield event
+
+    return mock.Mock(follow=follow, routes=routes)
+
+
+def test_keeps_at_most_ten_thousand_lines() -> None:
+    assert FileBrowser.MAX_LINES == 10_000
+
+
+def test_composes_a_file_list_beside_a_tail() -> None:
+    with (
+        mock.patch("labnotes.tui.file_browser.Vertical"),
+        mock.patch("labnotes.tui.file_browser.Static") as static,
+        mock.patch("labnotes.tui.file_browser.DataTable") as table,
+        mock.patch("labnotes.tui.file_browser.Log") as log,
+    ):
+        shown = list(FileBrowser.compose(mock.Mock(MAX_LINES=7)))
+
+    assert len(shown) == 4
+    table.assert_called_once_with(id="files", cursor_type="row")
+    log.assert_called_once_with(id="tail", max_lines=7)
+    assert static.call_args_list == [
+        mock.call("Select a run to see its files.", id="files-title"),
+        mock.call(id="tail-title"),
+    ]
+
+
+def test_mount_adds_name_and_size_columns() -> None:
+    browser = host()
+
+    FileBrowser.on_mount(browser)
+
+    assert browser.found["#files"].add_column.call_args_list == [
+        mock.call("name", key="name"),
+        mock.call("size", key="size"),
+    ]
+
+
+def test_changed_keeps_the_daemon_and_the_run_ids() -> None:
+    browser = host(run=None, listed=None, daemon=None)
+    source = mock.Mock()
+    experiment = mock.Mock(runs=({"id": "a"}, {"id": 2}))
+
+    FileBrowser.on_labnotes_changed(
+        browser, mock.Mock(experiment=experiment, daemon=source)
+    )
+    FileBrowser.on_labnotes_changed(browser, mock.Mock(experiment=None, daemon=None))
+
+    assert browser.daemon is source
+    assert browser.runs == frozenset({"a", "2"})
+    browser.list_run.assert_not_called()
+
+
+def test_changed_lists_a_selected_run_once_it_exists() -> None:
+    browser = host(run="a", listed=None, runs=frozenset())
+
+    FileBrowser.on_labnotes_changed(
+        browser, mock.Mock(experiment=mock.Mock(runs=()), daemon=None)
+    )
+    browser.list_run.assert_not_called()
+    FileBrowser.on_labnotes_changed(
+        browser, mock.Mock(experiment=mock.Mock(runs=({"id": "a"},)), daemon=None)
+    )
+    browser.list_run.assert_called_once_with()
+
+
+def test_changed_leaves_an_already_listed_run_alone() -> None:
+    browser = host(run="a", listed="a")
+
+    FileBrowser.on_labnotes_changed(
+        browser, mock.Mock(experiment=mock.Mock(runs=({"id": "a"},)), daemon=None)
+    )
+
+    browser.list_run.assert_not_called()
+
+
+def test_selected_lists_a_newly_selected_run_only() -> None:
+    browser = host(run="a")
+    message = mock.Mock(run="a")
+
+    FileBrowser.on_labnotes_selected(browser, message)
+    browser.list_run.assert_not_called()
+    FileBrowser.on_labnotes_selected(browser, mock.Mock(run="b"))
+
+    assert browser.run == "b"
+    browser.list_run.assert_called_once_with()
+
+
+def test_list_run_waits_for_the_daemon() -> None:
+    browser = host(daemon=None, run="a")
+
+    FileBrowser.list_run(browser)
+
+    browser.run_worker.assert_not_called()
+    browser.query_one.assert_not_called()
+
+
+def test_list_run_with_no_run_asks_for_one() -> None:
+    browser = host(daemon=mock.Mock(), run=None)
+
+    FileBrowser.list_run(browser)
+
+    browser.found["#files-title"].update.assert_called_once_with(
+        "Select a run to see its files."
+    )
+    browser.run_worker.assert_not_called()
+
+
+def test_list_run_restarts_both_follows_for_the_run() -> None:
+    source = mock.Mock()
+    browser = host(daemon=source, run="a")
+
+    FileBrowser.list_run(browser)
+
+    assert browser.listed == "a"
+    assert browser.workers.cancel_group.call_args_list == [
+        mock.call(browser, "files"),
+        mock.call(browser, "tail"),
+    ]
+    browser.found["#files"].clear.assert_called_once_with()
+    browser.found["#tail"].clear.assert_called_once_with()
+    browser.found["#tail-title"].update.assert_called_once_with("")
+    browser.found["#files-title"].update.assert_called_once_with("Files in a")
+    browser.follow_files.assert_called_once_with(source, "a")
+    browser.run_worker.assert_called_once_with(
+        browser.follow_files.return_value,
+        group="files",
+        exclusive=True,
+        exit_on_error=False,
     )
 
 
-def browse(
-    test: Callable[[Pilot[None], FileBrowser, FakeDaemon], Awaitable[None]],
-) -> None:
-    async def drive() -> None:
-        daemon = FakeDaemon()
-        app = Host()
-        async with app.run_test() as pilot:
-            browser = app.query_one(FileBrowser)
-            await test(pilot, browser, daemon)
-
-    asyncio.run(drive())
-
-
-async def settle(pilot: Pilot[None]) -> None:
-    for _ in range(3):
-        await pilot.pause()
-
-
-def names(browser: FileBrowser) -> list[str]:
-    table = browser.query_one("#files", DataTable)
-    return [str(table.get_row(key)[0]) for key in table.rows]
-
-
-def sizes(browser: FileBrowser) -> list[str]:
-    table = browser.query_one("#files", DataTable)
-    return [str(table.get_row(key)[1]) for key in table.rows]
-
-
-def tail(browser: FileBrowser) -> list[str]:
-    return list(browser.query_one("#tail", Log).lines)
-
-
-def title(browser: FileBrowser, name: str) -> str:
-    return str(browser.query_one(name, Static).content)
-
-
-def test_asks_for_a_run_until_one_is_selected() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        browser.post_message(Changed(experiment("a"), daemon=daemon))  # type: ignore[arg-type]
-        await settle(pilot)
-        assert "Select a run" in title(browser, "#files-title")
-        assert daemon.followed == []
-
-    browse(test)
-
-
-def test_lists_the_selected_runs_files_and_keeps_them_current() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        browser.post_message(Selected("a"))
-        browser.post_message(Changed(experiment("a"), daemon=daemon))  # type: ignore[arg-type]
-        await settle(pilot)
-        assert daemon.followed == ["/runs/a/files"]
-        assert "a" in title(browser, "#files-title")
-        daemon.send(
-            "/runs/a/files",
-            "state",
-            [
-                {"name": "run.json", "size": 10, "mtime": "t"},
-                {"name": "stdout.log", "size": 2000, "mtime": "t"},
-            ],
-        )
-        await settle(pilot)
-        assert names(browser) == ["run.json", "stdout.log"]
-        assert sizes(browser) == ["10 bytes", "2.0 kB"]
-        daemon.send(
-            "/runs/a/files", "file", {"name": "ckpt/model.pt", "size": 5, "mtime": "t"}
-        )
-        daemon.send(
-            "/runs/a/files", "file", {"name": "stdout.log", "size": 3000, "mtime": "t"}
-        )
-        daemon.send("/runs/a/files", "remove", {"name": "run.json"})
-        await settle(pilot)
-        assert names(browser) == ["ckpt/model.pt", "stdout.log"]
-        assert sizes(browser) == ["5 bytes", "3.0 kB"]
-
-    browse(test)
-
-
-def test_selecting_another_run_lists_its_files_instead() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        browser.post_message(Changed(experiment("a", "b"), daemon=daemon))  # type: ignore[arg-type]
-        browser.post_message(Selected("a"))
-        await settle(pilot)
-        daemon.send(
-            "/runs/a/files", "state", [{"name": "a.log", "size": 1, "mtime": "t"}]
-        )
-        await settle(pilot)
-        browser.post_message(Selected("b"))
-        browser.post_message(Selected("b"))
-        await settle(pilot)
-        assert names(browser) == []
-        daemon.send(
-            "/runs/b/files", "state", [{"name": "b.log", "size": 1, "mtime": "t"}]
-        )
-        await settle(pilot)
-        assert names(browser) == ["b.log"]
-        assert daemon.followed == ["/runs/a/files", "/runs/b/files"]
-        assert "/runs/a/files" not in daemon.open
-
-    browse(test)
-
-
-def test_a_run_without_a_folder_yet_is_listed_once_it_has_one() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        browser.post_message(Changed(experiment(), daemon=daemon))  # type: ignore[arg-type]
-        browser.post_message(Selected("a"))
-        await settle(pilot)
-        daemon.reject("/runs/a/files")
-        await settle(pilot)
-        assert "No files yet" in title(browser, "#files-title")
-        browser.post_message(Changed(experiment(), daemon=daemon))  # type: ignore[arg-type]
-        await settle(pilot)
-        assert daemon.followed == ["/runs/a/files"]
-        browser.post_message(Changed(experiment("a"), daemon=daemon))  # type: ignore[arg-type]
-        await settle(pilot)
-        assert daemon.followed == ["/runs/a/files", "/runs/a/files"]
-
-    browse(test)
-
-
-async def open_file(
-    pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon, name: str
-) -> None:
-    browser.post_message(Changed(experiment("a"), daemon=daemon))  # type: ignore[arg-type]
-    browser.post_message(Selected("a"))
-    await settle(pilot)
-    daemon.send(
-        "/runs/a/files",
-        "state",
-        [
-            {"name": "plot.png", "size": 9, "mtime": "t"},
-            {"name": name, "size": 4, "mtime": "t"},
-        ],
+def test_follow_files_fills_and_updates_the_table() -> None:
+    browser = host()
+    table = browser.found["#files"]
+    table.rows = {"run.json": object()}
+    source = daemon(
+        ("state", [{"name": "run.json", "size": 10}, {"name": "my log", "size": 2000}]),
+        ("file", {"name": "new.log", "size": 1}),
+        ("remove", {"name": "run.json"}),
+        ("remove", {"name": "never.log"}),
+        ("other", {}),
     )
-    await settle(pilot)
-    table = browser.query_one("#files", DataTable)
-    table.focus()
-    table.move_cursor(row=names(browser).index(name))
-    await pilot.press("enter")
-    await settle(pilot)
+
+    asyncio.run(FileBrowser.follow_files(browser, source, "a b"))
+
+    assert source.routes == ["/runs/a%20b/files"]
+    table.clear.assert_called_once_with()
+    assert table.add_row.call_args_list == [
+        mock.call("run.json", "10 bytes", key="run.json"),
+        mock.call("my log", "2.0 kB", key="my log"),
+    ]
+    browser.put.assert_called_once_with({"name": "new.log", "size": 1})
+    table.remove_row.assert_called_once_with("run.json")
 
 
-def test_selecting_a_file_tails_it_and_follows_new_lines() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        await open_file(pilot, browser, daemon, "stdout.log")
-        route = "/runs/a/files/stdout.log"
-        assert route in daemon.followed
-        daemon.send(
-            route, "state", {"name": "stdout.log", "size": 8, "text": "one\ntwo\n"}
-        )
-        await settle(pilot)
-        assert tail(browser) == ["one", "two"]
-        assert "stdout.log" in title(browser, "#tail-title")
-        daemon.send(route, "append", {"text": "thr"})
-        daemon.send(route, "append", {"text": "ee\nfour\n"})
-        await settle(pilot)
-        assert tail(browser) == ["one", "two", "three", "four"]
-        daemon.send(route, "state", {"name": "stdout.log", "size": 4, "text": "new\n"})
-        await settle(pilot)
-        assert tail(browser) == ["new"]
+def test_follow_files_says_when_the_run_has_no_folder_yet() -> None:
+    browser = host(listed="a")
 
-    browse(test)
+    asyncio.run(FileBrowser.follow_files(browser, daemon(MISSING), "a"))
+
+    assert browser.listed is None
+    browser.found["#files-title"].update.assert_called_once_with("No files yet in a.")
 
 
-def test_a_binary_file_shows_its_type_and_size_not_its_bytes() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        await open_file(pilot, browser, daemon, "plot.png")
-        route = "/runs/a/files/plot.png"
-        daemon.send(
-            route, "state", {"name": "plot.png", "size": 2048, "type": "image/png"}
-        )
-        await settle(pilot)
-        assert tail(browser) == ["Binary file (image/png, 2.0 kB), not shown."]
+def test_put_updates_the_size_of_a_listed_file() -> None:
+    browser = host()
+    table = browser.found["#files"]
+    table.rows = {"a.log": object()}
 
-    browse(test)
+    FileBrowser.put(browser, {"name": "a.log", "size": 2000})
+
+    table.update_cell.assert_called_once_with(
+        "a.log", "size", "2.0 kB", update_width=True
+    )
+    table.add_row.assert_not_called()
 
 
-def test_a_file_that_is_gone_says_so() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        await open_file(pilot, browser, daemon, "stdout.log")
-        daemon.reject("/runs/a/files/stdout.log")
-        await settle(pilot)
-        assert tail(browser) == ["stdout.log is gone."]
+def test_put_sorts_a_new_file_in_and_keeps_the_cursor_on_its_file() -> None:
+    browser = host()
+    table = browser.found["#files"]
+    table.rows = {"b.log": object()}
+    table.row_count = 1
+    table.coordinate_to_cell_key.return_value.row_key = "b.log"
+    table.get_row_index.return_value = 1
 
-    browse(test)
+    FileBrowser.put(browser, {"name": "a.log", "size": 1})
 
-
-def test_names_are_quoted_in_routes() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        await open_file(pilot, browser, daemon, "my log#1.txt")
-        assert "/runs/a/files/my%20log%231.txt" in daemon.followed
-
-    browse(test)
+    table.coordinate_to_cell_key.assert_called_once_with(table.cursor_coordinate)
+    table.add_row.assert_called_once_with("a.log", "1 byte", key="a.log")
+    table.sort.assert_called_once_with("name")
+    table.get_row_index.assert_called_once_with("b.log")
+    table.move_cursor.assert_called_once_with(row=1, animate=False)
 
 
-def test_switching_runs_stops_the_tail() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        await open_file(pilot, browser, daemon, "stdout.log")
-        daemon.send(
-            "/runs/a/files/stdout.log",
-            "state",
-            {"name": "stdout.log", "size": 4, "text": "one\n"},
-        )
-        await settle(pilot)
-        browser.post_message(Selected("b"))
-        await settle(pilot)
-        assert "/runs/a/files/stdout.log" not in daemon.open
-        assert tail(browser) == []
+def test_put_into_an_empty_table_leaves_the_cursor() -> None:
+    browser = host()
+    table = browser.found["#files"]
+    table.rows = {}
+    table.row_count = 0
 
-    browse(test)
+    FileBrowser.put(browser, {"name": "a.log", "size": 1})
+
+    table.add_row.assert_called_once_with("a.log", "1 byte", key="a.log")
+    table.move_cursor.assert_not_called()
 
 
-def test_tail_widget_keeps_at_most_max_lines() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        assert browser.query_one("#tail", Log).max_lines == FileBrowser.MAX_LINES
+def test_choosing_a_file_without_a_run_does_nothing() -> None:
+    for attrs in ({"daemon": None, "run": "a"}, {"daemon": mock.Mock(), "run": None}):
+        browser = host(**attrs)
+        event = mock.Mock()
 
-    browse(test)
+        FileBrowser.on_data_table_row_selected(browser, event)
+
+        event.stop.assert_called_once_with()
+        browser.run_worker.assert_not_called()
 
 
-def test_the_cursor_stays_on_its_file_as_files_arrive_above_it() -> None:
-    async def test(
-        pilot: Pilot[None], browser: FileBrowser, daemon: FakeDaemon
-    ) -> None:
-        browser.post_message(Changed(experiment("a"), daemon=daemon))  # type: ignore[arg-type]
-        browser.post_message(Selected("a"))
-        await settle(pilot)
-        files = [{"name": name, "size": 1, "mtime": "t"} for name in ("b.log", "c.log")]
-        daemon.send("/runs/a/files", "state", files)
-        await settle(pilot)
-        table = browser.query_one("#files", DataTable)
-        table.move_cursor(row=1)
-        daemon.send("/runs/a/files", "file", {"name": "a.log", "size": 1, "mtime": "t"})
-        await settle(pilot)
-        assert names(browser) == ["a.log", "b.log", "c.log"]
-        assert table.coordinate_to_cell_key(table.cursor_coordinate).row_key == "c.log"
+def test_choosing_a_file_tails_it() -> None:
+    source = mock.Mock()
+    browser = host(daemon=source, run="a")
+    event = mock.Mock()
+    event.row_key.value = "stdout.log"
 
-    browse(test)
+    FileBrowser.on_data_table_row_selected(browser, event)
+
+    browser.found["#tail"].clear.assert_called_once_with()
+    browser.found["#tail-title"].update.assert_called_once_with("stdout.log")
+    browser.follow_tail.assert_called_once_with(source, "a", "stdout.log")
+    browser.run_worker.assert_called_once_with(
+        browser.follow_tail.return_value,
+        group="tail",
+        exclusive=True,
+        exit_on_error=False,
+    )
+
+
+def test_follow_tail_shows_text_binary_and_appends() -> None:
+    browser = host(newline=True)
+    log = browser.found["#tail"]
+    seen: list[tuple[str, bool]] = []
+    browser.write.side_effect = lambda shown, text: seen.append((text, browser.newline))
+    source = daemon(
+        ("state", {"name": "my log", "size": 4, "text": "one\n"}),
+        ("append", {"text": "two\n"}),
+        ("state", {"name": "my log", "size": 2048, "type": "image/png"}),
+        ("append", {"size": 3}),
+    )
+
+    asyncio.run(FileBrowser.follow_tail(browser, source, "a", "my log"))
+
+    assert source.routes == ["/runs/a/files/my%20log"]
+    assert seen == [("one\n", False), ("two\n", False)]
+    assert all(call.args[0] is log for call in browser.write.call_args_list)
+    assert log.clear.call_count == 2
+    log.write_line.assert_called_once_with(
+        "Binary file (image/png, 2.0 kB), not shown."
+    )
+
+
+def test_follow_tail_says_when_the_file_is_gone() -> None:
+    browser = host()
+    log = browser.found["#tail"]
+
+    asyncio.run(FileBrowser.follow_tail(browser, daemon(MISSING), "a", "x.log"))
+
+    log.clear.assert_called_once_with()
+    log.write_line.assert_called_once_with("x.log is gone.")
+
+
+def test_write_holds_back_a_trailing_newline_until_more_text() -> None:
+    browser = mock.Mock(newline=False)
+    log = mock.Mock()
+
+    FileBrowser.write(browser, log, "one\ntwo\n")
+    assert browser.newline is True
+    FileBrowser.write(browser, log, "thr")
+    assert browser.newline is False
+    FileBrowser.write(browser, log, "ee\n")
+
+    assert [call.args[0] for call in log.write.call_args_list] == [
+        "one\ntwo",
+        "\nthr",
+        "ee",
+    ]

@@ -31,6 +31,7 @@ class FileBrowser(Horizontal):
         self.run: str | None = None
         self.listed: str | None = None
         self.runs: frozenset[str] = frozenset()
+        self.newline = False
 
     def compose(self) -> ComposeResult:
         with Vertical(id="file-list"):
@@ -54,7 +55,6 @@ class FileBrowser(Horizontal):
             self.list_run()
 
     def on_labnotes_selected(self, message: Selected) -> None:
-        message.stop()
         if message.run != self.run:
             self.run = message.run
             self.list_run()
@@ -137,14 +137,23 @@ class FileBrowser(Horizontal):
                 match kind, data:
                     case "state", {"text": str(text)}:
                         log.clear()
-                        log.write(text)
+                        self.newline = False
+                        self.write(log, text)
                     case "state", {"type": kind_of, "size": size}:
                         log.clear()
                         log.write_line(
                             f"Binary file ({kind_of}, {format_bytes(size)}), not shown."
                         )
                     case "append", {"text": str(text)}:
-                        log.write(text)
+                        self.write(log, text)
         except ValueError:
             log.clear()
             log.write_line(f"{name} is gone.")
+
+    # Log.write leaves an empty last line after a trailing newline; hold it back
+    # so the last line shown is the file's last line.
+    def write(self, log: Log, text: str) -> None:
+        if self.newline:
+            text = "\n" + text
+        self.newline = text.endswith("\n")
+        log.write(text.removesuffix("\n"))

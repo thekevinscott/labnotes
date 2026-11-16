@@ -154,7 +154,8 @@ def test_failed_run_gives_up_after_two_retries_and_explicit_restart_works(
 
     run(root)
     output = capsys.readouterr().out
-    assert "0 passed, 0 failed." in output
+    assert "0 passed, 1 failed." in output
+    assert "capped 3/2" in output
     assert list(folders(root)) == [folder]
     assert (folder / "run.json").read_bytes() == before
     assert len(record["invocations"]) == 3

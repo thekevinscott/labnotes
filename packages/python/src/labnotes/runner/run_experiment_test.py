@@ -2312,7 +2312,13 @@ def test_a_run_past_its_retries_gives_up_its_cell_unless_replaced(
     if replace_capped:
         assert capped == []
     else:
-        assert capped == [{"event": "capped", "runs": ["capped"], "retries": 2}]
+        assert capped == [
+            {
+                "event": "capped",
+                "runs": [{"run": "capped", "params": {"m": "a"}, "tries": 3}],
+                "retries": 2,
+            }
+        ]
 
 
 def test_only_reports_capped_runs_in_the_subset(
@@ -2328,7 +2334,13 @@ def test_only_reports_capped_runs_in_the_subset(
     run(tmp_path, report, continues=True, retries=1, only={"m": ["a"]})
 
     capped = [e for e in reported(report) if e["event"] == "capped"]
-    assert capped == [{"event": "capped", "runs": ["capped-a"], "retries": 1}]
+    assert capped == [
+        {
+            "event": "capped",
+            "runs": [{"run": "capped-a", "params": {"m": "a"}, "tries": 2}],
+            "retries": 1,
+        }
+    ]
 
 
 def test_an_explicit_restart_ignores_the_cap(

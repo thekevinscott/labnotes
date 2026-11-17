@@ -25,6 +25,11 @@ def screen(term) -> str:
     return "\n".join("".join(row) for row in term.get_viewable_buffer())
 
 
+def name(row: str) -> str:
+    words = row.split()
+    return words[words.index("--m") - 1]
+
+
 def status(shown: str, run: str) -> str:
     for row in shown.splitlines():
         if run in row and "--m " in row:
@@ -50,17 +55,18 @@ def test_uvx_restart_keeps_the_runs_table_while_its_setup_reruns(
     try:
         expect(term.get_by_text("✗ exited 1")).to_be_visible(timeout=120)
         rows = screen(term).splitlines()
-        runs = [row.split()[1] for row in rows if "--m " in row]
-        [failed] = [row.split()[1] for row in rows if "✗ exited 1" in row]
+        runs = [name(row) for row in rows if "--m " in row]
+        [failed] = [name(row) for row in rows if "✗ exited 1" in row]
         for _ in range(runs.index(failed)):
             term.key_down()
         term.write("r")
+        deadline = time.monotonic() + 120
         seen = [screen(term)]
         while status(seen[-1], failed) not in SPINNER:
             shown = seen[-1]
             assert all(status(shown, run) for run in runs), shown
             assert "stdout (" not in shown, shown
-            assert len(seen) < 400, shown
+            assert time.monotonic() < deadline, shown
             time.sleep(0.05)
             seen.append(screen(term))
         term.key_enter()

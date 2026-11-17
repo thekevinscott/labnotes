@@ -36,6 +36,16 @@ def daemon(*events: Any) -> mock.Mock:
     return mock.Mock(follow=follow, routes=routes)
 
 
+def test_starts_with_no_run_daemon_or_partial_line() -> None:
+    browser = FileBrowser()
+
+    assert browser.daemon is None
+    assert browser.run is None
+    assert browser.listed is None
+    assert browser.runs == frozenset()
+    assert browser.newline is False
+
+
 def test_keeps_at_most_ten_thousand_lines() -> None:
     assert FileBrowser.MAX_LINES == 10_000
 

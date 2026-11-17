@@ -1,9 +1,9 @@
 import asyncio
+import sys
 from pathlib import Path
 from typing import Any
 from unittest import mock
 
-from labnotes.view import daemon
 from labnotes.view.daemon import Daemon
 
 
@@ -29,4 +29,6 @@ def test_follow_reads_a_route_from_this_experiments_daemon() -> None:
 
 
 def test_ensures_a_daemon_by_default() -> None:
-    assert Daemon(mock.Mock(), "alpha").ensure is daemon.ensure_daemon
+    unit = sys.modules[Daemon.__module__]
+
+    assert Daemon(mock.Mock(), "alpha").ensure is unit.ensure_daemon

@@ -1,1 +1,1 @@
-In the run TUI, an open run has a `files` tab beside stdout and stderr. It lists every file in the run folder, stays current as the run writes files, and tails the file you pick. Binary files show their size instead of their bytes. `t` now cycles through all three tabs.
+In the run TUI, an open run has a `files` tab beside stdout and stderr. It lists the run folder's files (not hidden ones), stays current as the run writes files, and tails the file you pick. Binary files show their size instead of their bytes. `t` now cycles through all three tabs.

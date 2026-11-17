@@ -4,6 +4,7 @@ from typing import Self
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Tab, Tabs
 
 from labnotes.tui.run_files import RunFiles
@@ -24,7 +25,10 @@ class RunOutput(Vertical):
         self.current = STREAMS[0]
         self.logs = {stream: StreamLog(stream, id=stream) for stream in STREAMS}
         self.files = RunFiles(id="files") if files else None
-        self.panes = [*STREAMS, *(["files"] if files else [])]
+        self.views: dict[str, Widget] = dict(self.logs)
+        if self.files is not None:
+            self.views["files"] = self.files
+        self.panes = list(self.views)
         self.tabs = {pane: Tab(pane, id=f"{pane}-tab") for pane in self.panes}
         self.relabel()
 
@@ -71,12 +75,10 @@ class RunOutput(Vertical):
             self.show(pane)
 
     def action_switch(self) -> None:
-        self.show(self.panes[(self.panes.index(self.current) + 1) % len(self.panes)])
+        following = self.panes[self.panes.index(self.current) + 1 :] or self.panes
+        self.show(following[0])
         self.focus()
 
     def focus(self, scroll_visible: bool = True) -> Self:
-        if self.current == "files" and self.files is not None:
-            self.files.focus(scroll_visible)
-        else:
-            self.logs[self.current].focus(scroll_visible)
+        self.views[self.current].focus(scroll_visible)
         return self

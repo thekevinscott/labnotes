@@ -44,7 +44,10 @@ class RunFiles(Horizontal):
         if folder != self.folder:
             self.folder = folder
             self.run_worker(
-                self.watch(folder), group="files", exclusive=True, exit_on_error=False
+                self.list_files(folder),
+                group="files",
+                exclusive=True,
+                exit_on_error=False,
             )
         self.tail.follow()
 
@@ -55,13 +58,12 @@ class RunFiles(Horizontal):
         self.table.clear()
         self.tail.reset()
 
-    async def watch(self, folder: Path) -> None:
+    async def list_files(self, folder: Path) -> None:
         tables = open_folder_files(folder)
         changes = tables.watch()
         self.show_files(await tables.query(FILES))
-        async for change in changes:
-            if change.table == "files":
-                self.show_files(await tables.query(FILES))
+        async for _ in changes:
+            self.show_files(await tables.query(FILES))
 
     def show_files(self, rows: Sequence[dict[str, Any]]) -> None:
         table = self.table

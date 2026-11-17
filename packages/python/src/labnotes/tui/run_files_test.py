@@ -40,8 +40,9 @@ class Table:
         self.rows[mock.Mock(value=key)] = list(cells)
 
     def update_cell(
-        self, row: str, column: str, value: object, **kwargs: object
+        self, row: str, column: str, value: object, update_width: bool = False
     ) -> None:
+        assert update_width
         [found] = [key for key in self.rows if key.value == row]
         self.rows[found][self.columns.index(column)] = value
 
@@ -130,14 +131,14 @@ def test_follow_watches_a_new_folder_once_and_follows_the_tail(
     with (
         mock.patch.object(files, "run_worker") as run_worker,
         mock.patch.object(
-            files, "watch", new=mock.Mock(return_value="watching")
-        ) as watch,
+            files, "list_files", new=mock.Mock(return_value="listing")
+        ) as list_files,
     ):
         files.follow(tmp_path)
-        files.follow(tmp_path)
-    watch.assert_called_once_with(tmp_path)
+        files.follow(Path(str(tmp_path)))
+    list_files.assert_called_once_with(tmp_path)
     run_worker.assert_called_once_with(
-        "watching", group="files", exclusive=True, exit_on_error=False
+        "listing", group="files", exclusive=True, exit_on_error=False
     )
     assert files.folder == tmp_path
     assert files.tail.follow.call_count == 2  # type: ignore[attr-defined]
@@ -158,7 +159,7 @@ def test_reset_forgets_the_folder_and_its_files(tmp_path: Path) -> None:
     files.tail.reset.assert_called_once_with()  # type: ignore[attr-defined]
 
 
-def test_watch_lists_the_folder_then_relists_on_each_file_change(
+def test_lists_the_folder_then_relists_on_each_file_change(
     tmp_path: Path,
 ) -> None:
     files = RunFiles()
@@ -168,12 +169,11 @@ def test_watch_lists_the_folder_then_relists_on_each_file_change(
     tables.query = mock.AsyncMock(side_effect=answers)
 
     async def changes() -> AsyncIterator[Any]:
-        yield mock.Mock(table="other")
         yield mock.Mock(table="files")
 
     tables.watch.return_value = changes()
     with mock.patch(f"{MODULE}.open_folder_files", return_value=tables) as opened:
-        asyncio.run(files.watch(tmp_path))
+        asyncio.run(files.list_files(tmp_path))
     opened.assert_called_once_with(tmp_path)
     assert tables.query.await_args_list == [mock.call(FILES), mock.call(FILES)]
     assert [row[0] for row in files.table.shown()] == ["a.log", "b.log"]  # type: ignore[attr-defined]
@@ -200,6 +200,12 @@ def test_focus_goes_to_the_file_list() -> None:
     files = RunFiles()
     assert files.focus(scroll_visible=False) is files
     files.table.focus.assert_called_once_with(False)  # type: ignore[attr-defined]
+
+
+def test_focus_scrolls_the_file_list_into_view_by_default() -> None:
+    files = RunFiles()
+    files.focus()
+    files.table.focus.assert_called_once_with(True)  # type: ignore[attr-defined]
 
 
 def test_lists_files_in_path_order() -> None:

@@ -4,7 +4,14 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.file_tail import PROMPT, TAIL_BYTES, FileTail
+from labnotes.tui.file_tail import (
+    MAX_LINES,
+    PROMPT,
+    SNIFF_BYTES,
+    TAIL_BYTES,
+    FileTail,
+    read,
+)
 
 
 @pytest.fixture
@@ -106,6 +113,9 @@ def test_jumps_to_the_end_when_a_file_grows_past_the_tail(
     shown = text(screen)
     assert "first" not in shown
     assert shown == "newest\n"
+    append(path, b"more\n")
+    tail.follow()
+    assert text(screen) == "newest\nmore\n"
 
 
 def test_starts_over_when_a_file_shrinks(screen: list[str], tmp_path: Path) -> None:
@@ -215,3 +225,61 @@ def test_says_gone_when_a_file_vanishes_between_stat_and_read(
     ):
         tail.open(path)
     assert screen == ["brief.log is gone."]
+
+
+def test_keeps_the_last_64_kib_and_10000_lines() -> None:
+    assert (TAIL_BYTES, SNIFF_BYTES, MAX_LINES) == (65536, 8192, 10_000)
+
+
+def test_reads_the_bytes_between_two_offsets(tmp_path: Path) -> None:
+    path = tmp_path / "data.bin"
+    path.write_bytes(b"0123456789")
+    assert read(path, 2, 5) == b"234"
+
+
+def test_starts_exactly_one_line_into_the_last_64_kib(
+    screen: list[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "big.log"
+    data = (b"x" * 99 + b"\n") * 1320 + b"last line\n"
+    path.write_bytes(data)
+    tail = FileTail()
+    tail.open(path)
+    end = data[-TAIL_BYTES:]
+    assert text(screen) == end[end.find(b"\n") + 1 :].decode()
+
+
+def test_appends_growth_of_exactly_the_tail_size(
+    screen: list[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "progress.log"
+    path.write_text("first\n")
+    tail = FileTail()
+    tail.open(path)
+    grown = (b"y" * 99 + b"\n") * (TAIL_BYTES // 100) + b"z" * (TAIL_BYTES % 100)
+    append(path, grown)
+    tail.follow()
+    assert text(screen) == "first\n" + grown.decode()
+
+
+def test_an_unchanged_file_writes_nothing_more(tmp_path: Path) -> None:
+    path = tmp_path / "progress.log"
+    path.write_text("x" * 300 + "\n")
+    with (
+        mock.patch.object(FileTail, "write") as write,
+        mock.patch.object(FileTail, "clear") as clear,
+        mock.patch.object(
+            FileTail,
+            "is_vertical_scroll_end",
+            new_callable=mock.PropertyMock,
+            return_value=True,
+        ),
+    ):
+        tail = FileTail()
+        tail.open(path)
+        tail.follow()
+    assert write.call_args_list == [
+        mock.call(PROMPT, scroll_end=False),
+        mock.call("x" * 300 + "\n", scroll_end=True),
+    ]
+    assert clear.call_count == 2

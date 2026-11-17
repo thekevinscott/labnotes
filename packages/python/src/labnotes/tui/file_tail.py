@@ -63,19 +63,17 @@ class FileTail(Log):
         size = path.stat().st_size
         if self.gone or size < self.fed:
             self.restart()
+        grown = size - self.fed
+        if not grown:
+            return
         if self.binary is None:
-            if not size:
-                return
             self.binary = looks_binary(read(path, 0, min(size, SNIFF_BYTES)))
         if self.binary:
-            if size != self.fed:
-                self.clear()
-                self.fed = size
-                self.write(f"{path.name} is binary ({format_bytes(size)}), not shown.")
+            self.clear()
+            self.fed = size
+            self.write(f"{path.name} is binary ({format_bytes(size)}), not shown.")
             return
-        if size == self.fed:
-            return
-        if size - self.fed > TAIL_BYTES:
+        if grown > TAIL_BYTES:
             if self.fed:
                 self.restart()
                 self.binary = False

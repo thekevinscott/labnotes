@@ -1033,6 +1033,25 @@ def test_detached_leave_prompt_follows_teardown_to_its_end(tmp_path: Path) -> No
     asyncio.run(drive())
 
 
+def test_detached_leave_prompt_takes_an_event_before_it_mounts(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+
+    async def drive() -> None:
+        with mock.patch.object(app, "attach_daemon"):
+            async with app.run_test() as pilot:
+                app.forward("b1", hooked("teardown"))
+                app.forward("b1", {"event": "idle"})
+                app.action_interrupt()
+                app.forward(
+                    "b1", {"event": "hook ended", "hook": "teardown", "error": None}
+                )
+                await pilot.pause()
+                assert prompt(app).startswith("Nothing running.")
+
+    asyncio.run(drive())
+
+
 def test_detached_attach_opens_the_event_stream_and_closes_it(
     tmp_path: Path,
 ) -> None:

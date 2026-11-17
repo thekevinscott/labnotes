@@ -1,10 +1,16 @@
 import asyncio
+from collections.abc import Iterator
 from unittest import mock
 
-import anyio
 import pytest
 
 from labnotes.daemon.watching import watching
+
+
+@pytest.fixture(autouse=True)
+def anyio() -> Iterator[mock.Mock]:
+    with mock.patch("labnotes.daemon.watching.anyio") as found:
+        yield found
 
 
 def tables(changes: object) -> mock.Mock:
@@ -47,19 +53,20 @@ def test_a_stream_without_aclose_is_yielded_and_left_alone() -> None:
     assert asyncio.run(scenario()) is changes
 
 
-def test_a_close_that_waits_finishes_inside_a_cancelled_scope() -> None:
-    finished: list[bool] = []
-
-    class Changes:
-        async def aclose(self) -> None:
-            await asyncio.sleep(0.01)
-            finished.append(True)
+def test_the_close_runs_in_a_shielded_cancel_scope(anyio: mock.Mock) -> None:
+    order: list[str] = []
+    scope = anyio.CancelScope.return_value
+    scope.__enter__.side_effect = lambda: order.append("enter")
+    scope.__exit__.side_effect = lambda *_: order.append("exit")
+    changes = mock.Mock(
+        aclose=mock.AsyncMock(side_effect=lambda: order.append("close"))
+    )
 
     async def scenario() -> None:
-        with anyio.CancelScope() as scope:
-            async with watching(tables(Changes())):
-                scope.cancel()
-                await anyio.sleep(1)
-        assert finished == [True]
+        async with watching(tables(changes)):
+            pass
 
     asyncio.run(scenario())
+
+    anyio.CancelScope.assert_called_once_with(shield=True)
+    assert order == ["enter", "close", "exit"]

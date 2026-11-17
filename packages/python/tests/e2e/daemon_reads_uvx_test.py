@@ -6,24 +6,11 @@ import time
 from pathlib import Path
 from tempfile import TemporaryDirectory
 
-import psutil
+from conftest import inotify_watches
+
 
 RUN = "20261114-000001-quiet-pond"
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(range(256))
-
-
-def inotify_watches(pid: int) -> int:
-    watches = 0
-    for process in [psutil.Process(pid), *psutil.Process(pid).children(True)]:
-        for fd in os.listdir(f"/proc/{process.pid}/fd"):
-            try:
-                if os.readlink(f"/proc/{process.pid}/fd/{fd}") != "anon_inode:inotify":
-                    continue
-                info = Path(f"/proc/{process.pid}/fdinfo/{fd}").read_text()
-            except FileNotFoundError:
-                continue
-            watches += sum(line.startswith("inotify wd:") for line in info.splitlines())
-    return watches
 
 
 def events(text: str) -> list[tuple[str, str, object]]:

@@ -9,25 +9,13 @@ from tempfile import TemporaryDirectory
 
 import httpx2
 import pytest
+from conftest import inotify_watches
 
 from labnotes.tables.iso_time import iso_time
 
 DONE = "20261114-000001-quiet-pond"
 LIVE = "20261114-000002-red-hill"
 PNG = b"\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR" + bytes(range(256))
-
-
-def inotify_watches(pid: int) -> int:
-    watches = 0
-    for fd in os.listdir(f"/proc/{pid}/fd"):
-        try:
-            if os.readlink(f"/proc/{pid}/fd/{fd}") != "anon_inode:inotify":
-                continue
-            info = Path(f"/proc/{pid}/fdinfo/{fd}").read_text()
-        except FileNotFoundError:
-            continue
-        watches += sum(line.startswith("inotify wd:") for line in info.splitlines())
-    return watches
 
 
 def settled(pid: int, expected: int) -> None:

@@ -6,22 +6,8 @@ import subprocess
 import time
 from pathlib import Path
 
-import psutil
+from conftest import inotify_watches
 from playwright.async_api import async_playwright, expect
-
-
-def inotify_watches(pid: int) -> int:
-    watches = 0
-    for process in [psutil.Process(pid), *psutil.Process(pid).children(True)]:
-        for fd in os.listdir(f"/proc/{process.pid}/fd"):
-            try:
-                if os.readlink(f"/proc/{process.pid}/fd/{fd}") != "anon_inode:inotify":
-                    continue
-                info = Path(f"/proc/{process.pid}/fdinfo/{fd}").read_text()
-            except FileNotFoundError:
-                continue
-            watches += sum(line.startswith("inotify wd:") for line in info.splitlines())
-    return watches
 
 
 async def settled(pid: int, expected: int) -> None:

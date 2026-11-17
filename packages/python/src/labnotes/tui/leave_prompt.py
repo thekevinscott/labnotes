@@ -48,7 +48,8 @@ class DetachedLeavePrompt(LeavePrompt):
 
     def show(self, busy: str | None) -> None:
         self.busy = busy or "Nothing running."
-        self.query_one("#prompt", Static).update(self.text())
+        for prompt in self.query("#prompt").results(Static):
+            prompt.update(self.text())
 
 
 class LostDaemonNotice(ModalScreen[None]):

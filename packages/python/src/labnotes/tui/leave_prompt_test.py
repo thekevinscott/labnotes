@@ -69,9 +69,11 @@ def test_detached_prompt_offers_stop_leave_and_cancel(static: mock.MagicMock) ->
 )
 def test_detached_prompt_shows_what_is_busy_now(busy: str | None, text: str) -> None:
     prompt = DetachedLeavePrompt("Setting up.")
-    with mock.patch.object(prompt, "query_one") as query:
+    widget = mock.Mock()
+    with mock.patch.object(prompt, "query") as query:
+        query.return_value.results.return_value = [widget]
         prompt.show(busy)
-    query.return_value.update.assert_called_once_with(
+    widget.update.assert_called_once_with(
         f"{text} Stop (s) / leave running (enter or l) / cancel (esc)."
     )
 

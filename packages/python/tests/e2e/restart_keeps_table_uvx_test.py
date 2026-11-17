@@ -69,4 +69,5 @@ def test_uvx_restart_keeps_the_runs_table_while_its_setup_reruns(
         expect(term.get_by_text(failed)).to_be_visible()
     finally:
         (root / "release").write_text("")
+    expect(term.get_by_text("teardown ✓")).to_be_visible(timeout=30)
     tui.quit(term)

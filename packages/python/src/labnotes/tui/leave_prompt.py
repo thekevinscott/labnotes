@@ -46,6 +46,9 @@ class DetachedLeavePrompt(LeavePrompt):
     def compose(self) -> ComposeResult:
         yield Static(self.text(), id="prompt")
 
+    def on_mount(self) -> None:
+        self.show(self.busy)
+
     def show(self, busy: str | None) -> None:
         self.busy = busy or "Nothing running."
         for prompt in self.query("#prompt").results(Static):

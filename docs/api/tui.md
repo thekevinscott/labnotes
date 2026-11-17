@@ -42,9 +42,11 @@ The output view follows the run's `stdout.log` and `stderr.log` as they're writt
 
 Blocks the script writes with [`log`](sdk#log) show above the raw output, one line each, collapsed and cut off with an ellipsis (▸). Click a block to expand it to its full text (▾); click again to collapse it. A streaming block shows on `start` and grows in place as its deltas arrive. For a run that [continues](config#continues), each invocation's blocks sit under a line naming when it started, such as `invocation 2026-11-12 10:00:00`. A streaming block an earlier invocation left open stays as it was; the next invocation's deltas start a new block, even under the same `id`. Without a `log.jsonl`, the raw output fills the view as before.
 
+A third tab, `files`, lists every file in the run folder with its size, such as `files (6)`. The list stays current as the run creates files. Pick a file with Enter or a click to follow it beside the list: the view shows its end and adds lines as they're written. A file opens at its last 64 KB, so a large one opens fast. A binary file shows its size, not its bytes.
+
 | Key | Action |
 | --- | --- |
-| `t` | Switch between the stdout and stderr tabs. Clicking a tab works too. |
+| `t` | Switch to the next tab: stdout, stderr, files. Clicking a tab works too. |
 | `f` | Finish up: drop queued runs and pending retries while continuing to watch this run. |
 | Escape | Back to the table. |
 | Ctrl-C | Quit, as from the table. |

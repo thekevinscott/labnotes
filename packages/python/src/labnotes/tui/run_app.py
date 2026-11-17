@@ -128,7 +128,7 @@ class RunLiveView(Widget):
         with Vertical(id="runs-stage"):
             yield RunsTable(id="runs", cursor_type="row")
             yield LogBlocks(id="blocks")
-            yield RunOutput(id="output")
+            yield RunOutput(id="output", files=True)
             yield Input(id="filter", placeholder="Filter params")
         yield HookPanel("teardown", id="teardown-stage")
         yield Static(id="status")

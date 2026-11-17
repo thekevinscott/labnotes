@@ -283,3 +283,16 @@ def test_an_unchanged_file_writes_nothing_more(tmp_path: Path) -> None:
         mock.call("x" * 300 + "\n", scroll_end=True),
     ]
     assert clear.call_count == 2
+
+
+def test_appends_a_small_growth_to_a_file_near_the_tail_size(
+    screen: list[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "progress.log"
+    start = (b"w" * 99 + b"\n") * 655 + b"v" * 29 + b"\n"
+    path.write_bytes(start)
+    tail = FileTail()
+    tail.open(path)
+    append(path, b"more lines\n")
+    tail.follow()
+    assert text(screen) == start.decode() + "more lines\n"

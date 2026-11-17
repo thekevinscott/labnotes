@@ -311,3 +311,17 @@ def test_starts_over_when_the_file_is_replaced(
     staged.replace(path)
     tail.follow()
     assert text(screen) == new.decode()
+
+
+def test_starts_over_when_replaced_by_an_older_file(
+    screen: list[str], tmp_path: Path
+) -> None:
+    older = tmp_path / "older.log"
+    older.write_bytes(b"two\n")
+    path = tmp_path / "progress.log"
+    path.write_bytes(b"one\n")
+    tail = FileTail()
+    tail.open(path)
+    older.replace(path)
+    tail.follow()
+    assert text(screen) == "two\n"

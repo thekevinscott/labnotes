@@ -30,6 +30,7 @@ class FileTail(Log):
 
     def open(self, path: Path | None) -> None:
         self.path = path
+        self.identity: tuple[int, int] | None = None
         self.restart()
         if path is None:
             self.write(PROMPT, scroll_end=False)
@@ -60,9 +61,14 @@ class FileTail(Log):
             self.write(notice)
 
     def advance(self, path: Path) -> None:
-        size = path.stat().st_size
-        if self.gone or size < self.fed:
+        stat = path.stat()
+        size = stat.st_size
+        identity = (stat.st_dev, stat.st_ino)
+        if self.identity is None:
+            self.identity = identity
+        if self.gone or size < self.fed or identity != self.identity:
             self.restart()
+            self.identity = identity
         grown = size - self.fed
         if not grown:
             return

@@ -135,6 +135,11 @@ class StreamLog(ScrollView):
         self.shown = (None, [])
         super().selection_updated(selection)
 
+    def notify_style_update(self) -> None:
+        super().notify_style_update()
+        self.wrapped.clear()
+        self.shown = (None, [])
+
     def read(self, first: int, count: int) -> list[str]:
         found: list[str] = []
         for segment in self.segments:

@@ -20,6 +20,10 @@ def listed(app: Host) -> list[str]:
     return [str(key.value) for key in table.rows]
 
 
+def label(app: Host) -> str:
+    return str(app.query_one("#files-tab", Tab).label_text)
+
+
 def tail(app: Host) -> list[str]:
     log = app.query_one(Log)
     return [str(line) for line in log.lines]
@@ -54,30 +58,28 @@ def test_lists_a_runs_files_and_keeps_the_list_current(tmp_path: Path) -> None:
     (tmp_path / "ckpt/epoch-1.pt").write_bytes(b"\0" * 10)
 
     async def check(pilot: Pilot[None], app: Host) -> None:
-        await until(pilot, app, tmp_path, lambda: len(listed(app)) == 2)
+        await until(pilot, app, tmp_path, lambda: label(app) == "files (2)")
         assert listed(app) == ["ckpt/epoch-1.pt", "stdout.log"]
-        assert app.query_one("#files-tab", Tab).label_text == "files (2)"
         (tmp_path / "metrics.csv").write_text("loss\n")
-        await until(pilot, app, tmp_path, lambda: len(listed(app)) == 3)
+        await until(pilot, app, tmp_path, lambda: label(app) == "files (3)")
         assert listed(app) == ["ckpt/epoch-1.pt", "metrics.csv", "stdout.log"]
-        assert app.query_one("#files-tab", Tab).label_text == "files (3)"
 
     browse(tmp_path, check)
 
 
 def test_selecting_a_file_tails_it_and_follows_new_lines(tmp_path: Path) -> None:
     progress = tmp_path / "a-progress.log"
-    progress.write_text("".join(f"step {n}\n" for n in range(5000)))
+    progress.write_text("".join(f"step {n}\n" for n in range(20000)))
     (tmp_path / "stdout.log").write_text("")
 
     async def check(pilot: Pilot[None], app: Host) -> None:
         await until(pilot, app, tmp_path, lambda: len(listed(app)) == 2)
         await pilot.press("enter")
-        await until(pilot, app, tmp_path, lambda: "step 4999" in tail(app))
+        await until(pilot, app, tmp_path, lambda: "step 19999" in tail(app))
         assert "step 0" not in tail(app)
         with progress.open("a") as file:
-            file.write("step 5000\n")
-        await until(pilot, app, tmp_path, lambda: "step 5000" in tail(app))
+            file.write("step 20000\n")
+        await until(pilot, app, tmp_path, lambda: "step 20000" in tail(app))
 
     browse(tmp_path, check)
 

@@ -1,3 +1,4 @@
+import asyncio
 from collections.abc import AsyncIterator, Iterator
 from pathlib import Path
 from typing import Any
@@ -128,7 +129,9 @@ def test_follow_watches_a_new_folder_once_and_follows_the_tail(
     files = RunFiles()
     with (
         mock.patch.object(files, "run_worker") as run_worker,
-        mock.patch.object(files, "watch", return_value="watching") as watch,
+        mock.patch.object(
+            files, "watch", new=mock.Mock(return_value="watching")
+        ) as watch,
     ):
         files.follow(tmp_path)
         files.follow(tmp_path)
@@ -155,7 +158,7 @@ def test_reset_forgets_the_folder_and_its_files(tmp_path: Path) -> None:
     files.tail.reset.assert_called_once_with()  # type: ignore[attr-defined]
 
 
-async def test_watch_lists_the_folder_then_relists_on_each_file_change(
+def test_watch_lists_the_folder_then_relists_on_each_file_change(
     tmp_path: Path,
 ) -> None:
     files = RunFiles()
@@ -170,7 +173,7 @@ async def test_watch_lists_the_folder_then_relists_on_each_file_change(
 
     tables.watch.return_value = changes()
     with mock.patch(f"{MODULE}.open_folder_files", return_value=tables) as opened:
-        await files.watch(tmp_path)
+        asyncio.run(files.watch(tmp_path))
     opened.assert_called_once_with(tmp_path)
     assert tables.query.await_args_list == [mock.call(FILES), mock.call(FILES)]
     assert [row[0] for row in files.table.shown()] == ["a.log", "b.log"]  # type: ignore[attr-defined]

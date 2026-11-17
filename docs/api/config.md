@@ -272,7 +272,7 @@ Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the
 
 With [`continues`](#continues), a retry runs again in the same folder instead, as another invocation of the same run, and there is no `"retry_of"`.
 
-With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from a retry or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) doesn't count; one that was lost, timed out, or killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
+With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from a retry or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) or one lost when labnotes died (`"ended_by": "lost"`) doesn't count; one that failed, timed out, or was killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
 
 ### `retry_wait`
 

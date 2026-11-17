@@ -179,6 +179,37 @@ def test_invocations_stopped_by_hand_do_not_spend_retries(tmp_path: Path) -> Non
     assert len(folders(root)[folder]["invocations"]) == 5
 
 
+def test_lost_invocations_do_not_spend_retries(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "0", settings="continues = true\nretries = 1\n")
+    lost = {"ended": "2026-10-17T00:30:00Z", "exit_code": None, "ended_by": "lost"}
+    folder = add_run(
+        root,
+        "old",
+        invocations=[lost, lost, lost, {"exit_code": 1, "ended_by": None}],
+    )
+
+    run(root)
+
+    assert list(folders(root)) == [folder]
+    assert len(folders(root)[folder]["invocations"]) == 5
+
+
+def test_timed_out_invocations_still_spend_retries(tmp_path: Path) -> None:
+    root = make_project(tmp_path, "0", settings="continues = true\nretries = 1\n")
+    timeout = {"ended": "2026-10-17T00:30:00Z", "exit_code": -15, "ended_by": "timeout"}
+    folder = add_run(
+        root,
+        "old",
+        ended_by="timeout",
+        invocations=[timeout, timeout],
+    )
+
+    run(root)
+
+    assert list(folders(root)) == [folder]
+    assert len(folders(root)[folder]["invocations"]) == 2
+
+
 def test_args_and_commit_are_recorded_per_invocation(tmp_path: Path) -> None:
     root = make_project(tmp_path, "1")
 

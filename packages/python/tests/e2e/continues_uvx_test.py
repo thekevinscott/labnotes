@@ -88,6 +88,33 @@ def test_uvx_continues_a_run_stopped_from_the_tui(tmp_path: Path, tui: Tui) -> N
     assert second["exit_code"] == 0
 
 
+def test_uvx_continues_a_run_whose_lost_invocations_spent_no_retries(
+    tmp_path: Path, tui: Tui
+) -> None:
+    root = project(tmp_path / "project", "fail", "continues = true\nretries = 1\n")
+    folder = root / "exp/runs/old"
+    folder.mkdir(parents=True)
+    (folder / "checkpoint.txt").write_text("step 20")
+    lost = {"ended": "2026-10-17T00:30:00Z", "exit_code": None, "ended_by": "lost"}
+    (folder / "run.json").write_text(
+        json.dumps(
+            {
+                "params": {"m": "a"},
+                "created": "2026-10-17T00:00:00Z",
+                "ended": "2026-10-17T01:00:00Z",
+                "exit_code": 1,
+                "error": None,
+                "invocations": [lost, lost, {"exit_code": 1, "ended_by": None}],
+            }
+        )
+    )
+
+    run(tui, root, "1 passed, 0 failed.")
+
+    assert list(records(root)) == [folder]
+    assert len(records(root)[folder]["invocations"]) == 4  # type: ignore[arg-type]
+
+
 def test_uvx_without_continues_redoes_a_failed_run_in_a_new_folder(
     tmp_path: Path, tui: Tui
 ) -> None:

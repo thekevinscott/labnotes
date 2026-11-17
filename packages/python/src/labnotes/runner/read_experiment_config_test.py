@@ -513,3 +513,12 @@ def test_rejects_a_hook_that_is_not_a_command(hook: str, value: str) -> None:
         )
 
     assert str(error.value) == f"{PATH}: {hook} must be a string"
+
+
+@pytest.mark.parametrize(("line", "name"), [('name = "Study"\n', "Study"), ("", None)])
+def test_views_leave_the_experiment_name_alone(line: str, name: str | None) -> None:
+    source = (
+        f'{line}command = "run"\ncontinues = false\n[views]\nfiles = "f.py:Files"\n'
+    )
+
+    assert read_experiment_config(PATH, source, 1, 2).name == name

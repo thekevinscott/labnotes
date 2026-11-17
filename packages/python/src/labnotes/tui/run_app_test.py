@@ -1042,6 +1042,10 @@ def test_detached_leave_prompt_takes_an_event_before_it_mounts(tmp_path: Path) -
             async with app.run_test() as pilot:
                 app.forward("b1", hooked("teardown"))
                 app.forward("b1", {"event": "idle"})
+                app.forward(
+                    "b1",
+                    {"event": "tearing down", "hook": "teardown", "folder": tmp_path},
+                )
                 app.action_interrupt()
                 app.forward(
                     "b1", {"event": "hook ended", "hook": "teardown", "error": None}

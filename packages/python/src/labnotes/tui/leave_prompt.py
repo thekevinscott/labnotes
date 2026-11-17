@@ -40,11 +40,15 @@ class DetachedLeavePrompt(LeavePrompt):
         ModalScreen.__init__(self)
         self.busy = busy
 
+    def text(self) -> str:
+        return f"{self.busy} Stop (s) / leave running (enter or l) / cancel (esc)."
+
     def compose(self) -> ComposeResult:
-        yield Static(
-            f"{self.busy} Stop (s) / leave running (enter or l) / cancel (esc).",
-            id="prompt",
-        )
+        yield Static(self.text(), id="prompt")
+
+    def show(self, busy: str | None) -> None:
+        self.busy = busy or "Nothing running."
+        self.query_one("#prompt", Static).update(self.text())
 
 
 class LostDaemonNotice(ModalScreen[None]):

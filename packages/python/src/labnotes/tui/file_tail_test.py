@@ -296,3 +296,18 @@ def test_appends_a_small_growth_to_a_file_near_the_tail_size(
     append(path, b"more lines\n")
     tail.follow()
     assert text(screen) == start.decode() + "more lines\n"
+
+
+@pytest.mark.parametrize("new", [b"two\n", b"two\nthree\n"])
+def test_starts_over_when_the_file_is_replaced(
+    screen: list[str], tmp_path: Path, new: bytes
+) -> None:
+    path = tmp_path / "progress.log"
+    path.write_bytes(b"one\n")
+    tail = FileTail()
+    tail.open(path)
+    staged = tmp_path / "staged.log"
+    staged.write_bytes(new)
+    staged.replace(path)
+    tail.follow()
+    assert text(screen) == new.decode()

@@ -3237,3 +3237,23 @@ def test_tearing_down_keeps_the_setup_outcome(tmp_path: Path) -> None:
         assert app.query_one(RunLiveView).idle is True
 
     drive_hooks(steps)
+
+
+def test_an_opened_run_gets_a_files_tab_but_hooks_do_not() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                outputs: list[Any] = list(app.query("RunOutput"))
+                assert [output.files is not None for output in outputs] == [
+                    False,
+                    True,
+                    False,
+                ]
+                assert app.query_one("#output").files is not None  # type: ignore[attr-defined]
+
+    asyncio.run(drive())

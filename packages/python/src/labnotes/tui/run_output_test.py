@@ -177,3 +177,91 @@ def test_focus_goes_to_the_shown_log() -> None:
     output = RunOutput()
     assert output.focus(scroll_visible=False) is output
     logs(output)["stdout"].focus.assert_called_once_with(False)
+
+
+@pytest.fixture
+def run_files() -> Iterator[mock.MagicMock]:
+    with mock.patch(
+        "labnotes.tui.run_output.RunFiles",
+        side_effect=lambda id: mock.Mock(id=id, count=0),
+    ) as made:
+        yield made
+
+
+def test_has_no_files_tab_unless_asked() -> None:
+    output = RunOutput()
+    assert output.files is None
+    assert list(output.tabs) == ["stdout", "stderr"]
+
+
+def test_adds_a_files_tab_after_the_streams(
+    widgets: dict[str, mock.MagicMock], run_files: mock.MagicMock
+) -> None:
+    output = RunOutput(files=True)
+    assert output.files is not None
+    assert output.files.id == "files"
+    assert [tab.id for tab in output.tabs.values()] == [
+        "stdout-tab",
+        "stderr-tab",
+        "files-tab",
+    ]
+    assert [tab.label for tab in output.tabs.values()] == [
+        "stdout (0)",
+        "stderr (0)",
+        "files (0)",
+    ]
+    assert list(output.compose()) == [
+        widgets["tabs"].return_value,
+        logs(output)["stdout"],
+        logs(output)["stderr"],
+        output.files,
+    ]
+
+
+def test_follow_lists_the_folders_files_and_counts_them(
+    tmp_path: Path, run_files: mock.MagicMock
+) -> None:
+    output = RunOutput(files=True)
+    assert output.files is not None
+    output.files.count = 4  # type: ignore[misc]
+    output.follow(tmp_path)
+    output.files.follow.assert_called_once_with(tmp_path)  # type: ignore[attr-defined]
+    assert tabs(output)["files"].label == "files (4)"
+
+
+def test_reset_clears_the_file_list(run_files: mock.MagicMock) -> None:
+    output = RunOutput(files=True)
+    assert output.files is not None
+    output.reset()
+    output.files.reset.assert_called_once_with()  # type: ignore[attr-defined]
+
+
+@pytest.mark.parametrize(
+    ("current", "following"),
+    [("stdout", "stderr"), ("stderr", "files"), ("files", "stdout")],
+)
+def test_switch_cycles_through_the_files_tab(
+    current: str, following: str, run_files: mock.MagicMock
+) -> None:
+    output = RunOutput(files=True)
+    output.current = current
+    output.action_switch()
+    assert output.current == following
+
+
+def test_focus_on_the_files_tab_goes_to_the_file_list(
+    run_files: mock.MagicMock,
+) -> None:
+    output = RunOutput(files=True)
+    assert output.files is not None
+    output.current = "files"
+    assert output.focus(scroll_visible=False) is output
+    output.files.focus.assert_called_once_with(False)  # type: ignore[attr-defined]
+
+
+def test_the_files_tab_shows_the_file_list(run_files: mock.MagicMock) -> None:
+    output = RunOutput(files=True)
+    output.current = "stdout"
+    with mock.patch.object(output, "show") as show:
+        output.on_tabs_tab_activated(mock.Mock(tab=tabs(output)["files"]))
+    show.assert_called_once_with("files")

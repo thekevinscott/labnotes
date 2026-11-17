@@ -271,18 +271,10 @@ wheels = [
 
 [[package]]
 name = "dirsql"
-version = "0.4.154"
-source = { registry = "https://pypi.org/simple" }
+version = "0.2.7"
+source = { git = "https://github.com/thekevinscott/dirsql?subdirectory=packages%2Fpython&rev=3a1c1632c892d5d0b4578d6239ff1b47e4a72399#3a1c1632c892d5d0b4578d6239ff1b47e4a72399" }
 dependencies = [
     { name = "bin-shim" },
-]
-sdist = { url = "https://files.pythonhosted.org/packages/40/2c/c4e98a0bc5b216424496961042a021857d88f2e4d6668f27f7a1e2d6d798/dirsql-0.4.154.tar.gz", hash = "sha256:6f388798a2d16cb52b924654ce1b21c4068e7f38cfd3f99ede56b8a6e43f1984", size = 762025, upload-time = "2026-11-05T12:16:10.171Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/59/09/2fbbadc1a9422873a62874025af1b06bb40a26b400fa03990afe792fc365/dirsql-0.4.154-cp310-abi3-macosx_10_12_x86_64.whl", hash = "sha256:e86a130f7ad8b24462d272277d4fafc0bc85fa9bf3daa7cb7a65537f37ac35ed", size = 3661677, upload-time = "2026-11-05T12:16:01.335Z" },
-    { url = "https://files.pythonhosted.org/packages/64/77/54f81a30c3a18bb4b8e8e16c8618cea954e89c2e4e251cf0feebe9807841/dirsql-0.4.154-cp310-abi3-macosx_11_0_arm64.whl", hash = "sha256:9f1aeb0194a2dc1581382cd4b5d8c7eee4ea6ced0e93279f2c082a7bedd87162", size = 3455694, upload-time = "2026-11-05T12:16:03.52Z" },
-    { url = "https://files.pythonhosted.org/packages/1d/54/fc7477cce9637883053f6e8d76de4ca84dc2c32825308d5db583c2b86d4c/dirsql-0.4.154-cp310-abi3-manylinux_2_28_aarch64.whl", hash = "sha256:1d65258135375f9a04fe3a309d167033173ef72ba7fc9a8add28141fbbc2e194", size = 3696286, upload-time = "2026-11-05T12:16:05.066Z" },
-    { url = "https://files.pythonhosted.org/packages/dc/87/06aa09ff5ef263aa4a830d3fb27722a461448babb6764cc63187b7c9bfd0/dirsql-0.4.154-cp310-abi3-manylinux_2_28_x86_64.whl", hash = "sha256:c5887a5ade3ac2fdc6b828642ca8f77d53e3586e33604c3e3d0ee9fead0b7663", size = 3902993, upload-time = "2026-11-05T12:16:06.857Z" },
-    { url = "https://files.pythonhosted.org/packages/4c/90/fcf82847345136fc24cb9b750d0660a2db59339066f9c1b6e3eafe77caf7/dirsql-0.4.154-cp310-abi3-win_amd64.whl", hash = "sha256:12d3a355d3c53c48818f42e0a43c6f319ff86fc5c1404e7176ea364bb9bf7076", size = 3889211, upload-time = "2026-11-05T12:16:08.597Z" },
 ]
 
 [[package]]
@@ -581,7 +573,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.5.0" },
-    { name = "dirsql", specifier = ">=0.4.136" },
+    { name = "dirsql", git = "https://github.com/thekevinscott/dirsql?subdirectory=packages%2Fpython&rev=3a1c1632c892d5d0b4578d6239ff1b47e4a72399" },
     { name = "haikunator", specifier = ">=2.1.0" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "ipykernel", specifier = ">=7.4.0" },

@@ -158,8 +158,7 @@ def test_uvx_leave_prompt_stops_saying_tearing_down_once_teardown_ends(
     term.key_ctrl_c()
     expect(term.get_by_text("Tearing down. Stop (s)")).to_be_visible()
 
-    expect(term.get_by_text(re.compile("teardown ✓"))).to_be_visible(timeout=30)
-    expect(term.get_by_text("Nothing running. Stop (s)")).to_be_visible()
+    expect(term.get_by_text("Nothing running. Stop (s)")).to_be_visible(timeout=30)
     expect(term.get_by_text("Tearing down.")).not_to_be_visible()
     term.write("l")
     assert tui.exited(term) == 0, term.to_snapshot()

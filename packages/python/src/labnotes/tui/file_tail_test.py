@@ -187,3 +187,31 @@ def test_reset_drops_the_file(screen: list[str], tmp_path: Path) -> None:
     tail.open(path)
     tail.reset()
     assert (tail.path, text(screen)) == (None, PROMPT)
+
+
+def test_says_when_a_file_cannot_be_read_and_recovers(
+    screen: list[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "private.log"
+    path.write_text("secret\n")
+    tail = FileTail()
+    denied = PermissionError(13, "Permission denied")
+    with mock.patch("labnotes.tui.file_tail.read", side_effect=denied):
+        tail.open(path)
+        tail.follow()
+    assert screen == ["private.log can't be read: Permission denied."]
+    tail.follow()
+    assert text(screen) == "secret\n"
+
+
+def test_says_gone_when_a_file_vanishes_between_stat_and_read(
+    screen: list[str], tmp_path: Path
+) -> None:
+    path = tmp_path / "brief.log"
+    path.write_text("x\n")
+    tail = FileTail()
+    with mock.patch(
+        "labnotes.tui.file_tail.read", side_effect=FileNotFoundError(2, "gone")
+    ):
+        tail.open(path)
+    assert screen == ["brief.log is gone."]

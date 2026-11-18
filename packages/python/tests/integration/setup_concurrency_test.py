@@ -64,7 +64,10 @@ async def launch(
     root: Path, concurrency: int, events: list[dict[str, object]]
 ) -> tuple[asyncio.Task[list[dict[str, object]]], Controls]:
     config = read_config(root / ".labnotes.toml")
-    experiment, _ = await prepare_experiment(config, "exp", None, concurrency)
+    tables = open_experiment_tables(config, "exp")
+    experiment, _ = await prepare_experiment(
+        config, "exp", None, concurrency, tables=tables
+    )
     heard: list[Controls] = []
 
     def listen(controls: Controls) -> None:
@@ -76,7 +79,7 @@ async def launch(
             config,
             "exp",
             experiment,
-            open_experiment_tables(config, "exp"),
+            tables,
             concurrency,
             events.append,
             listen,

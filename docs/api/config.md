@@ -206,7 +206,9 @@ A non-zero exit fails the invocation: no run starts, but [`teardown`](#teardown)
 
 Each hook's output is saved in the experiment folder, under `.labnotes/logs/setup/<stamp>/` and `.labnotes/logs/teardown/<stamp>/`. Each folder holds `stdout.log`, `stderr.log`, and `metadata.json` with the command, start and end times, exit code, error, and the run IDs the invocation planned. Setup and teardown from the same invocation share a stamp.
 
-When an experiment has setup or teardown, the TUI shows a row of stages across the top: setup, runs, teardown, each with its state. Setup and teardown each get a screen with their status, elapsed time, and live logs. The TUI opens on setup and moves to the next stage as each one finishes. Press `[` and `]` to move between stages yourself; after that, the TUI stays where you put it.
+When an experiment has setup or teardown, the TUI shows a row of stages across the top: setup, runs, teardown, each with its state. Setup and teardown each get a screen with their status, elapsed time, and live logs. The TUI opens on setup and moves to the next stage as each one finishes. Click a stage, or press `[` and `]`, to move between stages yourself; after that, the TUI stays where you put it.
+
+Restarting a failed run (`r` in the TUI, or `run --run-id`) while its invocation is live joins that invocation: setup doesn't run again, and teardown waits for the restarted run. Restarting after teardown runs setup first and teardown again at the end. A restart's hooks don't move the TUI off the runs table.
 
 Setup gets no folder placeholders. `{run_dir}` or `{invocation_dir}` in the command fails the invocation before setup or any run starts. To hand values to runs and teardown, such as a container ID, call [`set_state`](sdk#set-state-and-get-state) in setup; they read it with `get_state`. An [`[env]`](#env) value that uses a placeholder is left out of the hook's environment instead.
 
@@ -272,7 +274,7 @@ Each retry gets a new run folder, and its `run.json` holds `"retry_of"` with the
 
 With [`continues`](#continues), a retry runs again in the same folder instead, as another invocation of the same run, and there is no `"retry_of"`.
 
-With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from a retry or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) doesn't count; one that was lost, timed out, or killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
+With `continues`, `retries` also caps how many times a later `run` invokes a failed run again. Every invocation after the first spends one retry, whether it came from a retry or a later `run`, so a run gets at most `retries` + 1 invocations in all. An invocation you stopped (`"ended_by": "stop"`) or one lost when labnotes died (`"ended_by": "lost"`) doesn't count; one that failed, timed out, or was killed by a signal does. Once a run has used them, `run` leaves it alone and doesn't give its combination a new folder, so that combination stays short of `repeats`, and `run` prints `N cells gave up after R retries.` `run --replace-capped` gives such a combination a new run, and `run --run-id ID` invokes the run itself once more.
 
 ### `retry_wait`
 

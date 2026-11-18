@@ -247,6 +247,13 @@ def test_a_new_selection_redraws_every_line() -> None:
     refresh.assert_called_once_with()
 
 
+def test_a_style_change_redraws_every_line() -> None:
+    output = StreamLog("stdout")
+    output.wrapped[0], output.shown = [], ("key", [])
+    output.notify_style_update()
+    assert (output.wrapped, output.shown) == ({}, (None, []))
+
+
 def test_loads_the_lines_around_one_outside_the_window(
     tmp_path: Path, sized: mock.Mock
 ) -> None:

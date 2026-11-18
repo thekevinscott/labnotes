@@ -16,15 +16,13 @@ Show
 Type "uvx labnotes experiments sweep run"
 Sleep 500ms
 Enter
-Sleep 3s
+Sleep 6s
 Type "j"
 Sleep 400ms
 Type "j"
 Sleep 400ms
 Type "j"
 Sleep 400ms
-Type "n"
-Sleep 1.5s
 Type "+"
 Sleep 3s
 Type "k"
@@ -34,8 +32,10 @@ Sleep 400ms
 Type "k"
 Sleep 400ms
 Enter
-Sleep 3s
+Sleep 4s
 Escape
-Sleep 8s
-Type "q"
-Sleep 1s
+Sleep 6s
+Ctrl+C
+Sleep 2s
+Type "s"
+Sleep 3s

@@ -2,9 +2,10 @@ import asyncio
 import gc
 import json
 import socket
-from collections.abc import AsyncIterator, Callable
+from collections.abc import AsyncIterator, Callable, Iterator
 from contextlib import asynccontextmanager
 from pathlib import Path
+from tempfile import TemporaryDirectory
 from typing import Any
 from unittest import mock
 
@@ -41,8 +42,16 @@ def root(tmp_path: Path) -> Path:
     return tmp_path
 
 
+@pytest.fixture
+def sock() -> Iterator[Path]:
+    with TemporaryDirectory(prefix="ln-") as folder:
+        yield Path(folder) / "d.sock"
+
+
 @asynccontextmanager
-async def daemon(root: Path, spy: Callable[[Any], None]) -> AsyncIterator[DirSQL]:
+async def daemon(
+    root: Path, sock: Path, spy: Callable[[Any], None]
+) -> AsyncIterator[DirSQL]:
     config = read_config(root / ".labnotes.toml")
     tables = open_experiment_tables(config, "exp")
     watch = tables.watch
@@ -55,7 +64,7 @@ async def daemon(root: Path, spy: Callable[[Any], None]) -> AsyncIterator[DirSQL
     tables.watch = watched  # type: ignore[method-assign]
     app = ExperimentDaemon(config, "exp", tables)
     listener = socket.socket(socket.AF_UNIX)
-    listener.bind(str(root / "d.sock"))
+    listener.bind(str(sock))
     listener.listen()
     server = uvicorn.Server(
         uvicorn.Config(app, lifespan="off", log_config=None, access_log=False)
@@ -70,9 +79,9 @@ async def daemon(root: Path, spy: Callable[[Any], None]) -> AsyncIterator[DirSQL
         await server.shutdown()
 
 
-async def visit(root: Path, route: str) -> None:
+async def visit(sock: Path, route: str) -> None:
     """Read the route's first event, then hang up."""
-    reader, writer = await asyncio.open_unix_connection(str(root / "d.sock"))
+    reader, writer = await asyncio.open_unix_connection(str(sock))
     writer.write(f"GET {route} HTTP/1.1\r\nHost: labnotes\r\n\r\n".encode())
     await writer.drain()
     received = b""
@@ -93,7 +102,9 @@ async def eventually(check: Callable[[], bool]) -> None:
 
 
 @pytest.mark.parametrize("route", ROUTES)
-def test_a_client_that_hangs_up_closes_its_watch_stream(root: Path, route: str) -> None:
+def test_a_client_that_hangs_up_closes_its_watch_stream(
+    root: Path, sock: Path, route: str
+) -> None:
     streams: list[Any] = []
 
     def spy(changes: Any) -> None:
@@ -101,8 +112,8 @@ def test_a_client_that_hangs_up_closes_its_watch_stream(root: Path, route: str) 
         streams.append(changes)
 
     async def scenario() -> None:
-        async with daemon(root, spy):
-            await visit(root, route)
+        async with daemon(root, sock, spy):
+            await visit(sock, route)
             await eventually(
                 lambda: bool(streams) and streams[0].aclose.await_count == 1
             )
@@ -116,11 +127,11 @@ def test_a_client_that_hangs_up_closes_its_watch_stream(root: Path, route: str) 
 @pytest.mark.xfail(reason="dirsql watch streams have no aclose yet", strict=True)
 @pytest.mark.parametrize("route", ROUTES)
 def test_the_daemon_holds_no_stream_once_its_client_hangs_up(
-    root: Path, route: str
+    root: Path, sock: Path, route: str
 ) -> None:
     async def scenario() -> None:
-        async with daemon(root, lambda _: None) as tables:
-            await visit(root, route)
+        async with daemon(root, sock, lambda _: None) as tables:
+            await visit(sock, route)
             streams = tables._watch_streams  # type: ignore[attr-defined]
             await eventually(lambda: not streams)
 

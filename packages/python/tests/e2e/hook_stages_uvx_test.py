@@ -156,3 +156,26 @@ def test_uvx_stop_interrupts_a_running_setup_hook(tmp_path: Path, tui: Tui) -> N
     expect(term.get_by_text("setup got SIGTERM")).to_be_visible()
     tui.quit(term)
     assert not list(root.glob("exp/runs/*/run.json"))
+
+
+def test_uvx_leave_prompt_stops_saying_tearing_down_once_teardown_ends(
+    tmp_path: Path, tui: Tui
+) -> None:
+    root = project(tmp_path, "")
+    (root / "teardown.py").write_text(
+        "import time\nprint('pods going', flush=True)\ntime.sleep(4)\n"
+    )
+    (root / "exp/experiment.toml").write_text(
+        f"continues = false\ncommand = \"{sys.executable} -c 'print(1)'\"\n"
+        f'teardown = "{sys.executable} teardown.py"\n'
+    )
+
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text("pods going")).to_be_visible(timeout=120)
+    term.key_ctrl_c()
+    expect(term.get_by_text("Tearing down. Stop (s)")).to_be_visible()
+
+    expect(term.get_by_text("Nothing running. Stop (s)")).to_be_visible(timeout=30)
+    expect(term.get_by_text("Tearing down.")).not_to_be_visible()
+    term.write("l")
+    assert tui.exited(term) == 0, term.to_snapshot()

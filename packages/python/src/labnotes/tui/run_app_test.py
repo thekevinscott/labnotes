@@ -1007,6 +1007,55 @@ def test_detached_stop_waits_for_daemon_reply_before_exit(tmp_path: Path) -> Non
     asyncio.run(drive())
 
 
+def test_detached_leave_prompt_follows_teardown_to_its_end(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+
+    async def drive() -> None:
+        with mock.patch.object(app, "attach_daemon"):
+            async with app.run_test() as pilot:
+                app.forward("b1", hooked("teardown"))
+                app.forward("b1", {"event": "idle"})
+                app.forward(
+                    "b1",
+                    {"event": "tearing down", "hook": "teardown", "folder": tmp_path},
+                )
+                await pilot.press("ctrl+c")
+                await pilot.pause()
+                assert prompt(app).startswith("Tearing down.")
+                app.forward(
+                    "b1", {"event": "hook ended", "hook": "teardown", "error": None}
+                )
+                await pilot.pause()
+                assert prompt(app).startswith("Nothing running.")
+                assert "leave running" in prompt(app)
+
+    asyncio.run(drive())
+
+
+def test_detached_leave_prompt_takes_an_event_before_it_mounts(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+
+    async def drive() -> None:
+        with mock.patch.object(app, "attach_daemon"):
+            async with app.run_test() as pilot:
+                app.forward("b1", hooked("teardown"))
+                app.forward("b1", {"event": "idle"})
+                app.forward(
+                    "b1",
+                    {"event": "tearing down", "hook": "teardown", "folder": tmp_path},
+                )
+                app.action_interrupt()
+                app.forward(
+                    "b1", {"event": "hook ended", "hook": "teardown", "error": None}
+                )
+                await pilot.pause()
+                assert prompt(app).startswith("Nothing running.")
+
+    asyncio.run(drive())
+
+
 def test_detached_attach_opens_the_event_stream_and_closes_it(
     tmp_path: Path,
 ) -> None:

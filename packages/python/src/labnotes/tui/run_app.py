@@ -869,6 +869,9 @@ class RunApp(ViewSwitcher, App[None]):
             self.body.show_event(event, advance=False)
         else:
             self.body.show_event(event)
+        match self.screen_stack:
+            case [*_, DetachedLeavePrompt() as prompt]:
+                prompt.show(self.body.busy())
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:

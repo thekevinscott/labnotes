@@ -54,7 +54,7 @@ posix-tools = false
 # PyPI publishing is blocked; take curtaincall and dirsql from GitHub until releases ship.
 [tool.uv.sources]
 curtaincall = { git = "https://github.com/thekevinscott/curtaincall", rev = "3cb0f7c2de370093963a9bdd6e7e618ac7e14595" }
-dirsql = { git = "https://github.com/thekevinscott/dirsql", subdirectory = "packages/python", rev = "fabb675dea5ea5b779659b234e5d7ae140b006fc" }
+dirsql = { git = "https://github.com/thekevinscott/dirsql", subdirectory = "packages/python", rev = "e036b4b27fe41e9c29e88c333595a1ee5370e474" }
 
 [tool.hatch.version]
 source = "vcs"

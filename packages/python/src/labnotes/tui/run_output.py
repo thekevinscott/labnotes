@@ -48,11 +48,11 @@ class RunOutput(Vertical):
             if tab.label_text != label:
                 tab.label = label
 
-    def follow(self, folder: Path) -> None:
+    def follow(self, folder: Path, run: str | None = None) -> None:
         for log in self.logs.values():
             log.follow(folder)
-        if self.files is not None:
-            self.files.follow(folder)
+        if self.files is not None and run is not None:
+            self.files.follow(run, folder)
         self.relabel()
 
     def reset(self) -> None:

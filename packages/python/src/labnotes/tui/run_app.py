@@ -3,7 +3,7 @@ import contextlib
 import signal
 import time
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, cast
@@ -26,6 +26,7 @@ from labnotes.daemon.attachment import Attachment
 from labnotes.daemon.request_start import request_start
 from labnotes.daemon.ensure import ensure_daemon
 from labnotes.daemon.follow_route import follow_route
+from labnotes.daemon.follow_run_files import follow_run_files
 from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
@@ -476,7 +477,9 @@ class RunLiveView(Widget):
                 panel.follow()
         if self.viewing in self.folders:
             self.query_one(LogBlocks).follow(self.folders[self.viewing])
-            self.query_one("#output", RunOutput).follow(self.folders[self.viewing])
+            self.query_one("#output", RunOutput).follow(
+                self.folders[self.viewing], self.viewing
+            )
 
     def action_leave(self) -> None:
         if self.stage in HOOKS:
@@ -806,6 +809,14 @@ class RunApp(ViewSwitcher, App[None]):
                     self.deliver(self.shown)
                 case "paths", list(paths) if self.shown is not None:
                     self.deliver(self.shown, frozenset(paths))
+
+    async def run_files(self, run: str) -> AsyncIterator[tuple[str, Any]]:
+        if self.config is None:
+            return
+        async for event in follow_run_files(
+            self.config, self.experiment_name, run, self.ensure_daemon
+        ):
+            yield event
 
     async def follow_usage(self) -> None:
         assert self.config is not None

@@ -60,6 +60,7 @@ def start_experiment(
             retries,
             retry_wait,
             replace_capped,
+            tables=tables,
         )
         await finalize_lost_runs(config, tables)
         progress("Preparing codebase")

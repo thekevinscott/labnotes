@@ -1,6 +1,8 @@
 import dataclasses
 from pathlib import Path
 
+from dirsql import DirSQL
+
 from labnotes.models import ExperimentConfig, LabnotesConfig
 from labnotes.runner.check_args import check_args
 from labnotes.runner.check_subset import check_subset
@@ -20,6 +22,8 @@ async def prepare_experiment(
     retries: int | None = None,
     retry_wait: float | None = None,
     replace_capped: bool = False,
+    *,
+    tables: DirSQL,
 ) -> tuple[ExperimentConfig, int]:
     if config.experiment not in (None, name):
         raise ValueError(
@@ -30,7 +34,7 @@ async def prepare_experiment(
         experiment_config = config.root / folder / "experiment.toml"
     elif not experiment_config.is_absolute():
         experiment_config = config.root / experiment_config
-    source = await file_text(config.root, experiment_config)
+    source = await file_text(tables, experiment_config)
     if source is None and not config.defaults:
         raise ValueError(f"No experiment.toml for {name} at {experiment_config}.")
     experiment = read_experiment_config(

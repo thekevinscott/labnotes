@@ -26,9 +26,8 @@ log, *args = sys.argv[1:]
 opened = dirsql._async.DirSQL.__init__
 
 def counted(self, root=None, **options):
-    if options.get("tables"):
-        with open(log, "a") as stream:
-            stream.write(os.path.abspath(os.getcwd() if root is None else root) + "\\n")
+    with open(log, "a") as stream:
+        stream.write(os.path.abspath(os.getcwd() if root is None else root) + "\\n")
     opened(self, root, **options)
 
 dirsql._async.DirSQL.__init__ = counted
@@ -84,6 +83,14 @@ def finished(root: Path) -> bool:
     )
 
 
+def wait_finished(root: Path) -> None:
+    for _ in range(300):
+        if finished(root):
+            break
+        time.sleep(0.1)
+    assert finished(root)
+
+
 def test_a_start_reads_through_the_daemons_one_dirsql(
     project: Path, daemon: tuple[Path, Path]
 ) -> None:
@@ -108,3 +115,21 @@ def test_a_start_finalizes_only_its_own_experiments_lost_runs(
 
     assert read(project / "exp/runs/lost/run.json")["ended_by"] == "lost"
     assert read(project / "other/runs/lost/run.json") == UNFINISHED
+
+
+def test_a_start_with_an_experiment_toml_outside_the_experiment_opens_no_other_dirsql(
+    project: Path, daemon: tuple[Path, Path]
+) -> None:
+    path, log = daemon
+    write(
+        project / "shared/alt.toml",
+        f"continues = false\ncommand = '{sys.executable} -c pass'\n",
+    )
+
+    reply = daemon_request(
+        path, "POST", "/start", {"experiment_config": str(project / "shared/alt.toml")}
+    )
+
+    assert reply["ok"] is True
+    wait_finished(project)
+    assert log.read_text().splitlines() == [str(project / "exp")]

@@ -252,8 +252,9 @@ def run_now(root: Path) -> list[dict[str, object]]:
     events: list[dict[str, object]] = []
 
     async def go() -> list[dict[str, object]]:
+        tables = open_experiment_tables(config, "exp")
         experiment, concurrency = await prepare_experiment(
-            config, "exp", None, None, retry_wait=0.01
+            config, "exp", None, None, retry_wait=0.01, tables=tables
         )
 
         def listen(controls: Controls) -> None:
@@ -263,7 +264,7 @@ def run_now(root: Path) -> list[dict[str, object]]:
             config,
             "exp",
             experiment,
-            open_experiment_tables(config, "exp"),
+            tables,
             concurrency,
             events.append,
             listen,

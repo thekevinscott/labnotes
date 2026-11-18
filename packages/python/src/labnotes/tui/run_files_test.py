@@ -6,7 +6,7 @@ from unittest import mock
 
 import pytest
 
-from labnotes.tui.run_files import FILES, RunFiles
+from labnotes.tui.run_files import RunFiles
 
 MODULE = "labnotes.tui.run_files"
 
@@ -67,12 +67,12 @@ def widgets() -> Iterator[dict[str, mock.MagicMock]]:
 
 
 def rows(*found: tuple[str, int]) -> list[dict[str, object]]:
-    return [{"path": path, "size": size} for path, size in found]
+    return [{"name": name, "size": size} for name, size in found]
 
 
 def test_holds_a_file_list_beside_a_tail(widgets: dict[str, mock.MagicMock]) -> None:
     files = RunFiles(id="files")
-    assert (files.id, files.folder, files.count) == ("files", None, 0)
+    assert (files.id, files.run, files.folder, files.count) == ("files", None, None, 0)
     assert list(files.compose()) == [files.table, files.tail]
     assert files.table.kwargs == {"id": "file-list", "cursor_type": "row"}  # type: ignore[attr-defined]
     widgets["tail"].assert_called_once_with(id="file-tail")
@@ -124,9 +124,7 @@ def test_leaves_the_cursor_alone_when_its_file_is_gone() -> None:
     assert files.table.shown() == [("a.log", "a.log", "1 byte")]  # type: ignore[attr-defined]
 
 
-def test_follow_watches_a_new_folder_once_and_follows_the_tail(
-    tmp_path: Path,
-) -> None:
+def test_follow_lists_a_new_run_once_and_follows_the_tail(tmp_path: Path) -> None:
     files = RunFiles()
     with (
         mock.patch.object(files, "run_worker") as run_worker,
@@ -134,49 +132,107 @@ def test_follow_watches_a_new_folder_once_and_follows_the_tail(
             files, "list_files", new=mock.Mock(return_value="listing")
         ) as list_files,
     ):
-        files.follow(tmp_path)
-        files.follow(Path(str(tmp_path)))
-    list_files.assert_called_once_with(tmp_path)
+        files.follow("r1", tmp_path)
+        files.follow("r1", tmp_path / "moved")
+    list_files.assert_called_once_with("r1")
     run_worker.assert_called_once_with(
         "listing", group="files", exclusive=True, exit_on_error=False
     )
-    assert files.folder == tmp_path
+    assert (files.run, files.folder) == ("r1", tmp_path / "moved")
     assert files.tail.follow.call_count == 2  # type: ignore[attr-defined]
+
+
+def test_follow_lists_again_for_another_run(tmp_path: Path) -> None:
+    files = RunFiles()
+    with (
+        mock.patch.object(files, "run_worker") as run_worker,
+        mock.patch.object(files, "list_files", new=mock.Mock()) as list_files,
+    ):
+        files.follow("r1", tmp_path)
+        files.follow("r2", tmp_path)
+    assert list_files.call_args_list == [mock.call("r1"), mock.call("r2")]
+    assert run_worker.call_count == 2
 
 
 def test_reset_forgets_the_folder_and_its_files(tmp_path: Path) -> None:
     files = RunFiles()
     files.on_mount()
     files.show_files(rows(("a.log", 1)))
-    files.folder = tmp_path
+    files.run, files.folder = "r1", tmp_path
     workers = mock.Mock()
     with mock.patch.object(
         RunFiles, "workers", new_callable=mock.PropertyMock, return_value=workers
     ):
         files.reset()
     workers.cancel_group.assert_called_once_with(files, "files")
-    assert (files.folder, files.count, files.table.shown()) == (None, 0, [])  # type: ignore[attr-defined]
+    assert (files.run, files.folder, files.count) == (None, None, 0)
+    assert files.table.shown() == []  # type: ignore[attr-defined]
     files.tail.reset.assert_called_once_with()  # type: ignore[attr-defined]
 
 
-def test_lists_the_folder_then_relists_on_each_file_change(
-    tmp_path: Path,
-) -> None:
+def listing(*events: tuple[str, Any]) -> tuple[RunFiles, mock.Mock]:
     files = RunFiles()
     files.on_mount()
-    answers = [rows(("a.log", 1)), rows(("a.log", 1), ("b.log", 2))]
-    tables = mock.Mock()
-    tables.query = mock.AsyncMock(side_effect=answers)
 
-    async def changes() -> AsyncIterator[Any]:
-        yield mock.Mock(table="files")
+    async def run_files(run: str) -> AsyncIterator[tuple[str, Any]]:
+        for event in events:
+            yield event
 
-    tables.watch.return_value = changes()
-    with mock.patch(f"{MODULE}.open_folder_files", return_value=tables) as opened:
-        asyncio.run(files.list_files(tmp_path))
-    opened.assert_called_once_with(tmp_path)
-    assert tables.query.await_args_list == [mock.call(FILES), mock.call(FILES)]
-    assert [row[0] for row in files.table.shown()] == ["a.log", "b.log"]  # type: ignore[attr-defined]
+    app = mock.Mock(run_files=mock.Mock(side_effect=run_files))
+    with mock.patch.object(
+        RunFiles, "app", new_callable=mock.PropertyMock, return_value=app
+    ):
+        asyncio.run(files.list_files("r1"))
+    return files, app.run_files
+
+
+def names(files: RunFiles) -> list[object]:
+    return [row[0] for row in files.table.shown()]  # type: ignore[attr-defined]
+
+
+def test_lists_the_runs_files_from_the_app() -> None:
+    files, run_files = listing(("state", rows(("b.log", 2), ("a.log", 1))))
+    run_files.assert_called_once_with("r1")
+    assert files.table.shown() == [  # type: ignore[attr-defined]
+        ("a.log", "a.log", "1 byte"),
+        ("b.log", "b.log", "2 bytes"),
+    ]
+
+
+def test_adds_and_updates_files_as_they_change() -> None:
+    files, _ = listing(
+        ("state", rows(("b.log", 2))),
+        ("file", {"name": "a.log", "size": 1}),
+        ("file", {"name": "b.log", "size": 3000}),
+    )
+    assert files.table.shown() == [  # type: ignore[attr-defined]
+        ("a.log", "a.log", "1 byte"),
+        ("b.log", "b.log", "3.0 kB"),
+    ]
+
+
+def test_drops_a_removed_file_and_ignores_an_unknown_one() -> None:
+    files, _ = listing(
+        ("state", rows(("a.log", 1), ("b.log", 2))),
+        ("remove", {"name": "a.log"}),
+        ("remove", {"name": "never.log"}),
+    )
+    assert names(files) == ["b.log"]
+    assert files.count == 1
+
+
+def test_fresh_state_replaces_the_list() -> None:
+    files, _ = listing(
+        ("state", rows(("a.log", 1))),
+        ("file", {"name": "b.log", "size": 2}),
+        ("state", rows(("c.log", 1))),
+    )
+    assert names(files) == ["c.log"]
+
+
+def test_ignores_other_events() -> None:
+    files, _ = listing(("state", rows(("a.log", 1))), ("other", {"name": "z"}))
+    assert names(files) == ["a.log"]
 
 
 def test_picking_a_file_tails_it(tmp_path: Path) -> None:
@@ -206,8 +262,3 @@ def test_focus_scrolls_the_file_list_into_view_by_default() -> None:
     files = RunFiles()
     files.focus()
     files.table.focus.assert_called_once_with(True)  # type: ignore[attr-defined]
-
-
-def test_lists_files_in_path_order() -> None:
-    assert "FROM files" in FILES
-    assert FILES.rstrip().endswith("ORDER BY path")

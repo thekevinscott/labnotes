@@ -224,9 +224,20 @@ def test_follow_lists_the_folders_files_and_counts_them(
     output = RunOutput(files=True)
     assert output.files is not None
     output.files.count = 4  # type: ignore[misc]
-    output.follow(tmp_path)
-    output.files.follow.assert_called_once_with(tmp_path)  # type: ignore[attr-defined]
+    output.follow(tmp_path, "r1")
+    output.files.follow.assert_called_once_with("r1", tmp_path)  # type: ignore[attr-defined]
     assert tabs(output)["files"].label == "files (4)"
+
+
+def test_follow_without_a_run_leaves_the_files_alone(
+    tmp_path: Path, run_files: mock.MagicMock
+) -> None:
+    output = RunOutput(files=True)
+    assert output.files is not None
+    output.follow(tmp_path)
+    output.files.follow.assert_not_called()  # type: ignore[attr-defined]
+    for log in output.logs.values():
+        log.follow.assert_called_once_with(tmp_path)  # type: ignore[attr-defined]
 
 
 def test_reset_clears_the_file_list(run_files: mock.MagicMock) -> None:

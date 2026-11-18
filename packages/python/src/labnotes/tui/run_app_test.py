@@ -221,12 +221,16 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch(
             "labnotes.tui.run_app.follow_route", side_effect=quiet
         ) as follow_route,
+        mock.patch(
+            "labnotes.tui.run_app.follow_run_files", side_effect=quiet
+        ) as follow_run_files,
     ):
         time.monotonic.return_value = 10.0
         yield {
             "time": time,
             "stop_then_kill": stop_then_kill,
             "follow_route": follow_route,
+            "follow_run_files": follow_run_files,
         }
 
 
@@ -417,6 +421,58 @@ def test_follow_usage_waits_for_the_built_in_view(
         app.body_ready = False
         asyncio.run(app.follow_usage())
         show.assert_not_called()
+
+
+def test_run_files_follows_a_runs_files_through_the_apps_daemon(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    app = configured_app(tmp_path, None)
+
+    async def files(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield "state", [{"name": "a.log"}]
+        yield "remove", {"name": "a.log"}
+
+    collaborators["follow_run_files"].side_effect = files
+
+    async def take() -> list[tuple[str, Any]]:
+        return [event async for event in app.run_files("r1")]
+
+    assert asyncio.run(take()) == [
+        ("state", [{"name": "a.log"}]),
+        ("remove", {"name": "a.log"}),
+    ]
+    collaborators["follow_run_files"].assert_called_once_with(
+        app.config, "alpha", "r1", app.ensure_daemon
+    )
+
+
+def test_run_files_without_a_config_lists_nothing(
+    collaborators: dict[str, mock.MagicMock],
+) -> None:
+    app = RunApp(None, "exp", COLUMNS)
+
+    async def take() -> list[tuple[str, Any]]:
+        return [event async for event in app.run_files("r1")]
+
+    assert asyncio.run(take()) == []
+    collaborators["follow_run_files"].assert_not_called()
+
+
+def test_follow_gives_the_output_the_viewed_run_and_its_folder(
+    tmp_path: Path,
+) -> None:
+    view = RunLiveView()
+    view.folders["r1"] = tmp_path
+    view.viewing = "r1"
+    with (
+        mock.patch.object(view, "query", return_value=[]),
+        mock.patch.object(view, "query_one") as query_one,
+    ):
+        view.follow()
+    assert query_one.return_value.follow.call_args_list == [
+        mock.call(tmp_path),
+        mock.call(tmp_path, "r1"),
+    ]
 
 
 def test_shows_only_the_columns_it_is_given_in_their_order(

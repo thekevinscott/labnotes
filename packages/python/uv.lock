@@ -272,7 +272,7 @@ wheels = [
 [[package]]
 name = "dirsql"
 version = "0.2.7"
-source = { git = "https://github.com/thekevinscott/dirsql?subdirectory=packages%2Fpython&rev=89b3ef029bbe394bbf6d8dc7118e945bec4dd4ba#89b3ef029bbe394bbf6d8dc7118e945bec4dd4ba" }
+source = { git = "https://github.com/thekevinscott/dirsql?subdirectory=packages%2Fpython&rev=fabb675dea5ea5b779659b234e5d7ae140b006fc#fabb675dea5ea5b779659b234e5d7ae140b006fc" }
 dependencies = [
     { name = "bin-shim" },
 ]
@@ -573,7 +573,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "click", specifier = ">=8.5.0" },
-    { name = "dirsql", git = "https://github.com/thekevinscott/dirsql?subdirectory=packages%2Fpython&rev=89b3ef029bbe394bbf6d8dc7118e945bec4dd4ba" },
+    { name = "dirsql", git = "https://github.com/thekevinscott/dirsql?subdirectory=packages%2Fpython&rev=fabb675dea5ea5b779659b234e5d7ae140b006fc" },
     { name = "haikunator", specifier = ">=2.1.0" },
     { name = "httpx2", specifier = ">=2.13.1" },
     { name = "ipykernel", specifier = ">=7.4.0" },

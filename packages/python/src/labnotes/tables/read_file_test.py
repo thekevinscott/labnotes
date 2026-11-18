@@ -49,3 +49,9 @@ def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> 
     [row] = read_file(tmp_path, "notes/", path, experiment="study")
 
     assert (row["experiment"], row["filename"]) == ("study", "plan.md")
+
+
+def test_skips_a_file_that_is_gone_before_it_is_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp" / "files" / "gone.md")
+
+    assert read_file(tmp_path, "{experiment}/files/", path) == []

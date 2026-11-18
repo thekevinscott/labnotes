@@ -114,3 +114,9 @@ def test_names_the_one_experiment_for_a_damaged_record(tmp_path: Path) -> None:
     [row] = read_run(tmp_path, "runs/{run}", str(path), experiment="study")
 
     assert row["experiment"] == "study"
+
+
+def test_skips_a_run_that_is_gone_before_it_is_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp/runs/brave-fox/run.json")
+
+    assert read_run(tmp_path, "{experiment}/runs/{run}", path) == []

@@ -78,3 +78,9 @@ def test_skips_text_files_that_are_not_invocation_logs(tmp_path: Path) -> None:
         path = write_log(tmp_path / f"exp/runs/r1/{name}", "x")
 
         assert read_log(tmp_path, "{experiment}/runs/{run}", path) == []
+
+
+def test_skips_a_log_that_is_gone_before_it_is_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp/runs/brave-fox/stdout.log")
+
+    assert read_log(tmp_path, "{experiment}/runs/{run}", path) == []

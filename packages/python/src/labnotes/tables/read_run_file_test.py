@@ -36,3 +36,9 @@ def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> 
     [row] = read_run_file(tmp_path, "runs/{run}", path, experiment="study")
 
     assert (row["experiment"], row["path"]) == ("study", "runs/brave-fox/stdout.log")
+
+
+def test_skips_a_file_renamed_away_before_it_is_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp/runs/brave-fox/run.json.123.tmp")
+
+    assert read_run_file(tmp_path, "{experiment}/runs/{run}", path) == []

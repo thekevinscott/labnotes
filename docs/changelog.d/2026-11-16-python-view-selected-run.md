@@ -1,0 +1,1 @@
+**Added:** Run TUI views share one selected run. A view posts `labnotes.view.Select(run)` to select a run, and every view gets `labnotes.view.Selected(run)` when it changes. Opening a run with Enter in the runs view selects it. Views stop and restart runs by posting `labnotes.view.Stop(run)` and `labnotes.view.Restart(run)`.

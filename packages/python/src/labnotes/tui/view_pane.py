@@ -10,6 +10,7 @@ from labnotes.tui.guard_view import guard_view
 from labnotes.tui.load_view import load_view
 from labnotes.view.changed import Changed
 from labnotes.view.experiment import Experiment
+from labnotes.view.selected import Selected
 
 
 def failure(name: str, error: Exception) -> Static:
@@ -52,3 +53,7 @@ class ViewPane(Container):
     ) -> None:
         if self.view is not None:
             self.view.post_message(Changed(experiment, paths))
+
+    def select(self, run: str | None) -> None:
+        if self.view is not None:
+            self.view.post_message(Selected(run))

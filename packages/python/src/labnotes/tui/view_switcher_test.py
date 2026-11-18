@@ -116,3 +116,14 @@ def test_refocus_with_nothing_remembered_moves_to_the_first_widget() -> None:
 
     host.set_focus.assert_called_once_with(None)
     host.screen.focus_next.assert_called_once_with()
+
+
+def test_select_tells_every_pane_the_selected_run() -> None:
+    host = mock.Mock()
+    panes = [mock.Mock(), mock.Mock()]
+    host.query.return_value = panes
+
+    ViewSwitcher.select(host, "a1")
+
+    for pane in panes:
+        pane.select.assert_called_once_with("a1")

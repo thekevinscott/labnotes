@@ -3333,3 +3333,85 @@ def test_readers_start_one_daemon_at_a_time(tmp_path: Path) -> None:
     with mock.patch("labnotes.tui.run_app.ensure_daemon", new=slow):
         asyncio.run(drive())
     assert most == 1
+
+
+def test_a_selection_reaches_every_view_once(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, None)
+    with mock.patch.object(app, "select") as select:
+        app.on_labnotes_select(mock.Mock(run="a1"))
+        app.on_labnotes_select(mock.Mock(run="a1"))
+        app.on_labnotes_select(mock.Mock(run=None))
+    assert select.call_args_list == [mock.call("a1"), mock.call(None)]
+    assert app.selected is None
+
+
+@pytest.mark.parametrize(("selected", "told"), [("a1", [mock.call("a1")]), (None, [])])
+def test_views_that_load_late_get_the_current_selection(
+    tmp_path: Path,
+    collaborators: dict[str, mock.MagicMock],
+    selected: str | None,
+    told: list[Any],
+) -> None:
+    app = configured_app(tmp_path, None)
+    app.selected = selected
+
+    async def experiment(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield "state", {"name": "alpha", "config": {}, "views": {}, "runs": []}
+        yield "state", {"name": "alpha", "config": {}, "views": {}, "runs": []}
+
+    collaborators["follow_route"].side_effect = experiment
+    with (
+        mock.patch.object(app, "add_views", new=mock.AsyncMock()),
+        mock.patch.object(app, "deliver"),
+        mock.patch.object(app, "select") as select,
+    ):
+        asyncio.run(app.follow_views())
+    assert select.call_args_list == told
+
+
+def test_a_view_stops_and_restarts_runs_through_the_tui(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, None)
+    app.controls = mock.Mock()
+    with mock.patch.object(app, "restart_run") as restart:
+        app.on_labnotes_stop(mock.Mock(run="a1"))
+        app.on_labnotes_restart(mock.Mock(run="b2"))
+    app.controls.kill.assert_called_once_with("a1")
+    restart.assert_called_once_with("b2")
+
+
+def test_opening_a_run_in_the_runs_view_selects_it(tmp_path: Path) -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        report(planned("r1", "r2"))
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                app.body.view("r2")
+                await pilot.pause()
+                assert app.selected == "r2"
+
+    asyncio.run(drive())
+
+
+def test_restart_without_the_runs_view_reports_in_a_notice(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+    app.body_ready = False
+    with (
+        mock.patch.object(app, "notify") as notify,
+        mock.patch.object(app.body, "show") as show,
+    ):
+        app.restart_run("r1")
+        with mock.patch(
+            "labnotes.tui.run_app.request_start",
+            new=mock.AsyncMock(side_effect=ValueError("locked")),
+        ):
+            asyncio.run(app.restart_daemon_run("r1"))
+    show.assert_not_called()
+    assert notify.call_args_list == [
+        mock.call("r1 has not failed."),
+        mock.call("Could not restart r1: locked"),
+    ]

@@ -63,3 +63,16 @@ def test_fail_replaces_a_loaded_view_once() -> None:
     mount.assert_called_once()
     assert "bad view" in str(mount.call_args.args[0].content)
     assert pane.view is None
+
+
+def test_tells_only_a_loaded_view_the_selected_run() -> None:
+    pane = ViewPane("progress", "views/progress.py:Progress", Path("/p"), id="view-2")
+    shown = mock.Mock()
+
+    pane.select("a1")
+    pane.view = shown
+    pane.select("b2")
+
+    [message] = shown.post_message.call_args.args
+    assert type(message).__name__ == "Selected"
+    assert message.run == "b2"

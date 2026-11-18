@@ -37,6 +37,10 @@ class ViewSwitcher:
         for pane in self.query(ViewPane):  # type: ignore[attr-defined]
             pane.deliver(experiment, paths)
 
+    def select(self, run: str | None) -> None:
+        for pane in self.query(ViewPane):  # type: ignore[attr-defined]
+            pane.select(run)
+
     def action_show_view(self, number: int) -> None:
         switcher = self.query_one(ContentSwitcher)  # type: ignore[attr-defined]
         if switcher.current is not None and self.focused is not None:  # type: ignore[attr-defined]

@@ -358,7 +358,7 @@ def test_restarting_a_run_keeps_the_table_through_the_restarts_hooks(
         expect(term.get_by_text("stdout (")).to_be_visible(timeout=5)
     finally:
         release.write_text("")
-    expect(term.get_by_text("teardown ✓")).to_be_visible(timeout=30)
+    expect(term.get_by_text(re.compile("teardown ✓"))).to_be_visible(timeout=30)
     quit_tui(term)
 
 

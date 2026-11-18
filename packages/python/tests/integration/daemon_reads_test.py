@@ -318,3 +318,41 @@ def test_more_clients_add_no_watches_beyond_the_experiment(
                 stream.next()
             time.sleep(1)
             assert inotify_watches(pid) == folders(root / "exp")
+
+
+def test_experiment_streams_what_views_show_then_changes(
+    daemon: tuple[Path, int], root: Path
+) -> None:
+    with Stream(daemon[0], "/experiment") as experiment:
+        name, first, state = experiment.next()
+        assert name == "state"
+        assert state["name"] == "exp"  # type: ignore[index]
+        assert state["config"]["command"] == "true"  # type: ignore[index]
+        runs = {row["id"]: row for row in state["runs"]}  # type: ignore[index]
+        assert sorted(runs) == [DONE, LIVE]
+        assert runs[DONE]["folder"] == f"exp/runs/{DONE}"
+        assert runs[DONE]["status"] == "passed"
+        assert runs[DONE]["params"] == {}
+
+        (root / "exp/runs" / LIVE / "stdout.log").write_text("starting\nmore\n")
+        name, _, paths = experiment.next()
+        assert (name, paths) == ("paths", [f"exp/runs/{LIVE}/stdout.log"])
+
+        write_run(
+            root,
+            LIVE,
+            {"created": "2026-11-14T00:00:02Z", "ended": "2026-11-14T00:00:09Z"}
+            | {"exit_code": 1},
+        )
+        while (event := experiment.next())[0] != "state":
+            pass
+        name, second, changed = event
+        assert second != first
+        statuses = {row["id"]: row["status"] for row in changed["runs"]}  # type: ignore[index]
+        assert statuses == {DONE: "passed", LIVE: "failed"}
+
+    with Stream(daemon[0], "/experiment", second) as resumed:
+        assert resumed.next() == ("state", second, changed)
+        (root / "exp/runs" / DONE / "stdout.log").write_text("one\ntwo\nthree\n")
+        name, _, paths = resumed.next()
+        assert (name, paths) == ("paths", [f"exp/runs/{DONE}/stdout.log"])

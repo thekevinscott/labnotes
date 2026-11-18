@@ -1,7 +1,7 @@
 import asyncio
 import json
 import time
-from collections.abc import Awaitable, Callable, Iterator
+from collections.abc import AsyncIterator, Awaitable, Callable, Iterator
 from pathlib import Path
 from typing import Any
 from unittest import mock
@@ -45,73 +45,62 @@ def test_configured_views_handles_missing_invalid_and_override_files(
     assert app.configured_views() == {"custom": "custom.py:Custom"}
 
 
-def test_no_custom_views_mounts_builtin_without_opening_tables(tmp_path: Path) -> None:
+def routes(follow: mock.MagicMock) -> list[str]:
+    return sorted(call.args[2] for call in follow.call_args_list)
+
+
+def test_no_custom_views_mounts_builtin_and_follows_only_usage(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
     app = configured_app(tmp_path, 'command = "echo ok"\n[views]\nruns = "echo"\n')
 
     async def drive() -> None:
-        with mock.patch("labnotes.tui.run_app.open_tables") as open_tables:
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                assert app.query_one(RunLiveView)
-                open_tables.assert_not_called()
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.query_one(RunLiveView)
 
     asyncio.run(drive())
+    follow = collaborators["follow_route"]
+    assert routes(follow) == ["/runs"]
+    assert follow.call_args.args == (app.config, "alpha", "/runs", app.ensure_daemon)
 
 
-def test_custom_views_mount_in_pane_and_open_tables(tmp_path: Path) -> None:
+def test_custom_views_mount_in_pane_and_follow_the_experiment(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
     app = configured_app(
         tmp_path,
         'command = "echo ok"\ncontinues = false\n[views]\nprogress = "progress.py:Progress"\n',
     )
 
-    async def changes():
-        yield {"path": "alpha/runs/first/stdout.log"}
-
-    async def reload():
-        await asyncio.Event().wait()
-
-    reloading = reload()
-
     async def drive() -> None:
-        with (
-            mock.patch("labnotes.tui.run_app.open_tables") as open_tables,
-            mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
-            mock.patch("labnotes.tui.run_app.reload_on_change", return_value=reloading),
-        ):
-            async with app.run_test() as pilot:
-                await pilot.pause()
-                assert app.query_one("#view-1")
-                assert app.body_ready
-                open_tables.assert_called_once_with(app.config, run_files=True)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert app.query_one("#view-1")
+            assert app.body_ready
 
     asyncio.run(drive())
-    reloading.close()
+    assert routes(collaborators["follow_route"]) == ["/experiment", "/runs"]
 
 
-def test_run_file_watcher_failure_keeps_shell_alive(tmp_path: Path) -> None:
+def test_a_failed_read_keeps_shell_alive(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
     app = configured_app(
         tmp_path,
         'command = "echo ok"\n[views]\nprogress = "progress.py:Progress"\n',
     )
     failed = asyncio.Event()
 
-    async def changes():
-        yield {"path": "alpha/runs/first/stdout.log"}
+    async def failing(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield "paths", ["alpha/runs/first/stdout.log"]
         failed.set()
-        raise RuntimeError("watch failed")
+        raise RuntimeError("read failed")
 
-    async def reload():
-        await asyncio.Event().wait()
-
-    reloading = reload()
+    collaborators["follow_route"].side_effect = failing
 
     async def drive() -> None:
-        with (
-            mock.patch("labnotes.tui.run_app.open_tables"),
-            mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
-            mock.patch("labnotes.tui.run_app.reload_on_change", return_value=reloading),
-            mock.patch.object(app, "_handle_exception") as fatal,
-        ):
+        with mock.patch.object(app, "_handle_exception") as fatal:
             async with app.run_test() as pilot:
                 await asyncio.wait_for(failed.wait(), timeout=2)
                 await pilot.pause()
@@ -119,7 +108,6 @@ def test_run_file_watcher_failure_keeps_shell_alive(tmp_path: Path) -> None:
                 fatal.assert_not_called()
 
     asyncio.run(drive())
-    reloading.close()
 
 
 def test_builtin_pane_error_keeps_the_run_shell_alive(tmp_path: Path) -> None:
@@ -129,11 +117,8 @@ def test_builtin_pane_error_keeps_the_run_shell_alive(tmp_path: Path) -> None:
     )
 
     async def drive() -> None:
-        with (
-            mock.patch(
-                "labnotes.tui.view_pane.load_view", side_effect=ImportError("broken")
-            ),
-            mock.patch("labnotes.tui.run_app.open_tables"),
+        with mock.patch(
+            "labnotes.tui.view_pane.load_view", side_effect=ImportError("broken")
         ):
             async with app.run_test() as pilot:
                 await pilot.pause()
@@ -147,70 +132,53 @@ def test_builtin_pane_error_keeps_the_run_shell_alive(tmp_path: Path) -> None:
     asyncio.run(drive())
 
 
-def test_load_data_delivers_native_rows_and_skips_removed_experiment(
-    tmp_path: Path,
+def test_follow_views_delivers_the_daemons_state_and_changed_paths(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     app = configured_app(tmp_path, None)
-    loaded = {
-        "views": {"progress": "progress.py:Progress"},
-        "config": {"command": "go"},
-    }
+    views = {"progress": "progress.py:Progress"}
 
-    async def drive() -> None:
-        with (
-            mock.patch(
-                "labnotes.tui.run_app.load_experiment",
-                new=mock.AsyncMock(return_value=None),
-            ) as load,
-            mock.patch(
-                "labnotes.tui.run_app.native_rows", return_value=({"status": "passed"},)
-            ),
-            mock.patch.object(app, "add_views", new=mock.AsyncMock()) as add_views,
-            mock.patch.object(app, "deliver") as deliver,
-        ):
-            await app.load_data(mock.Mock())
-            assert not app.loaded_views
-            load.return_value = loaded
-            await app.load_data(mock.Mock())
-            await app.load_data(mock.Mock())
-            add_views.assert_awaited_once_with(loaded["views"], tmp_path)
-            assert deliver.call_count == 2
-            assert app.shown is not None
-            assert app.shown.name == "alpha"
-            assert app.shown.runs == ({"status": "passed"},)
-            assert app.shown.config == {"command": "go"}
+    async def experiment(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield "paths", ["alpha/runs/early/stdout.log"]
+        yield "state", None
+        yield (
+            "state",
+            {
+                "name": "alpha",
+                "config": {"command": "go"},
+                "views": views,
+                "runs": [{"status": "passed"}],
+            },
+        )
+        yield "state", {"name": "alpha", "config": None, "views": views, "runs": []}
+        yield "paths", ["alpha/runs/first/stdout.log", "alpha/runs/first/err.log"]
 
-    asyncio.run(drive())
-
-
-def test_run_file_change_notifies_view_and_escape_returns_to_runs(
-    tmp_path: Path,
-) -> None:
-    app = configured_app(tmp_path, None)
-    app.shown = mock.Mock()
-
-    async def changes():
-        yield {"path": "alpha/runs/first/stdout.log"}
-        yield {"path": "alpha/runs/first/stderr.log"}
-
+    collaborators["follow_route"].side_effect = experiment
     with (
-        mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
+        mock.patch.object(app, "add_views", new=mock.AsyncMock()) as add_views,
         mock.patch.object(app, "deliver") as deliver,
     ):
-        asyncio.run(app.watch_files(mock.Mock()))
-    assert deliver.call_args_list == [
-        mock.call(app.shown, frozenset({"alpha/runs/first/stdout.log"})),
-        mock.call(app.shown, frozenset({"alpha/runs/first/stderr.log"})),
+        asyncio.run(app.follow_views())
+    add_views.assert_awaited_once_with(views, tmp_path)
+    first = deliver.call_args_list[0].args[0]
+    assert (first.name, first.runs, dict(first.config)) == (
+        "alpha",
+        ({"status": "passed"},),
+        {"command": "go"},
+    )
+    assert app.shown is not None
+    assert (app.shown.runs, dict(app.shown.config)) == ((), {})
+    assert deliver.call_args_list[1:] == [
+        mock.call(app.shown),
+        mock.call(
+            app.shown,
+            frozenset({"alpha/runs/first/stdout.log", "alpha/runs/first/err.log"}),
+        ),
     ]
 
-    app.shown = None
-    with (
-        mock.patch("labnotes.tui.run_app.watch_rows", return_value=changes()),
-        mock.patch.object(app, "deliver") as deliver,
-    ):
-        asyncio.run(app.watch_files(mock.Mock()))
-    deliver.assert_not_called()
 
+def test_escape_returns_to_runs(tmp_path: Path) -> None:
+    app = configured_app(tmp_path, None)
     with (
         mock.patch.object(app, "query_one", return_value=mock.Mock(current="view-2")),
         mock.patch.object(app, "action_show_view") as show,
@@ -224,6 +192,11 @@ def test_run_file_change_notifies_view_and_escape_returns_to_runs(
     ):
         app.action_leave()
     show.assert_not_called()
+
+
+async def quiet(*_: object) -> AsyncIterator[tuple[str, Any]]:
+    yield "ignored", None
+    await asyncio.Event().wait()
 
 
 @pytest.fixture(autouse=True)
@@ -246,17 +219,19 @@ def collaborators() -> Iterator[dict[str, mock.MagicMock]]:
         mock.patch("labnotes.tui.run_app.signal", mock.Mock(SIGTERM=15, SIGHUP=1)),
         mock.patch("labnotes.tui.run_app.stop_then_kill") as stop_then_kill,
         mock.patch(
-            "labnotes.tui.run_app.run_usage",
-            new=mock.AsyncMock(
-                side_effect=lambda folder, running: {
-                    "memory": 3_200_000_000 if running else None,
-                    "size": 5_000,
-                }
-            ),
-        ) as run_usage,
+            "labnotes.tui.run_app.follow_route", side_effect=quiet
+        ) as follow_route,
+        mock.patch(
+            "labnotes.tui.run_app.follow_run_files", side_effect=quiet
+        ) as follow_run_files,
     ):
         time.monotonic.return_value = 10.0
-        yield {"time": time, "stop_then_kill": stop_then_kill, "run_usage": run_usage}
+        yield {
+            "time": time,
+            "stop_then_kill": stop_then_kill,
+            "follow_route": follow_route,
+            "follow_run_files": follow_run_files,
+        }
 
 
 def rows(app: RunApp) -> list[list[str]]:
@@ -278,8 +253,10 @@ def began(run: str) -> dict[str, object]:
     }
 
 
-def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> None:
-    done = asyncio.Event()
+def test_shows_what_each_run_uses_from_the_daemon(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    done, measured, later = asyncio.Event(), asyncio.Event(), asyncio.Event()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
         report(planned("r1", "r2", "r3"))
@@ -289,13 +266,41 @@ def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> N
         await done.wait()
         return []
 
+    async def runs(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        await measured.wait()
+        yield (
+            "state",
+            [
+                {
+                    "id": "r1",
+                    "status": "running",
+                    "memory": 3_200_000_000,
+                    "size": 5_000,
+                },
+                {"id": "r2", "status": "passed", "memory": 9_000, "size": 5_000},
+                {"id": "elsewhere", "status": "running", "memory": 1, "size": 1},
+            ],
+        )
+        await later.wait()
+        yield "run", {"id": "r1", "status": "passed", "memory": 9_000, "size": 6_000}
+        await asyncio.Event().wait()
+
+    collaborators["follow_route"].side_effect = runs
+
     async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
+        config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+        app = RunApp(start, "exp", COLUMNS, config)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.body.tick()
+            assert usage(app) == [["", ""]] * 3
+            measured.set()
+            await pilot.pause()
             await pilot.pause()
             assert usage(app) == [["3.2 GB", "5.0 kB"], ["", "5.0 kB"], ["", ""]]
+            later.set()
+            await pilot.pause()
+            await pilot.pause()
+            assert usage(app) == [["", "6.0 kB"], ["", "5.0 kB"], ["", ""]]
             assert app.query_one("#runs").ordered_columns[4].label.plain == "memory"  # type: ignore[attr-defined]
             assert app.query_one("#runs").ordered_columns[5].label.plain == "size"  # type: ignore[attr-defined]
             done.set()
@@ -303,46 +308,47 @@ def test_shows_what_each_run_uses(collaborators: dict[str, mock.MagicMock]) -> N
             app.exit()
 
     asyncio.run(drive())
-    calls = collaborators["run_usage"].await_args_list
-    assert mock.call(Path("/runs/r2"), False) in calls
-    assert mock.call(Path("/runs/r1"), True) in calls
-    assert mock.call(Path("/runs/r2"), True) not in calls
 
 
-def test_keeps_a_late_sample_off_a_run_that_ended(
-    collaborators: dict[str, mock.MagicMock],
+def test_shows_usage_that_arrived_before_its_runs_were_planned(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    sampled = asyncio.Event()
-    done = asyncio.Event()
-    release = asyncio.Event()
-
-    async def slow(folder: Path, running: bool) -> dict[str, int | None]:
-        if running:
-            sampled.set()
-            await release.wait()
-            return {"memory": 9_000, "size": 9_000}
-        return {"memory": None, "size": 1_000}
-
-    collaborators["run_usage"].side_effect = slow
+    measured, done = asyncio.Event(), asyncio.Event()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1"))
+        await measured.wait()
+        report(planned("r1", "r2"))
         report(began("r1"))
-        await sampled.wait()
         report({"event": "ended", "run": "r1", "exit_code": 0, "error": None})
+        report(began("r2"))
         await done.wait()
         return []
 
+    async def runs(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield (
+            "state",
+            [
+                {"id": "r1", "status": "passed", "memory": 9_000, "size": 5_000},
+                {
+                    "id": "r2",
+                    "status": "running",
+                    "memory": 3_200_000_000,
+                    "size": 2_000,
+                },
+            ],
+        )
+        measured.set()
+        await asyncio.Event().wait()
+
+    collaborators["follow_route"].side_effect = runs
+
     async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
+        config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+        app = RunApp(start, "exp", COLUMNS, config)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.body.tick()
-            await sampled.wait()
             await pilot.pause()
-            release.set()
-            await pilot.pause()
-            assert usage(app) == [["", "1.0 kB"]]
+            assert usage(app) == [["", "5.0 kB"], ["3.2 GB", "2.0 kB"]]
             done.set()
             await pilot.pause()
             app.exit()
@@ -350,38 +356,42 @@ def test_keeps_a_late_sample_off_a_run_that_ended(
     asyncio.run(drive())
 
 
-def test_waits_for_one_sample_before_taking_another(
-    collaborators: dict[str, mock.MagicMock],
+def test_shows_usage_that_arrived_before_its_retry_was_created(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
-    release = asyncio.Event()
-    done = asyncio.Event()
-
-    async def slow(folder: Path, running: bool) -> dict[str, int | None]:
-        await release.wait()
-        return {"memory": 2_000, "size": 3_000}
-
-    collaborators["run_usage"].side_effect = slow
+    measured, done = asyncio.Event(), asyncio.Event()
 
     async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        await measured.wait()
         report(planned("r1"))
         report(began("r1"))
+        report({"event": "ended", "run": "r1", "exit_code": 1, "error": None})
+        report({"event": "retried", "run": "r1", "retry": "r2", "params": {"m": "r1"}})
+        report(began("r2"))
+        report({"event": "ended", "run": "r2", "exit_code": 0, "error": None})
         await done.wait()
         return []
 
+    async def runs(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield (
+            "state",
+            [
+                {"id": "r1", "status": "failed", "memory": 1, "size": 5_000},
+                {"id": "r2", "status": "passed", "memory": 1, "size": 2_000},
+            ],
+        )
+        measured.set()
+        await asyncio.Event().wait()
+
+    collaborators["follow_route"].side_effect = runs
+
     async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
+        config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+        app = RunApp(start, "exp", COLUMNS, config)
         async with app.run_test() as pilot:
             await pilot.pause()
-            app.body.tick()
-            app.body.tick()
             await pilot.pause()
-            assert collaborators["run_usage"].await_count == 1
-            release.set()
-            await pilot.pause()
-            assert usage(app) == [["2.0 kB", "3.0 kB"]]
-            app.body.tick()
-            await pilot.pause()
-            assert collaborators["run_usage"].await_count == 2
+            assert usage(app) == [["", "5.0 kB"], ["", "2.0 kB"]]
             done.set()
             await pilot.pause()
             app.exit()
@@ -389,58 +399,80 @@ def test_waits_for_one_sample_before_taking_another(
     asyncio.run(drive())
 
 
-def test_measures_runs_that_end_together_one_scan_at_a_time(
+def test_follow_usage_waits_for_the_built_in_view(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    app = configured_app(tmp_path, None)
+
+    async def runs(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield "state", [{"id": "r1"}, {"id": "r2"}]
+        yield "run", {"id": "r3"}
+        yield "other", {"id": "r4"}
+
+    collaborators["follow_route"].side_effect = runs
+    with mock.patch.object(app.body, "show_usage") as show:
+        asyncio.run(app.follow_usage())
+        assert show.call_args_list == [
+            mock.call({"id": "r1"}),
+            mock.call({"id": "r2"}),
+            mock.call({"id": "r3"}),
+        ]
+        show.reset_mock()
+        app.body_ready = False
+        asyncio.run(app.follow_usage())
+        show.assert_not_called()
+
+
+def test_run_files_follows_a_runs_files_through_the_apps_daemon(
+    tmp_path: Path, collaborators: dict[str, mock.MagicMock]
+) -> None:
+    app = configured_app(tmp_path, None)
+
+    async def files(*_: object) -> AsyncIterator[tuple[str, Any]]:
+        yield "state", [{"name": "a.log"}]
+        yield "remove", {"name": "a.log"}
+
+    collaborators["follow_run_files"].side_effect = files
+
+    async def take() -> list[tuple[str, Any]]:
+        return [event async for event in app.run_files("r1")]
+
+    assert asyncio.run(take()) == [
+        ("state", [{"name": "a.log"}]),
+        ("remove", {"name": "a.log"}),
+    ]
+    collaborators["follow_run_files"].assert_called_once_with(
+        app.config, "alpha", "r1", app.ensure_daemon
+    )
+
+
+def test_run_files_without_a_config_lists_nothing(
     collaborators: dict[str, mock.MagicMock],
 ) -> None:
-    sampled, release, done = asyncio.Event(), asyncio.Event(), asyncio.Event()
-    scanning = most = 0
+    app = RunApp(None, "exp", COLUMNS)
 
-    async def slow(folder: Path, running: bool) -> dict[str, int | None]:
-        nonlocal scanning, most
-        scanning += 1
-        most = max(most, scanning)
-        if running:
-            sampled.set()
-            await release.wait()
-        await asyncio.sleep(0)
-        scanning -= 1
-        return {"memory": None, "size": 1_000}
+    async def take() -> list[tuple[str, Any]]:
+        return [event async for event in app.run_files("r1")]
 
-    collaborators["run_usage"].side_effect = slow
+    assert asyncio.run(take()) == []
+    collaborators["follow_run_files"].assert_not_called()
 
-    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
-        report(planned("r1", "r2", "r3"))
-        for run in ("r1", "r2", "r3"):
-            report(began(run))
-        await sampled.wait()
-        for run in ("r1", "r2", "r3"):
-            report({"event": "ended", "run": run, "exit_code": 0, "error": None})
-        await done.wait()
-        return []
 
-    async def drive() -> None:
-        app = RunApp(start, "exp", COLUMNS)
-        async with app.run_test() as pilot:
-            await pilot.pause()
-            app.body.tick()
-            await sampled.wait()
-            await pilot.pause()
-            release.set()
-            for _ in range(5):
-                await pilot.pause()
-            assert usage(app) == [["", "1.0 kB"]] * 3
-            done.set()
-            await pilot.pause()
-            app.exit()
-
-    asyncio.run(drive())
-    assert most == 1
-    finals = [
-        call.args[0]
-        for call in collaborators["run_usage"].await_args_list
-        if call.args[1] is False
+def test_follow_gives_the_output_the_viewed_run_and_its_folder(
+    tmp_path: Path,
+) -> None:
+    view = RunLiveView()
+    view.folders["r1"] = tmp_path
+    view.viewing = "r1"
+    with (
+        mock.patch.object(view, "query", return_value=[]),
+        mock.patch.object(view, "query_one") as query_one,
+    ):
+        view.follow()
+    assert query_one.return_value.follow.call_args_list == [
+        mock.call(tmp_path),
+        mock.call(tmp_path, "r1"),
     ]
-    assert finals == [Path("/runs/r1"), Path("/runs/r2"), Path("/runs/r3")]
 
 
 def test_shows_only_the_columns_it_is_given_in_their_order(
@@ -471,8 +503,8 @@ def test_shows_only_the_columns_it_is_given_in_their_order(
             assert [
                 [str(cell) for cell in table.get_row(key)] for key in table.rows
             ] == [
-                ["5.0 kB", "✓", "r1"],
-                ["5.0 kB", "|", "r2"],
+                ["", "✓", "r1"],
+                ["", "|", "r2"],
                 ["", "○", "r3"],
             ]
             assert [getattr(cell, "style", None) for cell in table.get_row("r3")] == [
@@ -3321,6 +3353,126 @@ def test_tearing_down_keeps_the_setup_outcome(tmp_path: Path) -> None:
         assert app.query_one(RunLiveView).idle is True
 
     drive_hooks(steps)
+
+
+def detached(tmp_path: Path, configured: bool = True) -> RunApp:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    return RunApp(None, "exp", COLUMNS, config if configured else None)
+
+
+def test_an_idle_lost_daemon_is_replaced_until_a_new_one_fails(tmp_path: Path) -> None:
+    app = detached(tmp_path)
+    app.body.idle = True
+    first = Stream([("b1", {"event": "idle"})])
+    second = Stream([("b1", {"event": "planned"})])
+    app.attached = first  # type: ignore[assignment]
+    reader = mock.Mock()
+    app.reads = [reader]
+
+    async def attach() -> list[str]:
+        app.attached = second  # type: ignore[assignment]
+        return []
+
+    with (
+        mock.patch(
+            "labnotes.tui.run_app.ensure_daemon",
+            new=mock.AsyncMock(side_effect=[None, OSError("gone"), OSError("gone")]),
+        ) as ensure,
+        mock.patch("labnotes.tui.run_app.REATTACH_TRIES", 2),
+        mock.patch("labnotes.tui.run_app.REATTACH_SECONDS", 0),
+        mock.patch.object(app, "attach_daemon", new=attach),
+        mock.patch.object(app, "query_one"),
+        mock.patch.object(app, "push_screen") as notice,
+        mock.patch.object(app, "forward") as forward,
+    ):
+        asyncio.run(app.read_stream())
+    assert forward.call_args_list == [
+        mock.call("b1", {"event": "idle"}),
+        mock.call("b1", {"event": "planned"}),
+    ]
+    assert ensure.await_args_list == [mock.call(app.config, "exp")] * 3
+    first.aclose.assert_awaited_once_with()
+    second.aclose.assert_awaited_once_with()
+    assert app.disconnected
+    reader.cancel.assert_called_once_with()
+    notice.assert_called_once()
+
+
+@pytest.mark.parametrize(
+    ("idle", "busy", "ready", "configured"),
+    [
+        (False, False, True, True),
+        (True, True, True, True),
+        (True, False, False, True),
+        (True, False, True, False),
+    ],
+)
+def test_a_lost_daemon_is_replaced_only_when_nothing_runs(
+    tmp_path: Path, idle: bool, busy: bool, ready: bool, configured: bool
+) -> None:
+    app = detached(tmp_path, configured)
+    app.body.idle = idle
+    app.body_ready = ready
+    app.busy_batches = {"b1"} if busy else set()
+    with mock.patch("labnotes.tui.run_app.ensure_daemon") as ensure:
+        assert asyncio.run(app.reattach()) is False
+    ensure.assert_not_called()
+
+
+def test_reattaching_retries_a_daemon_that_is_not_listening_yet(
+    tmp_path: Path,
+) -> None:
+    app = detached(tmp_path)
+    app.body.idle = True
+    attach = mock.AsyncMock(side_effect=[ValueError("refused"), []])
+    sleeps: list[float] = []
+
+    async def sleep(seconds: float) -> None:
+        sleeps.append(seconds)
+
+    with (
+        mock.patch("labnotes.tui.run_app.ensure_daemon", new=mock.AsyncMock()),
+        mock.patch("labnotes.tui.run_app.asyncio.sleep", new=sleep),
+        mock.patch.object(app, "attach_daemon", new=attach),
+    ):
+        assert asyncio.run(app.reattach()) is True
+    assert attach.await_count == 2
+    assert sleeps == [0.5]
+
+
+def test_reattaching_gives_up_after_ten_tries(tmp_path: Path) -> None:
+    app = detached(tmp_path)
+    app.body.idle = True
+    attach = mock.AsyncMock(side_effect=ValueError("refused"))
+    with (
+        mock.patch("labnotes.tui.run_app.ensure_daemon", new=mock.AsyncMock()),
+        mock.patch("labnotes.tui.run_app.REATTACH_SECONDS", 0),
+        mock.patch.object(app, "attach_daemon", new=attach),
+    ):
+        assert asyncio.run(app.reattach()) is False
+    assert attach.await_count == 10
+
+
+def test_readers_start_one_daemon_at_a_time(tmp_path: Path) -> None:
+    app = detached(tmp_path)
+    starting = most = 0
+
+    async def slow(config: object, name: str) -> None:
+        nonlocal starting, most
+        starting += 1
+        most = max(most, starting)
+        await asyncio.sleep(0.01)
+        starting -= 1
+
+    async def drive() -> None:
+        await asyncio.gather(
+            app.ensure_daemon(app.config, "exp"),  # type: ignore[arg-type]
+            app.ensure_daemon(app.config, "exp"),  # type: ignore[arg-type]
+        )
+
+    with mock.patch("labnotes.tui.run_app.ensure_daemon", new=slow):
+        asyncio.run(drive())
+    assert most == 1
 
 
 def test_an_opened_run_gets_a_files_tab_but_hooks_do_not() -> None:

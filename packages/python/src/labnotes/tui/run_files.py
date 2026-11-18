@@ -1,19 +1,17 @@
-from collections.abc import Sequence
+from collections.abc import AsyncIterator, Sequence
 from pathlib import Path
-from typing import Any, Self
+from typing import Any, Protocol, Self, cast
 
 from textual.app import ComposeResult
 from textual.containers import Horizontal
 from textual.widgets import DataTable
 
-from labnotes.tables.open_folder_files import open_folder_files
 from labnotes.tui.file_tail import FileTail
 from labnotes.utils.format_bytes import format_bytes
 
-FILES = """
-SELECT path, size FROM files
-ORDER BY path
-"""
+
+class FileSource(Protocol):
+    def run_files(self, run: str) -> AsyncIterator[tuple[str, Any]]: ...
 
 
 class RunFiles(Horizontal):
@@ -27,6 +25,7 @@ class RunFiles(Horizontal):
 
     def __init__(self, id: str | None = None) -> None:
         super().__init__(id=id)
+        self.run: str | None = None
         self.folder: Path | None = None
         self.count = 0
         self.table: DataTable[Any] = DataTable(id="file-list", cursor_type="row")
@@ -40,11 +39,12 @@ class RunFiles(Horizontal):
         self.table.add_column("file", key="file")
         self.table.add_column("size", key="size")
 
-    def follow(self, folder: Path) -> None:
-        if folder != self.folder:
-            self.folder = folder
+    def follow(self, run: str, folder: Path) -> None:
+        self.folder = folder
+        if run != self.run:
+            self.run = run
             self.run_worker(
-                self.list_files(folder),
+                self.list_files(run),
                 group="files",
                 exclusive=True,
                 exit_on_error=False,
@@ -52,27 +52,33 @@ class RunFiles(Horizontal):
         self.tail.follow()
 
     def reset(self) -> None:
+        self.run = None
         self.folder = None
         self.count = 0
         self.workers.cancel_group(self, "files")
         self.table.clear()
         self.tail.reset()
 
-    async def list_files(self, folder: Path) -> None:
-        tables = open_folder_files(folder)
-        changes = tables.watch()
-        self.show_files(await tables.query(FILES))
-        async for _ in changes:
-            self.show_files(await tables.query(FILES))
+    async def list_files(self, run: str) -> None:
+        shown: dict[str, dict[str, Any]] = {}
+        async for kind, data in cast(FileSource, self.app).run_files(run):
+            match kind:
+                case "state":
+                    shown = {row["name"]: row for row in data}
+                case "file":
+                    shown[data["name"]] = data
+                case "remove":
+                    shown.pop(data["name"], None)
+            self.show_files([shown[name] for name in sorted(shown)])
 
     def show_files(self, rows: Sequence[dict[str, Any]]) -> None:
         table = self.table
-        names = [str(row["path"]) for row in rows]
+        names = [str(row["name"]) for row in rows]
         self.count = len(names)
         if names == [key.value for key in table.rows]:
             for row in rows:
                 table.update_cell(
-                    str(row["path"]),
+                    str(row["name"]),
                     "size",
                     format_bytes(row["size"]),
                     update_width=True,
@@ -85,8 +91,8 @@ class RunFiles(Horizontal):
         )
         table.clear()
         for row in rows:
-            path = str(row["path"])
-            table.add_row(path, format_bytes(row["size"]), key=path)
+            name = str(row["name"])
+            table.add_row(name, format_bytes(row["size"]), key=name)
         if cursor in names:
             table.move_cursor(row=names.index(cursor))
 

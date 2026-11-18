@@ -3,14 +3,13 @@ import contextlib
 import signal
 import time
 import tomllib
-from collections.abc import Mapping, Sequence
+from collections.abc import AsyncIterator, Mapping, Sequence
 from pathlib import Path
 from types import MappingProxyType
 from typing import Any, cast
 
 from rich.text import Text
-from starlette.datastructures import QueryParams
-from textual import events, work
+from textual import events
 from textual.app import App, ComposeResult
 from textual.binding import Binding
 from textual.css.query import NoMatches
@@ -19,19 +18,20 @@ from textual.drivers.linux_driver import LinuxDriver
 from textual.containers import Vertical
 from textual.widget import Widget
 from textual.widgets import ContentSwitcher, DataTable, Footer, Header, Input, Static
+from textual.worker import Worker
 
 from labnotes.compose_experiment import compose_experiment
 from labnotes.daemon.command import command as daemon_command
 from labnotes.daemon.attachment import Attachment
 from labnotes.daemon.request_start import request_start
 from labnotes.daemon.ensure import ensure_daemon
-from labnotes.load_experiment import load_experiment
+from labnotes.daemon.follow_route import follow_route
+from labnotes.daemon.follow_run_files import follow_run_files
 from labnotes.models import Controls, LabnotesConfig, Start
 from labnotes.retries import RETRY_EXIT_CODE
 from labnotes.runner.describe_event import describe_event
 from labnotes.runner.param_args import param_args
 from labnotes.runner.stop_then_kill import GRACE_SECONDS, stop_then_kill
-from labnotes.tables.open_tables import open_tables
 from labnotes.tui.config import RUN_COLUMNS
 from labnotes.tui.count_runs import count_runs
 from labnotes.tui.dim import dim
@@ -44,8 +44,6 @@ from labnotes.tui.leave_prompt import (
     LostDaemonNotice,
 )
 from labnotes.tui.log_blocks import LogBlocks
-from labnotes.tui.native_rows import native_rows
-from labnotes.tui.reload_on_change import reload_on_change
 from labnotes.tui.restart_request import restart_request
 from labnotes.tui.run_output import RunOutput
 from labnotes.tui.runs_table import RunsTable
@@ -55,13 +53,13 @@ from labnotes.tui.thaw_driver import ThawDriver
 from labnotes.tui.view_pane import ViewPane
 from labnotes.tui.view_switcher import ViewSwitcher
 from labnotes.utils.format_bytes import format_bytes
-from labnotes.utils.run_usage import run_usage
 from labnotes.view.experiment import Experiment
 from labnotes.view_specs import view_specs
-from labnotes.watch_rows import watch_rows
 
 PENDING, PASSED, FAILED = "○", "✓", "✗"
 SPINNER = "|/-\\"
+REATTACH_TRIES = 10
+REATTACH_SECONDS = 0.5
 SKIPPED = "–"
 STAGES = ("setup", "runs", "teardown")
 HOOKS = ("setup", "teardown")
@@ -108,6 +106,7 @@ class RunLiveView(Widget):
         self.started: dict[str, float] = {}
         self.pending: set[str] = set()
         self.cells: dict[str, dict[str, object]] = {}
+        self.usage: dict[str, Mapping[str, Any]] = {}
         self.filter = ""
         self.failed: set[str] = set()
         self.retried: set[str] = set()
@@ -115,8 +114,6 @@ class RunLiveView(Widget):
         self.exit_codes: dict[str, object] = {}
         self.folders: dict[str, Path] = {}
         self.viewing: str | None = None
-        self.sampling = False
-        self.unmeasured: dict[str, None] = {}
         self.hooks: tuple[str, ...] = ()
         self.stage = "runs"
         self.moved = False
@@ -153,10 +150,7 @@ class RunLiveView(Widget):
                 first = not self.cells
                 for planned in event["runs"]:  # type: ignore[attr-defined]
                     args = " ".join(param_args(planned["params"]))
-                    self.cells[planned["run"]] = self.waiting_cells(
-                        planned["run"], args
-                    )
-                    self.pending.add(planned["run"])
+                    self.add_waiting(planned["run"], args)
                 self.redraw(table.cursor_row)
                 self.show_concurrency(event)
                 self.hooks = tuple(cast(list[str], event.get("hooks", [])))
@@ -194,8 +188,6 @@ class RunLiveView(Widget):
                 self.tick()
                 del self.started[run]
                 self.redraw(table.cursor_row)
-                self.unmeasured[run] = None
-                self.measure()
             case "retrying":
                 self.waiting[run] = time.monotonic() + (
                     max(0.0, float(str(event["retry_at"])) - time.time())
@@ -224,8 +216,7 @@ class RunLiveView(Widget):
                 else:
                     self.retried.add(run)
                 args = " ".join(param_args(event["params"]))  # type: ignore[arg-type]
-                self.cells[again] = self.waiting_cells(again, args)
-                self.pending.add(again)
+                self.add_waiting(again, args)
                 self.redraw(table.cursor_row)
                 self.show(describe_event(event))
             case "setting up" | "tearing down" if "folder" in event:
@@ -358,6 +349,12 @@ class RunLiveView(Widget):
                 )
         table.move_cursor(row=row)
 
+    def add_waiting(self, run: str, args: str) -> None:
+        self.cells[run] = self.waiting_cells(run, args)
+        self.pending.add(run)
+        if run in self.usage:
+            self.show_usage(self.usage[run])
+
     def waiting_cells(self, run: str, args: str) -> dict[str, object]:
         shown = {"run": run, "params": args, "status": PENDING}
         return {
@@ -402,34 +399,18 @@ class RunLiveView(Widget):
             wait = format_elapsed(max(0, due - now))
             outcome = f"{FAILED} exited {self.exit_code(run)}, retry in {wait}"
             self.set_cell(run, "status", Text(outcome, style="yellow"))
-        if self.started:
-            self.measure()
         for panel in self.query(HookPanel):
             if panel.running:
                 panel.tick()
 
-    def measure(self) -> None:
-        if not self.sampling:
-            self.sampling = True
-            self.sample()
-
-    @work
-    async def sample(self) -> None:
-        try:
-            for run in list(self.started):
-                usage = await run_usage(self.folders[run], True)
-                if run in self.started:
-                    self.show_usage(run, usage)
-            while self.unmeasured:
-                run = next(iter(self.unmeasured))
-                del self.unmeasured[run]
-                self.show_usage(run, await run_usage(self.folders[run], False))
-        finally:
-            self.sampling = False
-
-    def show_usage(self, run: str, usage: dict[str, int | None]) -> None:
-        self.set_cell(run, "memory", format_bytes(usage["memory"]))
-        self.set_cell(run, "size", format_bytes(usage["size"]))
+    def show_usage(self, row: Mapping[str, Any]) -> None:
+        run = str(row["id"])
+        self.usage[run] = row
+        if run not in self.cells:
+            return
+        running = row["status"] == "running"
+        self.set_cell(run, "memory", format_bytes(row["memory"] if running else None))
+        self.set_cell(run, "size", format_bytes(row["size"]))
 
     def spin(self) -> None:
         self.frame = (self.frame + 1) % len(SPINNER)
@@ -496,7 +477,9 @@ class RunLiveView(Widget):
                 panel.follow()
         if self.viewing in self.folders:
             self.query_one(LogBlocks).follow(self.folders[self.viewing])
-            self.query_one("#output", RunOutput).follow(self.folders[self.viewing])
+            self.query_one("#output", RunOutput).follow(
+                self.folders[self.viewing], self.viewing
+            )
 
     def action_leave(self) -> None:
         if self.stage in HOOKS:
@@ -584,6 +567,8 @@ class RunApp(ViewSwitcher, App[None]):
         self.leaving = False
         self.farewell: str | None = None
         self.finishing_up = False
+        self.reads: list[Worker[None]] = []
+        self.starting = asyncio.Lock()
 
     def compose(self) -> ComposeResult:
         yield Header()
@@ -606,18 +591,9 @@ class RunApp(ViewSwitcher, App[None]):
             except NoMatches:
                 # ViewPane already displays the built-in view's loading error.
                 self.body_ready = False
-            tables = open_tables(self.config, run_files=True)
-            self.run_worker(
-                reload_on_change(
-                    watch_rows(
-                        tables, {"runs", "experiment_configs"}, self.experiment_name
-                    ),
-                    lambda: self.load_data(tables),
-                    lambda error: None,
-                ),
-                exit_on_error=False,
-            )
-            self.run_worker(self.watch_files(tables), exit_on_error=False)
+            self.reads.append(self.run_worker(self.follow_views(), exit_on_error=False))
+        if self.config is not None:
+            self.reads.append(self.run_worker(self.follow_usage(), exit_on_error=False))
         if self.daemon_request is not None:
             self.query_one("#startup").display = True
             self.query_one(ContentSwitcher).display = False
@@ -648,7 +624,7 @@ class RunApp(ViewSwitcher, App[None]):
         assert self.daemon_request is not None
         try:
             self.step("Starting up")
-            await ensure_daemon(self.config, self.experiment_name)
+            await self.ensure_daemon(self.config, self.experiment_name)
             await self.attach_daemon()
             reply = await request_start(
                 self.config, self.experiment_name, self.daemon_request, self.step
@@ -704,19 +680,24 @@ class RunApp(ViewSwitcher, App[None]):
     async def read_stream(self) -> None:
         if self.attached is None:
             return
-        try:
-            async for batch, event in self.attached:
-                if self.body_ready:
-                    self.forward(batch, event)
-        except ValueError:
-            pass  # Keep the last visible state when the stream is lost.
-        finally:
-            await self.attached.aclose()
-            self.disconnected = True
-            with contextlib.suppress(NoMatches):
-                self.query_one("#concurrency", FlashValue).update(
-                    f"{self.body.concurrency} at a time · disconnected"
-                )
+        while True:
+            try:
+                async for batch, event in self.attached:
+                    if self.body_ready:
+                        self.forward(batch, event)
+            except ValueError:
+                pass  # Keep the last visible state when the stream is lost.
+            finally:
+                await self.attached.aclose()
+            if self.leaving or not await self.reattach():
+                break
+        self.disconnected = True
+        for worker in self.reads:
+            worker.cancel()
+        with contextlib.suppress(NoMatches):
+            self.query_one("#concurrency", FlashValue).update(
+                f"{self.body.concurrency} at a time · disconnected"
+            )
         if self.leaving:
             return
         notice = (
@@ -725,6 +706,29 @@ class RunApp(ViewSwitcher, App[None]):
         )
         self.error = ValueError(notice)
         self.push_screen(LostDaemonNotice(notice), lambda _: self.exit())
+
+    async def ensure_daemon(self, config: LabnotesConfig, name: str) -> None:
+        """Start at most one daemon at a time for this app's readers."""
+        async with self.starting:
+            await ensure_daemon(config, name)
+
+    async def reattach(self) -> bool:
+        """Start a fresh daemon in place of a lost one that had nothing running."""
+        if self.config is None or not self.body_ready or not self.body.idle:
+            return False
+        if self.busy_batches:
+            return False
+        # A killed daemon can still hold its lock for a moment after its
+        # streams drop, which makes the next start mistake it for alive.
+        for _ in range(REATTACH_TRIES):
+            try:
+                await self.ensure_daemon(self.config, self.experiment_name)
+                await self.attach_daemon()
+            except (OSError, ValueError):
+                await asyncio.sleep(REATTACH_SECONDS)
+            else:
+                return True
+        return False
 
     async def on_unmount(self) -> None:
         self.leaving = True
@@ -786,30 +790,47 @@ class RunApp(ViewSwitcher, App[None]):
             layer = {}
         return view_specs(compose_experiment(self.config.defaults, layer))
 
-    async def load_data(self, tables: Any) -> None:
+    async def follow_views(self) -> None:
         assert self.config is not None
-        loaded = await load_experiment(
-            tables, self.config.root, self.experiment_name, QueryParams()
-        )
-        if loaded is None:
-            return
-        if not self.loaded_views:
-            await self.add_views(
-                cast(Mapping[str, str], loaded["views"]), self.config.root
-            )
-            self.loaded_views = True
-        self.shown = Experiment(
-            self.config.root,
-            self.experiment_name,
-            native_rows(loaded),
-            MappingProxyType(cast(dict[str, Any], loaded["config"] or {})),
-        )
-        self.deliver(self.shown)
+        root = self.config.root
+        async for kind, data in follow_route(
+            self.config, self.experiment_name, "/experiment", self.ensure_daemon
+        ):
+            match kind, data:
+                case "state", {"name": name, "config": config, "runs": runs}:
+                    if not self.loaded_views:
+                        await self.add_views(
+                            cast(Mapping[str, str], data["views"]), root
+                        )
+                        self.loaded_views = True
+                    self.shown = Experiment(
+                        root, name, tuple(runs), MappingProxyType(config or {})
+                    )
+                    self.deliver(self.shown)
+                case "paths", list(paths) if self.shown is not None:
+                    self.deliver(self.shown, frozenset(paths))
 
-    async def watch_files(self, tables: Any) -> None:
-        async for row in watch_rows(tables, {"run_files"}, self.experiment_name):
-            if self.shown is not None:
-                self.deliver(self.shown, frozenset({str(row["path"])}))
+    async def run_files(self, run: str) -> AsyncIterator[tuple[str, Any]]:
+        if self.config is None:
+            return
+        async for event in follow_run_files(
+            self.config, self.experiment_name, run, self.ensure_daemon
+        ):
+            yield event
+
+    async def follow_usage(self) -> None:
+        assert self.config is not None
+        async for kind, data in follow_route(
+            self.config, self.experiment_name, "/runs", self.ensure_daemon
+        ):
+            if not self.body_ready:
+                continue
+            match kind:
+                case "state":
+                    for row in data:
+                        self.body.show_usage(row)
+                case "run":
+                    self.body.show_usage(data)
 
     async def drive(self) -> None:
         assert self.start is not None

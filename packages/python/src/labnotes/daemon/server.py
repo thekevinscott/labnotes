@@ -24,6 +24,7 @@ from starlette.types import Receive, Scope, Send
 from labnotes.daemon.listening import listening
 from labnotes.daemon.reads import Reads
 from labnotes.daemon.sse import sse
+from labnotes.daemon.view_reads import ViewReads
 from labnotes.daemon.socket_path import (
     discovery_folder,
     lock_path,
@@ -84,6 +85,7 @@ class ExperimentDaemon:
                 Route("/runs/{run}/stop", self.stop_one, methods=["POST"]),
                 Route("/runs/{run}/start", self.start_one, methods=["POST"]),
                 *Reads(config.root, tables).routes,
+                *ViewReads(config.root, tables, name).routes,
             ]
         )
 

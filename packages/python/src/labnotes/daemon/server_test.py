@@ -506,6 +506,8 @@ def test_server_accepts_connections_before_its_http_server_starts(
             await serve_daemon(config(tmp_path), "exp")
         [(app,)] = [call.args for call in settings.call_args_list]
         assert isinstance(app, ExperimentDaemon)
+        served = {getattr(route, "path", None) for route in app.app.routes}
+        assert {"/runs", "/runs/{path:path}", "/experiment"} <= served
         settings.assert_called_once_with(
             app,
             lifespan="off",

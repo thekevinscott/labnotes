@@ -213,7 +213,7 @@ def test_keeps_the_page_when_the_file_is_touched(site: str, root: Path) -> None:
         await page.evaluate("window.loaded = true")
 
         async with page.expect_response(lambda r: r.url.endswith("/notes/plan.md")):
-            open(root / PLAN, "a").close()
+            write(root / PLAN, (root / PLAN).read_text())
 
         assert await page.evaluate("window.loaded") is True
 

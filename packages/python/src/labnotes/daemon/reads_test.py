@@ -561,8 +561,9 @@ def bodies(root: Path, reads: Reads) -> dict[str, Any]:
     (root / "out.log").write_text("hello\n")
     (root / "image.png").write_bytes(b"\x89PNG\0")
     rows = mock.AsyncMock(return_value=[{"id": "a"}])
+    response: Any = reads.follow(request(), rows, "id", "run", {"runs"})
     return {
-        "follow": reads.follow(request(), rows, "id", "run", {"runs"}).body_iterator,
+        "follow": response.body_iterator,
         "text": reads.follow_file("out.log", "out.log", None),
         "binary": reads.follow_file("image.png", "image.png", None),
     }

@@ -49,7 +49,13 @@ def prepare(
     root: Path, experiment_config: Path | None = None, concurrency: int | None = 2
 ) -> tuple[object, int]:
     return asyncio.run(
-        prepare_experiment(make_config(root), "exp", experiment_config, concurrency)
+        prepare_experiment(
+            make_config(root),
+            "exp",
+            experiment_config,
+            concurrency,
+            tables=mock.sentinel.tables,
+        )
     )
 
 
@@ -60,7 +66,7 @@ def test_reads_the_experiment(
 
     experiment, concurrency = prepare(tmp_path)
 
-    collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
+    collaborators["file_text"].assert_awaited_once_with(mock.sentinel.tables, path)
     collaborators["read_experiment_config"].assert_called_once_with(
         path, "source", 3, 4, {}, 6, "check"
     )
@@ -78,7 +84,14 @@ def test_checks_the_subset_against_the_params(
 
     with pytest.raises(ValueError, match=r"^No param size\.$"):
         asyncio.run(
-            prepare_experiment(make_config(tmp_path), "exp", None, 2, {"size": ["s"]})
+            prepare_experiment(
+                make_config(tmp_path),
+                "exp",
+                None,
+                2,
+                {"size": ["s"]},
+                tables=mock.sentinel.tables,
+            )
         )
 
     collaborators["check_subset"].assert_called_once_with(
@@ -94,7 +107,15 @@ def test_checks_the_args_against_the_params_and_command(
 
     with pytest.raises(ValueError, match=r"^--m is a param\.$"):
         asyncio.run(
-            prepare_experiment(make_config(tmp_path), "exp", None, 2, None, ["--m"])
+            prepare_experiment(
+                make_config(tmp_path),
+                "exp",
+                None,
+                2,
+                None,
+                ["--m"],
+                tables=mock.sentinel.tables,
+            )
         )
 
     collaborators["check_args"].assert_called_once_with(
@@ -120,7 +141,7 @@ def test_resolves_a_relative_experiment_config_before_reading(
     prepare(tmp_path, Path("alt/experiment.toml"))
 
     path = tmp_path / "alt/experiment.toml"
-    collaborators["file_text"].assert_awaited_once_with(tmp_path, path)
+    collaborators["file_text"].assert_awaited_once_with(mock.sentinel.tables, path)
     collaborators["read_experiment_config"].assert_called_once_with(
         path, "source", 3, 4, {}, 6, "check"
     )
@@ -148,10 +169,12 @@ def test_reads_the_root_experiment_toml_for_the_one_experiment(
 ) -> None:
     config = mock.Mock(experiment="exp", root=tmp_path, experiments="", concurrency=1)
 
-    asyncio.run(prepare_experiment(config, "exp", None, None))
+    asyncio.run(
+        prepare_experiment(config, "exp", None, None, tables=mock.sentinel.tables)
+    )
 
     collaborators["file_text"].assert_awaited_once_with(
-        tmp_path, tmp_path / "experiment.toml"
+        mock.sentinel.tables, tmp_path / "experiment.toml"
     )
 
 
@@ -161,7 +184,9 @@ def test_refuses_another_name_for_the_one_experiment(
     config = mock.Mock(experiment="exp", root=tmp_path, experiments="")
 
     with pytest.raises(ValueError, match="No experiment other; this project is"):
-        asyncio.run(prepare_experiment(config, "other", None, None))
+        asyncio.run(
+            prepare_experiment(config, "other", None, None, tables=mock.sentinel.tables)
+        )
 
 
 def test_runs_from_the_defaults_alone(
@@ -171,7 +196,9 @@ def test_runs_from_the_defaults_alone(
     config = make_config(tmp_path)
     config.defaults = {"command": "go"}
 
-    asyncio.run(prepare_experiment(config, "exp", None, None))
+    asyncio.run(
+        prepare_experiment(config, "exp", None, None, tables=mock.sentinel.tables)
+    )
 
     collaborators["read_experiment_config"].assert_called_once_with(
         tmp_path / ".labnotes.toml", "", 3, 4, {"command": "go"}, 6, "check"
@@ -214,6 +241,7 @@ def test_overrides_the_hooks_with_the_flags(
             None,
             setup=setup,
             teardown=teardown,
+            tables=mock.sentinel.tables,
         )
     )
 
@@ -241,6 +269,7 @@ def test_overrides_retries_and_replace_capped_with_the_flags(
             None,
             retries=retries,
             replace_capped=replace_capped,
+            tables=mock.sentinel.tables,
         )
     )
 
@@ -258,7 +287,12 @@ def test_overrides_retry_wait_with_the_flag(
 
     experiment, _ = asyncio.run(
         prepare_experiment(
-            make_config(tmp_path), "exp", None, None, retry_wait=retry_wait
+            make_config(tmp_path),
+            "exp",
+            None,
+            None,
+            retry_wait=retry_wait,
+            tables=mock.sentinel.tables,
         )
     )
 

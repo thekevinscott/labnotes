@@ -55,14 +55,6 @@ Change the paths to match how your files are organized.
 
 ## CLI
 
-`runs` takes a `--format` flag, with `table` (default) and `json`.
-
-You can see an experiment's runs with:
-
-```bash
-uvx labnotes experiments foo runs
-```
-
 You can run an experiment with:
 
 ```bash
@@ -87,9 +79,11 @@ The script can be any command. Each combination of parameters runs `repeats` tim
 
 Dynamic parameters get recorded for a particular run in a run.json file in the run folder, along with when it started, when it ended, and its exit code. The script's stdout and stderr are saved alongside.
 
-Running an experiment opens a TUI that shows a table of all runs. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI lets you filter runs by a parameter, raise or lower concurrency as runs go, and kill specific runs. Failed runs show in red.
+`run` requires a terminal. It starts or reuses a daemon for the experiment and opens a TUI that shows a table of the runs it planned. Pending runs are slightly grayed. Runs default to 1 at a time but concurrency can be added with a `--concurrency` flag. The TUI lets you filter runs by a parameter, raise or lower concurrency as runs go, and kill specific runs. Failed runs show in red.
 
-ctrl-c quits. If runs are going, it asks first: enter (or a second ctrl-c) stops them, `s` also stops them, and esc goes back.
+The daemon owns the runs, so closing the terminal leaves them going. `uvx labnotes experiments foo attach` reopens the TUI on whatever is running, and `uvx labnotes experiments foo stop` stops it from another shell.
+
+Ctrl-C quits. If runs are going, it asks first: `s` stops them, Enter or `l` leaves them running, and Escape goes back.
 
 ## Skill
 
@@ -99,7 +93,7 @@ You can install the `labnotes` skill with:
 npx skills add thekevinscott/labnotes
 ```
 
-Agents start runs in a dedicated tmux window and watch the live table there. Closing the window stops the runs.
+Agents start runs in a dedicated tmux window and watch the live table there. Closing the window leaves the runs going; `attach` reopens the table.
 
 ## Frontend
 

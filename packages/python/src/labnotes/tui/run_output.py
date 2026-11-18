@@ -4,12 +4,13 @@ from typing import Self
 from textual.app import ComposeResult
 from textual.binding import Binding
 from textual.containers import Vertical
+from textual.widget import Widget
 from textual.widgets import ContentSwitcher, Tab, Tabs
 
+from labnotes.tui.run_files import RunFiles
 from labnotes.tui.stream_log import StreamLog
 
 STREAMS = ("stdout", "stderr")
-OTHER_STREAM = {"stdout": "stderr", "stderr": "stdout"}
 
 
 class RunOutput(Vertical):
@@ -17,52 +18,67 @@ class RunOutput(Vertical):
     RunOutput { height: 1fr; }
     RunOutput ContentSwitcher, RunOutput StreamLog { height: 1fr; }
     """
-    BINDINGS = [Binding("t", "switch", "stdout/stderr")]
+    BINDINGS = [Binding("t", "switch", "Next tab")]
 
-    def __init__(self, id: str | None = None) -> None:
+    def __init__(self, id: str | None = None, files: bool = False) -> None:
         super().__init__(id=id)
         self.current = STREAMS[0]
         self.logs = {stream: StreamLog(stream, id=stream) for stream in STREAMS}
-        self.tabs = {stream: Tab(stream, id=f"{stream}-tab") for stream in STREAMS}
+        self.files = RunFiles(id="files") if files else None
+        self.views: dict[str, Widget] = dict(self.logs)
+        if self.files is not None:
+            self.views["files"] = self.files
+        self.panes = list(self.views)
+        self.tabs = {pane: Tab(pane, id=f"{pane}-tab") for pane in self.panes}
         self.relabel()
 
     def compose(self) -> ComposeResult:
         yield Tabs(*self.tabs.values())
         with ContentSwitcher(initial=self.current):
             yield from self.logs.values()
+            if self.files is not None:
+                yield self.files
 
     def relabel(self) -> None:
-        for stream, tab in self.tabs.items():
-            label = f"{stream} ({self.logs[stream].count})"
+        counts = {stream: log.count for stream, log in self.logs.items()}
+        if self.files is not None:
+            counts["files"] = self.files.count
+        for pane, tab in self.tabs.items():
+            label = f"{pane} ({counts[pane]})"
             if tab.label_text != label:
                 tab.label = label
 
     def follow(self, folder: Path) -> None:
         for log in self.logs.values():
             log.follow(folder)
+        if self.files is not None:
+            self.files.follow(folder)
         self.relabel()
 
     def reset(self) -> None:
         for log in self.logs.values():
             log.reset()
+        if self.files is not None:
+            self.files.reset()
         self.relabel()
 
-    def show(self, stream: str) -> None:
-        self.current = stream
+    def show(self, pane: str) -> None:
+        self.current = pane
         if self.is_mounted:
-            self.query_one(ContentSwitcher).current = stream
-            self.query_one(Tabs).active = f"{stream}-tab"
+            self.query_one(ContentSwitcher).current = pane
+            self.query_one(Tabs).active = f"{pane}-tab"
 
     def on_tabs_tab_activated(self, event: Tabs.TabActivated) -> None:
         event.stop()
-        stream = str(event.tab.id).removesuffix("-tab")
-        if stream != self.current:
-            self.show(stream)
+        pane = str(event.tab.id).removesuffix("-tab")
+        if pane != self.current:
+            self.show(pane)
 
     def action_switch(self) -> None:
-        self.show(OTHER_STREAM[self.current])
+        following = self.panes[self.panes.index(self.current) + 1 :] or self.panes
+        self.show(following[0])
         self.focus()
 
     def focus(self, scroll_visible: bool = True) -> Self:
-        self.logs[self.current].focus(scroll_visible)
+        self.views[self.current].focus(scroll_visible)
         return self

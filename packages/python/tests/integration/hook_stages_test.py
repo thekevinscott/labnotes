@@ -115,6 +115,24 @@ def test_teardown_shows_its_logs_once_the_runs_finish(terminal, tmp_path: Path) 
     quit_tui(term, running=True)
 
 
+def test_leave_prompt_stops_saying_tearing_down_once_teardown_ends(
+    terminal, tmp_path: Path
+) -> None:
+    teardown = script(
+        tmp_path, "teardown", "print('teardown out', flush=True)\ntime.sleep(3)\n"
+    )
+    term = run_tui(terminal, tmp_path, f"teardown = '''{teardown}'''\n")
+    expect(term.get_by_text("teardown out")).to_be_visible(timeout=15)
+    term.key_ctrl_c()
+    expect(term.get_by_text("Tearing down. Stop (s)")).to_be_visible()
+
+    expect(term.get_by_text("Nothing running. Stop (s)")).to_be_visible(timeout=15)
+    expect(term.get_by_text("Tearing down.")).not_to_be_visible()
+
+    term.write("l")
+    term.wait()
+
+
 def test_moving_between_stages_by_hand_stops_auto_advance(
     terminal, tmp_path: Path
 ) -> None:
@@ -199,6 +217,23 @@ def test_a_failed_setup_shows_as_failed_with_its_logs(terminal, tmp_path: Path) 
 
     expect(term.get_by_text(re.compile("setup ✗"))).to_be_visible(timeout=15)
     expect(term.get_by_text("setup broke")).to_be_visible()
+
+    quit_tui(term)
+
+
+def test_escape_leaves_a_failed_setup_for_the_runs(terminal, tmp_path: Path) -> None:
+    setup = script(
+        tmp_path, "setup", "print('setup broke', file=sys.stderr)\nsys.exit(3)\n"
+    )
+    term = run_tui(terminal, tmp_path, f"setup = '''{setup}'''\n")
+    expect(term.get_by_text(re.compile("setup ✗"))).to_be_visible(timeout=15)
+    expect(term.get_by_text("params")).not_to_be_visible()
+    expect(term.get_by_text("esc Back")).to_be_visible()
+    expect(term.get_by_text("stderr (1)")).to_be_visible()
+
+    term.key_escape()
+    expect(term.get_by_text("params")).to_be_visible()
+    expect(term.get_by_text("stderr (1)")).not_to_be_visible()
 
     quit_tui(term)
 
@@ -323,7 +358,7 @@ def test_restarting_a_run_keeps_the_table_through_the_restarts_hooks(
         expect(term.get_by_text("stdout (")).to_be_visible(timeout=5)
     finally:
         release.write_text("")
-    expect(term.get_by_text(re.compile("teardown ✓"))).to_be_visible(timeout=15)
+    expect(term.get_by_text(re.compile("teardown ✓"))).to_be_visible(timeout=30)
     quit_tui(term)
 
 

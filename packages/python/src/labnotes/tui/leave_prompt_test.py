@@ -64,6 +64,28 @@ def test_detached_prompt_offers_stop_leave_and_cancel(static: mock.MagicMock) ->
     ]
 
 
+@pytest.mark.parametrize(
+    ("busy", "text"), [("Tearing down.", "Tearing down."), (None, "Nothing running.")]
+)
+def test_detached_prompt_shows_what_is_busy_now(busy: str | None, text: str) -> None:
+    prompt = DetachedLeavePrompt("Setting up.")
+    widget = mock.Mock()
+    with mock.patch.object(prompt, "query") as query:
+        query.return_value.results.return_value = [widget]
+        prompt.show(busy)
+    widget.update.assert_called_once_with(
+        f"{text} Stop (s) / leave running (enter or l) / cancel (esc)."
+    )
+
+
+def test_detached_prompt_shows_its_latest_text_once_mounted() -> None:
+    prompt = DetachedLeavePrompt("Tearing down.")
+    prompt.busy = "Nothing running."
+    with mock.patch.object(prompt, "show") as show:
+        prompt.on_mount()
+    show.assert_called_once_with("Nothing running.")
+
+
 def test_lost_daemon_notice_says_why_and_quits_on_any_exit_key(
     static: mock.MagicMock,
 ) -> None:

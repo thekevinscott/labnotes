@@ -12,10 +12,9 @@ Learn how to use `labnotes` before running it:
 uvx labnotes context
 ```
 
-Start runs in a dedicated tmux window. Keep the labnotes process in the
-foreground there so it can schedule the next run as a slot frees. Closing the
-window stops its runs cleanly. Without a terminal, `run` blocks until all runs
-end and prints a line per event:
+Start runs in a dedicated tmux window. `run` requires a terminal: it opens
+the run TUI, and a daemon for the experiment schedules the runs. Closing the
+window leaves the runs going:
 
 ```bash
 uvx labnotes experiments NAME run
@@ -32,6 +31,8 @@ Each flag must name a param in `[params]` and one of its values. Repeat a param
 to run several of its values (`--model=small --model=large`). Different params
 narrow further. The experiment's totals still count the full grid.
 
-Watch runs in the tmux window. Stop them with Ctrl-C there, or close the
-window. `uvx labnotes experiments NAME attach` reopens the run TUI. Saved runs
+Watch runs in the tmux window. Ctrl-C there asks whether to stop them (`s`)
+or leave them running (Enter). `uvx labnotes experiments NAME attach` reopens
+the run TUI, and `uvx labnotes experiments NAME stop` stops them from any
+shell. Saved runs
 are on disk: each run folder holds its `run.json`.

@@ -983,6 +983,55 @@ def test_detached_stop_waits_for_daemon_reply_before_exit(tmp_path: Path) -> Non
     asyncio.run(drive())
 
 
+def test_detached_leave_prompt_follows_teardown_to_its_end(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+
+    async def drive() -> None:
+        with mock.patch.object(app, "attach_daemon"):
+            async with app.run_test() as pilot:
+                app.forward("b1", hooked("teardown"))
+                app.forward("b1", {"event": "idle"})
+                app.forward(
+                    "b1",
+                    {"event": "tearing down", "hook": "teardown", "folder": tmp_path},
+                )
+                await pilot.press("ctrl+c")
+                await pilot.pause()
+                assert prompt(app).startswith("Tearing down.")
+                app.forward(
+                    "b1", {"event": "hook ended", "hook": "teardown", "error": None}
+                )
+                await pilot.pause()
+                assert prompt(app).startswith("Nothing running.")
+                assert "leave running" in prompt(app)
+
+    asyncio.run(drive())
+
+
+def test_detached_leave_prompt_takes_an_event_before_it_mounts(tmp_path: Path) -> None:
+    config = mock.Mock(root=tmp_path, experiments="{experiment}", defaults={})
+    app = RunApp(None, "exp", COLUMNS, config, daemon_batch="b1")
+
+    async def drive() -> None:
+        with mock.patch.object(app, "attach_daemon"):
+            async with app.run_test() as pilot:
+                app.forward("b1", hooked("teardown"))
+                app.forward("b1", {"event": "idle"})
+                app.forward(
+                    "b1",
+                    {"event": "tearing down", "hook": "teardown", "folder": tmp_path},
+                )
+                app.action_interrupt()
+                app.forward(
+                    "b1", {"event": "hook ended", "hook": "teardown", "error": None}
+                )
+                await pilot.pause()
+                assert prompt(app).startswith("Nothing running.")
+
+    asyncio.run(drive())
+
+
 def test_detached_attach_opens_the_event_stream_and_closes_it(
     tmp_path: Path,
 ) -> None:
@@ -2181,6 +2230,41 @@ def test_stays_on_a_failed_setup(tmp_path: Path) -> None:
     drive_hooks(steps)
 
 
+def test_escape_leaves_a_failed_setup_for_the_runs(tmp_path: Path) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report(hooked("setup", "teardown"))
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": "up broke"})
+        await pilot.pause()
+        assert app.screen.active_bindings["escape"].binding.show
+        assert app.body.check_action("leave", ())
+        await pilot.press("escape")
+        table: Any = app.query_one("DataTable")
+        assert (stage(app), table.display, table.has_focus) == ("runs", True, True)
+        report({"event": "tearing down", "hook": "teardown", "folder": tmp_path})
+        await pilot.pause()
+        assert stage(app) == "runs"
+        await pilot.press("escape")
+        assert stage(app) == "runs"
+
+    drive_hooks(steps)
+
+
+def test_escape_leaves_a_lone_runs_failed_setup_for_the_run_list(
+    tmp_path: Path,
+) -> None:
+    async def steps(app: RunApp, pilot: Any, report: Report) -> None:
+        report({**planned("r1"), "hooks": ["setup"]})
+        report({"event": "setting up", "hook": "setup", "folder": tmp_path})
+        report({"event": "hook ended", "hook": "setup", "error": "up broke"})
+        await pilot.pause()
+        await pilot.press("escape")
+        table: Any = app.query_one("DataTable")
+        assert (stage(app), app.body.viewing, table.display) == ("runs", None, True)
+
+    drive_hooks(steps)
+
+
 def test_a_restarts_hooks_keep_the_runs_table_and_its_cursor(tmp_path: Path) -> None:
     restart: dict[str, object] = {
         "event": "planned",
@@ -3333,3 +3417,23 @@ def test_readers_start_one_daemon_at_a_time(tmp_path: Path) -> None:
     with mock.patch("labnotes.tui.run_app.ensure_daemon", new=slow):
         asyncio.run(drive())
     assert most == 1
+
+
+def test_an_opened_run_gets_a_files_tab_but_hooks_do_not() -> None:
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        return await asyncio.get_running_loop().create_future()  # type: ignore[no-any-return]
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        with mock.patch.object(app, "set_interval"):
+            async with app.run_test() as pilot:
+                await pilot.pause()
+                outputs: list[Any] = list(app.query("RunOutput"))
+                assert [output.files is not None for output in outputs] == [
+                    False,
+                    True,
+                    False,
+                ]
+                assert app.query_one("#output").files is not None  # type: ignore[attr-defined]
+
+    asyncio.run(drive())

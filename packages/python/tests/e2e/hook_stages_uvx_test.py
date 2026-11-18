@@ -64,6 +64,23 @@ def test_uvx_run_tui_shows_setup_logs_then_the_runs(tmp_path: Path, tui: Tui) ->
     tui.quit(term)
 
 
+def test_uvx_escape_leaves_a_failed_setup_for_the_runs(
+    tmp_path: Path, tui: Tui
+) -> None:
+    root = project(tmp_path, "import sys\nprint('pod broke')\nsys.exit(3)\n")
+
+    term = tui(root, "experiments", "exp", "run")
+
+    expect(term.get_by_text(re.compile(r"setup ✗"))).to_be_visible(timeout=120)
+    term.get_by_text(re.compile(r" setup ✗ ")).click()
+    expect(term.get_by_text("pod broke")).to_be_visible()
+    expect(term.get_by_text("esc Back")).to_be_visible()
+    term.key_escape()
+    expect(term.get_by_text("params")).to_be_visible()
+    expect(term.get_by_text("pod broke")).not_to_be_visible()
+    tui.quit(term)
+
+
 def test_uvx_ctrl_c_during_setup_stops_the_invocation(tmp_path: Path, tui: Tui) -> None:
     root = project(
         tmp_path, "import time\nprint('pod up', flush=True)\ntime.sleep(4)\n"
@@ -139,3 +156,26 @@ def test_uvx_stop_interrupts_a_running_setup_hook(tmp_path: Path, tui: Tui) -> N
     expect(term.get_by_text("setup got SIGTERM")).to_be_visible()
     tui.quit(term)
     assert not list(root.glob("exp/runs/*/run.json"))
+
+
+def test_uvx_leave_prompt_stops_saying_tearing_down_once_teardown_ends(
+    tmp_path: Path, tui: Tui
+) -> None:
+    root = project(tmp_path, "")
+    (root / "teardown.py").write_text(
+        "import time\nprint('pods going', flush=True)\ntime.sleep(4)\n"
+    )
+    (root / "exp/experiment.toml").write_text(
+        f"continues = false\ncommand = \"{sys.executable} -c 'print(1)'\"\n"
+        f'teardown = "{sys.executable} teardown.py"\n'
+    )
+
+    term = tui(root, "experiments", "exp", "run")
+    expect(term.get_by_text("pods going")).to_be_visible(timeout=120)
+    term.key_ctrl_c()
+    expect(term.get_by_text("Tearing down. Stop (s)")).to_be_visible()
+
+    expect(term.get_by_text("Nothing running. Stop (s)")).to_be_visible(timeout=30)
+    expect(term.get_by_text("Tearing down.")).not_to_be_visible()
+    term.write("l")
+    assert tui.exited(term) == 0, term.to_snapshot()

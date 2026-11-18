@@ -86,21 +86,23 @@ To exclude a run, add `"excluded": true` and an optional `"reason"` to its
 `run.json`. An excluded run doesn't count toward `repeats`, so the next `run`
 replaces it; both show as columns in `runs`.
 
-In a terminal, `run` shows a live table of runs (status and time) and stays
-open when they finish; Ctrl-C quits. Elsewhere, it prints a
-line per event instead.
+`run` requires a terminal. It shows a live table of runs (status and time)
+and stays open when they finish; Ctrl-C quits. Without a terminal it exits 2.
 
 - `--concurrency N` runs N at a time (default 1).
 - `-e PATH` reads another file instead of `experiment.toml`.
 - `--PARAM=VALUE` runs only the cells where that param has that value, like
   `--model=small`. Repeat a param to run several values:
   `--model=small --model=large`.
-- With runs going, Ctrl-C asks first. Enter (or a second Ctrl-C) stops the running scripts and records their end,
-  then kills any still going 5 seconds later. Escape goes back. SIGTERM and
-  SIGHUP stop them the same way.
-- The foreground process schedules the next run when a slot frees. Closing
-  its terminal stops the runs. Agents should use a dedicated tmux window.
-- It exits 0 even if runs fail; the summary line counts failures.
+- With runs going, Ctrl-C asks first. `s` stops the running scripts and
+  records their end, then kills any still going 5 seconds later. Enter or `l`
+  leaves them running. Escape goes back.
+- A daemon for the experiment schedules the runs, so closing the terminal
+  leaves them going. `labnotes experiments NAME attach` reopens the table;
+  `labnotes experiments NAME stop` stops the runs from any shell. Agents
+  should use a dedicated tmux window.
+- It exits 0 when you quit, even if runs failed; the summary line counts
+  failures.
 
 `labnotes server` serves a local site at http://127.0.0.1:8000 from the same
 `.labnotes.toml`: a table of experiments, and a page per experiment with its

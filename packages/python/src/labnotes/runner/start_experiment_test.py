@@ -64,6 +64,7 @@ def test_prepares_and_runs_in_this_process_after_finalizing_lost_runs() -> None:
         2,
         1.5,
         True,
+        tables=mock.sentinel.tables,
     )
     finalize.assert_awaited_once_with(config, mock.sentinel.tables)
     project_snapshot.assert_called_once_with(config.root)
@@ -103,7 +104,7 @@ def test_reports_each_step_before_it_starts() -> None:
     config = mock.Mock(root=Path("/tmp/project"), runs="{experiment}/runs/{run}")
     seen: list[str] = []
 
-    async def prepare(*args: object) -> tuple[object, int]:
+    async def prepare(*args: object, **kwargs: object) -> tuple[object, int]:
         seen.append("prepare")
         return mock.sentinel.experiment, 1
 

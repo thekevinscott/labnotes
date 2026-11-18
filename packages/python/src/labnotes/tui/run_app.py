@@ -124,7 +124,7 @@ class RunLiveView(Widget):
         with Vertical(id="runs-stage"):
             yield RunsTable(id="runs", cursor_type="row")
             yield LogBlocks(id="blocks")
-            yield RunOutput(id="output")
+            yield RunOutput(id="output", files=True)
             yield Input(id="filter", placeholder="Filter params")
         yield HookPanel("teardown", id="teardown-stage")
         yield Static(id="status")
@@ -372,6 +372,8 @@ class RunLiveView(Widget):
         match action:
             case "stage":
                 return bool(self.hooks)
+            case "leave" if self.stage in HOOKS:
+                return True
             case _ if self.stage in HOOKS and action in RUNS_ACTIONS:
                 return False
             case "leave" if self.viewing is None:
@@ -477,6 +479,11 @@ class RunLiveView(Widget):
             self.query_one("#output", RunOutput).follow(self.folders[self.viewing])
 
     def action_leave(self) -> None:
+        if self.stage in HOOKS:
+            self.moved = True
+            self.go("runs")
+            if self.viewing is None:
+                return
         if self.viewing is not None:
             self.viewing = None
             self.query_one(LogBlocks).display = False
@@ -872,6 +879,9 @@ class RunApp(ViewSwitcher, App[None]):
             self.body.show_event(event, advance=False)
         else:
             self.body.show_event(event)
+        match self.screen_stack:
+            case [*_, DetachedLeavePrompt() as prompt]:
+                prompt.show(self.body.busy())
 
     def stop_runs(self) -> None:
         if self.body_ready and self.body.idle:

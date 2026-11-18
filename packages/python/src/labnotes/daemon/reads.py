@@ -16,6 +16,7 @@ from starlette.responses import JSONResponse, Response, StreamingResponse
 from starlette.routing import Route
 
 from labnotes.daemon.sse import sse
+from labnotes.daemon.watching import watching
 from labnotes.tables.iso_time import iso_time
 
 TAIL_BYTES = 64 * 1024
@@ -121,21 +122,21 @@ class Reads:
 
         async def stream() -> AsyncIterator[str]:
             await self.tables.ready()
-            changes = self.tables.watch()
-            shown = {row[key]: row for row in await rows()}
-            if last != self.state_id(shown):
-                yield sse(list(shown.values()), "state", self.state_id(shown))
-            async for change in changes:
-                if change.table not in names:
-                    continue
-                latest = {row[key]: row for row in await rows()}
-                for gone in [name for name in shown if name not in latest]:
-                    del shown[gone]
-                    yield sse({key: gone}, "remove", self.state_id(shown))
-                for name, row in latest.items():
-                    if shown.get(name) != row:
-                        shown[name] = row
-                        yield sse(row, kind, self.state_id(shown))
+            async with watching(self.tables) as changes:
+                shown = {row[key]: row for row in await rows()}
+                if last != self.state_id(shown):
+                    yield sse(list(shown.values()), "state", self.state_id(shown))
+                async for change in changes:
+                    if change.table not in names:
+                        continue
+                    latest = {row[key]: row for row in await rows()}
+                    for gone in [name for name in shown if name not in latest]:
+                        del shown[gone]
+                        yield sse({key: gone}, "remove", self.state_id(shown))
+                    for name, row in latest.items():
+                        if shown.get(name) != row:
+                            shown[name] = row
+                            yield sse(row, kind, self.state_id(shown))
 
         return StreamingResponse(stream(), media_type="text/event-stream")
 
@@ -144,87 +145,87 @@ class Reads:
     ) -> AsyncIterator[str]:
         """Send a text file's tail then its appended text; a binary file's size and type."""
         await self.tables.ready()
-        changes = self.tables.watch()
-        path = self.root / relative
-        stat = path.stat()
-        with path.open("rb") as handle:
-            binary = self.binary(handle.read(SNIFF_BYTES))
+        async with watching(self.tables) as changes:
+            path = self.root / relative
+            stat = path.stat()
+            with path.open("rb") as handle:
+                binary = self.binary(handle.read(SNIFF_BYTES))
 
-        async def touched() -> AsyncIterator[os.stat_result | None]:
-            async for change in changes:
-                if self.touches(change, relative):
-                    try:
-                        yield path.stat()
-                    except FileNotFoundError:
-                        yield None
+            async def touched() -> AsyncIterator[os.stat_result | None]:
+                async for change in changes:
+                    if self.touches(change, relative):
+                        try:
+                            yield path.stat()
+                        except FileNotFoundError:
+                            yield None
 
-        if binary:
-            kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
-            seen = (stat.st_size, stat.st_mtime_ns)
-            if last != str(stat.st_size):
-                yield sse(
-                    {"name": name, "size": stat.st_size, "type": kind},
-                    "state",
-                    str(stat.st_size),
-                )
-            async for found in touched():
-                if found is None:
-                    yield sse({"name": name}, "remove", str(seen[0]))
-                    return
-                if (found.st_size, found.st_mtime_ns) != seen:
-                    seen = (found.st_size, found.st_mtime_ns)
+            if binary:
+                kind = mimetypes.guess_type(name)[0] or "application/octet-stream"
+                seen = (stat.st_size, stat.st_mtime_ns)
+                if last != str(stat.st_size):
                     yield sse(
-                        {"name": name, "size": found.st_size, "type": kind},
+                        {"name": name, "size": stat.st_size, "type": kind},
                         "state",
-                        str(found.st_size),
+                        str(stat.st_size),
                     )
-            return
-        decoder = codecs.getincrementaldecoder("utf-8")("replace")
-        known = stat
-        digits = last if last is not None and last.isdigit() else ""
-        resumed = bool(digits) and int(digits) <= stat.st_size
-        if resumed:
-            fed = int(digits)
-        else:
-            fed = stat.st_size
-            text = self.tail(path, fed, decoder)
-            yield sse(
-                {"name": name, "size": fed, "text": text},
-                "state",
-                self.offset(fed, decoder),
-            )
-        mark = self.read(path, max(0, fed - MARK_BYTES), fed)
-
-        async def updates() -> AsyncIterator[os.stat_result | None]:
-            if resumed:
-                yield stat
-            async for found in touched():
-                yield found
-
-        async for found in updates():
-            if found is None:
-                yield sse({"name": name}, "remove", self.offset(fed, decoder))
+                async for found in touched():
+                    if found is None:
+                        yield sse({"name": name}, "remove", str(seen[0]))
+                        return
+                    if (found.st_size, found.st_mtime_ns) != seen:
+                        seen = (found.st_size, found.st_mtime_ns)
+                        yield sse(
+                            {"name": name, "size": found.st_size, "type": kind},
+                            "state",
+                            str(found.st_size),
+                        )
                 return
-            if (
-                not os.path.samestat(found, known)
-                or found.st_size < fed
-                or self.read(path, max(0, fed - MARK_BYTES), fed) != mark
-            ):
-                decoder.reset()
-                fed = found.st_size
+            decoder = codecs.getincrementaldecoder("utf-8")("replace")
+            known = stat
+            digits = last if last is not None and last.isdigit() else ""
+            resumed = bool(digits) and int(digits) <= stat.st_size
+            if resumed:
+                fed = int(digits)
+            else:
+                fed = stat.st_size
                 text = self.tail(path, fed, decoder)
                 yield sse(
                     {"name": name, "size": fed, "text": text},
                     "state",
                     self.offset(fed, decoder),
                 )
-            else:
-                text = decoder.decode(self.read(path, fed, found.st_size))
-                fed = found.st_size
-                if text:
-                    yield sse({"text": text}, "append", self.offset(fed, decoder))
-            known = found
             mark = self.read(path, max(0, fed - MARK_BYTES), fed)
+
+            async def updates() -> AsyncIterator[os.stat_result | None]:
+                if resumed:
+                    yield stat
+                async for found in touched():
+                    yield found
+
+            async for found in updates():
+                if found is None:
+                    yield sse({"name": name}, "remove", self.offset(fed, decoder))
+                    return
+                if (
+                    not os.path.samestat(found, known)
+                    or found.st_size < fed
+                    or self.read(path, max(0, fed - MARK_BYTES), fed) != mark
+                ):
+                    decoder.reset()
+                    fed = found.st_size
+                    text = self.tail(path, fed, decoder)
+                    yield sse(
+                        {"name": name, "size": fed, "text": text},
+                        "state",
+                        self.offset(fed, decoder),
+                    )
+                else:
+                    text = decoder.decode(self.read(path, fed, found.st_size))
+                    fed = found.st_size
+                    if text:
+                        yield sse({"text": text}, "append", self.offset(fed, decoder))
+                known = found
+                mark = self.read(path, max(0, fed - MARK_BYTES), fed)
 
     @staticmethod
     def touches(change: Any, relative: str) -> bool:

@@ -29,3 +29,9 @@ def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> 
     assert read_blocks(tmp_path, "runs/{run}", path, experiment="study") == [
         {"experiment": "study", "run": "brave-fox", "size": 3}
     ]
+
+
+def test_skips_a_block_log_that_is_gone_before_it_is_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp/runs/brave-fox/log.jsonl")
+
+    assert read_blocks(tmp_path, "{experiment}/runs/{run}", path) == []

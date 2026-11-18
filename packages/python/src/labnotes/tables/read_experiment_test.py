@@ -48,3 +48,9 @@ def test_layers_the_config_over_the_defaults(tmp_path: Path) -> None:
     )
 
     assert row["config"] == ('{"command": "go", "params": {"m": ["b"], "n": [1]}}')
+
+
+def test_skips_a_config_that_is_gone_before_it_is_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp/experiment.toml")
+
+    assert read_experiment(tmp_path, "{experiment}", path) == []

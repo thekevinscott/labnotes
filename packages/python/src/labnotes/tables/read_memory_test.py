@@ -76,3 +76,9 @@ def test_names_the_one_experiment_when_the_template_has_none(tmp_path: Path) -> 
     [row] = read_memory(tmp_path, "runs/{run}", path, experiment="study")
 
     assert (row["experiment"], row["run"]) == ("study", "brave-fox")
+
+
+def test_skips_samples_that_are_gone_before_they_are_read(tmp_path: Path) -> None:
+    path = str(tmp_path / "exp/runs/brave-fox/memory.jsonl")
+
+    assert read_memory(tmp_path, "{experiment}/runs/{run}", path) == []

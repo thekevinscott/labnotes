@@ -613,6 +613,43 @@ def test_shows_planned_runs_as_dim_pending_rows() -> None:
     asyncio.run(drive())
 
 
+def test_shows_a_capped_run_as_a_failed_row_out_of_retries() -> None:
+    finished = asyncio.Event()
+
+    async def start(report: Report, listen: Listen) -> list[dict[str, object]]:
+        listen(mock.Mock(finish=finished.set))
+        report(planned())
+        report(
+            {
+                "event": "capped",
+                "runs": [
+                    {
+                        "run": "r1",
+                        "params": {"m": "a"},
+                        "tries": 4,
+                        "folder": "/runs/r1",
+                    }
+                ],
+                "retries": 3,
+            }
+        )
+        report({"event": "idle"})
+        await finished.wait()
+        return []
+
+    async def drive() -> None:
+        app = RunApp(start, "exp", COLUMNS)
+        async with app.run_test() as pilot:
+            await pilot.pause()
+            assert rows(app) == [["r1", "--m a", "✗ capped 4/3", ""]]
+            assert styles(app)[0][2] == "red"
+            assert "r1" in app.body.failed
+            assert app.body.folders["r1"] == Path("/runs/r1")
+            assert status(app) == "0 passed, 1 failed. Ctrl-C to quit."
+
+    asyncio.run(drive())
+
+
 def test_skips_pending_runs_when_stopping() -> None:
     finished = asyncio.Event()
 

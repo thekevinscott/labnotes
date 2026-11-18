@@ -10,7 +10,7 @@ async def list_resumable_runs(
     # Ended badly: a nonzero or missing exit code, not merely uncounted.
     # Invocations stopped by hand or lost to a crash don't spend retries.
     return await tables.query(
-        "SELECT id, params, CASE WHEN json_type(run, '$.invocations') = 'array'"
+        "SELECT id, params, folder, CASE WHEN json_type(run, '$.invocations') = 'array'"
         " THEN (SELECT count(*) FROM json_each(run, '$.invocations')"
         " WHERE coalesce(json_extract(value, '$.ended_by'), '') NOT IN ('stop', 'lost'))"
         " ELSE coalesce(json_extract(run, '$.ended_by'), '') NOT IN ('stop', 'lost')"

@@ -2296,7 +2296,12 @@ def test_a_run_past_its_retries_gives_up_its_cell_unless_replaced(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock], replace_capped: bool
 ) -> None:
     collaborators["resumable"].return_value = [
-        {"id": "capped", "params": '{"m": "a"}', "invocations": 3},
+        {
+            "id": "capped",
+            "params": '{"m": "a"}',
+            "invocations": 3,
+            "folder": "exp/capped",
+        },
         {"id": "live", "params": '{"m": "b"}', "invocations": 2},
     ]
     collaborators["plan_runs"].return_value = [A, B]
@@ -2312,15 +2317,38 @@ def test_a_run_past_its_retries_gives_up_its_cell_unless_replaced(
     if replace_capped:
         assert capped == []
     else:
-        assert capped == [{"event": "capped", "runs": ["capped"], "retries": 2}]
+        assert capped == [
+            {
+                "event": "capped",
+                "runs": [
+                    {
+                        "run": "capped",
+                        "params": {"m": "a"},
+                        "tries": 3,
+                        "folder": str(tmp_path / "exp/capped"),
+                    }
+                ],
+                "retries": 2,
+            }
+        ]
 
 
 def test_only_reports_capped_runs_in_the_subset(
     tmp_path: Path, collaborators: dict[str, mock.MagicMock]
 ) -> None:
     collaborators["resumable"].return_value = [
-        {"id": "capped-a", "params": '{"m": "a"}', "invocations": 2},
-        {"id": "capped-b", "params": '{"m": "b"}', "invocations": 2},
+        {
+            "id": "capped-a",
+            "params": '{"m": "a"}',
+            "invocations": 2,
+            "folder": "exp/capped-a",
+        },
+        {
+            "id": "capped-b",
+            "params": '{"m": "b"}',
+            "invocations": 2,
+            "folder": "exp/capped-b",
+        },
     ]
     collaborators["plan_runs"].return_value = []
     report = mock.Mock()
@@ -2328,7 +2356,20 @@ def test_only_reports_capped_runs_in_the_subset(
     run(tmp_path, report, continues=True, retries=1, only={"m": ["a"]})
 
     capped = [e for e in reported(report) if e["event"] == "capped"]
-    assert capped == [{"event": "capped", "runs": ["capped-a"], "retries": 1}]
+    assert capped == [
+        {
+            "event": "capped",
+            "runs": [
+                {
+                    "run": "capped-a",
+                    "params": {"m": "a"},
+                    "tries": 2,
+                    "folder": str(tmp_path / "exp/capped-a"),
+                }
+            ],
+            "retries": 1,
+        }
+    ]
 
 
 def test_an_explicit_restart_ignores_the_cap(
@@ -2349,7 +2390,12 @@ def test_an_explicit_restart_ignores_the_cap(
         }
     ]
     collaborators["resumable"].return_value = [
-        {"id": "target", "params": '{"m": "a"}', "invocations": 5},
+        {
+            "id": "target",
+            "params": '{"m": "a"}',
+            "invocations": 5,
+            "folder": "old/target",
+        },
     ]
     report = mock.Mock()
 

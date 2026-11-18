@@ -13,12 +13,12 @@ from curtaincall import Terminal, expect
 
 PACKAGE = Path(__file__).parents[2]
 
-KCMP = {"x86_64": 312, "aarch64": 272}[platform.machine()]
+KCMP = {"x86_64": 312, "aarch64": 272}
 KCMP_FILE = 0
 
 
 def kcmp(pid: int, fd: int, other: int) -> int:
-    args = (KCMP, pid, pid, KCMP_FILE, fd, other)
+    args = (KCMP[platform.machine()], pid, pid, KCMP_FILE, fd, other)
     return ctypes.CDLL(None).syscall(*map(ctypes.c_long, args))
 
 

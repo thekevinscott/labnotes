@@ -1,5 +1,6 @@
 import asyncio
 import codecs
+import contextlib
 import json
 import os
 from collections.abc import AsyncIterator, Callable, Sequence
@@ -7,6 +8,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 from unittest import mock
+
+import pytest
 
 from labnotes.daemon.reads import TAIL_BYTES, Reads
 
@@ -538,3 +541,73 @@ def test_an_edit_before_the_last_64_delivered_bytes_is_not_seen(
         ("append", "202", {"text": "b\n"}),
         ("append", "204", {"text": "c\n"}),
     ]
+
+
+class Changes:
+    """A watch stream that never yields and may lack aclose, like dirsql today."""
+
+    def __init__(self, closable: bool) -> None:
+        if closable:
+            self.aclose = mock.AsyncMock()
+
+    def __aiter__(self) -> "Changes":
+        return self
+
+    async def __anext__(self) -> Any:
+        await asyncio.Event().wait()
+
+
+def bodies(root: Path, reads: Reads) -> dict[str, Any]:
+    (root / "out.log").write_text("hello\n")
+    (root / "image.png").write_bytes(b"\x89PNG\0")
+    rows = mock.AsyncMock(return_value=[{"id": "a"}])
+    response: Any = reads.follow(request(), rows, "id", "run", {"runs"})
+    return {
+        "follow": response.body_iterator,
+        "text": reads.follow_file("out.log", "out.log", None),
+        "binary": reads.follow_file("image.png", "image.png", None),
+    }
+
+
+async def leave(body: Any, how: str) -> None:
+    await anext(body)
+    if how == "close":
+        await body.aclose()
+        return
+    waiting = asyncio.ensure_future(anext(body))
+    await asyncio.sleep(0)
+    waiting.cancel()
+    with contextlib.suppress(asyncio.CancelledError):
+        await waiting
+
+
+@pytest.mark.parametrize("route", ["follow", "text", "binary"])
+@pytest.mark.parametrize("how", ["close", "cancel"])
+def test_a_leaving_client_closes_its_watch_stream(
+    tmp_path: Path, route: str, how: str
+) -> None:
+    changes = Changes(closable=True)
+    tables = fake()
+    tables.watch = mock.Mock(return_value=changes)
+
+    async def scenario() -> None:
+        await leave(bodies(tmp_path, Reads(tmp_path, tables))[route], how)
+
+    asyncio.run(scenario())
+
+    changes.aclose.assert_awaited_once_with()
+
+
+@pytest.mark.parametrize("route", ["follow", "text", "binary"])
+def test_a_stream_without_aclose_is_left_to_the_collector(
+    tmp_path: Path, route: str
+) -> None:
+    tables = fake()
+    tables.watch = mock.Mock(return_value=Changes(closable=False))
+
+    async def scenario() -> None:
+        await leave(bodies(tmp_path, Reads(tmp_path, tables))[route], "cancel")
+
+    asyncio.run(scenario())
+
+    tables.watch.assert_called_once_with()

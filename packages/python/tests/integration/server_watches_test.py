@@ -1,5 +1,4 @@
 import asyncio
-import os
 import socket
 import subprocess
 import sys
@@ -9,22 +8,9 @@ from pathlib import Path
 
 import pytest
 from playwright.async_api import Page, expect
-from conftest import browse, free_port, project, run, write
+from conftest import browse, free_port, inotify_watches, project, run, write
 
 NOTE = "/experiments/alpha?tab=notebooks&note=plan.md"
-
-
-def inotify_watches(pid: int) -> int:
-    watches = 0
-    for fd in os.listdir(f"/proc/{pid}/fd"):
-        try:
-            if os.readlink(f"/proc/{pid}/fd/{fd}") != "anon_inode:inotify":
-                continue
-            info = Path(f"/proc/{pid}/fdinfo/{fd}").read_text()
-        except FileNotFoundError:
-            continue
-        watches += sum(line.startswith("inotify wd:") for line in info.splitlines())
-    return watches
 
 
 def folders(path: Path) -> int:

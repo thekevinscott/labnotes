@@ -1,5 +1,8 @@
 import asyncio
+import ctypes
 import json
+import os
+import platform
 import socket
 import subprocess
 import sys
@@ -10,6 +13,36 @@ from urllib.parse import urlparse
 
 import pytest
 from playwright.async_api import Page, async_playwright
+
+
+KCMP = {"x86_64": 312, "aarch64": 272}
+KCMP_FILE = 0
+
+
+def kcmp(pid: int, fd: int, other: int) -> int:
+    args = (KCMP[platform.machine()], pid, pid, KCMP_FILE, fd, other)
+    result = ctypes.CDLL(None, use_errno=True).syscall(*map(ctypes.c_long, args))
+    if result < 0:
+        raise OSError(ctypes.get_errno(), "kcmp failed; watch counts would double")
+    return result
+
+
+# dirsql dup()s its inotify fd; count each kernel instance once.
+def inotify_watches(pid: int) -> int:
+    seen: list[int] = []
+    watches = 0
+    for fd in map(int, os.listdir(f"/proc/{pid}/fd")):
+        try:
+            if os.readlink(f"/proc/{pid}/fd/{fd}") != "anon_inode:inotify":
+                continue
+            info = Path(f"/proc/{pid}/fdinfo/{fd}").read_text()
+        except FileNotFoundError:
+            continue
+        if any(kcmp(pid, fd, other) == 0 for other in seen):
+            continue
+        seen.append(fd)
+        watches += sum(line.startswith("inotify wd:") for line in info.splitlines())
+    return watches
 
 
 CONFIG = (

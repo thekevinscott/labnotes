@@ -85,8 +85,8 @@ async def visit(sock: Path, route: str) -> None:
     writer.write(f"GET {route} HTTP/1.1\r\nHost: labnotes\r\n\r\n".encode())
     await writer.drain()
     received = b""
-    while b"\r\n\r\n" not in received.partition(b"event:")[2]:
-        chunk = await reader.read(4096)
+    while b"\n\n" not in received.partition(b"event:")[2]:
+        chunk = await asyncio.wait_for(reader.read(4096), 10)
         assert chunk, received
         received += chunk
     writer.close()

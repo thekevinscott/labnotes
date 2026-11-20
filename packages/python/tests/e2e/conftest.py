@@ -19,7 +19,10 @@ KCMP_FILE = 0
 
 def kcmp(pid: int, fd: int, other: int) -> int:
     args = (KCMP[platform.machine()], pid, pid, KCMP_FILE, fd, other)
-    return ctypes.CDLL(None).syscall(*map(ctypes.c_long, args))
+    result = ctypes.CDLL(None, use_errno=True).syscall(*map(ctypes.c_long, args))
+    if result < 0:
+        raise OSError(ctypes.get_errno(), "kcmp failed; watch counts would double")
+    return result
 
 
 # dirsql dup()s its inotify fd; count each kernel instance once.
